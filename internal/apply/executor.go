@@ -85,19 +85,19 @@ func (e *Executor) applyRepoSetting(c plan.Change, repo *manifest.Repository) er
 		return e.applyTopics(fullName, repo)
 
 	case "issues":
-		return e.toggleFeature(fullName, "issues", c.NewValue.(bool))
+		return e.toggleFeature(fullName, "enable-issues", c.NewValue.(bool))
 	case "projects":
-		return e.toggleFeature(fullName, "projects", c.NewValue.(bool))
+		return e.toggleFeature(fullName, "enable-projects", c.NewValue.(bool))
 	case "wiki":
-		return e.toggleFeature(fullName, "wiki", c.NewValue.(bool))
+		return e.toggleFeature(fullName, "enable-wiki", c.NewValue.(bool))
 	case "discussions":
-		return e.toggleFeature(fullName, "discussions", c.NewValue.(bool))
+		return e.toggleFeature(fullName, "enable-discussions", c.NewValue.(bool))
 	case "merge_commit":
-		return e.toggleFeature(fullName, "merge-commit", c.NewValue.(bool))
+		return e.toggleFeature(fullName, "enable-merge-commit", c.NewValue.(bool))
 	case "squash_merge":
-		return e.toggleFeature(fullName, "squash-merge", c.NewValue.(bool))
+		return e.toggleFeature(fullName, "enable-squash-merge", c.NewValue.(bool))
 	case "rebase_merge":
-		return e.toggleFeature(fullName, "rebase-merge", c.NewValue.(bool))
+		return e.toggleFeature(fullName, "enable-rebase-merge", c.NewValue.(bool))
 	case "auto_delete_head_branches":
 		return e.toggleFeature(fullName, "delete-branch-on-merge", c.NewValue.(bool))
 
@@ -110,9 +110,8 @@ func (e *Executor) applyRepoSetting(c plan.Change, repo *manifest.Repository) er
 
 func (e *Executor) updateRepoField(fullName, field, value string) error {
 	endpoint := fmt.Sprintf("repos/%s", fullName)
-	body := fmt.Sprintf(`{"%s":"%s"}`, field, value)
-	_, err := e.runner.Run("api", endpoint, "--method", "PATCH", "--body", body,
-		"--header", "Accept: application/vnd.github+json",
+	_, err := e.runner.Run("api", endpoint, "--method", "PATCH",
+		"-f", fmt.Sprintf("%s=%s", field, value),
 	)
 	return wrapError(err, fullName, field)
 }
