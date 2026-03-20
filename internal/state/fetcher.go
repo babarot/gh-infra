@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"golang.org/x/sync/errgroup"
 )
 
 // Fetcher retrieves current repository state from GitHub.
@@ -18,28 +19,45 @@ func NewFetcher(runner gh.Runner) *Fetcher {
 }
 
 // FetchRepository fetches the current state of a single repository.
+// Sub-fetches (branch protection, secrets, variables) run in parallel.
 func (f *Fetcher) FetchRepository(owner, name string) (*Repository, error) {
 	repo, err := f.fetchRepoSettings(owner, name)
 	if err != nil {
 		return nil, err
 	}
 
-	bp, err := f.fetchBranchProtection(owner, name)
-	if err != nil {
+	var (
+		bp      map[string]*BranchProtection
+		secrets []string
+		vars    map[string]string
+	)
+
+	g := new(errgroup.Group)
+
+	g.Go(func() error {
+		var err error
+		bp, err = f.fetchBranchProtection(owner, name)
+		return err
+	})
+
+	g.Go(func() error {
+		var err error
+		secrets, err = f.fetchSecrets(owner, name)
+		return err
+	})
+
+	g.Go(func() error {
+		var err error
+		vars, err = f.fetchVariables(owner, name)
+		return err
+	})
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
 	repo.BranchProtection = bp
-
-	secrets, err := f.fetchSecrets(owner, name)
-	if err != nil {
-		return nil, err
-	}
 	repo.Secrets = secrets
-
-	vars, err := f.fetchVariables(owner, name)
-	if err != nil {
-		return nil, err
-	}
 	repo.Variables = vars
 
 	return repo, nil

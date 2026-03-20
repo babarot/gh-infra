@@ -10,7 +10,6 @@ import (
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/output"
-	"github.com/babarot/gh-infra/internal/plan"
 	"github.com/babarot/gh-infra/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -59,27 +58,9 @@ func runApply(path, filterRepo string, autoApprove bool) error {
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
-	var allChanges []plan.Change
-	var targetRepos []*manifest.Repository
-
-	for _, repo := range repos {
-		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
-			continue
-		}
-
-		if repo.Metadata.ManagedBy == "self" {
-			fmt.Fprintf(os.Stderr, "  ⚠ %s: managed_by=self, skipping\n", repo.Metadata.FullName())
-			continue
-		}
-
-		current, err := fetcher.FetchRepository(repo.Metadata.Owner, repo.Metadata.Name)
-		if err != nil {
-			return fmt.Errorf("fetch %s: %w", repo.Metadata.FullName(), err)
-		}
-
-		changes := plan.Diff(repo, current)
-		allChanges = append(allChanges, changes...)
-		targetRepos = append(targetRepos, repo)
+	allChanges, targetRepos, err := fetchAllChanges(repos, filterRepo, fetcher)
+	if err != nil {
+		return err
 	}
 
 	if !hasRealChanges(allChanges) {

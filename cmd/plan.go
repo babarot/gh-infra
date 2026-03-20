@@ -54,24 +54,9 @@ func runPlan(path, filterRepo string, ci bool) error {
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
-	var allChanges []plan.Change
-	for _, repo := range repos {
-		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
-			continue
-		}
-
-		if repo.Metadata.ManagedBy == "self" {
-			fmt.Fprintf(os.Stderr, "  ⚠ %s: managed_by=self, skipping\n", repo.Metadata.FullName())
-			continue
-		}
-
-		current, err := fetcher.FetchRepository(repo.Metadata.Owner, repo.Metadata.Name)
-		if err != nil {
-			return fmt.Errorf("fetch %s: %w", repo.Metadata.FullName(), err)
-		}
-
-		changes := plan.Diff(repo, current)
-		allChanges = append(allChanges, changes...)
+	allChanges, _, err := fetchAllChanges(repos, filterRepo, fetcher)
+	if err != nil {
+		return err
 	}
 
 	output.PrintPlan(os.Stdout, allChanges)
