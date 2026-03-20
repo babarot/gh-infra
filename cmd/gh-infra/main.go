@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/babarot/gh-infra/cmd"
 )
 
 var (
@@ -11,10 +13,9 @@ var (
 )
 
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("gh-infra %s (%s)\n", version, revision)
-		return
+	root := cmd.NewRootCmd(version, revision)
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-
-	fmt.Println("gh-infra")
 }
