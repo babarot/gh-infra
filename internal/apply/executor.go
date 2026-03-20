@@ -100,9 +100,21 @@ func (e *Executor) applyRepoSetting(c plan.Change, repo *manifest.Repository) er
 		return e.toggleFeature(fullName, "rebase-merge", c.NewValue.(bool))
 	case "auto_delete_head_branches":
 		return e.toggleFeature(fullName, "delete-branch-on-merge", c.NewValue.(bool))
+
+	case "merge_commit_title", "merge_commit_message", "squash_merge_commit_title", "squash_merge_commit_message":
+		return e.updateRepoField(owner+"/"+name, c.Field, fmt.Sprintf("%v", c.NewValue))
 	}
 
 	return nil
+}
+
+func (e *Executor) updateRepoField(fullName, field, value string) error {
+	endpoint := fmt.Sprintf("repos/%s", fullName)
+	body := fmt.Sprintf(`{"%s":"%s"}`, field, value)
+	_, err := e.runner.Run("api", endpoint, "--method", "PATCH", "--body", body,
+		"--header", "Accept: application/vnd.github+json",
+	)
+	return wrapError(err, fullName, field)
 }
 
 func (e *Executor) toggleFeature(repo, flag string, enable bool) error {

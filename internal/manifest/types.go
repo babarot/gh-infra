@@ -36,14 +36,18 @@ type RepositorySpec struct {
 }
 
 type Features struct {
-	Issues                  *bool `yaml:"issues,omitempty"`
-	Projects                *bool `yaml:"projects,omitempty"`
-	Wiki                    *bool `yaml:"wiki,omitempty"`
-	Discussions             *bool `yaml:"discussions,omitempty"`
-	MergeCommit             *bool `yaml:"merge_commit,omitempty"`
-	SquashMerge             *bool `yaml:"squash_merge,omitempty"`
-	RebaseMerge             *bool `yaml:"rebase_merge,omitempty"`
-	AutoDeleteHeadBranches  *bool `yaml:"auto_delete_head_branches,omitempty"`
+	Issues                  *bool   `yaml:"issues,omitempty"`
+	Projects                *bool   `yaml:"projects,omitempty"`
+	Wiki                    *bool   `yaml:"wiki,omitempty"`
+	Discussions             *bool   `yaml:"discussions,omitempty"`
+	MergeCommit             *bool   `yaml:"merge_commit,omitempty"`
+	SquashMerge             *bool   `yaml:"squash_merge,omitempty"`
+	RebaseMerge             *bool   `yaml:"rebase_merge,omitempty"`
+	AutoDeleteHeadBranches  *bool   `yaml:"auto_delete_head_branches,omitempty"`
+	MergeCommitTitle        *string `yaml:"merge_commit_title,omitempty"`
+	MergeCommitMessage      *string `yaml:"merge_commit_message,omitempty"`
+	SquashMergeCommitTitle  *string `yaml:"squash_merge_commit_title,omitempty"`
+	SquashMergeCommitMessage *string `yaml:"squash_merge_commit_message,omitempty"`
 }
 
 type BranchProtection struct {

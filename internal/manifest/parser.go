@@ -177,6 +177,18 @@ func mergeFeatures(base, override *Features) *Features {
 	if override.AutoDeleteHeadBranches != nil {
 		result.AutoDeleteHeadBranches = override.AutoDeleteHeadBranches
 	}
+	if override.MergeCommitTitle != nil {
+		result.MergeCommitTitle = override.MergeCommitTitle
+	}
+	if override.MergeCommitMessage != nil {
+		result.MergeCommitMessage = override.MergeCommitMessage
+	}
+	if override.SquashMergeCommitTitle != nil {
+		result.SquashMergeCommitTitle = override.SquashMergeCommitTitle
+	}
+	if override.SquashMergeCommitMessage != nil {
+		result.SquashMergeCommitMessage = override.SquashMergeCommitMessage
+	}
 	return &result
 }
 

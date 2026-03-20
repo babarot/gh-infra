@@ -20,14 +20,18 @@ func (r *Repository) FullName() string {
 }
 
 type Features struct {
-	Issues                 bool
-	Projects               bool
-	Wiki                   bool
-	Discussions            bool
-	MergeCommit            bool
-	SquashMerge            bool
-	RebaseMerge            bool
-	AutoDeleteHeadBranches bool
+	Issues                   bool
+	Projects                 bool
+	Wiki                     bool
+	Discussions              bool
+	MergeCommit              bool
+	SquashMerge              bool
+	RebaseMerge              bool
+	AutoDeleteHeadBranches   bool
+	MergeCommitTitle         string
+	MergeCommitMessage       string
+	SquashMergeCommitTitle   string
+	SquashMergeCommitMessage string
 }
 
 type BranchProtection struct {

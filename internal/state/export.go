@@ -25,7 +25,11 @@ func ToManifest(r *Repository) *manifest.Repository {
 				MergeCommit:            manifest.BoolPtr(r.Features.MergeCommit),
 				SquashMerge:            manifest.BoolPtr(r.Features.SquashMerge),
 				RebaseMerge:            manifest.BoolPtr(r.Features.RebaseMerge),
-				AutoDeleteHeadBranches: manifest.BoolPtr(r.Features.AutoDeleteHeadBranches),
+				AutoDeleteHeadBranches:   manifest.BoolPtr(r.Features.AutoDeleteHeadBranches),
+			MergeCommitTitle:         manifest.StringPtr(r.Features.MergeCommitTitle),
+			MergeCommitMessage:       manifest.StringPtr(r.Features.MergeCommitMessage),
+			SquashMergeCommitTitle:   manifest.StringPtr(r.Features.SquashMergeCommitTitle),
+			SquashMergeCommitMessage: manifest.StringPtr(r.Features.SquashMergeCommitMessage),
 			},
 		},
 	}

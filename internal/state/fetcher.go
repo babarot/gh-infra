@@ -82,6 +82,9 @@ func (f *Fetcher) fetchRepoSettings(owner, name string) (*Repository, error) {
 		topics = append(topics, t.Name)
 	}
 
+	// Fetch commit message settings via REST API (not available in gh repo view --json)
+	commitMsgSettings, _ := f.fetchCommitMessageSettings(owner, name)
+
 	return &Repository{
 		Owner:       owner,
 		Name:        name,
@@ -90,15 +93,53 @@ func (f *Fetcher) fetchRepoSettings(owner, name string) (*Repository, error) {
 		Visibility:  strings.ToLower(raw.Visibility),
 		Topics:      topics,
 		Features: Features{
-			Issues:                 raw.HasIssuesEnabled,
-			Projects:               raw.HasProjectsEnabled,
-			Wiki:                   raw.HasWikiEnabled,
-			Discussions:            raw.HasDiscussionsEnabled,
-			MergeCommit:            raw.MergeCommitAllowed,
-			SquashMerge:            raw.SquashMergeAllowed,
-			RebaseMerge:            raw.RebaseMergeAllowed,
-			AutoDeleteHeadBranches: raw.DeleteBranchOnMerge,
+			Issues:                   raw.HasIssuesEnabled,
+			Projects:                 raw.HasProjectsEnabled,
+			Wiki:                     raw.HasWikiEnabled,
+			Discussions:              raw.HasDiscussionsEnabled,
+			MergeCommit:              raw.MergeCommitAllowed,
+			SquashMerge:              raw.SquashMergeAllowed,
+			RebaseMerge:              raw.RebaseMergeAllowed,
+			AutoDeleteHeadBranches:   raw.DeleteBranchOnMerge,
+			MergeCommitTitle:         commitMsgSettings.MergeCommitTitle,
+			MergeCommitMessage:       commitMsgSettings.MergeCommitMessage,
+			SquashMergeCommitTitle:   commitMsgSettings.SquashMergeCommitTitle,
+			SquashMergeCommitMessage: commitMsgSettings.SquashMergeCommitMessage,
 		},
+	}, nil
+}
+
+type commitMessageSettings struct {
+	MergeCommitTitle         string
+	MergeCommitMessage       string
+	SquashMergeCommitTitle   string
+	SquashMergeCommitMessage string
+}
+
+func (f *Fetcher) fetchCommitMessageSettings(owner, name string) (commitMessageSettings, error) {
+	out, err := f.runner.Run(
+		"api", fmt.Sprintf("repos/%s/%s", owner, name),
+		"--jq", "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}",
+	)
+	if err != nil {
+		return commitMessageSettings{}, err
+	}
+
+	var raw struct {
+		SquashMergeCommitTitle   string `json:"squash_merge_commit_title"`
+		SquashMergeCommitMessage string `json:"squash_merge_commit_message"`
+		MergeCommitTitle         string `json:"merge_commit_title"`
+		MergeCommitMessage       string `json:"merge_commit_message"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return commitMessageSettings{}, err
+	}
+
+	return commitMessageSettings{
+		MergeCommitTitle:         raw.MergeCommitTitle,
+		MergeCommitMessage:       raw.MergeCommitMessage,
+		SquashMergeCommitTitle:   raw.SquashMergeCommitTitle,
+		SquashMergeCommitMessage: raw.SquashMergeCommitMessage,
 	}, nil
 }
 

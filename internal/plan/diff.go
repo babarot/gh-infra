@@ -105,6 +105,24 @@ func diffFeatures(name string, desired *manifest.Repository, current *state.Repo
 	boolDiff("rebase_merge", f.RebaseMerge, current.Features.RebaseMerge)
 	boolDiff("auto_delete_head_branches", f.AutoDeleteHeadBranches, current.Features.AutoDeleteHeadBranches)
 
+	stringDiff := func(field string, desiredVal *string, currentVal string) {
+		if desiredVal != nil && *desiredVal != currentVal {
+			changes = append(changes, Change{
+				Type:     ChangeUpdate,
+				Resource: "Repository",
+				Name:     name,
+				Field:    field,
+				OldValue: currentVal,
+				NewValue: *desiredVal,
+			})
+		}
+	}
+
+	stringDiff("merge_commit_title", f.MergeCommitTitle, current.Features.MergeCommitTitle)
+	stringDiff("merge_commit_message", f.MergeCommitMessage, current.Features.MergeCommitMessage)
+	stringDiff("squash_merge_commit_title", f.SquashMergeCommitTitle, current.Features.SquashMergeCommitTitle)
+	stringDiff("squash_merge_commit_message", f.SquashMergeCommitMessage, current.Features.SquashMergeCommitMessage)
+
 	return changes
 }
 
