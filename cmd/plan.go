@@ -49,7 +49,7 @@ func runPlan(path, filterRepo string, ci bool) error {
 		return nil
 	}
 
-	runner := gh.NewRunner(false, verbose)
+	runner := gh.NewRunner(false)
 
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")

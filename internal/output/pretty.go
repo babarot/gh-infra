@@ -12,7 +12,6 @@ import (
 // PrintPlan prints the plan result in a human-readable format.
 func PrintPlan(w io.Writer, changes []plan.Change) {
 	if len(changes) == 0 {
-		fmt.Fprintln(w, "No changes. Infrastructure is up-to-date.")
 		return
 	}
 

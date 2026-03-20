@@ -27,7 +27,7 @@ func newImportCmd() *cobra.Command {
 }
 
 func runImport(target string) error {
-	runner := gh.NewRunner(false, verbose)
+	runner := gh.NewRunner(false)
 	fetcher := state.NewFetcher(runner)
 
 	parts := strings.SplitN(target, "/", 2)

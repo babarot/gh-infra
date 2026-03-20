@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/plan"
 	"github.com/babarot/gh-infra/internal/state"
@@ -27,6 +28,7 @@ func fetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *s
 	var targets []*manifest.Repository
 	for _, repo := range repos {
 		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
+			logger.Debug("skip repo (filter)", "repo", repo.Metadata.FullName())
 			continue
 		}
 		if repo.Metadata.ManagedBy == manifest.ManagedBySelf {
@@ -35,6 +37,8 @@ func fetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *s
 		}
 		targets = append(targets, repo)
 	}
+
+	logger.Info("fetching", "repos", len(targets), "parallel", defaultParallel)
 
 	if len(targets) == 0 {
 		return nil, nil, nil
@@ -49,17 +53,19 @@ func fetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *s
 		go func(idx int, r *manifest.Repository) {
 			defer wg.Done()
 
-			// Acquire semaphore
 			_ = sem.Acquire(context.Background(), 1)
 			defer sem.Release(1)
 
+			logger.Debug("fetch start", "repo", r.Metadata.FullName())
 			current, err := fetcher.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
 			if err != nil {
+				logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
 				results[idx] = repoResult{index: idx, repo: r, err: err}
 				return
 			}
 
 			changes := plan.Diff(r, current, diffOpts...)
+			logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
 			results[idx] = repoResult{index: idx, repo: r, changes: changes}
 		}(i, repo)
 	}
@@ -76,5 +82,6 @@ func fetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *s
 		targetRepos = append(targetRepos, res.repo)
 	}
 
+	logger.Info("plan complete", "total_changes", len(allChanges))
 	return allChanges, targetRepos, nil
 }
