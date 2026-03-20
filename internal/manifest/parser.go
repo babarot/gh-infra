@@ -11,14 +11,24 @@ import (
 )
 
 // ParsePath parses a file or directory and returns all Repository resources.
+// For backward compatibility, this only returns repositories.
 func ParsePath(path string) ([]*Repository, error) {
+	result, err := ParseAll(path)
+	if err != nil {
+		return nil, err
+	}
+	return result.Repositories, nil
+}
+
+// ParseAll parses a file or directory and returns all resources (Repository + FileSet).
+func ParseAll(path string) (*ParseResult, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", path, err)
 	}
 
 	if !info.IsDir() {
-		return parseFile(path)
+		return parseFileAll(path)
 	}
 
 	entries, err := os.ReadDir(path)
@@ -26,7 +36,7 @@ func ParsePath(path string) ([]*Repository, error) {
 		return nil, fmt.Errorf("read dir %s: %w", path, err)
 	}
 
-	var repos []*Repository
+	result := &ParseResult{}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -35,16 +45,17 @@ func ParsePath(path string) ([]*Repository, error) {
 		if ext != ".yaml" && ext != ".yml" {
 			continue
 		}
-		parsed, err := parseFile(filepath.Join(path, entry.Name()))
+		parsed, err := parseFileAll(filepath.Join(path, entry.Name()))
 		if err != nil {
 			return nil, err
 		}
-		repos = append(repos, parsed...)
+		result.Repositories = append(result.Repositories, parsed.Repositories...)
+		result.FileSets = append(result.FileSets, parsed.FileSets...)
 	}
-	return repos, nil
+	return result, nil
 }
 
-func parseFile(path string) ([]*Repository, error) {
+func parseFileAll(path string) (*ParseResult, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
@@ -56,20 +67,37 @@ func parseFile(path string) ([]*Repository, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
-	// Determine the kind
 	var doc Document
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 
+	result := &ParseResult{}
+
 	switch doc.Kind {
 	case "Repository":
-		return parseRepository(data, path)
+		repos, err := parseRepository(data, path)
+		if err != nil {
+			return nil, err
+		}
+		result.Repositories = repos
 	case "RepositorySet":
-		return parseRepositorySet(data, path)
+		repos, err := parseRepositorySet(data, path)
+		if err != nil {
+			return nil, err
+		}
+		result.Repositories = repos
+	case "FileSet":
+		fs, err := parseFileSet(data, path)
+		if err != nil {
+			return nil, err
+		}
+		result.FileSets = []*FileSet{fs}
 	default:
 		return nil, fmt.Errorf("%s: unknown kind %q", path, doc.Kind)
 	}
+
+	return result, nil
 }
 
 func parseRepository(data []byte, path string) ([]*Repository, error) {
@@ -106,6 +134,56 @@ func parseRepositorySet(data []byte, path string) ([]*Repository, error) {
 		repos = append(repos, repo)
 	}
 	return repos, nil
+}
+
+func parseFileSet(data []byte, path string) (*FileSet, error) {
+	var fs FileSet
+	if err := yaml.Unmarshal(data, &fs); err != nil {
+		return nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
+	}
+
+	if fs.Metadata.Name == "" {
+		return nil, fmt.Errorf("%s: FileSet metadata.name is required", path)
+	}
+	if len(fs.Spec.Targets) == 0 {
+		return nil, fmt.Errorf("%s: FileSet spec.targets is required", path)
+	}
+	if len(fs.Spec.Files) == 0 {
+		return nil, fmt.Errorf("%s: FileSet spec.files is required", path)
+	}
+
+	// Default on_drift
+	if fs.Spec.OnDrift == "" {
+		fs.Spec.OnDrift = "warn"
+	}
+	switch fs.Spec.OnDrift {
+	case "warn", "overwrite", "skip":
+	default:
+		return nil, fmt.Errorf("%s: invalid on_drift %q (must be warn, overwrite, or skip)", path, fs.Spec.OnDrift)
+	}
+
+	// Resolve source files to content
+	dir := filepath.Dir(path)
+	for i := range fs.Spec.Files {
+		entry := &fs.Spec.Files[i]
+		if entry.Path == "" {
+			return nil, fmt.Errorf("%s: FileSet file entry missing path", path)
+		}
+		if entry.Source != "" && entry.Content == "" {
+			srcPath := entry.Source
+			if !filepath.IsAbs(srcPath) {
+				srcPath = filepath.Join(dir, srcPath)
+			}
+			content, err := os.ReadFile(srcPath)
+			if err != nil {
+				return nil, fmt.Errorf("%s: read source %s: %w", path, entry.Source, err)
+			}
+			entry.Content = string(content)
+			entry.Source = "" // resolved
+		}
+	}
+
+	return &fs, nil
 }
 
 // mergeSpecs merges defaults with per-repo overrides. Per-repo values take precedence.

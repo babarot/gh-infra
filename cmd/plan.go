@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/output"
@@ -38,30 +39,51 @@ func newPlanCmd() *cobra.Command {
 }
 
 func runPlan(path, filterRepo string, ci bool) error {
-	repos, err := manifest.ParsePath(path)
+	parsed, err := manifest.ParseAll(path)
 	if err != nil {
 		return err
 	}
 
-	if len(repos) == 0 {
-		fmt.Println("No repositories found in", path)
+	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
+		fmt.Println("No resources found in", path)
 		return nil
 	}
 
 	runner := gh.NewRunner(false, verbose)
-	fetcher := state.NewFetcher(runner)
 
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
-	allChanges, _, err := fetchAllChanges(repos, filterRepo, fetcher)
-	if err != nil {
-		return err
+	hasAnyChanges := false
+
+	// Repository changes
+	if len(parsed.Repositories) > 0 {
+		fetcher := state.NewFetcher(runner)
+		allChanges, _, err := fetchAllChanges(parsed.Repositories, filterRepo, fetcher)
+		if err != nil {
+			return err
+		}
+		output.PrintPlan(os.Stdout, allChanges)
+		if hasRealChanges(allChanges) {
+			hasAnyChanges = true
+		}
 	}
 
-	output.PrintPlan(os.Stdout, allChanges)
+	// FileSet changes
+	if len(parsed.FileSets) > 0 {
+		processor := fileset.NewProcessor(runner)
+		fileChanges := processor.Plan(parsed.FileSets)
+		fileset.PrintPlan(os.Stdout, fileChanges)
+		if fileset.HasChanges(fileChanges) {
+			hasAnyChanges = true
+		}
+	}
 
-	if ci && hasRealChanges(allChanges) {
+	if !hasAnyChanges {
+		fmt.Println("No changes. Infrastructure is up-to-date.")
+	}
+
+	if ci && hasAnyChanges {
 		os.Exit(1)
 	}
 

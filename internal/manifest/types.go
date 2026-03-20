@@ -99,6 +99,42 @@ type RepositorySetEntry struct {
 	Spec RepositorySpec `yaml:"spec"`
 }
 
+// FileSet represents a set of files to distribute to target repositories.
+type FileSet struct {
+	APIVersion string          `yaml:"apiVersion"`
+	Kind       string          `yaml:"kind"`
+	Metadata   FileSetMetadata `yaml:"metadata"`
+	Spec       FileSetSpec     `yaml:"spec"`
+}
+
+type FileSetMetadata struct {
+	Name string `yaml:"name"`
+}
+
+type FileSetSpec struct {
+	Targets []FileSetTarget `yaml:"targets"`
+	Files   []FileEntry     `yaml:"files"`
+	OnDrift string          `yaml:"on_drift,omitempty"` // warn (default), overwrite, skip
+}
+
+// FileSetTarget can be a simple string "owner/repo" or a struct with overrides.
+type FileSetTarget struct {
+	Name      string      `yaml:"name"`
+	Overrides []FileEntry `yaml:"overrides,omitempty"`
+}
+
+type FileEntry struct {
+	Path    string `yaml:"path"`
+	Content string `yaml:"content,omitempty"`
+	Source  string `yaml:"source,omitempty"` // local file path
+}
+
+// ParseResult holds all parsed resources from a path.
+type ParseResult struct {
+	Repositories []*Repository
+	FileSets     []*FileSet
+}
+
 // Helper functions for pointer creation
 func StringPtr(s string) *string { return &s }
 func BoolPtr(b bool) *bool      { return &b }

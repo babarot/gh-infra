@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/apply"
+	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/output"
@@ -43,37 +44,59 @@ func newApplyCmd() *cobra.Command {
 }
 
 func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
-	repos, err := manifest.ParsePath(path)
+	parsed, err := manifest.ParseAll(path)
 	if err != nil {
 		return err
 	}
 
-	if len(repos) == 0 {
-		fmt.Println("No repositories found in", path)
+	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
+		fmt.Println("No resources found in", path)
 		return nil
 	}
 
-	manifest.ResolveSecrets(repos)
+	manifest.ResolveSecrets(parsed.Repositories)
 
 	runner := gh.NewRunner(false, verbose)
-	fetcher := state.NewFetcher(runner)
 
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
-	diffOpts := plan.DiffOptions{ForceSecrets: forceSecrets}
-	allChanges, targetRepos, err := fetchAllChanges(repos, filterRepo, fetcher, diffOpts)
-	if err != nil {
-		return err
+	// Compute repo changes
+	var repoChanges []plan.Change
+	var targetRepos []*manifest.Repository
+	if len(parsed.Repositories) > 0 {
+		fetcher := state.NewFetcher(runner)
+		diffOpts := plan.DiffOptions{ForceSecrets: forceSecrets}
+		repoChanges, targetRepos, err = fetchAllChanges(parsed.Repositories, filterRepo, fetcher, diffOpts)
+		if err != nil {
+			return err
+		}
 	}
 
-	if !hasRealChanges(allChanges) {
+	// Compute file changes
+	var fileChanges []fileset.FileChange
+	if len(parsed.FileSets) > 0 {
+		processor := fileset.NewProcessor(runner)
+		fileChanges = processor.Plan(parsed.FileSets)
+	}
+
+	hasRepo := hasRealChanges(repoChanges)
+	hasFile := fileset.HasChanges(fileChanges)
+
+	if !hasRepo && !hasFile {
 		fmt.Println("No changes. Infrastructure is up-to-date.")
 		return nil
 	}
 
-	output.PrintPlan(os.Stdout, allChanges)
+	// Print plan
+	if hasRepo {
+		output.PrintPlan(os.Stdout, repoChanges)
+	}
+	if hasFile {
+		fileset.PrintPlan(os.Stdout, fileChanges)
+	}
 
+	// Confirm
 	if !autoApprove {
 		fmt.Print("\nDo you want to apply these changes? (yes/no): ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -86,15 +109,35 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 		fmt.Println()
 	}
 
-	executor := apply.NewExecutor(runner)
-	results := executor.Apply(allChanges, targetRepos)
+	var hasErrors bool
 
-	output.PrintApplyResults(os.Stdout, results)
-
-	for _, r := range results {
-		if r.Err != nil {
-			return fmt.Errorf("apply had errors")
+	// Apply repo changes
+	if hasRepo {
+		executor := apply.NewExecutor(runner)
+		results := executor.Apply(repoChanges, targetRepos)
+		output.PrintApplyResults(os.Stdout, results)
+		for _, r := range results {
+			if r.Err != nil {
+				hasErrors = true
+			}
 		}
+	}
+
+	// Apply file changes
+	if hasFile {
+		processor := fileset.NewProcessor(runner)
+		results := processor.Apply(fileChanges)
+		fileset.PrintApplyResults(os.Stdout, results)
+		fileset.PrintSummary(os.Stdout, results)
+		for _, r := range results {
+			if r.Err != nil {
+				hasErrors = true
+			}
+		}
+	}
+
+	if hasErrors {
+		return fmt.Errorf("apply had errors")
 	}
 
 	return nil

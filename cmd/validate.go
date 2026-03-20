@@ -24,14 +24,19 @@ func newValidateCmd() *cobra.Command {
 }
 
 func runValidate(path string) error {
-	repos, err := manifest.ParsePath(path)
+	parsed, err := manifest.ParseAll(path)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("✓ Valid: %d repositories defined\n", len(repos))
-	for _, r := range repos {
-		fmt.Printf("  - %s\n", r.Metadata.FullName())
+	fmt.Printf("✓ Valid: %d repositories, %d filesets defined\n",
+		len(parsed.Repositories), len(parsed.FileSets))
+	for _, r := range parsed.Repositories {
+		fmt.Printf("  - Repository: %s\n", r.Metadata.FullName())
+	}
+	for _, fs := range parsed.FileSets {
+		fmt.Printf("  - FileSet: %s (%d files → %d targets)\n",
+			fs.Metadata.Name, len(fs.Spec.Files), len(fs.Spec.Targets))
 	}
 	return nil
 }
