@@ -2,6 +2,7 @@ package repository
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,10 +20,14 @@ func NewFetcher(runner gh.Runner) *Fetcher {
 }
 
 // FetchRepository fetches the current state of a single repository.
+// If the repository does not exist (404), it returns an empty CurrentState with IsNew=true.
 // Sub-fetches (branch protection, secrets, variables) run in parallel.
 func (f *Fetcher) FetchRepository(owner, name string) (*CurrentState, error) {
 	repo, err := f.fetchRepoSettings(owner, name)
 	if err != nil {
+		if errors.Is(err, gh.ErrNotFound) {
+			return &CurrentState{Owner: owner, Name: name, IsNew: true}, nil
+		}
 		return nil, err
 	}
 
@@ -69,6 +74,10 @@ func (f *Fetcher) fetchRepoSettings(owner, name string) (*CurrentState, error) {
 		"--json", "description,homepageUrl,visibility,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef",
 	)
 	if err != nil {
+		// gh repo view returns GraphQL error for non-existent repos, not REST 404
+		if isRepoNotFound(err) {
+			return nil, gh.ErrNotFound
+		}
 		return nil, fmt.Errorf("fetch repo %s/%s: %w", owner, name, err)
 	}
 
@@ -290,4 +299,15 @@ func (f *Fetcher) fetchVariables(owner, name string) (map[string]string, error) 
 		result[v.Name] = v.Value
 	}
 	return result, nil
+}
+
+// isRepoNotFound checks if an error indicates the repository doesn't exist.
+// gh repo view uses GraphQL which returns "Could not resolve to a Repository"
+// instead of a REST 404.
+func isRepoNotFound(err error) bool {
+	if errors.Is(err, gh.ErrNotFound) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Could not resolve to a Repository")
 }

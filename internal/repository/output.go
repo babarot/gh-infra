@@ -32,7 +32,13 @@ func PrintPlan(w io.Writer, changes []Change) {
 		if len(group.changes) == 0 {
 			continue
 		}
-		fmt.Fprintf(w, "  %s %s\n", ui.Yellow.Render("~"), ui.Bold.Render(group.name))
+		// New repo: show + in green; existing: show ~ in yellow
+		if isNewRepo(group.changes) {
+			fmt.Fprintf(w, "  %s %s %s\n",
+				ui.Green.Render("+"), ui.Bold.Render(group.name), ui.Green.Render("(new)"))
+		} else {
+			fmt.Fprintf(w, "  %s %s\n", ui.Yellow.Render("~"), ui.Bold.Render(group.name))
+		}
 		for _, c := range group.changes {
 			printChange(w, c)
 		}
@@ -64,10 +70,9 @@ func PrintApplyResults(w io.Writer, results []ApplyResult) {
 			succeeded++
 		}
 	}
-	fmt.Fprintf(w, "\nApply complete! %s changes applied",
-		ui.Green.Render(fmt.Sprintf("%d", succeeded)))
+	fmt.Fprintf(w, "\nApply complete! %d changes applied", succeeded)
 	if failed > 0 {
-		fmt.Fprintf(w, ", %s failed", ui.Red.Render(fmt.Sprintf("%d", failed)))
+		fmt.Fprintf(w, ", %d failed", failed)
 	}
 	fmt.Fprintln(w, ".")
 }
@@ -124,6 +129,15 @@ func groupByName(changes []Change) []changeGroup {
 		groups[idx].changes = append(groups[idx].changes, c)
 	}
 	return groups
+}
+
+func isNewRepo(changes []Change) bool {
+	for _, c := range changes {
+		if c.Type == ChangeCreate && c.Field == "repository" {
+			return true
+		}
+	}
+	return false
 }
 
 func countChanges(changes []Change) (creates, updates, deletes int) {

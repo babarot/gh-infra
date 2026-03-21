@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -58,6 +59,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet) []FileChange {
 
 	for _, fs := range fileSets {
 		for _, target := range fs.Spec.Targets {
+			fmt.Fprintf(os.Stderr, "  Refreshing %s → %s...\n", fs.Metadata.Name, target.Name)
 			files := ResolveFiles(fs, target)
 			for _, file := range files {
 				change := p.planFile(fs.Metadata.Name, target.Name, file, fs.Spec.OnDrift)
@@ -175,9 +177,11 @@ func (p *Processor) Apply(changes []FileChange) []FileApplyResult {
 	for _, c := range changes {
 		switch c.Type {
 		case FileCreate:
+			fmt.Fprintf(os.Stderr, "  Creating %s %s...\n", c.Target, c.Path)
 			err := p.createFile(c.Target, c.Path, c.Desired)
 			results = append(results, FileApplyResult{Change: c, Err: err})
 		case FileUpdate:
+			fmt.Fprintf(os.Stderr, "  Updating %s %s...\n", c.Target, c.Path)
 			err := p.updateFile(c.Target, c.Path, c.Desired, c.SHA)
 			results = append(results, FileApplyResult{Change: c, Err: err})
 		case FileDrift:
@@ -338,13 +342,12 @@ func PrintSummary(w io.Writer, results []FileApplyResult) {
 			succeeded++
 		}
 	}
-	fmt.Fprintf(w, "\nFileSet apply: %s changes applied",
-		ui.Green.Render(fmt.Sprintf("%d", succeeded)))
+	fmt.Fprintf(w, "\nFileSet apply: %d changes applied", succeeded)
 	if failed > 0 {
-		fmt.Fprintf(w, ", %s failed", ui.Red.Render(fmt.Sprintf("%d", failed)))
+		fmt.Fprintf(w, ", %d failed", failed)
 	}
 	if skipped > 0 {
-		fmt.Fprintf(w, ", %s skipped (drift)", ui.Yellow.Render(fmt.Sprintf("%d", skipped)))
+		fmt.Fprintf(w, ", %d skipped (drift)", skipped)
 	}
 	fmt.Fprintln(w, ".")
 }

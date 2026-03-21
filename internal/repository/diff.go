@@ -14,15 +14,26 @@ type DiffOptions struct {
 }
 
 // Diff compares desired state with current state and returns changes.
+// If the repository does not exist (current.IsNew), a single ChangeCreate is returned.
 func Diff(desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
 	var opt DiffOptions
 	if len(opts) > 0 {
 		opt = opts[0]
 	}
 
-	var changes []Change
 	name := desired.Metadata.FullName()
 
+	if current.IsNew {
+		return []Change{{
+			Type:     ChangeCreate,
+			Resource: manifest.ResourceRepository,
+			Name:     name,
+			Field:    "repository",
+			NewValue: name,
+		}}
+	}
+
+	var changes []Change
 	changes = append(changes, diffRepoSettings(name, desired, current)...)
 	changes = append(changes, diffFeatures(name, desired, current)...)
 	changes = append(changes, diffBranchProtection(name, desired, current)...)

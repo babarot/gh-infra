@@ -4,6 +4,7 @@ package repository
 type CurrentState struct {
 	Owner       string
 	Name        string
+	IsNew       bool // true if the repository does not exist yet
 	Description string
 	Homepage    string
 	Visibility  string

@@ -54,6 +54,7 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 			_ = sem.Acquire(context.Background(), 1)
 			defer sem.Release(1)
 
+			fmt.Fprintf(os.Stderr, "  Refreshing %s...\n", r.Metadata.FullName())
 			logger.Debug("fetch start", "repo", r.Metadata.FullName())
 			current, err := fetcher.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
 			if err != nil {

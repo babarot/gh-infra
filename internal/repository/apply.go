@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -32,6 +33,14 @@ func (e *Executor) Apply(changes []Change, repos []*manifest.Repository) []Apply
 		if c.Type == ChangeNoOp {
 			continue
 		}
+		switch c.Type {
+		case ChangeCreate:
+			fmt.Fprintf(os.Stderr, "  Creating %s %s...\n", c.Name, c.Field)
+		case ChangeUpdate:
+			fmt.Fprintf(os.Stderr, "  Updating %s %s...\n", c.Name, c.Field)
+		case ChangeDelete:
+			fmt.Fprintf(os.Stderr, "  Destroying %s %s...\n", c.Name, c.Field)
+		}
 		result := e.applyChange(c, repoMap[c.Name])
 		results = append(results, result)
 	}
@@ -47,6 +56,8 @@ func (e *Executor) applyChange(c Change, repo *manifest.Repository) ApplyResult 
 	var err error
 
 	switch {
+	case c.Resource == manifest.ResourceRepository && c.Type == ChangeCreate && c.Field == "repository":
+		err = e.createRepo(repo)
 	case c.Resource == manifest.ResourceRepository:
 		err = e.applyRepoSetting(c, repo)
 	case strings.HasPrefix(c.Resource, manifest.ResourceBranchProtection):
@@ -60,6 +71,100 @@ func (e *Executor) applyChange(c Change, repo *manifest.Repository) ApplyResult 
 	}
 
 	return ApplyResult{Change: c, Err: err}
+}
+
+func (e *Executor) createRepo(repo *manifest.Repository) error {
+	owner := repo.Metadata.Owner
+	name := repo.Metadata.Name
+	fullName := owner + "/" + name
+
+	args := []string{"repo", "create", fullName}
+
+	// Visibility
+	visibility := "private" // default
+	if repo.Spec.Visibility != nil {
+		visibility = *repo.Spec.Visibility
+	}
+	args = append(args, "--"+visibility)
+
+	// Description
+	if repo.Spec.Description != nil {
+		args = append(args, "--description", *repo.Spec.Description)
+	}
+
+	// Disable features that are false
+	if f := repo.Spec.Features; f != nil {
+		if f.Wiki != nil && !*f.Wiki {
+			args = append(args, "--disable-wiki")
+		}
+		if f.Issues != nil && !*f.Issues {
+			args = append(args, "--disable-issues")
+		}
+	}
+
+	_, err := e.runner.Run(args...)
+	if err != nil {
+		return wrapError(err, fullName, "create")
+	}
+
+	// Apply remaining settings via gh repo edit
+	return e.applyAllSettings(repo)
+}
+
+func (e *Executor) applyAllSettings(repo *manifest.Repository) error {
+	owner := repo.Metadata.Owner
+	name := repo.Metadata.Name
+	fullName := owner + "/" + name
+
+	// Features
+	if f := repo.Spec.Features; f != nil {
+		featureFlags := map[string]*bool{
+			"enable-projects":       f.Projects,
+			"enable-discussions":    f.Discussions,
+			"enable-merge-commit":   f.MergeCommit,
+			"enable-squash-merge":   f.SquashMerge,
+			"enable-rebase-merge":   f.RebaseMerge,
+			"delete-branch-on-merge": f.AutoDeleteHeadBranches,
+		}
+		for flag, val := range featureFlags {
+			if val != nil {
+				if err := e.toggleFeature(fullName, flag, *val); err != nil {
+					return err
+				}
+			}
+		}
+
+		// Commit message settings
+		commitFields := map[string]*string{
+			"squash_merge_commit_title":   f.SquashMergeCommitTitle,
+			"squash_merge_commit_message": f.SquashMergeCommitMessage,
+			"merge_commit_title":          f.MergeCommitTitle,
+			"merge_commit_message":        f.MergeCommitMessage,
+		}
+		for field, val := range commitFields {
+			if val != nil {
+				if err := e.updateRepoField(fullName, field, *val); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// Homepage
+	if repo.Spec.Homepage != nil {
+		if _, err := e.runner.Run("repo", "edit", fullName, "--homepage", *repo.Spec.Homepage); err != nil {
+			return wrapError(err, fullName, "homepage")
+		}
+	}
+
+	// Topics
+	for _, t := range repo.Spec.Topics {
+		if _, err := e.runner.Run("repo", "edit", fullName, "--add-topic", t); err != nil {
+			return wrapError(err, fullName, "add-topic:"+t)
+		}
+	}
+
+	return nil
 }
 
 func (e *Executor) applyRepoSetting(c Change, repo *manifest.Repository) error {
