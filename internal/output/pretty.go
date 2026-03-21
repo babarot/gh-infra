@@ -18,30 +18,31 @@ func PrintPlan(w io.Writer, changes []plan.Change) {
 	creates, updates, deletes := countChanges(changes)
 	fmt.Fprintf(w, "\nPlan: %d to create, %d to update, %d to destroy\n\n", creates, updates, deletes)
 
-	// Group by repo name
 	grouped := groupByName(changes)
 	for _, group := range grouped {
 		if len(group.changes) == 0 {
 			continue
 		}
-		fmt.Fprintf(w, "  ~ %s\n", group.name)
+		fmt.Fprintf(w, "  %s %s\n", Yellow.Render("~"), Bold.Render(group.name))
 		for _, c := range group.changes {
 			printChange(w, c)
 		}
 		fmt.Fprintln(w)
 	}
 
-	fmt.Fprintln(w, strings.Repeat("─", 50))
-	fmt.Fprintln(w, "To apply these changes, run: gh infra apply")
+	fmt.Fprintln(w, Dim.Render(strings.Repeat("─", 50)))
+	fmt.Fprintf(w, "To apply these changes, run: %s\n", Bold.Render("gh infra apply"))
 }
 
 // PrintApplyResults prints the results of an apply operation.
 func PrintApplyResults(w io.Writer, results []apply.ApplyResult) {
 	for _, r := range results {
 		if r.Err != nil {
-			fmt.Fprintf(w, "  ✗ %s  %s: %v\n", r.Change.Name, r.Change.Field, r.Err)
+			fmt.Fprintf(w, "  %s %s  %s: %v\n",
+				Red.Render("✗"), Bold.Render(r.Change.Name), r.Change.Field, r.Err)
 		} else {
-			fmt.Fprintf(w, "  ✓ %s  %s %sd\n", r.Change.Name, r.Change.Field, r.Change.Type)
+			fmt.Fprintf(w, "  %s %s  %s %sd\n",
+				Green.Render("✓"), Bold.Render(r.Change.Name), r.Change.Field, r.Change.Type)
 		}
 	}
 
@@ -54,9 +55,10 @@ func PrintApplyResults(w io.Writer, results []apply.ApplyResult) {
 			succeeded++
 		}
 	}
-	fmt.Fprintf(w, "\nApply complete! %d changes applied", succeeded)
+	fmt.Fprintf(w, "\nApply complete! %s changes applied",
+		Green.Render(fmt.Sprintf("%d", succeeded)))
 	if failed > 0 {
-		fmt.Fprintf(w, ", %d failed", failed)
+		fmt.Fprintf(w, ", %s failed", Red.Render(fmt.Sprintf("%d", failed)))
 	}
 	fmt.Fprintln(w, ".")
 }
@@ -64,11 +66,16 @@ func PrintApplyResults(w io.Writer, results []apply.ApplyResult) {
 func printChange(w io.Writer, c plan.Change) {
 	switch c.Type {
 	case plan.ChangeCreate:
-		fmt.Fprintf(w, "      + %s: %v\n", c.Field, c.NewValue)
+		fmt.Fprintf(w, "      %s %s: %s\n",
+			Green.Render("+"), c.Field, Green.Render(fmt.Sprintf("%v", c.NewValue)))
 	case plan.ChangeUpdate:
-		fmt.Fprintf(w, "      ~ %s: %v → %v\n", c.Field, formatValue(c.OldValue), formatValue(c.NewValue))
+		fmt.Fprintf(w, "      %s %s: %s → %s\n",
+			Yellow.Render("~"), c.Field,
+			Dim.Render(formatValue(c.OldValue)),
+			Bold.Render(formatValue(c.NewValue)))
 	case plan.ChangeDelete:
-		fmt.Fprintf(w, "      - %s: %v\n", c.Field, c.OldValue)
+		fmt.Fprintf(w, "      %s %s: %s\n",
+			Red.Render("-"), c.Field, Red.Render(fmt.Sprintf("%v", c.OldValue)))
 	}
 }
 

@@ -10,7 +10,12 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/output"
 )
+
+func init() {
+	output.DisableStyles()
+}
 
 // helper: build a GitHub Contents API JSON response
 func contentsJSON(content, sha string) []byte {
