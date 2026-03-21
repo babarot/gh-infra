@@ -78,6 +78,7 @@ type RepositorySpec struct {
 	Description      *string            `yaml:"description,omitempty"`
 	Homepage         *string            `yaml:"homepage,omitempty"`
 	Visibility       *string            `yaml:"visibility,omitempty"`
+	Archived         *bool              `yaml:"archived,omitempty"`
 	Topics           []string           `yaml:"topics,omitempty"`
 	Features         *Features          `yaml:"features,omitempty"`
 	BranchProtection []BranchProtection `yaml:"branch_protection,omitempty"`

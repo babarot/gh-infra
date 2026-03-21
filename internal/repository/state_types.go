@@ -6,6 +6,7 @@ type CurrentState struct {
 	Name        string
 	IsNew       bool // true if the repository does not exist yet
 	Description string
+	Archived    bool
 	Homepage    string
 	Visibility  string
 	Topics      []string

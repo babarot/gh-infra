@@ -71,7 +71,7 @@ func (f *Fetcher) FetchRepository(owner, name string) (*CurrentState, error) {
 func (f *Fetcher) fetchRepoSettings(owner, name string) (*CurrentState, error) {
 	out, err := f.runner.Run(
 		"repo", "view", owner+"/"+name,
-		"--json", "description,homepageUrl,visibility,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef",
+		"--json", "description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef",
 	)
 	if err != nil {
 		// gh repo view returns GraphQL error for non-existent repos, not REST 404
@@ -95,6 +95,7 @@ func (f *Fetcher) fetchRepoSettings(owner, name string) (*CurrentState, error) {
 		MergeCommitAllowed    bool `json:"mergeCommitAllowed"`
 		SquashMergeAllowed    bool `json:"squashMergeAllowed"`
 		RebaseMergeAllowed    bool `json:"rebaseMergeAllowed"`
+		IsArchived            bool `json:"isArchived"`
 		DeleteBranchOnMerge   bool `json:"deleteBranchOnMerge"`
 		DefaultBranchRef      struct {
 			Name string `json:"name"`
@@ -116,6 +117,7 @@ func (f *Fetcher) fetchRepoSettings(owner, name string) (*CurrentState, error) {
 		Owner:       owner,
 		Name:        name,
 		Description: raw.Description,
+		Archived:    raw.IsArchived,
 		Homepage:    raw.HomepageURL,
 		Visibility:  strings.ToLower(raw.Visibility),
 		Topics:      topics,

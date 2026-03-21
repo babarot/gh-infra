@@ -184,6 +184,9 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.Visibility != nil {
 		result.Visibility = override.Visibility
 	}
+	if override.Archived != nil {
+		result.Archived = override.Archived
+	}
 	if len(override.Topics) > 0 {
 		result.Topics = override.Topics
 	}

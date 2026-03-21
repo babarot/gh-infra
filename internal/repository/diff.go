@@ -79,6 +79,17 @@ func diffRepoSettings(name string, desired *manifest.Repository, current *Curren
 		})
 	}
 
+	if desired.Spec.Archived != nil && *desired.Spec.Archived != current.Archived {
+		changes = append(changes, Change{
+			Type:     ChangeUpdate,
+			Resource: manifest.ResourceRepository,
+			Name:     name,
+			Field:    "archived",
+			OldValue: current.Archived,
+			NewValue: *desired.Spec.Archived,
+		})
+	}
+
 	if len(desired.Spec.Topics) > 0 || len(current.Topics) > 0 {
 		if !stringSliceEqual(desired.Spec.Topics, current.Topics) {
 			changes = append(changes, Change{

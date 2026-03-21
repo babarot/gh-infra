@@ -21,10 +21,11 @@ func TestNewFetcher(t *testing.T) {
 func TestFetchRepository(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
-			"repo view myorg/myrepo --json description,homepageUrl,visibility,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef": []byte(`{
+			"repo view myorg/myrepo --json description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef": []byte(`{
 				"description": "A test repo",
 				"homepageUrl": "https://example.com",
 				"visibility": "PUBLIC",
+				"isArchived": false,
 				"repositoryTopics": [{"name": "go"}, {"name": "cli"}],
 				"hasIssuesEnabled": true,
 				"hasProjectsEnabled": false,
@@ -141,7 +142,7 @@ func TestFetchRepository(t *testing.T) {
 func TestFetchRepository_RepoSettingsError(t *testing.T) {
 	mock := &gh.MockRunner{
 		Errors: map[string]error{
-			"repo view myorg/myrepo --json description,homepageUrl,visibility,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef": fmt.Errorf("not found"),
+			"repo view myorg/myrepo --json description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef": fmt.Errorf("not found"),
 		},
 	}
 

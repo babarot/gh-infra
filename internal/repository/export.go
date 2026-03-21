@@ -16,6 +16,7 @@ func ToManifest(r *CurrentState) *manifest.Repository {
 		Spec: manifest.RepositorySpec{
 			Description: manifest.Ptr(r.Description),
 			Visibility:  manifest.Ptr(r.Visibility),
+			Archived:    manifest.Ptr(r.Archived),
 			Topics:      r.Topics,
 			Features: &manifest.Features{
 				Issues:                   manifest.Ptr(r.Features.Issues),

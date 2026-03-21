@@ -185,6 +185,14 @@ func (e *Executor) applyRepoSetting(c Change, repo *manifest.Repository) error {
 		_, err := e.runner.Run("repo", "edit", fullName, "--visibility", fmt.Sprintf("%v", c.NewValue))
 		return wrapError(err, fullName, c.Field)
 
+	case "archived":
+		if c.NewValue.(bool) {
+			_, err := e.runner.Run("repo", "archive", fullName, "--yes")
+			return wrapError(err, fullName, c.Field)
+		}
+		_, err := e.runner.Run("repo", "unarchive", fullName, "--yes")
+		return wrapError(err, fullName, c.Field)
+
 	case "topics":
 		return e.applyTopics(fullName, repo)
 
