@@ -10,11 +10,11 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/output"
+	"github.com/babarot/gh-infra/internal/ui"
 )
 
 func init() {
-	output.DisableStyles()
+	ui.DisableStyles()
 }
 
 // helper: build a GitHub Contents API JSON response

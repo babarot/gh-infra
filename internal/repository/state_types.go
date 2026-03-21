@@ -1,25 +1,25 @@
-package state
+package repository
 
-// Repository represents the current state of a GitHub repository.
-type Repository struct {
+// CurrentState represents the current state of a GitHub repository.
+type CurrentState struct {
 	Owner       string
 	Name        string
 	Description string
 	Homepage    string
 	Visibility  string
 	Topics      []string
-	Features    Features
+	Features    CurrentFeatures
 
-	BranchProtection map[string]*BranchProtection // pattern → protection
-	Secrets          []string                     // names only (values are opaque)
-	Variables        map[string]string            // name → value
+	BranchProtection map[string]*CurrentBranchProtection // pattern → protection
+	Secrets          []string                            // names only (values are opaque)
+	Variables        map[string]string                   // name → value
 }
 
-func (r *Repository) FullName() string {
+func (r *CurrentState) FullName() string {
 	return r.Owner + "/" + r.Name
 }
 
-type Features struct {
+type CurrentFeatures struct {
 	Issues                   bool
 	Projects                 bool
 	Wiki                     bool
@@ -34,18 +34,18 @@ type Features struct {
 	SquashMergeCommitMessage string
 }
 
-type BranchProtection struct {
+type CurrentBranchProtection struct {
 	Pattern                 string
 	RequiredReviews         int
 	DismissStaleReviews     bool
 	RequireCodeOwnerReviews bool
-	RequireStatusChecks     *StatusChecks
+	RequireStatusChecks     *CurrentStatusChecks
 	EnforceAdmins           bool
 	AllowForcePushes        bool
 	AllowDeletions          bool
 }
 
-type StatusChecks struct {
+type CurrentStatusChecks struct {
 	Strict   bool
 	Contexts []string
 }

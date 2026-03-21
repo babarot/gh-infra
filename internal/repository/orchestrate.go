@@ -1,4 +1,4 @@
-package cmd
+package repository
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 
 	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/plan"
-	"github.com/babarot/gh-infra/internal/state"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -18,12 +16,12 @@ const defaultParallel = 5
 type repoResult struct {
 	index   int
 	repo    *manifest.Repository
-	changes []plan.Change
+	changes []Change
 	err     error
 }
 
-// fetchAllChanges fetches current state and computes diffs for all repos in parallel.
-func fetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *state.Fetcher, diffOpts ...plan.DiffOptions) ([]plan.Change, []*manifest.Repository, error) {
+// FetchAllChanges fetches current state and computes diffs for all repos in parallel.
+func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {
 	// Filter repos first
 	var targets []*manifest.Repository
 	for _, repo := range repos {
@@ -64,7 +62,7 @@ func fetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *s
 				return
 			}
 
-			changes := plan.Diff(r, current, diffOpts...)
+			changes := Diff(r, current, diffOpts...)
 			logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
 			results[idx] = repoResult{index: idx, repo: r, changes: changes}
 		}(i, repo)
@@ -72,7 +70,7 @@ func fetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *s
 
 	wg.Wait()
 
-	var allChanges []plan.Change
+	var allChanges []Change
 	var targetRepos []*manifest.Repository
 	for _, res := range results {
 		if res.err != nil {

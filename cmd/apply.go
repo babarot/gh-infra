@@ -6,13 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/babarot/gh-infra/internal/apply"
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/output"
-	"github.com/babarot/gh-infra/internal/plan"
-	"github.com/babarot/gh-infra/internal/state"
+	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/spf13/cobra"
 )
 
@@ -62,12 +59,12 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
 	// Compute repo changes
-	var repoChanges []plan.Change
+	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
 	if len(parsed.Repositories) > 0 {
-		fetcher := state.NewFetcher(runner)
-		diffOpts := plan.DiffOptions{ForceSecrets: forceSecrets}
-		repoChanges, targetRepos, err = fetchAllChanges(parsed.Repositories, filterRepo, fetcher, diffOpts)
+		fetcher := repository.NewFetcher(runner)
+		diffOpts := repository.DiffOptions{ForceSecrets: forceSecrets}
+		repoChanges, targetRepos, err = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, diffOpts)
 		if err != nil {
 			return err
 		}
@@ -80,7 +77,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 		fileChanges = processor.Plan(parsed.FileSets)
 	}
 
-	hasRepo := hasRealChanges(repoChanges)
+	hasRepo := repository.HasRealChanges(repoChanges)
 	hasFile := fileset.HasChanges(fileChanges)
 
 	if !hasRepo && !hasFile {
@@ -90,7 +87,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 
 	// Print plan
 	if hasRepo {
-		output.PrintPlan(os.Stdout, repoChanges)
+		repository.PrintPlan(os.Stdout, repoChanges)
 	}
 	if hasFile {
 		fileset.PrintPlan(os.Stdout, fileChanges)
@@ -113,9 +110,9 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 
 	// Apply repo changes
 	if hasRepo {
-		executor := apply.NewExecutor(runner)
+		executor := repository.NewExecutor(runner)
 		results := executor.Apply(repoChanges, targetRepos)
-		output.PrintApplyResults(os.Stdout, results)
+		repository.PrintApplyResults(os.Stdout, results)
 		for _, r := range results {
 			if r.Err != nil {
 				hasErrors = true

@@ -1,4 +1,4 @@
-package state
+package repository
 
 import (
 	"encoding/json"
@@ -20,14 +20,14 @@ func NewFetcher(runner gh.Runner) *Fetcher {
 
 // FetchRepository fetches the current state of a single repository.
 // Sub-fetches (branch protection, secrets, variables) run in parallel.
-func (f *Fetcher) FetchRepository(owner, name string) (*Repository, error) {
+func (f *Fetcher) FetchRepository(owner, name string) (*CurrentState, error) {
 	repo, err := f.fetchRepoSettings(owner, name)
 	if err != nil {
 		return nil, err
 	}
 
 	var (
-		bp      map[string]*BranchProtection
+		bp      map[string]*CurrentBranchProtection
 		secrets []string
 		vars    map[string]string
 	)
@@ -63,7 +63,7 @@ func (f *Fetcher) FetchRepository(owner, name string) (*Repository, error) {
 	return repo, nil
 }
 
-func (f *Fetcher) fetchRepoSettings(owner, name string) (*Repository, error) {
+func (f *Fetcher) fetchRepoSettings(owner, name string) (*CurrentState, error) {
 	out, err := f.runner.Run(
 		"repo", "view", owner+"/"+name,
 		"--json", "description,homepageUrl,visibility,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef",
@@ -103,14 +103,14 @@ func (f *Fetcher) fetchRepoSettings(owner, name string) (*Repository, error) {
 	// Fetch commit message settings via REST API (not available in gh repo view --json)
 	commitMsgSettings, _ := f.fetchCommitMessageSettings(owner, name)
 
-	return &Repository{
+	return &CurrentState{
 		Owner:       owner,
 		Name:        name,
 		Description: raw.Description,
 		Homepage:    raw.HomepageURL,
 		Visibility:  strings.ToLower(raw.Visibility),
 		Topics:      topics,
-		Features: Features{
+		Features: CurrentFeatures{
 			Issues:                   raw.HasIssuesEnabled,
 			Projects:                 raw.HasProjectsEnabled,
 			Wiki:                     raw.HasWikiEnabled,
@@ -161,7 +161,7 @@ func (f *Fetcher) fetchCommitMessageSettings(owner, name string) (commitMessageS
 	}, nil
 }
 
-func (f *Fetcher) fetchBranchProtection(owner, name string) (map[string]*BranchProtection, error) {
+func (f *Fetcher) fetchBranchProtection(owner, name string) (map[string]*CurrentBranchProtection, error) {
 	// First get the default branch to check protection
 	out, err := f.runner.Run(
 		"api", fmt.Sprintf("repos/%s/%s/branches", owner, name),
@@ -176,7 +176,7 @@ func (f *Fetcher) fetchBranchProtection(owner, name string) (map[string]*BranchP
 		return nil, nil // no protected branches or parse error
 	}
 
-	result := make(map[string]*BranchProtection)
+	result := make(map[string]*CurrentBranchProtection)
 	for _, branch := range protectedBranches {
 		bp, err := f.fetchBranchProtectionRule(owner, name, branch)
 		if err != nil {
@@ -189,7 +189,7 @@ func (f *Fetcher) fetchBranchProtection(owner, name string) (map[string]*BranchP
 	return result, nil
 }
 
-func (f *Fetcher) fetchBranchProtectionRule(owner, name, branch string) (*BranchProtection, error) {
+func (f *Fetcher) fetchBranchProtectionRule(owner, name, branch string) (*CurrentBranchProtection, error) {
 	out, err := f.runner.Run(
 		"api", fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, branch),
 	)
@@ -221,7 +221,7 @@ func (f *Fetcher) fetchBranchProtectionRule(owner, name, branch string) (*Branch
 		return nil, fmt.Errorf("parse branch protection for %s: %w", branch, err)
 	}
 
-	bp := &BranchProtection{
+	bp := &CurrentBranchProtection{
 		Pattern: branch,
 	}
 
@@ -231,7 +231,7 @@ func (f *Fetcher) fetchBranchProtectionRule(owner, name, branch string) (*Branch
 		bp.RequireCodeOwnerReviews = raw.RequiredPullRequestReviews.RequireCodeOwnerReviews
 	}
 	if raw.RequiredStatusChecks != nil {
-		bp.RequireStatusChecks = &StatusChecks{
+		bp.RequireStatusChecks = &CurrentStatusChecks{
 			Strict:   raw.RequiredStatusChecks.Strict,
 			Contexts: raw.RequiredStatusChecks.Contexts,
 		}

@@ -1,10 +1,9 @@
-package plan
+package repository
 
 import (
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/state"
 )
 
 // baseDesired returns a minimal desired manifest with owner/name set.
@@ -18,11 +17,11 @@ func baseDesired() *manifest.Repository {
 }
 
 // baseState returns a minimal current state with owner/name set.
-func baseState() *state.Repository {
-	return &state.Repository{
+func baseState() *CurrentState {
+	return &CurrentState{
 		Owner:            "org",
 		Name:             "repo",
-		BranchProtection: map[string]*state.BranchProtection{},
+		BranchProtection: map[string]*CurrentBranchProtection{},
 		Variables:        map[string]string{},
 	}
 }
@@ -40,7 +39,7 @@ func TestDiff_Noop(t *testing.T) {
 func TestDiff_RepoSettings(t *testing.T) {
 	tests := []struct {
 		name      string
-		setup     func(d *manifest.Repository, c *state.Repository)
+		setup     func(d *manifest.Repository, c *CurrentState)
 		wantCount int
 		wantField string
 		wantType  ChangeType
@@ -49,7 +48,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 	}{
 		{
 			name: "description change",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Description = manifest.Ptr("new desc")
 				c.Description = "old desc"
 			},
@@ -61,7 +60,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 		},
 		{
 			name: "description same no change",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Description = manifest.Ptr("same")
 				c.Description = "same"
 			},
@@ -69,7 +68,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 		},
 		{
 			name: "homepage change",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Homepage = manifest.Ptr("https://new.example.com")
 				c.Homepage = "https://old.example.com"
 			},
@@ -81,7 +80,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 		},
 		{
 			name: "visibility change",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Visibility = manifest.Ptr("private")
 				c.Visibility = "public"
 			},
@@ -93,7 +92,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 		},
 		{
 			name: "topics add new topic",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Topics = []string{"go", "cli", "new"}
 				c.Topics = []string{"go", "cli"}
 			},
@@ -103,7 +102,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 		},
 		{
 			name: "topics remove topic",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Topics = []string{"go"}
 				c.Topics = []string{"go", "cli"}
 			},
@@ -113,7 +112,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 		},
 		{
 			name: "topics reorder is noop (sorted comparison)",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Topics = []string{"cli", "go"}
 				c.Topics = []string{"go", "cli"}
 			},
@@ -121,7 +120,7 @@ func TestDiff_RepoSettings(t *testing.T) {
 		},
 		{
 			name: "topics both empty is noop",
-			setup: func(d *manifest.Repository, c *state.Repository) {
+			setup: func(d *manifest.Repository, c *CurrentState) {
 				d.Spec.Topics = nil
 				c.Topics = nil
 			},
@@ -173,12 +172,12 @@ func TestDiff_Features_NilFeatures(t *testing.T) {
 func TestDiff_Features_BoolFlags(t *testing.T) {
 	tests := []struct {
 		name      string
-		setup     func(f *manifest.Features, c *state.Repository)
+		setup     func(f *manifest.Features, c *CurrentState)
 		wantField string
 	}{
 		{
 			name: "issues enabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.Issues = manifest.Ptr(true)
 				c.Features.Issues = false
 			},
@@ -186,7 +185,7 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 		},
 		{
 			name: "wiki disabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.Wiki = manifest.Ptr(false)
 				c.Features.Wiki = true
 			},
@@ -194,7 +193,7 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 		},
 		{
 			name: "projects enabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.Projects = manifest.Ptr(true)
 				c.Features.Projects = false
 			},
@@ -202,7 +201,7 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 		},
 		{
 			name: "discussions enabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.Discussions = manifest.Ptr(true)
 				c.Features.Discussions = false
 			},
@@ -210,7 +209,7 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 		},
 		{
 			name: "merge_commit disabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.MergeCommit = manifest.Ptr(false)
 				c.Features.MergeCommit = true
 			},
@@ -218,7 +217,7 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 		},
 		{
 			name: "squash_merge enabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.SquashMerge = manifest.Ptr(true)
 				c.Features.SquashMerge = false
 			},
@@ -226,7 +225,7 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 		},
 		{
 			name: "rebase_merge enabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.RebaseMerge = manifest.Ptr(true)
 				c.Features.RebaseMerge = false
 			},
@@ -234,7 +233,7 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 		},
 		{
 			name: "auto_delete_head_branches enabled",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.AutoDeleteHeadBranches = manifest.Ptr(true)
 				c.Features.AutoDeleteHeadBranches = false
 			},
@@ -280,14 +279,14 @@ func TestDiff_Features_BoolNoChange(t *testing.T) {
 func TestDiff_Features_MergeCommitStrings(t *testing.T) {
 	tests := []struct {
 		name      string
-		setup     func(f *manifest.Features, c *state.Repository)
+		setup     func(f *manifest.Features, c *CurrentState)
 		wantField string
 		wantOld   string
 		wantNew   string
 	}{
 		{
 			name: "squash_merge_commit_title change",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
 				c.Features.SquashMergeCommitTitle = "COMMIT_OR_PR_TITLE"
 			},
@@ -297,7 +296,7 @@ func TestDiff_Features_MergeCommitStrings(t *testing.T) {
 		},
 		{
 			name: "squash_merge_commit_message change",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.SquashMergeCommitMessage = manifest.Ptr("BLANK")
 				c.Features.SquashMergeCommitMessage = "COMMIT_MESSAGES"
 			},
@@ -307,7 +306,7 @@ func TestDiff_Features_MergeCommitStrings(t *testing.T) {
 		},
 		{
 			name: "merge_commit_title change",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.MergeCommitTitle = manifest.Ptr("PR_TITLE")
 				c.Features.MergeCommitTitle = "MERGE_MESSAGE"
 			},
@@ -317,7 +316,7 @@ func TestDiff_Features_MergeCommitStrings(t *testing.T) {
 		},
 		{
 			name: "merge_commit_message change",
-			setup: func(f *manifest.Features, c *state.Repository) {
+			setup: func(f *manifest.Features, c *CurrentState) {
 				f.MergeCommitMessage = manifest.Ptr("BLANK")
 				c.Features.MergeCommitMessage = "PR_BODY"
 			},
@@ -378,7 +377,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 			{Pattern: "main", RequiredReviews: manifest.Ptr(3)},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{
+		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern:         "main",
 			RequiredReviews: 1,
 		}
@@ -404,7 +403,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 			{Pattern: "main", DismissStaleReviews: manifest.Ptr(true)},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{Pattern: "main", DismissStaleReviews: false}
+		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", DismissStaleReviews: false}
 
 		changes := diffBranchProtection("org/repo", d, c)
 		if len(changes) != 1 {
@@ -421,7 +420,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 			{Pattern: "main", EnforceAdmins: manifest.Ptr(true)},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{Pattern: "main", EnforceAdmins: false}
+		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", EnforceAdmins: false}
 
 		changes := diffBranchProtection("org/repo", d, c)
 		if len(changes) != 1 {
@@ -438,7 +437,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 			{Pattern: "main", AllowForcePushes: manifest.Ptr(true)},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{Pattern: "main", AllowForcePushes: false}
+		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", AllowForcePushes: false}
 
 		changes := diffBranchProtection("org/repo", d, c)
 		if len(changes) != 1 {
@@ -455,7 +454,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 			{Pattern: "main", AllowDeletions: manifest.Ptr(true)},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{Pattern: "main", AllowDeletions: false}
+		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", AllowDeletions: false}
 
 		changes := diffBranchProtection("org/repo", d, c)
 		if len(changes) != 1 {
@@ -478,7 +477,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 			},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{
+		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern:             "main",
 			RequireStatusChecks: nil,
 		}
@@ -507,9 +506,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 			},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{
+		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern: "main",
-			RequireStatusChecks: &state.StatusChecks{
+			RequireStatusChecks: &CurrentStatusChecks{
 				Strict:   false,
 				Contexts: []string{"ci/test"},
 			},
@@ -536,9 +535,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 			},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{
+		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern: "main",
-			RequireStatusChecks: &state.StatusChecks{
+			RequireStatusChecks: &CurrentStatusChecks{
 				Strict:   true,
 				Contexts: []string{"ci/test"},
 			},
@@ -559,7 +558,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 			{Pattern: "main", RequiredReviews: manifest.Ptr(2), EnforceAdmins: manifest.Ptr(true)},
 		}
 		c := baseState()
-		c.BranchProtection["main"] = &state.BranchProtection{
+		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern:         "main",
 			RequiredReviews: 2,
 			EnforceAdmins:   true,

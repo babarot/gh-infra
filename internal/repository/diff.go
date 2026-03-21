@@ -1,4 +1,4 @@
-package plan
+package repository
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/state"
 )
 
 // DiffOptions controls diff behavior.
@@ -15,7 +14,7 @@ type DiffOptions struct {
 }
 
 // Diff compares desired state with current state and returns changes.
-func Diff(desired *manifest.Repository, current *state.Repository, opts ...DiffOptions) []Change {
+func Diff(desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
 	var opt DiffOptions
 	if len(opts) > 0 {
 		opt = opts[0]
@@ -33,7 +32,7 @@ func Diff(desired *manifest.Repository, current *state.Repository, opts ...DiffO
 	return changes
 }
 
-func diffRepoSettings(name string, desired *manifest.Repository, current *state.Repository) []Change {
+func diffRepoSettings(name string, desired *manifest.Repository, current *CurrentState) []Change {
 	var changes []Change
 
 	if desired.Spec.Description != nil && *desired.Spec.Description != current.Description {
@@ -85,7 +84,7 @@ func diffRepoSettings(name string, desired *manifest.Repository, current *state.
 	return changes
 }
 
-func diffFeatures(name string, desired *manifest.Repository, current *state.Repository) []Change {
+func diffFeatures(name string, desired *manifest.Repository, current *CurrentState) []Change {
 	if desired.Spec.Features == nil {
 		return nil
 	}
@@ -136,7 +135,7 @@ func diffFeatures(name string, desired *manifest.Repository, current *state.Repo
 	return changes
 }
 
-func diffBranchProtection(name string, desired *manifest.Repository, current *state.Repository) []Change {
+func diffBranchProtection(name string, desired *manifest.Repository, current *CurrentState) []Change {
 	var changes []Change
 
 	for _, dbp := range desired.Spec.BranchProtection {
@@ -257,7 +256,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *st
 	return changes
 }
 
-func diffSecrets(name string, desired *manifest.Repository, current *state.Repository, forceSecrets bool) []Change {
+func diffSecrets(name string, desired *manifest.Repository, current *CurrentState, forceSecrets bool) []Change {
 	var changes []Change
 
 	currentSet := make(map[string]bool)
@@ -292,7 +291,7 @@ func diffSecrets(name string, desired *manifest.Repository, current *state.Repos
 	return changes
 }
 
-func diffVariables(name string, desired *manifest.Repository, current *state.Repository) []Change {
+func diffVariables(name string, desired *manifest.Repository, current *CurrentState) []Change {
 	var changes []Change
 
 	for _, dv := range desired.Spec.Variables {

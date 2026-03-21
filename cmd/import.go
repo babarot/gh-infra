@@ -8,7 +8,7 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/state"
+	"github.com/babarot/gh-infra/internal/repository"
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +28,7 @@ func newImportCmd() *cobra.Command {
 
 func runImport(target string) error {
 	runner := gh.NewRunner(false)
-	fetcher := state.NewFetcher(runner)
+	fetcher := repository.NewFetcher(runner)
 
 	parts := strings.SplitN(target, "/", 2)
 	if len(parts) != 2 {
@@ -45,13 +45,13 @@ func runImport(target string) error {
 	return importSingleRepo(owner, name, fetcher)
 }
 
-func importSingleRepo(owner, name string, fetcher *state.Fetcher) error {
+func importSingleRepo(owner, name string, fetcher *repository.Fetcher) error {
 	current, err := fetcher.FetchRepository(owner, name)
 	if err != nil {
 		return err
 	}
 
-	m := state.ToManifest(current)
+	m := repository.ToManifest(current)
 	data, err := goyaml.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal yaml: %w", err)
@@ -61,7 +61,7 @@ func importSingleRepo(owner, name string, fetcher *state.Fetcher) error {
 	return nil
 }
 
-func importAllRepos(owner string, runner gh.Runner, fetcher *state.Fetcher) error {
+func importAllRepos(owner string, runner gh.Runner, fetcher *repository.Fetcher) error {
 	out, err := runner.Run("repo", "list", owner, "--json", "name", "--limit", manifest.DefaultMaxRepoList)
 	if err != nil {
 		return fmt.Errorf("list repos for %s: %w", owner, err)

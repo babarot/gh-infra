@@ -18,25 +18,3 @@ func (t *FileSetTarget) UnmarshalYAML(unmarshal func(any) error) error {
 	*t = FileSetTarget(r)
 	return nil
 }
-
-// ResolveFiles returns the effective files for a target, applying overrides.
-func ResolveFiles(fs *FileSet, target FileSetTarget) []FileEntry {
-	if len(target.Overrides) == 0 {
-		return fs.Spec.Files
-	}
-
-	overrideMap := make(map[string]FileEntry)
-	for _, o := range target.Overrides {
-		overrideMap[o.Path] = o
-	}
-
-	result := make([]FileEntry, 0, len(fs.Spec.Files))
-	for _, f := range fs.Spec.Files {
-		if override, ok := overrideMap[f.Path]; ok {
-			result = append(result, override)
-		} else {
-			result = append(result, f)
-		}
-	}
-	return result
-}

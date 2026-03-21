@@ -7,9 +7,7 @@ import (
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/output"
-	"github.com/babarot/gh-infra/internal/plan"
-	"github.com/babarot/gh-infra/internal/state"
+	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/spf13/cobra"
 )
 
@@ -58,13 +56,13 @@ func runPlan(path, filterRepo string, ci bool) error {
 
 	// Repository changes
 	if len(parsed.Repositories) > 0 {
-		fetcher := state.NewFetcher(runner)
-		allChanges, _, err := fetchAllChanges(parsed.Repositories, filterRepo, fetcher)
+		fetcher := repository.NewFetcher(runner)
+		allChanges, _, err := repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher)
 		if err != nil {
 			return err
 		}
-		output.PrintPlan(os.Stdout, allChanges)
-		if hasRealChanges(allChanges) {
+		repository.PrintPlan(os.Stdout, allChanges)
+		if repository.HasRealChanges(allChanges) {
 			hasAnyChanges = true
 		}
 	}
@@ -88,13 +86,4 @@ func runPlan(path, filterRepo string, ci bool) error {
 	}
 
 	return nil
-}
-
-func hasRealChanges(changes []plan.Change) bool {
-	for _, c := range changes {
-		if c.Type != plan.ChangeNoOp {
-			return true
-		}
-	}
-	return false
 }

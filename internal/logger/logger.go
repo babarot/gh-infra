@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	charmlog "charm.land/log/v2"
 	"charm.land/lipgloss/v2"
+	charmlog "charm.land/log/v2"
 )
 
 const (
@@ -28,7 +28,7 @@ var (
 func init() {
 	Default = charmlog.NewWithOptions(os.Stderr, charmlog.Options{
 		ReportTimestamp: true,
-		Level:          charmlog.FatalLevel + 1, // silent by default
+		Level:           charmlog.FatalLevel + 1, // silent by default
 	})
 
 	// Register TRACE level display name via styles
@@ -80,7 +80,7 @@ func IsDebug() bool {
 // Convenience functions that delegate to the package-level logger.
 
 func Trace(msg string, keyvals ...any) { Default.Log(LevelTrace, msg, keyvals...) }
-func Debug(msg string, keyvals ...any)  { Default.Debug(msg, keyvals...) }
-func Info(msg string, keyvals ...any)   { Default.Info(msg, keyvals...) }
-func Warn(msg string, keyvals ...any)   { Default.Warn(msg, keyvals...) }
-func Error(msg string, keyvals ...any)  { Default.Error(msg, keyvals...) }
+func Debug(msg string, keyvals ...any) { Default.Debug(msg, keyvals...) }
+func Info(msg string, keyvals ...any)  { Default.Info(msg, keyvals...) }
+func Warn(msg string, keyvals ...any)  { Default.Warn(msg, keyvals...) }
+func Error(msg string, keyvals ...any) { Default.Error(msg, keyvals...) }

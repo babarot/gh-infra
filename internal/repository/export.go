@@ -1,11 +1,11 @@
-package state
+package repository
 
 import (
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
 // ToManifest converts current state to a manifest Repository for export (import command).
-func ToManifest(r *Repository) *manifest.Repository {
+func ToManifest(r *CurrentState) *manifest.Repository {
 	repo := &manifest.Repository{
 		APIVersion: manifest.APIVersion,
 		Kind:       manifest.KindRepository,

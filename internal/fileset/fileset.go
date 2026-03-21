@@ -9,7 +9,7 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/output"
+	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // FileState represents the current state of a file in a repository.
@@ -58,7 +58,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet) []FileChange {
 
 	for _, fs := range fileSets {
 		for _, target := range fs.Spec.Targets {
-			files := manifest.ResolveFiles(fs, target)
+			files := ResolveFiles(fs, target)
 			for _, file := range files {
 				change := p.planFile(fs.Metadata.Name, target.Name, file, fs.Spec.OnDrift)
 				changes = append(changes, change)
@@ -261,23 +261,23 @@ func PrintPlan(w io.Writer, changes []FileChange) {
 
 	for _, g := range groups {
 		fmt.Fprintf(w, "  %s FileSet: %s → %s\n",
-			output.Yellow.Render("~"),
-			output.Bold.Render(g.key.fileSet),
-			output.Bold.Render(g.key.target))
+			ui.Yellow.Render("~"),
+			ui.Bold.Render(g.key.fileSet),
+			ui.Bold.Render(g.key.target))
 		for _, c := range g.changes {
 			switch c.Type {
 			case FileCreate:
 				fmt.Fprintf(w, "      %s %s  %s\n",
-					output.Green.Render("+"), c.Path, output.Green.Render("(new file)"))
+					ui.Green.Render("+"), c.Path, ui.Green.Render("(new file)"))
 			case FileUpdate:
 				fmt.Fprintf(w, "      %s %s  %s\n",
-					output.Yellow.Render("~"), c.Path, output.Yellow.Render("(content changed)"))
+					ui.Yellow.Render("~"), c.Path, ui.Yellow.Render("(content changed)"))
 			case FileDrift:
 				fmt.Fprintf(w, "      %s %s  %s on_drift: %s → skipping apply\n",
-					output.Yellow.Render("⚠"), c.Path, output.Yellow.Render("[drift detected]"), c.OnDrift)
+					ui.Yellow.Render("⚠"), c.Path, ui.Yellow.Render("[drift detected]"), c.OnDrift)
 			case FileSkip:
 				fmt.Fprintf(w, "      %s %s  %s on_drift: skip → ignored\n",
-					output.Dim.Render("-"), c.Path, output.Dim.Render("[drift detected]"))
+					ui.Dim.Render("-"), c.Path, ui.Dim.Render("[drift detected]"))
 			}
 		}
 		fmt.Fprintln(w)
@@ -289,13 +289,13 @@ func PrintApplyResults(w io.Writer, results []FileApplyResult) {
 	for _, r := range results {
 		if r.Skipped {
 			fmt.Fprintf(w, "  %s %s %s  drift detected, skipped (on_drift: %s)\n",
-				output.Yellow.Render("⚠"), output.Bold.Render(r.Change.Target), r.Change.Path, r.Change.OnDrift)
+				ui.Yellow.Render("⚠"), ui.Bold.Render(r.Change.Target), r.Change.Path, r.Change.OnDrift)
 		} else if r.Err != nil {
 			fmt.Fprintf(w, "  %s %s %s: %v\n",
-				output.Red.Render("✗"), output.Bold.Render(r.Change.Target), r.Change.Path, r.Err)
+				ui.Red.Render("✗"), ui.Bold.Render(r.Change.Target), r.Change.Path, r.Err)
 		} else {
 			fmt.Fprintf(w, "  %s %s %s  %sd\n",
-				output.Green.Render("✓"), output.Bold.Render(r.Change.Target), r.Change.Path, r.Change.Type)
+				ui.Green.Render("✓"), ui.Bold.Render(r.Change.Target), r.Change.Path, r.Change.Type)
 		}
 	}
 }
@@ -339,12 +339,12 @@ func PrintSummary(w io.Writer, results []FileApplyResult) {
 		}
 	}
 	fmt.Fprintf(w, "\nFileSet apply: %s changes applied",
-		output.Green.Render(fmt.Sprintf("%d", succeeded)))
+		ui.Green.Render(fmt.Sprintf("%d", succeeded)))
 	if failed > 0 {
-		fmt.Fprintf(w, ", %s failed", output.Red.Render(fmt.Sprintf("%d", failed)))
+		fmt.Fprintf(w, ", %s failed", ui.Red.Render(fmt.Sprintf("%d", failed)))
 	}
 	if skipped > 0 {
-		fmt.Fprintf(w, ", %s skipped (drift)", output.Yellow.Render(fmt.Sprintf("%d", skipped)))
+		fmt.Fprintf(w, ", %s skipped (drift)", ui.Yellow.Render(fmt.Sprintf("%d", skipped)))
 	}
 	fmt.Fprintln(w, ".")
 }

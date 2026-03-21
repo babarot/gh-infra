@@ -1,4 +1,4 @@
-package apply
+package repository
 
 import (
 	"encoding/json"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/plan"
 )
 
 // Executor applies planned changes to GitHub.
@@ -21,7 +20,7 @@ func NewExecutor(runner gh.Runner) *Executor {
 }
 
 // Apply executes all changes in the plan result.
-func (e *Executor) Apply(changes []plan.Change, repos []*manifest.Repository) []ApplyResult {
+func (e *Executor) Apply(changes []Change, repos []*manifest.Repository) []ApplyResult {
 	// Group changes by repo name
 	repoMap := make(map[string]*manifest.Repository)
 	for _, r := range repos {
@@ -30,7 +29,7 @@ func (e *Executor) Apply(changes []plan.Change, repos []*manifest.Repository) []
 
 	var results []ApplyResult
 	for _, c := range changes {
-		if c.Type == plan.ChangeNoOp {
+		if c.Type == ChangeNoOp {
 			continue
 		}
 		result := e.applyChange(c, repoMap[c.Name])
@@ -40,11 +39,11 @@ func (e *Executor) Apply(changes []plan.Change, repos []*manifest.Repository) []
 }
 
 type ApplyResult struct {
-	Change plan.Change
+	Change Change
 	Err    error
 }
 
-func (e *Executor) applyChange(c plan.Change, repo *manifest.Repository) ApplyResult {
+func (e *Executor) applyChange(c Change, repo *manifest.Repository) ApplyResult {
 	var err error
 
 	switch {
@@ -63,7 +62,7 @@ func (e *Executor) applyChange(c plan.Change, repo *manifest.Repository) ApplyRe
 	return ApplyResult{Change: c, Err: err}
 }
 
-func (e *Executor) applyRepoSetting(c plan.Change, repo *manifest.Repository) error {
+func (e *Executor) applyRepoSetting(c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
@@ -162,7 +161,7 @@ func (e *Executor) applyTopics(fullName string, repo *manifest.Repository) error
 	return nil
 }
 
-func (e *Executor) applyBranchProtection(c plan.Change, repo *manifest.Repository) error {
+func (e *Executor) applyBranchProtection(c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 
@@ -268,7 +267,7 @@ func buildBranchProtectionPayload(bp *manifest.BranchProtection) map[string]any 
 	return payload
 }
 
-func (e *Executor) applySecret(c plan.Change, repo *manifest.Repository) error {
+func (e *Executor) applySecret(c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
@@ -289,7 +288,7 @@ func (e *Executor) applySecret(c plan.Change, repo *manifest.Repository) error {
 	return wrapError(err, fullName, "secret:"+c.Field)
 }
 
-func (e *Executor) applyVariable(c plan.Change, repo *manifest.Repository) error {
+func (e *Executor) applyVariable(c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name

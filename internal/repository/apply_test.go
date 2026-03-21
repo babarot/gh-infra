@@ -1,4 +1,4 @@
-package apply
+package repository
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/plan"
 )
 
 func newTestRepo(owner, name string) *manifest.Repository {
@@ -24,9 +23,9 @@ func TestApplyRepoDescription(t *testing.T) {
 	exec := NewExecutor(mock)
 
 	repo := newTestRepo("myorg", "myrepo")
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeUpdate,
+			Type:     ChangeUpdate,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "description",
@@ -57,9 +56,9 @@ func TestApplyHomepage(t *testing.T) {
 	exec := NewExecutor(mock)
 
 	repo := newTestRepo("myorg", "myrepo")
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeUpdate,
+			Type:     ChangeUpdate,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "homepage",
@@ -83,9 +82,9 @@ func TestApplyVisibility(t *testing.T) {
 	exec := NewExecutor(mock)
 
 	repo := newTestRepo("myorg", "myrepo")
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeUpdate,
+			Type:     ChangeUpdate,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "visibility",
@@ -115,9 +114,9 @@ func TestApplyTopics(t *testing.T) {
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Topics = []string{"keep-topic", "new-topic"}
 
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeUpdate,
+			Type:     ChangeUpdate,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "topics",
@@ -162,9 +161,9 @@ func TestApplyFeatureToggle(t *testing.T) {
 	exec := NewExecutor(mock)
 
 	repo := newTestRepo("myorg", "myrepo")
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeUpdate,
+			Type:     ChangeUpdate,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "wiki",
@@ -197,9 +196,9 @@ func TestApplyWithErrNotFound(t *testing.T) {
 	exec := NewExecutor(mock)
 
 	repo := newTestRepo("myorg", "myrepo")
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeUpdate,
+			Type:     ChangeUpdate,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "description",
@@ -231,9 +230,9 @@ func TestApplyWithErrForbidden(t *testing.T) {
 	exec := NewExecutor(mock)
 
 	repo := newTestRepo("myorg", "myrepo")
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeUpdate,
+			Type:     ChangeUpdate,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "description",
@@ -260,9 +259,9 @@ func TestApplyVariableSet(t *testing.T) {
 		{Name: "MY_VAR", Value: "my-value"},
 	}
 
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeCreate,
+			Type:     ChangeCreate,
 			Resource: "Variable",
 			Name:     "myorg/myrepo",
 			Field:    "MY_VAR",
@@ -290,9 +289,9 @@ func TestApplySecretSet(t *testing.T) {
 		{Name: "MY_SECRET", Value: "secret-value"},
 	}
 
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeCreate,
+			Type:     ChangeCreate,
 			Resource: "Secret",
 			Name:     "myorg/myrepo",
 			Field:    "MY_SECRET",
@@ -316,9 +315,9 @@ func TestApplySkipsNoOp(t *testing.T) {
 	exec := NewExecutor(mock)
 
 	repo := newTestRepo("myorg", "myrepo")
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeNoOp,
+			Type:     ChangeNoOp,
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "description",
@@ -353,9 +352,9 @@ func TestApplyBranchProtection(t *testing.T) {
 		},
 	}
 
-	changes := []plan.Change{
+	changes := []Change{
 		{
-			Type:     plan.ChangeCreate,
+			Type:     ChangeCreate,
 			Resource: "BranchProtection[main]",
 			Name:     "myorg/myrepo",
 			Field:    "branch_protection",
