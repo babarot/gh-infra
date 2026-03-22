@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/babarot/gh-infra/cmd"
+	"github.com/babarot/gh-infra/internal/ui"
 )
 
 var (
@@ -15,7 +15,7 @@ var (
 func main() {
 	root := cmd.NewRootCmd(version, revision)
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		ui.FatalError(err)
 		os.Exit(1)
 	}
 }

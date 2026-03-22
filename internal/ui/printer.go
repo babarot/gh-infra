@@ -193,6 +193,13 @@ func ApplySummary(succeeded, failed int) {
 	fmt.Fprintln(DefaultPrinter.out, ".")
 }
 
+// --- Error messages (stderr) ---
+
+func FatalError(err error) {
+	msg := strings.ReplaceAll(err.Error(), "\n", "\n  ")
+	fmt.Fprintf(DefaultPrinter.err, "\n%s %s\n", Red.Render("Error:"), msg)
+}
+
 // --- Status messages (stdout) ---
 
 func NoChanges() {
