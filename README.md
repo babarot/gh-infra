@@ -291,7 +291,31 @@ spec:
 
   # What to do when a file has been manually edited (drift)
   on_drift: warn    # warn (default) | overwrite | skip
+
+  # Custom commit message (optional)
+  commit_message: "ci: sync shared config files"
+
+  # Apply strategy (optional)
+  strategy: direct           # direct (default) | pull_request
+  # branch: gh-infra/sync   # branch name for pull_request strategy
 ```
+
+#### Apply strategy
+
+By default, FileSet commits directly to the default branch using the [Git Data API](https://docs.github.com/en/rest/git/trees). All files are included in a single atomic commit regardless of file count.
+
+Set `strategy: pull_request` to create a PR instead:
+
+```yaml
+spec:
+  strategy: pull_request
+  commit_message: "ci: sync shared files"
+  # branch: gh-infra/custom-branch   # optional, auto-generated if omitted
+```
+
+This creates a branch, commits all files, and opens a PR. Reviewers can inspect the changes before merging.
+
+For empty repositories (no commits yet), gh-infra automatically falls back to the Contents API, which creates one commit per file as the initial commit.
 
 #### on_drift behavior
 
