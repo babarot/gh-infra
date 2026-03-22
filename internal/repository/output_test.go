@@ -166,13 +166,13 @@ func TestPrintPlanChanges_WithChanges(t *testing.T) {
 	PrintPlanChanges(changes)
 	out := buf.String()
 
-	if !strings.Contains(out, "+ description:") {
+	if !strings.Contains(out, "+ description") {
 		t.Errorf("expected '+ description:' in output:\n%s", out)
 	}
-	if !strings.Contains(out, "~ visibility:") {
+	if !strings.Contains(out, "~ visibility") {
 		t.Errorf("expected '~ visibility:' in output:\n%s", out)
 	}
-	if !strings.Contains(out, "- homepage:") {
+	if !strings.Contains(out, "- homepage") {
 		t.Errorf("expected '- homepage:' in output:\n%s", out)
 	}
 	// Groups by name

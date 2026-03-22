@@ -458,8 +458,8 @@ func TestPrintPlan(t *testing.T) {
 		t.Errorf("expected '(content changed)' in output, got:\n%s", output)
 	}
 	// Check drift line
-	if !strings.Contains(output, "drift detected") {
-		t.Errorf("expected 'drift detected' in output, got:\n%s", output)
+	if !strings.Contains(output, "[drift]") {
+		t.Errorf("expected '[drift]' in output, got:\n%s", output)
 	}
 	// Check skip line
 	if !strings.Contains(output, "skip") {

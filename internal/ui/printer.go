@@ -35,6 +35,8 @@ func ResetWriters() {
 	DefaultPrinter.err = os.Stderr
 }
 
+const separator = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
 // --- Progress messages (stderr) ---
 
 func StartPhase(path string) {
@@ -72,17 +74,23 @@ func Importing(name string) {
 }
 
 func SkipManagedBySelf(name string) {
-	fmt.Fprintf(DefaultPrinter.err, "  ⚠ %s: managed_by=self, skipping\n", name)
+	fmt.Fprintf(DefaultPrinter.err, "  %s %s: managed_by=self, skipping\n", Yellow.Render("⚠"), name)
 }
 
 func SkipImportError(name string, err error) {
-	fmt.Fprintf(DefaultPrinter.err, "  ⚠ skipping %s: %v\n", name, err)
+	fmt.Fprintf(DefaultPrinter.err, "  %s skipping %s: %v\n", Yellow.Render("⚠"), name, err)
 }
 
 // --- Plan output (stdout) ---
 
+func PlanSeparator() {
+	fmt.Fprintln(DefaultPrinter.out, Dim.Render(separator))
+}
+
 func PlanHeader(creates, updates, deletes int) {
-	fmt.Fprintf(DefaultPrinter.out, "\nPlan: %d to create, %d to update, %d to destroy\n\n", creates, updates, deletes)
+	fmt.Fprintln(DefaultPrinter.out)
+	fmt.Fprintln(DefaultPrinter.out, Dim.Render(separator))
+	fmt.Fprintln(DefaultPrinter.out)
 }
 
 func PlanRepoGroup(name string) {
@@ -90,7 +98,7 @@ func PlanRepoGroup(name string) {
 }
 
 func PlanRepoGroupNew(name string) {
-	fmt.Fprintf(DefaultPrinter.out, "  %s %s %s\n",
+	fmt.Fprintf(DefaultPrinter.out, "  %s %s  %s\n",
 		Green.Render("+"), Bold.Render(name), Green.Render("(new)"))
 }
 
@@ -100,50 +108,56 @@ func PlanFileSetGroup(fileSet, repo string) {
 }
 
 func PlanCreate(field string, value any) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %s: %s\n",
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s\n",
 		Green.Render("+"), field, Green.Render(fmt.Sprintf("%v", value)))
 }
 
 func PlanUpdate(field string, oldVal, newVal string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %s: %s → %s\n",
-		Yellow.Render("~"), field, Dim.Render(oldVal), Bold.Render(newVal))
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s %s %s\n",
+		Yellow.Render("~"), field, Dim.Render(oldVal), Dim.Render("→"), Bold.Render(newVal))
 }
 
 func PlanDelete(field string, value any) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %s: %s\n",
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s\n",
 		Red.Render("-"), field, Red.Render(fmt.Sprintf("%v", value)))
 }
 
 func PlanFileCreate(path string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %s  %s\n",
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s\n",
 		Green.Render("+"), path, Green.Render("(new file)"))
 }
 
 func PlanFileUpdate(path string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %s  %s\n",
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s\n",
 		Yellow.Render("~"), path, Yellow.Render("(content changed)"))
 }
 
 func PlanFileDrift(path, onDrift string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %s  %s on_drift: %s → skipping apply\n",
-		Yellow.Render("⚠"), path, Yellow.Render("[drift detected]"), onDrift)
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s  on_drift: %s\n",
+		Yellow.Render("⚠"), path, Yellow.Render("[drift]"), onDrift)
 }
 
 func PlanFileSkip(path string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %s  %s on_drift: skip → ignored\n",
-		Dim.Render("-"), path, Dim.Render("[drift detected]"))
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s  on_drift: skip\n",
+		Dim.Render("-"), path, Dim.Render("[drift]"))
 }
 
 func PlanGroupEnd() {
 	fmt.Fprintln(DefaultPrinter.out)
 }
 
-func PlanSeparator() {
-	fmt.Fprintln(DefaultPrinter.out, Dim.Render(strings.Repeat("─", 50)))
-}
+func PlanFooter(creates, updates, deletes int) {
+	fmt.Fprintln(DefaultPrinter.out)
+	fmt.Fprintln(DefaultPrinter.out, Dim.Render(separator))
+	fmt.Fprintln(DefaultPrinter.out)
 
-func PlanFooter() {
-	fmt.Fprintf(DefaultPrinter.out, "To apply these changes, run: %s\n", Bold.Render("gh infra apply"))
+	parts := []string{
+		fmt.Sprintf("%s to create", Bold.Render(fmt.Sprintf("%d", creates))),
+		fmt.Sprintf("%s to update", Bold.Render(fmt.Sprintf("%d", updates))),
+		fmt.Sprintf("%s to destroy", Bold.Render(fmt.Sprintf("%d", deletes))),
+	}
+	fmt.Fprintf(DefaultPrinter.out, "Plan: %s\n", strings.Join(parts, ", "))
+	fmt.Fprintf(DefaultPrinter.out, "To apply, run: %s\n", Bold.Render("gh infra apply"))
 }
 
 // --- Apply results (stdout) ---
@@ -165,7 +179,10 @@ func ResultSkipped(name, path, onDrift string) {
 }
 
 func ApplySummary(succeeded, failed int) {
-	fmt.Fprintf(DefaultPrinter.out, "\nApply complete! %d changes applied", succeeded)
+	fmt.Fprintln(DefaultPrinter.out)
+	fmt.Fprintln(DefaultPrinter.out, Dim.Render(separator))
+	fmt.Fprintln(DefaultPrinter.out)
+	fmt.Fprintf(DefaultPrinter.out, "Apply complete! %d changes applied", succeeded)
 	if failed > 0 {
 		fmt.Fprintf(DefaultPrinter.out, ", %d failed", failed)
 	}
@@ -194,7 +211,8 @@ func ConfirmPrompt() string {
 // --- Validate output (stdout) ---
 
 func ValidateSummary(repos, filesets int) {
-	fmt.Fprintf(DefaultPrinter.out, "✓ Valid: %d repositories, %d filesets defined\n", repos, filesets)
+	fmt.Fprintf(DefaultPrinter.out, "%s Valid: %d repositories, %d filesets defined\n",
+		Green.Render("✓"), repos, filesets)
 }
 
 func ValidateRepo(name string) {

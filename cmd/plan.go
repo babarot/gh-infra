@@ -91,27 +91,19 @@ func runPlan(path, filterRepo string, ci bool) error {
 		return nil
 	}
 
-	// Summary line
 	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
 	fileCreates, fileUpdates, _ := fileset.CountChanges(fileChanges)
-	totalCreates := repoCreates + fileCreates
-	totalUpdates := repoUpdates + fileUpdates
-	totalDeletes := repoDeletes
 
-	ui.PlanHeader(totalCreates, totalUpdates, totalDeletes)
+	ui.PlanHeader(0, 0, 0) // top separator
 
-	// Repository changes
 	if hasRepo {
 		repository.PrintPlanChanges(repoChanges)
 	}
-
-	// FileSet changes
 	if hasFile {
 		fileset.PrintPlan(fileChanges)
 	}
 
-	ui.PlanSeparator()
-	ui.PlanFooter()
+	ui.PlanFooter(repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes)
 
 	if ci {
 		os.Exit(1)
