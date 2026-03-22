@@ -309,6 +309,9 @@ spec:
     - path: LICENSE
       source: ./templates/LICENSE    # Read from local file
 
+    - path: .github/workflows
+      source: ./templates/workflows/ # Sync entire directory
+
     - path: .github/SECURITY.md
       content: |
         ## Security Policy
@@ -324,6 +327,16 @@ spec:
   strategy: direct           # direct (default) | pull_request
   # branch: gh-infra/sync   # branch name for pull_request strategy
 ```
+
+#### File sources
+
+Each file entry supports three modes:
+
+- **`content`** — inline content in YAML
+- **`source` (file)** — read content from a local file (`source: ./templates/LICENSE`)
+- **`source` (directory)** — sync an entire directory (`source: ./templates/workflows/`). All files under the directory are expanded with paths relative to `path`.
+
+Paths are resolved relative to the YAML file's location.
 
 #### Apply strategy
 

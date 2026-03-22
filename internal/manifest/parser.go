@@ -146,25 +146,76 @@ func parseFileSet(data []byte, path string) (*FileSet, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
-	// Resolve source files to content
+	// Resolve source files/directories to content
 	dir := filepath.Dir(path)
-	for i := range fs.Spec.Files {
-		entry := &fs.Spec.Files[i]
+	var resolved []FileEntry
+	for _, entry := range fs.Spec.Files {
 		if entry.Source != "" && entry.Content == "" {
 			srcPath := entry.Source
 			if !filepath.IsAbs(srcPath) {
 				srcPath = filepath.Join(dir, srcPath)
 			}
-			content, err := os.ReadFile(srcPath)
+			info, err := os.Stat(srcPath)
 			if err != nil {
 				return nil, fmt.Errorf("%s: read source %s: %w", path, entry.Source, err)
 			}
-			entry.Content = string(content)
-			entry.Source = "" // resolved
+			if info.IsDir() {
+				// Expand directory into individual file entries
+				entries, err := expandDir(srcPath, entry.Path)
+				if err != nil {
+					return nil, fmt.Errorf("%s: expand source dir %s: %w", path, entry.Source, err)
+				}
+				resolved = append(resolved, entries...)
+			} else {
+				content, err := os.ReadFile(srcPath)
+				if err != nil {
+					return nil, fmt.Errorf("%s: read source %s: %w", path, entry.Source, err)
+				}
+				entry.Content = string(content)
+				entry.Source = ""
+				resolved = append(resolved, entry)
+			}
+		} else {
+			resolved = append(resolved, entry)
 		}
 	}
+	fs.Spec.Files = resolved
 
 	return &fs, nil
+}
+
+// expandDir walks a directory and returns a FileEntry for each file,
+// with path relative to destPrefix.
+func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
+	var entries []FileEntry
+	err := filepath.WalkDir(srcDir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(srcDir, p)
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		destPath := rel
+		if destPrefix != "" {
+			destPath = filepath.Join(destPrefix, rel)
+		}
+		// Normalize to forward slashes for GitHub paths
+		destPath = filepath.ToSlash(destPath)
+		entries = append(entries, FileEntry{
+			Path:    destPath,
+			Content: string(content),
+		})
+		return nil
+	})
+	return entries, err
 }
 
 // mergeSpecs merges defaults with per-repo overrides. Per-repo values take precedence.
