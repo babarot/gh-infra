@@ -11,6 +11,7 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 func newApplyCmd() *cobra.Command {
@@ -58,23 +59,33 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
-	// Compute repo changes
+	// Compute all changes in parallel
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
+	var fileChanges []fileset.FileChange
+
+	g := new(errgroup.Group)
+
 	if len(parsed.Repositories) > 0 {
 		fetcher := repository.NewFetcher(runner)
 		diffOpts := repository.DiffOptions{ForceSecrets: forceSecrets}
-		repoChanges, targetRepos, err = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, diffOpts)
-		if err != nil {
-			return err
-		}
+		g.Go(func() error {
+			var fetchErr error
+			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, diffOpts)
+			return fetchErr
+		})
 	}
 
-	// Compute file changes
-	var fileChanges []fileset.FileChange
 	if len(parsed.FileSets) > 0 {
 		processor := fileset.NewProcessor(runner)
-		fileChanges = processor.Plan(parsed.FileSets)
+		g.Go(func() error {
+			fileChanges = processor.Plan(parsed.FileSets)
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	hasRepo := repository.HasRealChanges(repoChanges)

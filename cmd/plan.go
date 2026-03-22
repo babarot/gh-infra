@@ -11,6 +11,7 @@ import (
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 func newPlanCmd() *cobra.Command {
@@ -54,20 +55,31 @@ func runPlan(path, filterRepo string, ci bool) error {
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
-	// Phase 1: Refresh all resources (fetch current state)
+	// Phase 1: Refresh all resources in parallel
 	var repoChanges []repository.Change
+	var fileChanges []fileset.FileChange
+
+	g := new(errgroup.Group)
+
 	if len(parsed.Repositories) > 0 {
 		fetcher := repository.NewFetcher(runner)
-		repoChanges, _, err = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher)
-		if err != nil {
-			return err
-		}
+		g.Go(func() error {
+			var fetchErr error
+			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher)
+			return fetchErr
+		})
 	}
 
-	var fileChanges []fileset.FileChange
 	if len(parsed.FileSets) > 0 {
 		processor := fileset.NewProcessor(runner)
-		fileChanges = processor.Plan(parsed.FileSets)
+		g.Go(func() error {
+			fileChanges = processor.Plan(parsed.FileSets)
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	// Phase 2: Print unified plan
