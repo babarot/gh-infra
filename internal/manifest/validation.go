@@ -81,6 +81,13 @@ func (fs *FileSet) Validate() error {
 		OnDriftWarn, OnDriftOverwrite, OnDriftSkip); err != nil {
 		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Name, err)
 	}
+	if fs.Spec.Strategy == "" {
+		fs.Spec.Strategy = StrategyDirect
+	}
+	if err := validateOneOf("strategy", fs.Spec.Strategy,
+		StrategyDirect, StrategyPullRequest); err != nil {
+		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Name, err)
+	}
 	for i, f := range fs.Spec.Files {
 		if f.Path == "" {
 			return fmt.Errorf("FileSet %q: files[%d].path is required", fs.Metadata.Name, i)

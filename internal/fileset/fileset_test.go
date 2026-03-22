@@ -187,18 +187,46 @@ func TestPlan_DriftSkip(t *testing.T) {
 // Apply tests
 // ---------------------------------------------------------------------------
 
-func TestApply_CreateFile(t *testing.T) {
-	mock := &gh.MockRunner{
-		Responses: map[string][]byte{},
-		Errors:    map[string]error{},
-	}
-	p := NewProcessor(mock)
+// WildcardMockRunner extends MockRunner to return a default response for unmatched keys.
+type WildcardMockRunner struct {
+	gh.MockRunner
+	DefaultResponse []byte
+}
 
-	content := "name: CI"
-	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	// Pre-register the expected PUT call
-	putKey := fmt.Sprintf("api repos/owner/repo/contents/.github/ci.yml --method PUT -f message=chore: add .github/ci.yml via gh-infra -f content=%s", encoded)
-	mock.Responses[putKey] = []byte(`{}`)
+func (m *WildcardMockRunner) Run(args ...string) ([]byte, error) {
+	key := strings.Join(args, " ")
+	m.MockRunner.Called = append(m.MockRunner.Called, args)
+	if err, ok := m.MockRunner.Errors[key]; ok {
+		return nil, err
+	}
+	if resp, ok := m.MockRunner.Responses[key]; ok {
+		return resp, nil
+	}
+	// Return default response for unmatched calls (Git Data API calls with dynamic args)
+	return m.DefaultResponse, nil
+}
+
+// setupGitDataAPIMock creates a WildcardMockRunner with Git Data API responses.
+func setupGitDataAPIMock(repo string) *WildcardMockRunner {
+	mock := &WildcardMockRunner{
+		MockRunner: gh.MockRunner{
+			Responses: map[string][]byte{
+				// Get default branch
+				fmt.Sprintf("repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", repo): []byte("main"),
+				// Get HEAD SHA
+				fmt.Sprintf("api repos/%s/git/ref/heads/main --jq .object.sha", repo): []byte("head123"),
+			},
+			Errors: map[string]error{},
+		},
+		// Default response for blob/tree/commit/ref calls
+		DefaultResponse: []byte(`{"sha":"mock-sha-123"}`),
+	}
+	return mock
+}
+
+func TestApply_CreateFile(t *testing.T) {
+	mock := setupGitDataAPIMock("owner/repo")
+	p := NewProcessor(mock)
 
 	changes := []FileChange{
 		{
@@ -206,11 +234,11 @@ func TestApply_CreateFile(t *testing.T) {
 			Target:  "owner/repo",
 			Path:    ".github/ci.yml",
 			Type:    FileCreate,
-			Desired: content,
+			Desired: "name: CI",
 		},
 	}
 
-	results := p.Apply(changes)
+	results := p.Apply(changes, ApplyOptions{FileSetName: "test"})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -218,42 +246,19 @@ func TestApply_CreateFile(t *testing.T) {
 	if results[0].Err != nil {
 		t.Errorf("unexpected error: %v", results[0].Err)
 	}
-	// Verify the mock was called
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(mock.Called))
-	}
-	// Check args include PUT and content
-	args := mock.Called[0]
-	foundPUT := false
-	foundContent := false
-	for _, a := range args {
-		if a == "PUT" {
-			foundPUT = true
+
+	// Verify Git Data API calls were made: get branch, get HEAD, blob, tree, commit, ref update
+	callLog := strings.Join(flattenCalls(mock.Called), " | ")
+	for _, expected := range []string{"git/ref/heads/main", "git/blobs", "git/trees", "git/commits", "git/refs/heads/main"} {
+		if !strings.Contains(callLog, expected) {
+			t.Errorf("expected call containing %q, got: %s", expected, callLog)
 		}
-		if a == fmt.Sprintf("content=%s", encoded) {
-			foundContent = true
-		}
-	}
-	if !foundPUT {
-		t.Error("expected PUT method in call args")
-	}
-	if !foundContent {
-		t.Error("expected base64 content in call args")
 	}
 }
 
 func TestApply_UpdateFile(t *testing.T) {
-	mock := &gh.MockRunner{
-		Responses: map[string][]byte{},
-		Errors:    map[string]error{},
-	}
+	mock := setupGitDataAPIMock("owner/repo")
 	p := NewProcessor(mock)
-
-	content := "name: CI v2"
-	sha := "abc123"
-	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	putKey := fmt.Sprintf("api repos/owner/repo/contents/.github/ci.yml --method PUT -f message=chore: update .github/ci.yml via gh-infra -f content=%s -f sha=%s", encoded, sha)
-	mock.Responses[putKey] = []byte(`{}`)
 
 	changes := []FileChange{
 		{
@@ -261,12 +266,12 @@ func TestApply_UpdateFile(t *testing.T) {
 			Target:  "owner/repo",
 			Path:    ".github/ci.yml",
 			Type:    FileUpdate,
-			Desired: content,
-			SHA:     sha,
+			Desired: "name: CI v2",
+			SHA:     "old123",
 		},
 	}
 
-	results := p.Apply(changes)
+	results := p.Apply(changes, ApplyOptions{FileSetName: "test"})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -274,20 +279,14 @@ func TestApply_UpdateFile(t *testing.T) {
 	if results[0].Err != nil {
 		t.Errorf("unexpected error: %v", results[0].Err)
 	}
-	// Verify SHA was passed
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(mock.Called))
+}
+
+func flattenCalls(calls [][]string) []string {
+	var flat []string
+	for _, call := range calls {
+		flat = append(flat, strings.Join(call, " "))
 	}
-	args := mock.Called[0]
-	foundSHA := false
-	for _, a := range args {
-		if a == fmt.Sprintf("sha=%s", sha) {
-			foundSHA = true
-		}
-	}
-	if !foundSHA {
-		t.Error("expected SHA in call args")
-	}
+	return flat
 }
 
 func TestApply_DriftWarnSkipsApply(t *testing.T) {
@@ -308,7 +307,7 @@ func TestApply_DriftWarnSkipsApply(t *testing.T) {
 		},
 	}
 
-	results := p.Apply(changes)
+	results := p.Apply(changes, ApplyOptions{FileSetName: "test"})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -333,7 +332,7 @@ func TestApply_NoOpAndSkipNotApplied(t *testing.T) {
 		{Type: FileSkip, Target: "owner/repo", Path: "b.txt"},
 	}
 
-	results := p.Apply(changes)
+	results := p.Apply(changes, ApplyOptions{FileSetName: "test"})
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for noop/skip, got %d", len(results))

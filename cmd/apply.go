@@ -85,9 +85,14 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 		return nil
 	}
 
-	// Print plan
+	// Print unified plan
+	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
+	fileCreates, fileUpdates, _ := fileset.CountChanges(fileChanges)
+	fmt.Fprintf(os.Stdout, "\nPlan: %d to create, %d to update, %d to destroy\n\n",
+		repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes)
+
 	if hasRepo {
-		repository.PrintPlan(os.Stdout, repoChanges)
+		repository.PrintPlanChanges(os.Stdout, repoChanges)
 	}
 	if hasFile {
 		fileset.PrintPlan(os.Stdout, fileChanges)
@@ -120,13 +125,33 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 		}
 	}
 
-	// Apply file changes
+	// Apply file changes (per FileSet for correct options)
 	if hasFile {
 		processor := fileset.NewProcessor(runner)
-		results := processor.Apply(fileChanges)
-		fileset.PrintApplyResults(os.Stdout, results)
-		fileset.PrintSummary(os.Stdout, results)
-		for _, r := range results {
+		var allFileResults []fileset.FileApplyResult
+		for _, fs := range parsed.FileSets {
+			// Filter changes for this FileSet
+			var fsChanges []fileset.FileChange
+			for _, c := range fileChanges {
+				if c.FileSet == fs.Metadata.Name {
+					fsChanges = append(fsChanges, c)
+				}
+			}
+			if !fileset.HasChanges(fsChanges) {
+				continue
+			}
+			opts := fileset.ApplyOptions{
+				CommitMessage: fs.Spec.CommitMessage,
+				Strategy:      fs.Spec.Strategy,
+				Branch:        fs.Spec.Branch,
+				FileSetName:   fs.Metadata.Name,
+			}
+			results := processor.Apply(fsChanges, opts)
+			allFileResults = append(allFileResults, results...)
+		}
+		fileset.PrintApplyResults(os.Stdout, allFileResults)
+		fileset.PrintSummary(os.Stdout, allFileResults)
+		for _, r := range allFileResults {
 			if r.Err != nil {
 				hasErrors = true
 			}

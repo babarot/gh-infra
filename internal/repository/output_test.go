@@ -152,7 +152,7 @@ func TestGroupByName_AllNoOp(t *testing.T) {
 // PrintPlan
 // ---------------------------------------------------------------------------
 
-func TestPrintPlan_WithChanges(t *testing.T) {
+func TestPrintPlanChanges_WithChanges(t *testing.T) {
 	changes := []Change{
 		{Type: ChangeCreate, Name: "org/repo1", Field: "description", NewValue: "new desc"},
 		{Type: ChangeUpdate, Name: "org/repo1", Field: "visibility", OldValue: "public", NewValue: "private"},
@@ -160,66 +160,49 @@ func TestPrintPlan_WithChanges(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	PrintPlan(&buf, changes)
+	PrintPlanChanges(&buf, changes)
 	out := buf.String()
 
-	// Verify summary line
-	if !strings.Contains(out, "1 to create") {
-		t.Errorf("expected '1 to create' in output:\n%s", out)
-	}
-	if !strings.Contains(out, "1 to update") {
-		t.Errorf("expected '1 to update' in output:\n%s", out)
-	}
-	if !strings.Contains(out, "1 to destroy") {
-		t.Errorf("expected '1 to destroy' in output:\n%s", out)
-	}
-
-	// Verify create line has +
 	if !strings.Contains(out, "+ description:") {
 		t.Errorf("expected '+ description:' in output:\n%s", out)
 	}
-
-	// Verify update line has ~
 	if !strings.Contains(out, "~ visibility:") {
 		t.Errorf("expected '~ visibility:' in output:\n%s", out)
 	}
-
-	// Verify delete line has -
 	if !strings.Contains(out, "- homepage:") {
 		t.Errorf("expected '- homepage:' in output:\n%s", out)
 	}
-
-	// Verify footer
-	if !strings.Contains(out, "gh infra apply") {
-		t.Errorf("expected 'gh infra apply' in output:\n%s", out)
+	// Groups by name
+	if !strings.Contains(out, "org/repo1") {
+		t.Errorf("expected 'org/repo1' in output:\n%s", out)
+	}
+	if !strings.Contains(out, "org/repo2") {
+		t.Errorf("expected 'org/repo2' in output:\n%s", out)
 	}
 }
 
-func TestPrintPlan_EmptyChanges(t *testing.T) {
+func TestPrintPlanChanges_Empty(t *testing.T) {
 	var buf bytes.Buffer
-	PrintPlan(&buf, nil)
+	PrintPlanChanges(&buf, nil)
 	if buf.Len() != 0 {
-		t.Errorf("expected no output for empty changes, got %q", buf.String())
+		t.Errorf("expected no output for nil, got %q", buf.String())
 	}
 
 	buf.Reset()
-	PrintPlan(&buf, []Change{})
+	PrintPlanChanges(&buf, []Change{})
 	if buf.Len() != 0 {
 		t.Errorf("expected no output for empty slice, got %q", buf.String())
 	}
 }
 
-func TestPrintPlan_OnlyNoOp(t *testing.T) {
+func TestPrintPlanChanges_OnlyNoOp(t *testing.T) {
 	changes := []Change{
 		{Type: ChangeNoOp, Name: "org/repo1", Field: "description"},
 	}
 	var buf bytes.Buffer
-	PrintPlan(&buf, changes)
-	out := buf.String()
-
-	// Should still output the summary line (0 to create, etc.) because len(changes) > 0
-	if !strings.Contains(out, "0 to create") {
-		t.Errorf("expected '0 to create' in output:\n%s", out)
+	PrintPlanChanges(&buf, changes)
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for noop-only, got %q", buf.String())
 	}
 }
 

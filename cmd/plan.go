@@ -3,11 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
+	"github.com/babarot/gh-infra/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -52,36 +54,57 @@ func runPlan(path, filterRepo string, ci bool) error {
 	fmt.Fprintf(os.Stderr, "Reading desired state from %s ...\n", path)
 	fmt.Fprintf(os.Stderr, "Fetching current state from GitHub API ...\n\n")
 
-	hasAnyChanges := false
-
-	// Repository changes
+	// Phase 1: Refresh all resources (fetch current state)
+	var repoChanges []repository.Change
 	if len(parsed.Repositories) > 0 {
 		fetcher := repository.NewFetcher(runner)
-		allChanges, _, err := repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher)
+		repoChanges, _, err = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher)
 		if err != nil {
 			return err
 		}
-		repository.PrintPlan(os.Stdout, allChanges)
-		if repository.HasRealChanges(allChanges) {
-			hasAnyChanges = true
+	}
+
+	var fileChanges []fileset.FileChange
+	if len(parsed.FileSets) > 0 {
+		processor := fileset.NewProcessor(runner)
+		fileChanges = processor.Plan(parsed.FileSets)
+	}
+
+	// Phase 2: Print unified plan
+	hasRepo := repository.HasRealChanges(repoChanges)
+	hasFile := fileset.HasChanges(fileChanges)
+
+	if !hasRepo && !hasFile {
+		fmt.Println("No changes. Infrastructure is up-to-date.")
+		if ci {
+			return nil
 		}
+		return nil
+	}
+
+	// Summary line
+	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
+	fileCreates, fileUpdates, _ := fileset.CountChanges(fileChanges)
+	totalCreates := repoCreates + fileCreates
+	totalUpdates := repoUpdates + fileUpdates
+	totalDeletes := repoDeletes
+
+	fmt.Fprintf(os.Stdout, "\nPlan: %d to create, %d to update, %d to destroy\n\n", totalCreates, totalUpdates, totalDeletes)
+
+	// Repository changes
+	if hasRepo {
+		repository.PrintPlanChanges(os.Stdout, repoChanges)
 	}
 
 	// FileSet changes
-	if len(parsed.FileSets) > 0 {
-		processor := fileset.NewProcessor(runner)
-		fileChanges := processor.Plan(parsed.FileSets)
+	if hasFile {
 		fileset.PrintPlan(os.Stdout, fileChanges)
-		if fileset.HasChanges(fileChanges) {
-			hasAnyChanges = true
-		}
 	}
 
-	if !hasAnyChanges {
-		fmt.Println("No changes. Infrastructure is up-to-date.")
-	}
+	fmt.Fprintln(os.Stdout, ui.Dim.Render(strings.Repeat("─", 50)))
+	fmt.Fprintf(os.Stdout, "To apply these changes, run: %s\n", ui.Bold.Render("gh infra apply"))
 
-	if ci && hasAnyChanges {
+	if ci {
 		os.Exit(1)
 	}
 

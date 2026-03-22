@@ -19,6 +19,10 @@ const (
 	OnDriftOverwrite = "overwrite"
 	OnDriftSkip      = "skip"
 
+	// Strategy values for FileSet apply behavior.
+	StrategyDirect      = "direct"
+	StrategyPullRequest = "pull_request"
+
 	// ManagedBy values for repository management mode.
 	ManagedBySelf = "self"
 
@@ -163,9 +167,12 @@ type FileSetMetadata struct {
 }
 
 type FileSetSpec struct {
-	Targets []FileSetTarget `yaml:"targets"`
-	Files   []FileEntry     `yaml:"files"`
-	OnDrift string          `yaml:"on_drift,omitempty"` // warn (default), overwrite, skip
+	Targets       []FileSetTarget `yaml:"targets"`
+	Files         []FileEntry     `yaml:"files"`
+	OnDrift       string          `yaml:"on_drift,omitempty"`        // warn (default), overwrite, skip
+	CommitMessage string          `yaml:"commit_message,omitempty"`  // custom commit message
+	Strategy      string          `yaml:"strategy,omitempty"`        // direct (default), pull_request
+	Branch        string          `yaml:"branch,omitempty"`          // branch name for pull_request strategy
 }
 
 // FileSetTarget can be a simple string "owner/repo" or a struct with overrides.

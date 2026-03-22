@@ -18,21 +18,13 @@ func HasRealChanges(changes []Change) bool {
 	return false
 }
 
-// PrintPlan prints the plan result in a human-readable format.
-func PrintPlan(w io.Writer, changes []Change) {
-	if len(changes) == 0 {
-		return
-	}
-
-	creates, updates, deletes := countChanges(changes)
-	fmt.Fprintf(w, "\nPlan: %d to create, %d to update, %d to destroy\n\n", creates, updates, deletes)
-
+// PrintPlanChanges prints the repository change details (without header/footer).
+func PrintPlanChanges(w io.Writer, changes []Change) {
 	grouped := groupByName(changes)
 	for _, group := range grouped {
 		if len(group.changes) == 0 {
 			continue
 		}
-		// New repo: show + in green; existing: show ~ in yellow
 		if isNewRepo(group.changes) {
 			fmt.Fprintf(w, "  %s %s %s\n",
 				ui.Green.Render("+"), ui.Bold.Render(group.name), ui.Green.Render("(new)"))
@@ -44,9 +36,11 @@ func PrintPlan(w io.Writer, changes []Change) {
 		}
 		fmt.Fprintln(w)
 	}
+}
 
-	fmt.Fprintln(w, ui.Dim.Render(strings.Repeat("─", 50)))
-	fmt.Fprintf(w, "To apply these changes, run: %s\n", ui.Bold.Render("gh infra apply"))
+// CountChanges returns the number of creates, updates, and deletes.
+func CountChanges(changes []Change) (creates, updates, deletes int) {
+	return countChanges(changes)
 }
 
 // PrintApplyResults prints the results of an apply operation.

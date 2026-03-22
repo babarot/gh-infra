@@ -171,26 +171,46 @@ func (p *Processor) fetchFileContent(repo, path string) (*FileState, error) {
 	}, nil
 }
 
-// Apply executes the planned file changes.
-func (p *Processor) Apply(changes []FileChange) []FileApplyResult {
+// ApplyOptions configures apply behavior from FileSet spec.
+type ApplyOptions struct {
+	CommitMessage string
+	Strategy      string // "direct" or "pull_request"
+	Branch        string
+	FileSetName   string
+}
+
+// Apply executes the planned file changes using Git Data API.
+// Changes are grouped by target repo and applied as a single commit.
+func (p *Processor) Apply(changes []FileChange, opts ApplyOptions) []FileApplyResult {
+	// Separate actionable changes from skipped/noop
 	var results []FileApplyResult
-	for _, c := range changes {
-		switch c.Type {
-		case FileCreate:
-			fmt.Fprintf(os.Stderr, "  Creating %s %s...\n", c.Target, c.Path)
-			err := p.createFile(c.Target, c.Path, c.Desired)
+	grouped := groupChangesByTarget(changes)
+
+	for repo, repoChanges := range grouped {
+		// Collect skipped/drift changes
+		var filesToApply []FileChange
+		for _, c := range repoChanges {
+			switch c.Type {
+			case FileCreate, FileUpdate:
+				filesToApply = append(filesToApply, c)
+			case FileDrift:
+				results = append(results, FileApplyResult{Change: c, Skipped: true})
+			case FileSkip, FileNoOp:
+				// do nothing
+			}
+		}
+
+		if len(filesToApply) == 0 {
+			continue
+		}
+
+		fmt.Fprintf(os.Stderr, "  Committing %s (%d files)...\n", repo, len(filesToApply))
+		err := p.applyToRepo(repo, filesToApply, opts)
+		for _, c := range filesToApply {
 			results = append(results, FileApplyResult{Change: c, Err: err})
-		case FileUpdate:
-			fmt.Fprintf(os.Stderr, "  Updating %s %s...\n", c.Target, c.Path)
-			err := p.updateFile(c.Target, c.Path, c.Desired, c.SHA)
-			results = append(results, FileApplyResult{Change: c, Err: err})
-		case FileDrift:
-			// warn mode: skip apply but report
-			results = append(results, FileApplyResult{Change: c, Skipped: true})
-		case FileSkip, FileNoOp:
-			// do nothing
 		}
 	}
+
 	return results
 }
 
@@ -200,25 +220,175 @@ type FileApplyResult struct {
 	Skipped bool
 }
 
-func (p *Processor) createFile(repo, path, content string) error {
+func groupChangesByTarget(changes []FileChange) map[string][]FileChange {
+	grouped := make(map[string][]FileChange)
+	for _, c := range changes {
+		grouped[c.Target] = append(grouped[c.Target], c)
+	}
+	return grouped
+}
+
+// applyToRepo creates a single commit with all file changes using Git Data API.
+func (p *Processor) applyToRepo(repo string, changes []FileChange, opts ApplyOptions) error {
+	// 1. Get current HEAD SHA
+	headSHA, defaultBranch, err := p.getHeadSHA(repo)
+	if err != nil {
+		return fmt.Errorf("get HEAD: %w", err)
+	}
+
+	// 2. Create blobs for each file
+	type treeEntry struct {
+		Path string `json:"path"`
+		Mode string `json:"mode"`
+		Type string `json:"type"`
+		SHA  string `json:"sha"`
+	}
+	var entries []treeEntry
+
+	for _, c := range changes {
+		blobSHA, err := p.createBlob(repo, c.Desired)
+		if err != nil {
+			return fmt.Errorf("create blob for %s: %w", c.Path, err)
+		}
+		entries = append(entries, treeEntry{
+			Path: c.Path,
+			Mode: "100644",
+			Type: "blob",
+			SHA:  blobSHA,
+		})
+	}
+
+	// 3. Create tree
+	treeSHA, err := p.createTree(repo, headSHA, entries)
+	if err != nil {
+		return fmt.Errorf("create tree: %w", err)
+	}
+
+	// 4. Create commit
+	message := opts.CommitMessage
+	if message == "" {
+		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetName)
+	}
+	commitSHA, err := p.createCommit(repo, message, treeSHA, headSHA)
+	if err != nil {
+		return fmt.Errorf("create commit: %w", err)
+	}
+
+	// 5. Update ref (direct to default branch)
+	if opts.Strategy == manifest.StrategyPullRequest {
+		return p.createPR(repo, defaultBranch, commitSHA, message, opts)
+	}
+	return p.updateRef(repo, defaultBranch, commitSHA)
+}
+
+func (p *Processor) getHeadSHA(repo string) (sha, branch string, err error) {
+	// Get default branch name
+	out, err := p.runner.Run("repo", "view", repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name")
+	if err != nil {
+		return "", "", err
+	}
+	branch = strings.TrimSpace(string(out))
+
+	// Get HEAD SHA
+	out, err = p.runner.Run("api", fmt.Sprintf("repos/%s/git/ref/heads/%s", repo, branch), "--jq", ".object.sha")
+	if err != nil {
+		return "", "", err
+	}
+	sha = strings.TrimSpace(string(out))
+	return sha, branch, nil
+}
+
+func (p *Processor) createBlob(repo, content string) (string, error) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	endpoint := fmt.Sprintf("repos/%s/contents/%s", repo, path)
-	_, err := p.runner.Run("api", endpoint,
-		"--method", "PUT",
-		"-f", fmt.Sprintf("message=chore: add %s via gh-infra", path),
+	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/blobs", repo),
+		"--method", "POST",
 		"-f", fmt.Sprintf("content=%s", encoded),
+		"-f", "encoding=base64",
+	)
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		SHA string `json:"sha"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", err
+	}
+	return resp.SHA, nil
+}
+
+func (p *Processor) createTree(repo, baseTree string, entries any) (string, error) {
+	entriesJSON, err := json.Marshal(entries)
+	if err != nil {
+		return "", err
+	}
+	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/trees", repo),
+		"--method", "POST",
+		"-f", fmt.Sprintf("base_tree=%s", baseTree),
+		"--raw-field", fmt.Sprintf("tree=%s", string(entriesJSON)),
+	)
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		SHA string `json:"sha"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", err
+	}
+	return resp.SHA, nil
+}
+
+func (p *Processor) createCommit(repo, message, treeSHA, parentSHA string) (string, error) {
+	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/commits", repo),
+		"--method", "POST",
+		"-f", fmt.Sprintf("message=%s", message),
+		"-f", fmt.Sprintf("tree=%s", treeSHA),
+		"-f", fmt.Sprintf("parents[]=%s", parentSHA),
+	)
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		SHA string `json:"sha"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", err
+	}
+	return resp.SHA, nil
+}
+
+func (p *Processor) updateRef(repo, branch, commitSHA string) error {
+	_, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
+		"--method", "PATCH",
+		"-f", fmt.Sprintf("sha=%s", commitSHA),
 	)
 	return err
 }
 
-func (p *Processor) updateFile(repo, path, content, sha string) error {
-	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	endpoint := fmt.Sprintf("repos/%s/contents/%s", repo, path)
-	_, err := p.runner.Run("api", endpoint,
-		"--method", "PUT",
-		"-f", fmt.Sprintf("message=chore: update %s via gh-infra", path),
-		"-f", fmt.Sprintf("content=%s", encoded),
-		"-f", fmt.Sprintf("sha=%s", sha),
+func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts ApplyOptions) error {
+	branchName := opts.Branch
+	if branchName == "" {
+		branchName = fmt.Sprintf("gh-infra/sync-%s", opts.FileSetName)
+	}
+
+	// Create branch pointing to the new commit
+	_, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/refs", repo),
+		"--method", "POST",
+		"-f", fmt.Sprintf("ref=refs/heads/%s", branchName),
+		"-f", fmt.Sprintf("sha=%s", commitSHA),
+	)
+	if err != nil {
+		return fmt.Errorf("create branch %s: %w", branchName, err)
+	}
+
+	// Create PR
+	_, err = p.runner.Run("pr", "create",
+		"--repo", repo,
+		"--base", defaultBranch,
+		"--head", branchName,
+		"--title", title,
+		"--body", fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetName),
 	)
 	return err
 }
