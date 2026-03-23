@@ -716,3 +716,88 @@ func TestResolveRulesetID_NotFound(t *testing.T) {
 		t.Errorf("expected 'not found' in error, got: %v", err)
 	}
 }
+
+func TestBuildRulesetPayload_WithResolver(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api apps/github-actions": []byte(`{"id":15368}`),
+		},
+	}
+	resolver := manifest.NewResolver(mock, "test-owner")
+
+	rs := &manifest.Ruleset{
+		Name:        "protect-main",
+		Target:      manifest.Ptr("branch"),
+		Enforcement: manifest.Ptr("active"),
+		BypassActors: []manifest.RulesetBypassActor{
+			{Role: "admin", BypassMode: "always"},
+		},
+		Rules: manifest.RulesetRules{
+			RequiredStatusChecks: &manifest.RulesetStatusChecks{
+				StrictRequiredStatusChecksPolicy: manifest.Ptr(true),
+				Contexts: []manifest.RulesetStatusCheck{
+					{Context: "ci/test", App: "github-actions"},
+				},
+			},
+		},
+	}
+
+	payload, err := buildRulesetPayload(rs, resolver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify bypass_actors resolved correctly
+	actors, ok := payload["bypass_actors"].([]map[string]any)
+	if !ok {
+		t.Fatalf("bypass_actors is %T, want []map[string]any", payload["bypass_actors"])
+	}
+	if len(actors) != 1 {
+		t.Fatalf("expected 1 bypass actor, got %d", len(actors))
+	}
+	if actors[0]["actor_id"] != 5 {
+		t.Errorf("actor_id = %v, want 5", actors[0]["actor_id"])
+	}
+	if actors[0]["actor_type"] != "RepositoryRole" {
+		t.Errorf("actor_type = %v, want RepositoryRole", actors[0]["actor_type"])
+	}
+	if actors[0]["bypass_mode"] != "always" {
+		t.Errorf("bypass_mode = %v, want always", actors[0]["bypass_mode"])
+	}
+
+	// Verify status checks resolved correctly
+	rules, ok := payload["rules"].([]map[string]any)
+	if !ok {
+		t.Fatalf("rules is %T, want []map[string]any", payload["rules"])
+	}
+
+	var scRule map[string]any
+	for _, r := range rules {
+		if r["type"] == "required_status_checks" {
+			scRule = r
+			break
+		}
+	}
+	if scRule == nil {
+		t.Fatal("required_status_checks rule not found in payload")
+	}
+
+	params, ok := scRule["parameters"].(map[string]any)
+	if !ok {
+		t.Fatalf("parameters is %T, want map[string]any", scRule["parameters"])
+	}
+
+	checks, ok := params["required_status_checks"].([]map[string]any)
+	if !ok {
+		t.Fatalf("required_status_checks is %T, want []map[string]any", params["required_status_checks"])
+	}
+	if len(checks) != 1 {
+		t.Fatalf("expected 1 status check, got %d", len(checks))
+	}
+	if checks[0]["context"] != "ci/test" {
+		t.Errorf("context = %v, want ci/test", checks[0]["context"])
+	}
+	if checks[0]["integration_id"] != 15368 {
+		t.Errorf("integration_id = %v, want 15368", checks[0]["integration_id"])
+	}
+}

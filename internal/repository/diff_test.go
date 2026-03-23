@@ -3,6 +3,7 @@ package repository
 import (
 	"testing"
 
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
@@ -1070,5 +1071,226 @@ func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 	}
 	if !fields["rules.pull_request.dismiss_stale_reviews_on_push"] {
 		t.Error("expected dismiss stale reviews change")
+	}
+}
+
+// ─── Rulesets diff WITH resolver ───
+
+func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
+	mock := &gh.MockRunner{}
+	resolver := manifest.NewResolver(mock, "org")
+
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name:        "protect-main",
+			Enforcement: manifest.Ptr("active"),
+			Target:      manifest.Ptr("branch"),
+			BypassActors: []manifest.RulesetBypassActor{
+				{Role: "admin", BypassMode: "always"},
+			},
+			Rules: manifest.RulesetRules{},
+		},
+	}
+
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		Name:        "protect-main",
+		Enforcement: "active",
+		Target:      "branch",
+		BypassActors: []CurrentRulesetBypassActor{
+			{ActorID: 5, ActorType: "RepositoryRole", BypassMode: "always"},
+		},
+	}
+
+	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+
+	for _, c := range changes {
+		if c.Field == "bypass_actors" {
+			t.Errorf("expected no bypass_actors change (admin=5), but got one")
+		}
+	}
+}
+
+func TestDiff_Rulesets_BypassActorsChanged(t *testing.T) {
+	mock := &gh.MockRunner{}
+	resolver := manifest.NewResolver(mock, "org")
+
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name:        "protect-main",
+			Enforcement: manifest.Ptr("active"),
+			Target:      manifest.Ptr("branch"),
+			BypassActors: []manifest.RulesetBypassActor{
+				{Role: "admin", BypassMode: "always"},
+			},
+			Rules: manifest.RulesetRules{},
+		},
+	}
+
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		Name:        "protect-main",
+		Enforcement: "active",
+		Target:      "branch",
+		BypassActors: []CurrentRulesetBypassActor{
+			// write=4, not admin=5 → should detect a change
+			{ActorID: 4, ActorType: "RepositoryRole", BypassMode: "always"},
+		},
+	}
+
+	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+
+	found := false
+	for _, c := range changes {
+		if c.Field == "bypass_actors" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected bypass_actors change (admin!=write), but got none")
+	}
+}
+
+func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api apps/github-actions": []byte(`{"id":15368}`),
+		},
+	}
+	resolver := manifest.NewResolver(mock, "org")
+
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name:        "protect-main",
+			Enforcement: manifest.Ptr("active"),
+			Target:      manifest.Ptr("branch"),
+			Rules: manifest.RulesetRules{
+				RequiredStatusChecks: &manifest.RulesetStatusChecks{
+					Contexts: []manifest.RulesetStatusCheck{
+						{Context: "ci/test", App: "github-actions"},
+					},
+				},
+			},
+		},
+	}
+
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		Name:        "protect-main",
+		Enforcement: "active",
+		Target:      "branch",
+		Rules: CurrentRulesetRules{
+			RequiredStatusChecks: &CurrentRulesetStatusChecks{
+				Contexts: []CurrentRulesetStatusCheck{
+					{Context: "ci/test", IntegrationID: 15368},
+				},
+			},
+		},
+	}
+
+	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+
+	for _, c := range changes {
+		if c.Field == "rules.required_status_checks.contexts" {
+			t.Error("expected no status checks change, but got one")
+		}
+	}
+}
+
+func TestDiff_Rulesets_StatusChecksNoApp(t *testing.T) {
+	mock := &gh.MockRunner{}
+	resolver := manifest.NewResolver(mock, "org")
+
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name:        "protect-main",
+			Enforcement: manifest.Ptr("active"),
+			Target:      manifest.Ptr("branch"),
+			Rules: manifest.RulesetRules{
+				RequiredStatusChecks: &manifest.RulesetStatusChecks{
+					Contexts: []manifest.RulesetStatusCheck{
+						{Context: "ci/test"},
+					},
+				},
+			},
+		},
+	}
+
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		Name:        "protect-main",
+		Enforcement: "active",
+		Target:      "branch",
+		Rules: CurrentRulesetRules{
+			RequiredStatusChecks: &CurrentRulesetStatusChecks{
+				Contexts: []CurrentRulesetStatusCheck{
+					{Context: "ci/test", IntegrationID: 0},
+				},
+			},
+		},
+	}
+
+	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+
+	for _, c := range changes {
+		if c.Field == "rules.required_status_checks.contexts" {
+			t.Error("expected no status checks change (both no app), but got one")
+		}
+	}
+}
+
+func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api apps/github-actions": []byte(`{"id":15368}`),
+		},
+	}
+	resolver := manifest.NewResolver(mock, "org")
+
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name:        "protect-main",
+			Enforcement: manifest.Ptr("active"),
+			Target:      manifest.Ptr("branch"),
+			Rules: manifest.RulesetRules{
+				RequiredStatusChecks: &manifest.RulesetStatusChecks{
+					Contexts: []manifest.RulesetStatusCheck{
+						{Context: "ci/test", App: "github-actions"},
+					},
+				},
+			},
+		},
+	}
+
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		Name:        "protect-main",
+		Enforcement: "active",
+		Target:      "branch",
+		Rules: CurrentRulesetRules{
+			RequiredStatusChecks: &CurrentRulesetStatusChecks{
+				Contexts: []CurrentRulesetStatusCheck{
+					// Different integration ID → change detected
+					{Context: "ci/test", IntegrationID: 99999},
+				},
+			},
+		},
+	}
+
+	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+
+	found := false
+	for _, c := range changes {
+		if c.Field == "rules.required_status_checks.contexts" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected status checks change (different integration ID), but got none")
 	}
 }
