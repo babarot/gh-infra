@@ -124,24 +124,24 @@ func PlanDelete(field string, value any) {
 		Red.Render("-"), field, Red.Render(fmt.Sprintf("%v", value)))
 }
 
-func PlanFileCreate(path string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s\n",
-		Green.Render("+"), path, Green.Render("(new file)"))
+func PlanFileCreate(path string, width int) {
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-*s  %s\n",
+		Green.Render("+"), width, path, Green.Render("(new file)"))
 }
 
-func PlanFileUpdate(path string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s\n",
-		Yellow.Render("~"), path, Yellow.Render("(content changed)"))
+func PlanFileUpdate(path string, width int) {
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-*s  %s\n",
+		Yellow.Render("~"), width, path, Yellow.Render("(content changed)"))
 }
 
-func PlanFileDrift(path, onDrift string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s  on_drift: %s\n",
-		Yellow.Render("⚠"), path, Yellow.Render("[drift]"), onDrift)
+func PlanFileDrift(path, onDrift string, width int) {
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-*s  %s  on_drift: %s\n",
+		Yellow.Render("⚠"), width, path, Yellow.Render("[drift]"), onDrift)
 }
 
-func PlanFileSkip(path string) {
-	fmt.Fprintf(DefaultPrinter.out, "      %s %-30s  %s  on_drift: skip\n",
-		Dim.Render("-"), path, Dim.Render("[drift]"))
+func PlanFileSkip(path string, width int) {
+	fmt.Fprintf(DefaultPrinter.out, "      %s %-*s  %s  on_drift: skip\n",
+		Dim.Render("-"), width, path, Dim.Render("[drift]"))
 }
 
 func PlanGroupEnd() {

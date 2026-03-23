@@ -538,17 +538,23 @@ func PrintPlan(changes []FileChange) {
 	}
 
 	for _, g := range groups {
+		maxPathLen := 0
+		for _, c := range g.changes {
+			if len(c.Path) > maxPathLen {
+				maxPathLen = len(c.Path)
+			}
+		}
 		ui.PlanFileSetGroup(len(g.changes), g.key.target)
 		for _, c := range g.changes {
 			switch c.Type {
 			case FileCreate:
-				ui.PlanFileCreate(c.Path)
+				ui.PlanFileCreate(c.Path, maxPathLen)
 			case FileUpdate:
-				ui.PlanFileUpdate(c.Path)
+				ui.PlanFileUpdate(c.Path, maxPathLen)
 			case FileDrift:
-				ui.PlanFileDrift(c.Path, c.OnDrift)
+				ui.PlanFileDrift(c.Path, c.OnDrift, maxPathLen)
 			case FileSkip:
-				ui.PlanFileSkip(c.Path)
+				ui.PlanFileSkip(c.Path, maxPathLen)
 			}
 		}
 		ui.PlanGroupEnd()
