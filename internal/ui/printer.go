@@ -148,7 +148,7 @@ func PlanGroupEnd() {
 	fmt.Fprintln(DefaultPrinter.out)
 }
 
-func PlanFooter(creates, updates, deletes int) {
+func PlanFooter(creates, updates, deletes, drifts int) {
 	fmt.Fprintln(DefaultPrinter.out)
 	fmt.Fprintln(DefaultPrinter.out, Dim.Render(separator))
 	fmt.Fprintln(DefaultPrinter.out)
@@ -157,6 +157,9 @@ func PlanFooter(creates, updates, deletes int) {
 		fmt.Sprintf("%s to create", Bold.Render(fmt.Sprintf("%d", creates))),
 		fmt.Sprintf("%s to update", Bold.Render(fmt.Sprintf("%d", updates))),
 		fmt.Sprintf("%s to destroy", Bold.Render(fmt.Sprintf("%d", deletes))),
+	}
+	if drifts > 0 {
+		parts = append(parts, fmt.Sprintf("%s drifted", Bold.Render(fmt.Sprintf("%d", drifts))))
 	}
 	fmt.Fprintf(DefaultPrinter.out, "Plan: %s\n", strings.Join(parts, ", "))
 	fmt.Fprintf(DefaultPrinter.out, "To apply, run: %s\n", Bold.Render("gh infra apply"))

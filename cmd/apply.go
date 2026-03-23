@@ -95,7 +95,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 
 	// Print unified plan
 	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
-	fileCreates, fileUpdates, _ := fileset.CountChanges(fileChanges)
+	fileCreates, fileUpdates, fileDrifts := fileset.CountChanges(fileChanges)
 
 	ui.PlanHeader(0, 0, 0) // top separator
 
@@ -106,7 +106,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 		fileset.PrintPlan(fileChanges)
 	}
 
-	ui.PlanFooter(repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes)
+	ui.PlanFooter(repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes, fileDrifts)
 
 	// Confirm
 	if !autoApprove {

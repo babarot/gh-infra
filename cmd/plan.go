@@ -92,7 +92,7 @@ func runPlan(path, filterRepo string, ci bool) error {
 	}
 
 	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
-	fileCreates, fileUpdates, _ := fileset.CountChanges(fileChanges)
+	fileCreates, fileUpdates, fileDrifts := fileset.CountChanges(fileChanges)
 
 	ui.PlanHeader(0, 0, 0) // top separator
 
@@ -103,7 +103,7 @@ func runPlan(path, filterRepo string, ci bool) error {
 		fileset.PrintPlan(fileChanges)
 	}
 
-	ui.PlanFooter(repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes)
+	ui.PlanFooter(repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes, fileDrifts)
 
 	if ci {
 		os.Exit(1)
