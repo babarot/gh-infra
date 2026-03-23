@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -52,21 +53,53 @@ func NewProcessor(runner gh.Runner) *Processor {
 	return &Processor{runner: runner}
 }
 
-// Plan computes changes for all FileSets.
-func (p *Processor) Plan(fileSets []*manifest.FileSet) []FileChange {
-	var changes []FileChange
+// planUnit represents one (fileSet, repository) pair to process.
+type planUnit struct {
+	fileSetName string
+	target      manifest.FileSetRepository
+	files       []manifest.FileEntry
+	onDrift     string
+}
 
+// Plan computes changes for all FileSets concurrently.
+func (p *Processor) Plan(fileSets []*manifest.FileSet) []FileChange {
+	// Build work units (order-preserving index).
+	var units []planUnit
 	for _, fs := range fileSets {
 		for _, target := range fs.Spec.Repositories {
-			ui.RefreshingFileSet(target.Name)
 			files := ResolveFiles(fs, target)
-			for _, file := range files {
-				change := p.planFile(fs.Metadata.Name, target.Name, file, fs.Spec.OnDrift)
-				changes = append(changes, change)
-			}
+			units = append(units, planUnit{
+				fileSetName: fs.Metadata.Name,
+				target:      target,
+				files:       files,
+				onDrift:     fs.Spec.OnDrift,
+			})
 		}
 	}
 
+	// Process each unit concurrently; collect results in order.
+	results := make([][]FileChange, len(units))
+	var wg sync.WaitGroup
+	wg.Add(len(units))
+	for i, u := range units {
+		go func(i int, u planUnit) {
+			defer wg.Done()
+			ui.RefreshingFileSet(u.target.Name)
+			var out []FileChange
+			for _, file := range u.files {
+				change := p.planFile(u.fileSetName, u.target.Name, file, u.onDrift)
+				out = append(out, change)
+			}
+			results[i] = out
+		}(i, u)
+	}
+	wg.Wait()
+
+	// Flatten in original order.
+	var changes []FileChange
+	for _, r := range results {
+		changes = append(changes, r...)
+	}
 	return changes
 }
 
