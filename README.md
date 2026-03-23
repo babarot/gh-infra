@@ -58,11 +58,11 @@ spec:
   topics:
     - go
     - cli
-  merge_strategy:
-    allow_squash_merge: true
-    allow_merge_commit: false
-    allow_rebase_merge: false
-    auto_delete_head_branches: true
+  features:
+    issues: true
+    projects: false
+    wiki: false
+    discussions: true
 ```
 
 ### 3. Plan and apply

@@ -54,7 +54,7 @@ This generates a complete YAML manifest reflecting the repository's current stat
 
 ### 2. Edit the YAML
 
-Open the file and change what you want. For example, enable squash merge and add topics:
+Open the file and change what you want. For example, enable discussions, disable wiki, and add topics:
 
 ```yaml
 apiVersion: gh-infra/v1
@@ -69,11 +69,11 @@ spec:
   topics:
     - go
     - cli
-  merge_strategy:
-    allow_squash_merge: true
-    allow_merge_commit: false
-    allow_rebase_merge: false
-    auto_delete_head_branches: true
+  features:
+    issues: true
+    projects: false
+    wiki: false
+    discussions: true
 ```
 
 ### 3. Preview changes
@@ -88,8 +88,8 @@ gh infra plan ./repos/
 Plan: 0 to create, 1 to update, 0 to destroy
 
   ~ babarot/my-project
-      ~ merge_strategy.allow_squash_merge: false => true
-      ~ merge_strategy.allow_merge_commit: true => false
+      ~ features.wiki: true => false
+      ~ features.discussions: false => true
       + topics: [go, cli]
 ```
 
