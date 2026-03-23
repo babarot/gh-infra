@@ -51,7 +51,7 @@ func TestToManifest(t *testing.T) {
 		},
 	}
 
-	repo := ToManifest(state)
+	repo := ToManifest(state, nil)
 
 	// APIVersion and Kind
 	if repo.APIVersion != manifest.APIVersion {
@@ -150,7 +150,7 @@ func TestToManifest_EmptyHomepage(t *testing.T) {
 		Features:   CurrentFeatures{},
 	}
 
-	repo := ToManifest(state)
+	repo := ToManifest(state, nil)
 
 	if repo.Spec.Homepage != nil {
 		t.Errorf("expected nil Homepage for empty string, got %v", repo.Spec.Homepage)
@@ -165,7 +165,7 @@ func TestToManifest_NoBranchProtection(t *testing.T) {
 		Variables:        map[string]string{},
 	}
 
-	repo := ToManifest(state)
+	repo := ToManifest(state, nil)
 
 	if len(repo.Spec.BranchProtection) != 0 {
 		t.Errorf("expected 0 branch protections, got %d", len(repo.Spec.BranchProtection))
@@ -187,7 +187,7 @@ func TestToManifest_NilStatusChecks(t *testing.T) {
 		},
 	}
 
-	repo := ToManifest(state)
+	repo := ToManifest(state, nil)
 
 	if len(repo.Spec.BranchProtection) != 1 {
 		t.Fatalf("expected 1 branch protection, got %d", len(repo.Spec.BranchProtection))
@@ -234,7 +234,7 @@ func TestToManifest_Rulesets(t *testing.T) {
 		},
 	}
 
-	repo := ToManifest(state)
+	repo := ToManifest(state, nil)
 
 	if len(repo.Spec.Rulesets) != 1 {
 		t.Fatalf("expected 1 ruleset, got %d", len(repo.Spec.Rulesets))
@@ -267,15 +267,17 @@ func TestToManifest_Rulesets(t *testing.T) {
 	if rs.Rules.RequiredStatusChecks.Contexts[0].Context != "ci/test" {
 		t.Errorf("context: got %q, want %q", rs.Rules.RequiredStatusChecks.Contexts[0].Context, "ci/test")
 	}
-	if rs.Rules.RequiredStatusChecks.Contexts[0].IntegrationID == nil || *rs.Rules.RequiredStatusChecks.Contexts[0].IntegrationID != 123 {
-		t.Errorf("integration_id: expected 123")
+	// With nil resolver, status check app is not resolved (context only)
+	if rs.Rules.RequiredStatusChecks.Contexts[0].App != "" {
+		t.Errorf("expected empty app with nil resolver, got %q", rs.Rules.RequiredStatusChecks.Contexts[0].App)
 	}
 
 	if len(rs.BypassActors) != 1 {
 		t.Fatalf("expected 1 bypass actor, got %d", len(rs.BypassActors))
 	}
-	if rs.BypassActors[0].ActorID != 5 || rs.BypassActors[0].ActorType != "RepositoryRole" {
-		t.Errorf("bypass actor: got %+v", rs.BypassActors[0])
+	// With nil resolver, RepositoryRole 5 → "admin" via RoleNameFromID fallback
+	if rs.BypassActors[0].Role != "admin" {
+		t.Errorf("bypass actor role: got %q, want %q", rs.BypassActors[0].Role, "admin")
 	}
 
 	if rs.Conditions == nil || rs.Conditions.RefName == nil {

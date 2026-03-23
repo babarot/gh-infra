@@ -10,7 +10,8 @@ import (
 
 // DiffOptions controls diff behavior.
 type DiffOptions struct {
-	ForceSecrets bool // Always re-set existing secrets
+	ForceSecrets bool              // Always re-set existing secrets
+	Resolver     *manifest.Resolver // Name resolver for rulesets (optional; nil = skip resolution)
 }
 
 // Diff compares desired state with current state and returns changes.
@@ -38,7 +39,7 @@ func Diff(desired *manifest.Repository, current *CurrentState, opts ...DiffOptio
 	changes = append(changes, diffFeatures(name, desired, current)...)
 	changes = append(changes, diffMergeStrategy(name, desired, current)...)
 	changes = append(changes, diffBranchProtection(name, desired, current)...)
-	changes = append(changes, diffRulesets(name, desired, current)...)
+	changes = append(changes, diffRulesets(name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
 
@@ -305,7 +306,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 	return changes
 }
 
-func diffRulesets(name string, desired *manifest.Repository, current *CurrentState) []Change {
+func diffRulesets(name string, desired *manifest.Repository, current *CurrentState, resolver *manifest.Resolver) []Change {
 	var changes []Change
 
 	for _, drs := range desired.Spec.Rulesets {
@@ -348,7 +349,7 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 		}
 
 		// bypass_actors
-		if !rulesetBypassActorsEqual(drs.BypassActors, crs.BypassActors) {
+		if !rulesetBypassActorsEqual(drs.BypassActors, crs.BypassActors, resolver) {
 			changes = append(changes, Change{
 				Type:     ChangeUpdate,
 				Resource: resource,
@@ -455,7 +456,7 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 						NewValue: *sc.StrictRequiredStatusChecksPolicy,
 					})
 				}
-				if !rulesetStatusChecksEqual(sc.Contexts, csc.Contexts) {
+				if !rulesetStatusChecksEqual(sc.Contexts, csc.Contexts, resolver) {
 					changes = append(changes, Change{
 						Type:     ChangeUpdate,
 						Resource: resource,
@@ -472,16 +473,38 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 	return changes
 }
 
-func rulesetBypassActorsEqual(desired []manifest.RulesetBypassActor, current []CurrentRulesetBypassActor) bool {
+func rulesetBypassActorsEqual(desired []manifest.RulesetBypassActor, current []CurrentRulesetBypassActor, resolver *manifest.Resolver) bool {
 	if len(desired) != len(current) {
 		return false
 	}
+	// Resolve desired names to IDs for comparison
 	dm := make(map[string]bool)
-	for _, a := range desired {
-		dm[fmt.Sprintf("%d:%s:%s", a.ActorID, a.ActorType, a.BypassMode)] = true
+	if resolver != nil {
+		resolved, err := resolver.ResolveBypassActors(desired)
+		if err != nil {
+			return false // resolution failure = not equal (will trigger update)
+		}
+		for _, a := range resolved {
+			dm[fmt.Sprintf("%d:%s:%s", a.ActorID, a.ActorType, a.BypassMode)] = true
+		}
 	}
 	for _, a := range current {
-		if !dm[fmt.Sprintf("%d:%s:%s", a.ActorID, a.ActorType, a.BypassMode)] {
+		// For OrganizationAdmin, ignore actor_id (GitHub returns inconsistent values)
+		if a.ActorType == "OrganizationAdmin" {
+			if !dm[fmt.Sprintf("%d:%s:%s", 1, a.ActorType, a.BypassMode)] {
+				// Try with any actor_id
+				found := false
+				for k := range dm {
+					if strings.Contains(k, ":OrganizationAdmin:"+a.BypassMode) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+			}
+		} else if !dm[fmt.Sprintf("%d:%s:%s", a.ActorID, a.ActorType, a.BypassMode)] {
 			return false
 		}
 	}
@@ -519,17 +542,19 @@ func rulesetConditionsSummary2(c *manifest.RulesetConditions) string {
 	return fmt.Sprintf("include:%v exclude:%v", c.RefName.Include, c.RefName.Exclude)
 }
 
-func rulesetStatusChecksEqual(desired []manifest.RulesetStatusCheck, current []CurrentRulesetStatusCheck) bool {
+func rulesetStatusChecksEqual(desired []manifest.RulesetStatusCheck, current []CurrentRulesetStatusCheck, resolver *manifest.Resolver) bool {
 	if len(desired) != len(current) {
 		return false
 	}
 	dm := make(map[string]bool)
-	for _, c := range desired {
-		id := 0
-		if c.IntegrationID != nil {
-			id = *c.IntegrationID
+	if resolver != nil {
+		resolved, err := resolver.ResolveStatusChecks(desired)
+		if err != nil {
+			return false
 		}
-		dm[fmt.Sprintf("%s:%d", c.Context, id)] = true
+		for _, c := range resolved {
+			dm[fmt.Sprintf("%s:%d", c.Context, c.IntegrationID)] = true
+		}
 	}
 	for _, c := range current {
 		if !dm[fmt.Sprintf("%s:%d", c.Context, c.IntegrationID)] {

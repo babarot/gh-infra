@@ -76,10 +76,34 @@ func (r *Repository) Validate() error {
 				return fmt.Errorf("%s: %w", r.Metadata.Name, err)
 			}
 		}
-		for _, ba := range rs.BypassActors {
-			if err := validateOneOf("rulesets.bypass_actors.actor_type", ba.ActorType,
-				"RepositoryRole", "Team", "Integration", "OrganizationAdmin"); err != nil {
-				return fmt.Errorf("%s: %w", r.Metadata.Name, err)
+		for i, ba := range rs.BypassActors {
+			// Exactly one actor type must be specified
+			count := 0
+			if ba.Role != "" {
+				count++
+			}
+			if ba.Team != "" {
+				count++
+			}
+			if ba.App != "" {
+				count++
+			}
+			if ba.OrgAdmin != nil {
+				count++
+			}
+			if ba.CustomRole != "" {
+				count++
+			}
+			if count == 0 {
+				return fmt.Errorf("%s: rulesets[%s].bypass_actors[%d] must specify one of: role, team, app, org-admin, or custom-role", r.Metadata.Name, rs.Name, i)
+			}
+			if count > 1 {
+				return fmt.Errorf("%s: rulesets[%s].bypass_actors[%d] must specify exactly one of: role, team, app, org-admin, or custom-role", r.Metadata.Name, rs.Name, i)
+			}
+			if ba.Role != "" {
+				if err := validateOneOf("rulesets.bypass_actors.role", ba.Role, "admin", "write", "maintain"); err != nil {
+					return fmt.Errorf("%s: %w", r.Metadata.Name, err)
+				}
 			}
 			if err := validateOneOf("rulesets.bypass_actors.bypass_mode", ba.BypassMode,
 				"always", "pull_request"); err != nil {

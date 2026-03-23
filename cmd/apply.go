@@ -57,6 +57,13 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 
 	runner := gh.NewRunner(false)
 
+	// Determine owner for resolver (use first repo's owner)
+	var resolverOwner string
+	if len(parsed.Repositories) > 0 {
+		resolverOwner = parsed.Repositories[0].Metadata.Owner
+	}
+	resolver := manifest.NewResolver(runner, resolverOwner)
+
 	p.Phase(fmt.Sprintf("Reading desired state from %s ...", path))
 	p.Phase("Fetching current state from GitHub API ...")
 	fmt.Fprintln(p.ErrWriter())
@@ -70,7 +77,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 
 	if len(parsed.Repositories) > 0 {
 		fetcher := repository.NewFetcher(runner)
-		diffOpts := repository.DiffOptions{ForceSecrets: forceSecrets}
+		diffOpts := repository.DiffOptions{ForceSecrets: forceSecrets, Resolver: resolver}
 		g.Go(func() error {
 			var fetchErr error
 			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, diffOpts)
@@ -140,7 +147,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 
 	// Apply repo changes
 	if hasRepo {
-		executor := repository.NewExecutor(runner)
+		executor := repository.NewExecutor(runner, resolver)
 		results := executor.Apply(repoChanges, targetRepos)
 		repository.PrintApplyResults(p, results)
 		s, f := repository.CountApplyResults(results)

@@ -16,11 +16,12 @@ import (
 
 // Executor applies planned changes to GitHub.
 type Executor struct {
-	runner gh.Runner
+	runner   gh.Runner
+	resolver *manifest.Resolver
 }
 
-func NewExecutor(runner gh.Runner) *Executor {
-	return &Executor{runner: runner}
+func NewExecutor(runner gh.Runner, resolver *manifest.Resolver) *Executor {
+	return &Executor{runner: runner, resolver: resolver}
 }
 
 const defaultApplyParallel = 5
@@ -458,7 +459,10 @@ func (e *Executor) applyRuleset(c Change, repo *manifest.Repository) error {
 		return fmt.Errorf("ruleset %q not found in desired state", rulesetName)
 	}
 
-	payload := buildRulesetPayload(rs)
+	payload, err := buildRulesetPayload(rs, e.resolver)
+	if err != nil {
+		return err
+	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal ruleset payload: %w", err)
@@ -527,7 +531,7 @@ func (e *Executor) resolveRulesetID(owner, name, rulesetName, target string) (in
 	}
 }
 
-func buildRulesetPayload(rs *manifest.Ruleset) map[string]any {
+func buildRulesetPayload(rs *manifest.Ruleset, resolver *manifest.Resolver) (map[string]any, error) {
 	target := "branch"
 	if rs.Target != nil {
 		target = *rs.Target
@@ -543,10 +547,14 @@ func buildRulesetPayload(rs *manifest.Ruleset) map[string]any {
 		"enforcement": enforcement,
 	}
 
-	// bypass_actors
-	if len(rs.BypassActors) > 0 {
-		actors := make([]map[string]any, len(rs.BypassActors))
-		for i, a := range rs.BypassActors {
+	// bypass_actors (resolve names → IDs)
+	if len(rs.BypassActors) > 0 && resolver != nil {
+		resolved, err := resolver.ResolveBypassActors(rs.BypassActors)
+		if err != nil {
+			return nil, fmt.Errorf("resolve bypass actors: %w", err)
+		}
+		actors := make([]map[string]any, len(resolved))
+		for i, a := range resolved {
 			actors[i] = map[string]any{
 				"actor_id":    a.ActorID,
 				"actor_type":  a.ActorType,
@@ -596,13 +604,17 @@ func buildRulesetPayload(rs *manifest.Ruleset) map[string]any {
 		rules = append(rules, map[string]any{"type": "pull_request", "parameters": params})
 	}
 
-	if rs.Rules.RequiredStatusChecks != nil {
+	if rs.Rules.RequiredStatusChecks != nil && resolver != nil {
 		sc := rs.Rules.RequiredStatusChecks
-		checks := make([]map[string]any, len(sc.Contexts))
-		for i, ctx := range sc.Contexts {
-			check := map[string]any{"context": ctx.Context}
-			if ctx.IntegrationID != nil {
-				check["integration_id"] = *ctx.IntegrationID
+		resolvedChecks, err := resolver.ResolveStatusChecks(sc.Contexts)
+		if err != nil {
+			return nil, fmt.Errorf("resolve status checks: %w", err)
+		}
+		checks := make([]map[string]any, len(resolvedChecks))
+		for i, rc := range resolvedChecks {
+			check := map[string]any{"context": rc.Context}
+			if rc.IntegrationID != 0 {
+				check["integration_id"] = rc.IntegrationID
 			}
 			checks[i] = check
 		}
@@ -628,7 +640,7 @@ func buildRulesetPayload(rs *manifest.Ruleset) map[string]any {
 	}
 
 	payload["rules"] = rules
-	return payload
+	return payload, nil
 }
 
 func (e *Executor) applySecret(c Change, repo *manifest.Repository) error {

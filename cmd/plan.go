@@ -54,6 +54,12 @@ func runPlan(path, filterRepo string, ci bool) error {
 
 	runner := gh.NewRunner(false)
 
+	var resolverOwner string
+	if len(parsed.Repositories) > 0 {
+		resolverOwner = parsed.Repositories[0].Metadata.Owner
+	}
+	resolver := manifest.NewResolver(runner, resolverOwner)
+
 	p.Phase(fmt.Sprintf("Reading desired state from %s ...", path))
 	p.Phase("Fetching current state from GitHub API ...")
 	fmt.Fprintln(p.ErrWriter())
@@ -68,7 +74,8 @@ func runPlan(path, filterRepo string, ci bool) error {
 		fetcher := repository.NewFetcher(runner)
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p)
+			diffOpts := repository.DiffOptions{Resolver: resolver}
+			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, diffOpts)
 			return fetchErr
 		})
 	}

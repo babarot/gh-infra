@@ -20,7 +20,7 @@ func newTestRepo(owner, name string) *manifest.Repository {
 
 func TestApplyRepoDescription(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -53,7 +53,7 @@ func TestApplyRepoDescription(t *testing.T) {
 
 func TestApplyHomepage(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -79,7 +79,7 @@ func TestApplyHomepage(t *testing.T) {
 
 func TestApplyVisibility(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -109,7 +109,7 @@ func TestApplyTopics(t *testing.T) {
 			"repo view myorg/myrepo --json repositoryTopics --jq .repositoryTopics[].name": []byte("old-topic\nkeep-topic\n"),
 		},
 	}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Topics = []string{"keep-topic", "new-topic"}
@@ -158,7 +158,7 @@ func TestApplyTopics(t *testing.T) {
 
 func TestApplyFeatureToggle(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -193,7 +193,7 @@ func TestApplyWithErrNotFound(t *testing.T) {
 			"repo edit myorg/myrepo --description new desc": notFoundErr,
 		},
 	}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -227,7 +227,7 @@ func TestApplyWithErrForbidden(t *testing.T) {
 			"repo edit myorg/myrepo --description new desc": forbiddenErr,
 		},
 	}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -252,7 +252,7 @@ func TestApplyWithErrForbidden(t *testing.T) {
 
 func TestApplyVariableSet(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Variables = []manifest.Variable{
@@ -282,7 +282,7 @@ func TestApplyVariableSet(t *testing.T) {
 
 func TestApplySecretSet(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Secrets = []manifest.Secret{
@@ -312,7 +312,7 @@ func TestApplySecretSet(t *testing.T) {
 
 func TestApplySkipsNoOp(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -335,7 +335,7 @@ func TestApplySkipsNoOp(t *testing.T) {
 
 func TestApplyBranchProtection(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	reviews := 2
 	enforceAdmins := true
@@ -466,7 +466,7 @@ func TestBuildBranchProtectionPayload_NilReviews(t *testing.T) {
 
 func TestUpdateRepoField(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	err := exec.updateRepoField("myorg/myrepo", "merge_commit_title", "PR_TITLE")
 	if err != nil {
@@ -506,7 +506,7 @@ func boolPtr(b bool) *bool { return &b }
 
 func TestApplyRuleset_Create(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Rulesets = []manifest.Ruleset{
@@ -566,7 +566,7 @@ func TestApplyRuleset_Update(t *testing.T) {
 			"api repos/myorg/myrepo/rulesets": []byte(listResp),
 		},
 	}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Rulesets = []manifest.Ruleset{
@@ -617,7 +617,7 @@ func TestBuildRulesetPayload(t *testing.T) {
 		Target:      manifest.Ptr("branch"),
 		Enforcement: manifest.Ptr("active"),
 		BypassActors: []manifest.RulesetBypassActor{
-			{ActorID: 5, ActorType: "RepositoryRole", BypassMode: "always"},
+			{Role: "admin", BypassMode: "always"},
 		},
 		Conditions: &manifest.RulesetConditions{
 			RefName: &manifest.RulesetRefCondition{
@@ -632,7 +632,7 @@ func TestBuildRulesetPayload(t *testing.T) {
 			RequiredStatusChecks: &manifest.RulesetStatusChecks{
 				StrictRequiredStatusChecksPolicy: manifest.Ptr(true),
 				Contexts: []manifest.RulesetStatusCheck{
-					{Context: "ci/test", IntegrationID: manifest.Ptr(123)},
+					{Context: "ci/test"},
 				},
 			},
 			NonFastForward:     manifest.Ptr(true),
@@ -642,7 +642,13 @@ func TestBuildRulesetPayload(t *testing.T) {
 		},
 	}
 
-	payload := buildRulesetPayload(rs)
+	// Use a mock resolver that resolves "admin" → 5
+	mockRunner := &gh.MockRunner{}
+	resolver := manifest.NewResolver(mockRunner, "test-owner")
+	payload, err := buildRulesetPayload(rs, resolver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if payload["name"] != "protect-main" {
 		t.Errorf("name: got %v, want %q", payload["name"], "protect-main")
@@ -682,7 +688,7 @@ func TestResolveRulesetID_Ambiguous(t *testing.T) {
 			"api repos/o/r/rulesets": []byte(listResp),
 		},
 	}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	_, err := exec.resolveRulesetID("o", "r", "dup", "branch")
 	if err == nil {
@@ -700,7 +706,7 @@ func TestResolveRulesetID_NotFound(t *testing.T) {
 			"api repos/o/r/rulesets": []byte(listResp),
 		},
 	}
-	exec := NewExecutor(mock)
+	exec := NewExecutor(mock, nil)
 
 	_, err := exec.resolveRulesetID("o", "r", "missing", "branch")
 	if err == nil {

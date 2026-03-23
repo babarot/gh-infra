@@ -144,9 +144,12 @@ type Ruleset struct {
 }
 
 type RulesetBypassActor struct {
-	ActorID    int    `yaml:"actor_id"`
-	ActorType  string `yaml:"actor_type"`  // RepositoryRole, Team, Integration, OrganizationAdmin
-	BypassMode string `yaml:"bypass_mode"` // always, pull_request
+	Role       string `yaml:"role,omitempty"`        // admin, write, maintain
+	Team       string `yaml:"team,omitempty"`        // team slug
+	App        string `yaml:"app,omitempty"`         // GitHub App slug
+	OrgAdmin   *bool  `yaml:"org-admin,omitempty"`   // true = OrganizationAdmin
+	CustomRole string `yaml:"custom-role,omitempty"` // Enterprise Cloud custom role name
+	BypassMode string `yaml:"bypass_mode"`
 }
 
 type RulesetConditions struct {
@@ -182,8 +185,8 @@ type RulesetStatusChecks struct {
 }
 
 type RulesetStatusCheck struct {
-	Context       string `yaml:"context"`
-	IntegrationID *int   `yaml:"integration_id,omitempty"`
+	Context string `yaml:"context"`
+	App     string `yaml:"app,omitempty"` // GitHub App slug (optional)
 }
 
 type Secret struct {

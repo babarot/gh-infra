@@ -377,22 +377,44 @@ func TestValidateRulesets(t *testing.T) {
 			wantErr: "must be one of",
 		},
 		{
-			name: "invalid actor_type",
+			name: "no actor type specified",
 			setup: func(r *Repository) {
 				r.Spec.Rulesets = []Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
-						{ActorType: "Invalid", BypassMode: "always"},
+						{BypassMode: "always"},
 					}},
 				}
 			},
-			wantErr: "actor_type",
+			wantErr: "must specify one of",
+		},
+		{
+			name: "multiple actor types specified",
+			setup: func(r *Repository) {
+				r.Spec.Rulesets = []Ruleset{
+					{Name: "rs", BypassActors: []RulesetBypassActor{
+						{Role: "admin", Team: "maintainers", BypassMode: "always"},
+					}},
+				}
+			},
+			wantErr: "exactly one",
+		},
+		{
+			name: "invalid role",
+			setup: func(r *Repository) {
+				r.Spec.Rulesets = []Ruleset{
+					{Name: "rs", BypassActors: []RulesetBypassActor{
+						{Role: "invalid", BypassMode: "always"},
+					}},
+				}
+			},
+			wantErr: "must be one of",
 		},
 		{
 			name: "invalid bypass_mode",
 			setup: func(r *Repository) {
 				r.Spec.Rulesets = []Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
-						{ActorType: "Team", BypassMode: "invalid"},
+						{Role: "admin", BypassMode: "invalid"},
 					}},
 				}
 			},

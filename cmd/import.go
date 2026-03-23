@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 	goyaml "github.com/goccy/go-yaml"
@@ -55,15 +56,16 @@ func runImport(args []string) error {
 
 	runner := gh.NewRunner(false)
 	fetcher := repository.NewFetcher(runner)
+	resolver := manifest.NewResolver(runner, targets[0].owner)
 
 	if len(targets) == 1 {
-		return importSingleRepo(p, targets[0].owner, targets[0].name, fetcher)
+		return importSingleRepo(p, targets[0].owner, targets[0].name, fetcher, resolver)
 	}
 
-	return importMultipleRepos(p, targets, fetcher)
+	return importMultipleRepos(p, targets, fetcher, resolver)
 }
 
-func importSingleRepo(p ui.Printer, owner, name string, fetcher *repository.Fetcher) error {
+func importSingleRepo(p ui.Printer, owner, name string, fetcher *repository.Fetcher, resolver *manifest.Resolver) error {
 	p.Phase("Importing 1 repository from GitHub API ...")
 	fmt.Fprintln(p.ErrWriter())
 
@@ -72,7 +74,7 @@ func importSingleRepo(p ui.Printer, owner, name string, fetcher *repository.Fetc
 		return err
 	}
 
-	m := repository.ToManifest(current)
+	m := repository.ToManifest(current, resolver)
 	data, err := goyaml.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal yaml: %w", err)
@@ -85,7 +87,7 @@ func importSingleRepo(p ui.Printer, owner, name string, fetcher *repository.Fetc
 
 const defaultImportParallel = 5
 
-func importMultipleRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetcher) error {
+func importMultipleRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetcher, resolver *manifest.Resolver) error {
 	label := "repositories"
 	p.Phase(fmt.Sprintf("Importing %d %s from GitHub API ...", len(targets), label))
 	fmt.Fprintln(p.ErrWriter())
@@ -120,7 +122,7 @@ func importMultipleRepos(p ui.Printer, targets []importTarget, fetcher *reposito
 				tracker.Error(fullName, err)
 				return
 			}
-			m := repository.ToManifest(current)
+			m := repository.ToManifest(current, resolver)
 			data, err := goyaml.Marshal(m)
 			results[idx] = importResult{data: data, err: err}
 			if err != nil {

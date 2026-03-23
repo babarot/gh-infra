@@ -5,7 +5,8 @@ import (
 )
 
 // ToManifest converts current state to a manifest Repository for export (import command).
-func ToManifest(r *CurrentState) *manifest.Repository {
+// If resolver is provided, numeric IDs are reverse-resolved to human-readable names.
+func ToManifest(r *CurrentState, resolver *manifest.Resolver) *manifest.Repository {
 	repo := &manifest.Repository{
 		APIVersion: manifest.APIVersion,
 		Kind:       manifest.KindRepository,
@@ -74,11 +75,15 @@ func ToManifest(r *CurrentState) *manifest.Repository {
 			},
 		}
 		for _, ba := range rs.BypassActors {
-			mrs.BypassActors = append(mrs.BypassActors, manifest.RulesetBypassActor{
-				ActorID:    ba.ActorID,
-				ActorType:  ba.ActorType,
-				BypassMode: ba.BypassMode,
-			})
+			if resolver != nil {
+				mrs.BypassActors = append(mrs.BypassActors, resolver.ReverseBypassActor(ba.ActorID, ba.ActorType, ba.BypassMode, r.Name))
+			} else {
+				// Fallback: use role name for known IDs, raw format otherwise
+				mrs.BypassActors = append(mrs.BypassActors, manifest.RulesetBypassActor{
+					Role:       manifest.RoleNameFromID(ba.ActorID, ba.ActorType),
+					BypassMode: ba.BypassMode,
+				})
+			}
 		}
 		if rs.Conditions != nil && rs.Conditions.RefName != nil {
 			mrs.Conditions = &manifest.RulesetConditions{
@@ -102,11 +107,11 @@ func ToManifest(r *CurrentState) *manifest.Repository {
 				StrictRequiredStatusChecksPolicy: manifest.Ptr(rs.Rules.RequiredStatusChecks.StrictRequiredStatusChecksPolicy),
 			}
 			for _, c := range rs.Rules.RequiredStatusChecks.Contexts {
-				check := manifest.RulesetStatusCheck{Context: c.Context}
-				if c.IntegrationID != 0 {
-					check.IntegrationID = manifest.Ptr(c.IntegrationID)
+				if resolver != nil {
+					sc.Contexts = append(sc.Contexts, resolver.ReverseStatusCheck(c.Context, c.IntegrationID, r.Name))
+				} else {
+					sc.Contexts = append(sc.Contexts, manifest.RulesetStatusCheck{Context: c.Context})
 				}
-				sc.Contexts = append(sc.Contexts, check)
 			}
 			mrs.Rules.RequiredStatusChecks = sc
 		}
