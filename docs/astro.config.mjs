@@ -17,13 +17,7 @@ export default defineConfig({
       pagination: false,
       customCss: ['./src/styles/custom.css'],
       sidebar: [
-        {
-          label: 'Introduction',
-          items: [
-            { label: 'Why gh-infra', slug: 'why' },
-            { label: 'Getting Started', slug: 'getting-started' },
-          ],
-        },
+        { label: 'Introduction', autogenerate: { directory: 'introduction' } },
         {
           label: 'YAML DSL Reference',
           items: [

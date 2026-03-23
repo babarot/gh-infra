@@ -53,4 +53,4 @@ gh-infra takes a different path:
 - **Organizations** that need to distribute shared files (LICENSE, CODEOWNERS, CI workflows) across many repos
 - Anyone who thinks "I just want to change a repo setting in code" shouldn't require a state backend
 
-Ready to try it? Head to [Getting Started](/getting-started/).
+Ready to try it? Head to [Getting Started](/introduction/getting-started/).
