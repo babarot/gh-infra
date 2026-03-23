@@ -85,6 +85,31 @@ func Importing(name string) {
 	fmt.Fprintf(DefaultPrinter.err, "Importing %s ...\n", name)
 }
 
+func ImportStart(count int) {
+	label := "repository"
+	if count != 1 {
+		label = "repositories"
+	}
+	fmt.Fprintf(DefaultPrinter.err, "Importing %d %s from GitHub API ...\n\n", count, label)
+}
+
+func ImportOutputStart() {
+	fmt.Fprintln(DefaultPrinter.out)
+	fmt.Fprintln(DefaultPrinter.out, Dim.Render(separator))
+	fmt.Fprintln(DefaultPrinter.out)
+}
+
+func ImportSummary(succeeded, failed int) {
+	fmt.Fprintln(DefaultPrinter.out)
+	fmt.Fprintln(DefaultPrinter.out, Dim.Render(separator))
+	fmt.Fprintln(DefaultPrinter.out)
+	fmt.Fprintf(DefaultPrinter.out, "Import complete! %s exported", Bold.Render(fmt.Sprintf("%d", succeeded)))
+	if failed > 0 {
+		fmt.Fprintf(DefaultPrinter.out, ", %s failed", Bold.Render(fmt.Sprintf("%d", failed)))
+	}
+	fmt.Fprintln(DefaultPrinter.out, ".")
+}
+
 func SkipImportError(name string, err error) {
 	fmt.Fprintf(DefaultPrinter.err, "  %s skipping %s: %v\n", Yellow.Render("⚠"), name, err)
 }

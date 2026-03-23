@@ -2,14 +2,12 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/babarot/gh-infra/internal/gh"
-	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 	goyaml "github.com/goccy/go-yaml"
@@ -19,37 +17,53 @@ import (
 
 func newImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "import <owner/repo | owner/>",
+		Use:   "import <owner/repo> [owner/repo ...]",
 		Short: "Export existing repository settings as YAML",
-		Long:  "Fetch current GitHub repository settings and output them as gh-infra YAML.",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Fetch current GitHub repository settings and output them as gh-infra YAML.\nMultiple repositories can be specified to import them in parallel.",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runImport(args[0])
+			return runImport(args)
 		},
 	}
 	return cmd
 }
 
-func runImport(target string) error {
+type importTarget struct {
+	owner string
+	name  string
+}
+
+func parseImportTargets(args []string) ([]importTarget, error) {
+	var targets []importTarget
+	for _, arg := range args {
+		parts := strings.SplitN(arg, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return nil, fmt.Errorf("invalid target: %q (expected owner/repo)", arg)
+		}
+		targets = append(targets, importTarget{owner: parts[0], name: parts[1]})
+	}
+	return targets, nil
+}
+
+func runImport(args []string) error {
+	targets, err := parseImportTargets(args)
+	if err != nil {
+		return err
+	}
+
 	runner := gh.NewRunner(false)
 	fetcher := repository.NewFetcher(runner)
 
-	parts := strings.SplitN(target, "/", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid target: %q (expected owner/repo or owner/)", target)
+	if len(targets) == 1 {
+		return importSingleRepo(targets[0].owner, targets[0].name, fetcher)
 	}
 
-	owner := parts[0]
-	name := parts[1]
-
-	if name == "" {
-		return importAllRepos(owner, runner, fetcher)
-	}
-
-	return importSingleRepo(owner, name, fetcher)
+	return importMultipleRepos(targets, fetcher)
 }
 
 func importSingleRepo(owner, name string, fetcher *repository.Fetcher) error {
+	ui.ImportStart(1)
+
 	current, err := fetcher.FetchRepository(owner, name)
 	if err != nil {
 		return err
@@ -61,33 +75,20 @@ func importSingleRepo(owner, name string, fetcher *repository.Fetcher) error {
 		return fmt.Errorf("marshal yaml: %w", err)
 	}
 
+	ui.ImportOutputStart()
 	fmt.Fprint(os.Stdout, string(data))
 	return nil
 }
 
 const defaultImportParallel = 5
 
-func importAllRepos(owner string, runner gh.Runner, fetcher *repository.Fetcher) error {
-	out, err := runner.Run("repo", "list", owner, "--json", "name", "--limit", manifest.DefaultMaxRepoList)
-	if err != nil {
-		return fmt.Errorf("list repos for %s: %w", owner, err)
-	}
-
-	var repos []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(out, &repos); err != nil {
-		return fmt.Errorf("parse repo list: %w", err)
-	}
-
-	if len(repos) == 0 {
-		return nil
-	}
+func importMultipleRepos(targets []importTarget, fetcher *repository.Fetcher) error {
+	ui.ImportStart(len(targets))
 
 	// Start spinner display
-	names := make([]string, len(repos))
-	for i, r := range repos {
-		names[i] = owner + "/" + r.Name
+	names := make([]string, len(targets))
+	for i, t := range targets {
+		names[i] = t.owner + "/" + t.name
 	}
 	tracker := ui.RunRefresh(names)
 
@@ -96,13 +97,13 @@ func importAllRepos(owner string, runner gh.Runner, fetcher *repository.Fetcher)
 		data []byte
 		err  error
 	}
-	results := make([]importResult, len(repos))
+	results := make([]importResult, len(targets))
 	sem := semaphore.NewWeighted(defaultImportParallel)
 	var wg sync.WaitGroup
 
-	for i, r := range repos {
+	for i, t := range targets {
 		wg.Add(1)
-		go func(idx int, name string) {
+		go func(idx int, owner, name string) {
 			defer wg.Done()
 			_ = sem.Acquire(context.Background(), 1)
 			defer sem.Release(1)
@@ -122,17 +123,29 @@ func importAllRepos(owner string, runner gh.Runner, fetcher *repository.Fetcher)
 			} else {
 				tracker.Done(fullName)
 			}
-		}(i, r.Name)
+		}(i, t.owner, t.name)
 	}
 
 	wg.Wait()
 	tracker.Wait()
 
-	// Output in order
-	first := true
-	for i, r := range results {
+	// Count results
+	succeeded := 0
+	failed := 0
+	for _, r := range results {
 		if r.err != nil {
-			ui.SkipImportError(owner+"/"+repos[i].Name, r.err)
+			failed++
+		} else {
+			succeeded++
+		}
+	}
+
+	ui.ImportOutputStart()
+
+	// Output YAML in order
+	first := true
+	for _, r := range results {
+		if r.err != nil {
 			continue
 		}
 		if !first {
@@ -141,5 +154,17 @@ func importAllRepos(owner string, runner gh.Runner, fetcher *repository.Fetcher)
 		fmt.Fprint(os.Stdout, string(r.data))
 		first = false
 	}
+
+	// Print errors and summary
+	if failed > 0 {
+		fmt.Fprintln(os.Stdout)
+		for i, r := range results {
+			if r.err != nil {
+				ui.SkipImportError(names[i], r.err)
+			}
+		}
+	}
+
+	ui.ImportSummary(succeeded, failed)
 	return nil
 }
