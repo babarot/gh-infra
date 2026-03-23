@@ -42,7 +42,7 @@ func newRefreshModel(names []string) refreshModel {
 	items := make([]refreshItem, len(names))
 	for i, name := range names {
 		s := spinner.New(
-			spinner.WithSpinner(spinner.Dot),
+			spinner.WithSpinner(spinner.Jump),
 			spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))),
 		)
 		items[i] = refreshItem{

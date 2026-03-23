@@ -1,5 +1,7 @@
 ---
 title: Branch Protection (Classic)
+sidebar:
+  order: 2
 ---
 
 :::caution
@@ -47,14 +49,6 @@ Multiple patterns can be defined. Each entry creates a separate branch protectio
 | `allow_force_pushes` | bool | Allow force pushes to matching branches |
 | `allow_deletions` | bool | Allow deleting matching branches |
 
-## When to Use Classic vs Rulesets
+## Classic vs Rulesets
 
-Use **classic `branch_protection`** when:
-- Your GitHub plan or GHES version does not support rulesets
-- You have existing classic rules and don't need to migrate yet
-
-Use **[`rulesets`](../rulesets/)** when:
-- You want `evaluate` mode to dry-run rules before enforcing
-- You need bypass controls per role, team, or GitHub App
-- You want to protect tags (not just branches)
-- You want stacking (multiple rulesets applied to the same branch)
+See [Rulesets vs Classic Branch Protection](../rulesets/#rulesets-vs-classic-branch-protection) for a detailed comparison and migration guidance.

@@ -1,5 +1,7 @@
 ---
 title: Repository Lifecycle
+sidebar:
+  order: 5
 ---
 
 ## Creating repositories

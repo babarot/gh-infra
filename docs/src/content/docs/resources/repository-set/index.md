@@ -5,12 +5,9 @@ sidebar:
   order: 0
 ---
 
-`RepositorySet` manages **multiple** repositories with shared defaults. Use this when you have many repos with identical settings and want to avoid repeating the same configuration in every file.
+`RepositorySet` manages **multiple** repositories with shared defaults. Use this when you have many repos with identical settings and want to avoid repeating the same configuration in every file. Each repository in the set inherits from `defaults` and can override any value.
 
-Each repository in the set inherits from `defaults` and can override any value.
-
-## Example
-
+:::tip[Example]
 ```yaml
 apiVersion: gh-infra/v1
 kind: RepositorySet
@@ -43,6 +40,7 @@ repositories:
       description: "The AI-native RSS reader"
       topics: [rss, self-hosted, ai, typescript]
 ```
+:::
 
 ## When to Use RepositorySet
 

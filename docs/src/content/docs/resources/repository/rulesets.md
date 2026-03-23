@@ -1,5 +1,7 @@
 ---
 title: Rulesets
+sidebar:
+  order: 3
 ---
 
 Configure [GitHub repository rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) — the modern replacement for classic branch protection rules, with richer controls and enforcement modes.

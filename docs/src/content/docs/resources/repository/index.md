@@ -7,20 +7,7 @@ sidebar:
 
 `Repository` manages a **single** GitHub repository — its description, visibility, topics, features, merge strategy, branch protection rules, rulesets, secrets, and variables.
 
-## When to Use
-
-Use `Repository` when you want to manage one repo's settings in a dedicated YAML file. This is the simplest resource kind and the starting point for most users.
-
-It works best when:
-
-- **Each repo has its own distinct settings** — different branch protection rules, different topics, different merge strategies.
-- **You want per-repo change tracking** — each file maps to one repo, so `git blame` tells you exactly who changed what and when.
-- **You're managing a small number of repos** — for 1–5 repos, separate files are easy to maintain.
-
-If you find yourself copying the same settings across many files, consider [RepositorySet](../../repository-set/) instead.
-
-## Example
-
+:::tip[Example]
 ```yaml
 apiVersion: gh-infra/v1
 kind: Repository
@@ -42,13 +29,6 @@ spec:
     allow_squash_merge: true
     auto_delete_head_branches: true
 
-  branch_protection:
-    - pattern: main
-      required_reviews: 1
-      require_status_checks:
-        strict: true
-        contexts: ["ci / test"]
-
   rulesets:
     - name: protect-main
       enforcement: active
@@ -68,3 +48,17 @@ spec:
     - name: APP_ENV
       value: production
 ```
+:::
+
+## When to Use
+
+Use `Repository` when you want to manage one repo's settings in a dedicated YAML file. This is the simplest resource kind and the starting point for most users.
+
+It works best when:
+
+- **Each repo has its own distinct settings** — different branch protection rules, different topics, different merge strategies.
+- **You want per-repo change tracking** — each file maps to one repo, so `git blame` tells you exactly who changed what and when.
+- **You're managing a small number of repos** — for 1–5 repos, separate files are easy to maintain.
+
+If you find yourself copying the same settings across many files, consider [RepositorySet](../../repository-set/) instead.
+

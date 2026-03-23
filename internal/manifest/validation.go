@@ -45,10 +45,15 @@ func (r *Repository) Validate() error {
 			}
 		}
 	}
+	bpPatterns := make(map[string]bool)
 	for _, bp := range r.Spec.BranchProtection {
 		if bp.Pattern == "" {
 			return fmt.Errorf("%s: branch_protection.pattern is required", r.Metadata.Name)
 		}
+		if bpPatterns[bp.Pattern] {
+			return fmt.Errorf("%s: duplicate branch_protection pattern %q", r.Metadata.Name, bp.Pattern)
+		}
+		bpPatterns[bp.Pattern] = true
 	}
 	rulesetNames := make(map[string]bool)
 	for _, rs := range r.Spec.Rulesets {
@@ -87,15 +92,25 @@ func (r *Repository) Validate() error {
 			}
 		}
 	}
+	secretNames := make(map[string]bool)
 	for _, s := range r.Spec.Secrets {
 		if s.Name == "" {
 			return fmt.Errorf("%s: secrets[].name is required", r.Metadata.Name)
 		}
+		if secretNames[s.Name] {
+			return fmt.Errorf("%s: duplicate secret name %q", r.Metadata.Name, s.Name)
+		}
+		secretNames[s.Name] = true
 	}
+	variableNames := make(map[string]bool)
 	for _, v := range r.Spec.Variables {
 		if v.Name == "" {
 			return fmt.Errorf("%s: variables[].name is required", r.Metadata.Name)
 		}
+		if variableNames[v.Name] {
+			return fmt.Errorf("%s: duplicate variable name %q", r.Metadata.Name, v.Name)
+		}
+		variableNames[v.Name] = true
 	}
 	return nil
 }
@@ -129,6 +144,19 @@ func (fs *FileSet) Validate() error {
 		if f.Path == "" {
 			return fmt.Errorf("FileSet %q: files[%d].path is required", fs.Metadata.Name, i)
 		}
+		if f.Content != "" && f.Source != "" {
+			return fmt.Errorf("FileSet %q: files[%d] (%s) cannot have both content and source", fs.Metadata.Name, i, f.Path)
+		}
+	}
+	repoNames := make(map[string]bool)
+	for _, r := range fs.Spec.Repositories {
+		if r.Name == "" {
+			return fmt.Errorf("FileSet %q: repositories[].name is required", fs.Metadata.Name)
+		}
+		if repoNames[r.Name] {
+			return fmt.Errorf("FileSet %q: duplicate repository %q", fs.Metadata.Name, r.Name)
+		}
+		repoNames[r.Name] = true
 	}
 	return nil
 }
