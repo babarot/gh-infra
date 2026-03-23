@@ -139,6 +139,40 @@ func (r *Repository) Validate() error {
 	return nil
 }
 
+// Validate checks that the File has valid field values.
+func (f *File) Validate() error {
+	if f.Metadata.Name == "" {
+		return fmt.Errorf("File metadata.name is required")
+	}
+	if f.Metadata.Owner == "" {
+		return fmt.Errorf("File metadata.owner is required for %q", f.Metadata.Name)
+	}
+	if len(f.Spec.Files) == 0 {
+		return fmt.Errorf("File %q: spec.files is required", f.Metadata.FullName())
+	}
+	if f.Spec.OnDrift != "" {
+		if err := validateOneOf("on_drift", f.Spec.OnDrift,
+			OnDriftWarn, OnDriftOverwrite, OnDriftSkip); err != nil {
+			return fmt.Errorf("File %q: %w", f.Metadata.FullName(), err)
+		}
+	}
+	if f.Spec.Strategy != "" {
+		if err := validateOneOf("strategy", f.Spec.Strategy,
+			StrategyDirect, StrategyPullRequest); err != nil {
+			return fmt.Errorf("File %q: %w", f.Metadata.FullName(), err)
+		}
+	}
+	for i, fe := range f.Spec.Files {
+		if fe.Path == "" {
+			return fmt.Errorf("File %q: files[%d].path is required", f.Metadata.FullName(), i)
+		}
+		if fe.Content != "" && fe.Source != "" {
+			return fmt.Errorf("File %q: files[%d] (%s) cannot have both content and source", f.Metadata.FullName(), i, fe.Path)
+		}
+	}
+	return nil
+}
+
 // Validate checks that the FileSet has valid field values.
 func (fs *FileSet) Validate() error {
 	if fs.Metadata.Owner == "" {

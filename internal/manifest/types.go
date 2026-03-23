@@ -7,6 +7,7 @@ const (
 	// Kind constants for YAML document routing.
 	KindRepository    = "Repository"
 	KindRepositorySet = "RepositorySet"
+	KindFile          = "File"
 	KindFileSet       = "FileSet"
 
 	// Visibility values for repository visibility.
@@ -219,6 +220,32 @@ type RepositorySetDefaults struct {
 type RepositorySetEntry struct {
 	Name string         `yaml:"name"`
 	Spec RepositorySpec `yaml:"spec"`
+}
+
+// File represents files to manage in a single repository.
+// At parse time, File is expanded into a FileSet with one repository entry.
+type File struct {
+	APIVersion string       `yaml:"apiVersion"`
+	Kind       string       `yaml:"kind"`
+	Metadata   FileMetadata `yaml:"metadata"`
+	Spec       FileSpec     `yaml:"spec"`
+}
+
+type FileMetadata struct {
+	Name  string `yaml:"name"`
+	Owner string `yaml:"owner"`
+}
+
+func (m FileMetadata) FullName() string {
+	return m.Owner + "/" + m.Name
+}
+
+type FileSpec struct {
+	Files         []FileEntry `yaml:"files"`
+	OnDrift       string      `yaml:"on_drift,omitempty"`
+	CommitMessage string      `yaml:"commit_message,omitempty"`
+	Strategy      string      `yaml:"strategy,omitempty"`
+	Branch        string      `yaml:"branch,omitempty"`
 }
 
 // FileSet represents a set of files to distribute to target repositories.

@@ -87,6 +87,12 @@ func parseFileAll(path string) (*ParseResult, error) {
 			return nil, err
 		}
 		result.Repositories = repos
+	case KindFile:
+		fs, err := parseFile(data, path)
+		if err != nil {
+			return nil, err
+		}
+		result.FileSets = []*FileSet{fs}
 	case KindFileSet:
 		fs, err := parseFileSet(data, path)
 		if err != nil {
@@ -134,6 +140,46 @@ func parseRepositorySet(data []byte, path string) ([]*Repository, error) {
 		repos = append(repos, repo)
 	}
 	return repos, nil
+}
+
+func parseFile(data []byte, path string) (*FileSet, error) {
+	var f File
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return nil, fmt.Errorf("parse File in %s: %w", path, err)
+	}
+
+	if err := f.Validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	// Expand File into a FileSet with a single repository entry.
+	fs := &FileSet{
+		APIVersion: f.APIVersion,
+		Kind:       KindFileSet,
+		Metadata:   FileSetMetadata{Owner: f.Metadata.Owner},
+		Spec: FileSetSpec{
+			Repositories:  []FileSetRepository{{Name: f.Metadata.Name}},
+			Files:         f.Spec.Files,
+			OnDrift:       f.Spec.OnDrift,
+			CommitMessage: f.Spec.CommitMessage,
+			Strategy:      f.Spec.Strategy,
+			Branch:        f.Spec.Branch,
+		},
+	}
+
+	if err := fs.Validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	// Resolve source references (local files, directories, GitHub URLs)
+	resolver := DefaultResolver
+	resolved, err := resolver.ResolveFiles(fs.Spec.Files, filepath.Dir(path))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	fs.Spec.Files = resolved
+
+	return fs, nil
 }
 
 func parseFileSet(data []byte, path string) (*FileSet, error) {

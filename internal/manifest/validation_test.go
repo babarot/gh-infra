@@ -215,6 +215,102 @@ func TestValidateRepository(t *testing.T) {
 	}
 }
 
+func TestValidateFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		f       *File
+		wantErr string
+	}{
+		{
+			name: "valid file",
+			f: &File{
+				Metadata: FileMetadata{Name: "repo", Owner: "org"},
+				Spec: FileSpec{
+					Files:   []FileEntry{{Path: "LICENSE", Content: "MIT"}},
+					OnDrift: "overwrite",
+				},
+			},
+		},
+		{
+			name: "missing name",
+			f: &File{
+				Metadata: FileMetadata{Owner: "org"},
+				Spec: FileSpec{
+					Files: []FileEntry{{Path: "LICENSE"}},
+				},
+			},
+			wantErr: "metadata.name is required",
+		},
+		{
+			name: "missing owner",
+			f: &File{
+				Metadata: FileMetadata{Name: "repo"},
+				Spec: FileSpec{
+					Files: []FileEntry{{Path: "LICENSE"}},
+				},
+			},
+			wantErr: "metadata.owner is required",
+		},
+		{
+			name: "missing files",
+			f: &File{
+				Metadata: FileMetadata{Name: "repo", Owner: "org"},
+				Spec:     FileSpec{},
+			},
+			wantErr: "spec.files is required",
+		},
+		{
+			name: "invalid on_drift",
+			f: &File{
+				Metadata: FileMetadata{Name: "repo", Owner: "org"},
+				Spec: FileSpec{
+					Files:   []FileEntry{{Path: "LICENSE"}},
+					OnDrift: "delete",
+				},
+			},
+			wantErr: "invalid on_drift",
+		},
+		{
+			name: "empty file path fails",
+			f: &File{
+				Metadata: FileMetadata{Name: "repo", Owner: "org"},
+				Spec: FileSpec{
+					Files: []FileEntry{{Path: ""}},
+				},
+			},
+			wantErr: "files[0].path is required",
+		},
+		{
+			name: "content and source both set",
+			f: &File{
+				Metadata: FileMetadata{Name: "repo", Owner: "org"},
+				Spec: FileSpec{
+					Files: []FileEntry{{Path: "f.txt", Content: "x", Source: "y"}},
+				},
+			},
+			wantErr: "cannot have both content and source",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.f.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateFileSet(t *testing.T) {
 	tests := []struct {
 		name    string

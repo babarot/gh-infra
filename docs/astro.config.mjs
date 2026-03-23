@@ -26,6 +26,7 @@ export default defineConfig({
             'resources/overview',
             { label: 'Repository', autogenerate: { directory: 'resources/repository' } },
             { label: 'RepositorySet', autogenerate: { directory: 'resources/repository-set' } },
+            { label: 'File', autogenerate: { directory: 'resources/file' } },
             { label: 'FileSet', autogenerate: { directory: 'resources/fileset' } },
           ],
         },

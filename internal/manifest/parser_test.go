@@ -752,6 +752,174 @@ spec:
 	}
 }
 
+func TestParseFile_Valid(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: File
+metadata:
+  owner: org
+  name: my-repo
+spec:
+  files:
+    - path: .github/CODEOWNERS
+      content: "* @org/team"
+    - path: LICENSE
+      content: "MIT"
+  on_drift: overwrite
+  strategy: direct
+`
+	path := filepath.Join(dir, "file.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if len(result.FileSets) != 1 {
+		t.Fatalf("expected 1 fileset (expanded from File), got %d", len(result.FileSets))
+	}
+
+	fs := result.FileSets[0]
+	if fs.Metadata.Owner != "org" {
+		t.Errorf("owner = %q, want %q", fs.Metadata.Owner, "org")
+	}
+	if len(fs.Spec.Repositories) != 1 {
+		t.Fatalf("expected 1 repository, got %d", len(fs.Spec.Repositories))
+	}
+	if fs.Spec.Repositories[0].Name != "my-repo" {
+		t.Errorf("repo name = %q, want %q", fs.Spec.Repositories[0].Name, "my-repo")
+	}
+	if len(fs.Spec.Files) != 2 {
+		t.Fatalf("files count = %d, want 2", len(fs.Spec.Files))
+	}
+	if fs.Spec.OnDrift != "overwrite" {
+		t.Errorf("on_drift = %q, want %q", fs.Spec.OnDrift, "overwrite")
+	}
+	if fs.Spec.Strategy != "direct" {
+		t.Errorf("strategy = %q, want %q", fs.Spec.Strategy, "direct")
+	}
+}
+
+func TestParseFile_DefaultOnDrift(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: File
+metadata:
+  owner: org
+  name: repo
+spec:
+  files:
+    - path: file.txt
+      content: hello
+`
+	path := filepath.Join(dir, "file.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if result.FileSets[0].Spec.OnDrift != "warn" {
+		t.Errorf("default on_drift = %q, want %q", result.FileSets[0].Spec.OnDrift, "warn")
+	}
+}
+
+func TestParseFile_MissingOwner(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: File
+metadata:
+  name: repo
+spec:
+  files:
+    - path: file.txt
+      content: hello
+`
+	path := filepath.Join(dir, "file.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ParseAll(path)
+	if err == nil {
+		t.Fatal("expected error for missing owner, got nil")
+	}
+	if !contains(err.Error(), "metadata.owner is required") {
+		t.Errorf("error = %q, want it to contain 'metadata.owner is required'", err.Error())
+	}
+}
+
+func TestParseFile_MissingName(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: File
+metadata:
+  owner: org
+spec:
+  files:
+    - path: file.txt
+      content: hello
+`
+	path := filepath.Join(dir, "file.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ParseAll(path)
+	if err == nil {
+		t.Fatal("expected error for missing name, got nil")
+	}
+	if !contains(err.Error(), "metadata.name is required") {
+		t.Errorf("error = %q, want it to contain 'metadata.name is required'", err.Error())
+	}
+}
+
+func TestParseFile_SourceFile(t *testing.T) {
+	dir := t.TempDir()
+
+	sourceContent := "source file content"
+	if err := os.WriteFile(filepath.Join(dir, "tmpl.txt"), []byte(sourceContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	yamlContent := `
+apiVersion: v1
+kind: File
+metadata:
+  owner: org
+  name: repo
+spec:
+  files:
+    - path: .github/tmpl.txt
+      source: tmpl.txt
+`
+	path := filepath.Join(dir, "file.yaml")
+	if err := os.WriteFile(path, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+
+	fs := result.FileSets[0]
+	if fs.Spec.Files[0].Content != sourceContent {
+		t.Errorf("content = %q, want %q", fs.Spec.Files[0].Content, sourceContent)
+	}
+	if fs.Spec.Files[0].Source != "" {
+		t.Errorf("source should be cleared after resolution, got %q", fs.Spec.Files[0].Source)
+	}
+}
+
 func TestMergeMergeStrategy_MergeCommitTitleMessage(t *testing.T) {
 	base := &MergeStrategy{
 		MergeCommitTitle:   Ptr("MERGE_MESSAGE"),
