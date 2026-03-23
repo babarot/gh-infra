@@ -38,10 +38,10 @@ func contentsKey(repo, path string) string {
 	return fmt.Sprintf("api repos/%s/contents/%s", repo, path)
 }
 
-func makeFileSet(name, repo, onDrift string, files []manifest.FileEntry) []*manifest.FileSet {
+func makeFileSet(owner, repo, onDrift string, files []manifest.FileEntry) []*manifest.FileSet {
 	return []*manifest.FileSet{
 		{
-			Metadata: manifest.FileSetMetadata{Name: name},
+			Metadata: manifest.FileSetMetadata{Owner: owner},
 			Spec: manifest.FileSetSpec{
 				Repositories: []manifest.FileSetRepository{{Name: repo}},
 				Files:        files,
@@ -63,7 +63,7 @@ func TestPlan_NewFile(t *testing.T) {
 		},
 	}
 	p := NewProcessor(mock)
-	fileSets := makeFileSet("ci-files", "owner/repo", "warn", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
@@ -88,7 +88,7 @@ func TestPlan_NoChange(t *testing.T) {
 		Errors: map[string]error{},
 	}
 	p := NewProcessor(mock)
-	fileSets := makeFileSet("ci-files", "owner/repo", "warn", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
@@ -110,7 +110,7 @@ func TestPlan_DriftWarn(t *testing.T) {
 		Errors: map[string]error{},
 	}
 	p := NewProcessor(mock)
-	fileSets := makeFileSet("ci-files", "owner/repo", "warn", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 
@@ -139,7 +139,7 @@ func TestPlan_DriftOverwrite(t *testing.T) {
 		Errors: map[string]error{},
 	}
 	p := NewProcessor(mock)
-	fileSets := makeFileSet("ci-files", "owner/repo", "overwrite", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", "overwrite", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 
@@ -165,7 +165,7 @@ func TestPlan_DriftSkip(t *testing.T) {
 		Errors: map[string]error{},
 	}
 	p := NewProcessor(mock)
-	fileSets := makeFileSet("ci-files", "owner/repo", "skip", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", "skip", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 

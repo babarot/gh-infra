@@ -37,7 +37,7 @@ func runValidate(path string) error {
 		p.Message("  - Repository: " + r.Metadata.FullName())
 	}
 	for _, fs := range parsed.FileSets {
-		p.Message(fmt.Sprintf("  - FileSet: %s (%d files → %d repositories)", fs.Metadata.Name, len(fs.Spec.Files), len(fs.Spec.Repositories)))
+		p.Message(fmt.Sprintf("  - FileSet: %s (%d files → %d repositories)", fs.Metadata.Owner, len(fs.Spec.Files), len(fs.Spec.Repositories)))
 	}
 	return nil
 }

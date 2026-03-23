@@ -162,7 +162,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 		for _, fs := range parsed.FileSets {
 			var fsChanges []fileset.FileChange
 			for _, c := range fileChanges {
-				if c.FileSet == fs.Metadata.Name {
+				if c.FileSet == fs.Metadata.Owner {
 					fsChanges = append(fsChanges, c)
 				}
 			}
@@ -173,7 +173,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 				CommitMessage: fs.Spec.CommitMessage,
 				Strategy:      fs.Spec.Strategy,
 				Branch:        fs.Spec.Branch,
-				FileSetName:   fs.Metadata.Name,
+				FileSetName:   fs.Metadata.Owner,
 			}
 			results := processor.Apply(fsChanges, opts)
 			fileset.PrintApplyResults(p, results)

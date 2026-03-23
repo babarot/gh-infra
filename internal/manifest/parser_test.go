@@ -472,11 +472,11 @@ func TestParseFileSet_Valid(t *testing.T) {
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: ci-configs
+  owner: org
 spec:
   repositories:
-    - org/repo-a
-    - name: org/repo-b
+    - repo-a
+    - name: repo-b
       overrides:
         - path: .github/ci.yml
           content: "custom ci"
@@ -501,17 +501,17 @@ spec:
 	}
 
 	fs := result.FileSets[0]
-	if fs.Metadata.Name != "ci-configs" {
-		t.Errorf("name = %q, want %q", fs.Metadata.Name, "ci-configs")
+	if fs.Metadata.Owner != "org" {
+		t.Errorf("owner = %q, want %q", fs.Metadata.Owner, "org")
 	}
 	if len(fs.Spec.Repositories) != 2 {
 		t.Fatalf("targets count = %d, want 2", len(fs.Spec.Repositories))
 	}
-	if fs.Spec.Repositories[0].Name != "org/repo-a" {
-		t.Errorf("targets[0].name = %q, want %q", fs.Spec.Repositories[0].Name, "org/repo-a")
+	if fs.Spec.Repositories[0].Name != "repo-a" {
+		t.Errorf("targets[0].name = %q, want %q", fs.Spec.Repositories[0].Name, "repo-a")
 	}
-	if fs.Spec.Repositories[1].Name != "org/repo-b" {
-		t.Errorf("targets[1].name = %q, want %q", fs.Spec.Repositories[1].Name, "org/repo-b")
+	if fs.Spec.Repositories[1].Name != "repo-b" {
+		t.Errorf("targets[1].name = %q, want %q", fs.Spec.Repositories[1].Name, "repo-b")
 	}
 	if len(fs.Spec.Repositories[1].Overrides) != 1 {
 		t.Fatalf("targets[1].overrides count = %d, want 1", len(fs.Spec.Repositories[1].Overrides))
@@ -533,10 +533,10 @@ func TestParseFileSet_DefaultOnDrift(t *testing.T) {
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: test
+  owner: org
 spec:
   repositories:
-    - org/repo
+    - repo
   files:
     - path: file.txt
       content: hello
@@ -568,10 +568,10 @@ func TestParseFileSet_SourceFile(t *testing.T) {
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: templates
+  owner: org
 spec:
   repositories:
-    - org/repo
+    - repo
   files:
     - path: .github/template.txt
       source: template.txt
@@ -595,16 +595,16 @@ spec:
 	}
 }
 
-func TestParseFileSet_MissingName(t *testing.T) {
+func TestParseFileSet_MissingOwner(t *testing.T) {
 	dir := t.TempDir()
 	content := `
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: ""
+  owner: ""
 spec:
   repositories:
-    - org/repo
+    - repo
   files:
     - path: file.txt
       content: hello
@@ -616,10 +616,10 @@ spec:
 
 	_, err := ParseAll(path)
 	if err == nil {
-		t.Fatal("expected error for missing name, got nil")
+		t.Fatal("expected error for missing owner, got nil")
 	}
-	if !contains(err.Error(), "metadata.name is required") {
-		t.Errorf("error = %q, want it to contain 'metadata.name is required'", err.Error())
+	if !contains(err.Error(), "metadata.owner is required") {
+		t.Errorf("error = %q, want it to contain 'metadata.owner is required'", err.Error())
 	}
 }
 
@@ -629,7 +629,7 @@ func TestParseFileSet_MissingTargets(t *testing.T) {
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: test
+  owner: org
 spec:
   files:
     - path: file.txt
@@ -655,10 +655,10 @@ func TestParseFileSet_MissingFiles(t *testing.T) {
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: test
+  owner: org
 spec:
   repositories:
-    - org/repo
+    - repo
 `
 	path := filepath.Join(dir, "fs.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -680,10 +680,10 @@ func TestParseFileSet_InvalidOnDrift(t *testing.T) {
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: test
+  owner: org
 spec:
   repositories:
-    - org/repo
+    - repo
   files:
     - path: file.txt
       content: hello
@@ -719,10 +719,10 @@ spec:
 apiVersion: v1
 kind: FileSet
 metadata:
-  name: shared-files
+  owner: org
 spec:
   repositories:
-    - org/my-repo
+    - my-repo
   files:
     - path: .editorconfig
       content: "root = true"
@@ -747,8 +747,8 @@ spec:
 	if result.Repositories[0].Metadata.Name != "my-repo" {
 		t.Errorf("repo name = %q, want %q", result.Repositories[0].Metadata.Name, "my-repo")
 	}
-	if result.FileSets[0].Metadata.Name != "shared-files" {
-		t.Errorf("fileset name = %q, want %q", result.FileSets[0].Metadata.Name, "shared-files")
+	if result.FileSets[0].Metadata.Owner != "org" {
+		t.Errorf("fileset owner = %q, want %q", result.FileSets[0].Metadata.Owner, "org")
 	}
 }
 

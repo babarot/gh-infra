@@ -15,7 +15,7 @@ func TestResolveFiles_NoOverrides(t *testing.T) {
 			},
 		},
 	}
-	target := manifest.FileSetRepository{Name: "owner/repo"}
+	target := manifest.FileSetRepository{Name: "repo"}
 
 	result := ResolveFiles(fs, target)
 

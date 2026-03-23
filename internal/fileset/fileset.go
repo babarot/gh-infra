@@ -25,7 +25,7 @@ type FileState struct {
 
 // FileChange represents a planned change for a file.
 type FileChange struct {
-	FileSet string // FileSet name
+	FileSet string // FileSet owner
 	Target  string // owner/repo
 	Path    string
 	Type    ChangeType
@@ -61,6 +61,12 @@ type planUnit struct {
 	target      manifest.FileSetRepository
 	files       []manifest.FileEntry
 	onDrift     string
+	owner       string
+}
+
+// fullName returns the full "owner/repo" name for this unit's target.
+func (u planUnit) fullName() string {
+	return u.owner + "/" + u.target.Name
 }
 
 // Plan computes changes for all FileSets concurrently.
@@ -71,10 +77,11 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet) ([]FileChange, error) {
 		for _, target := range fs.Spec.Repositories {
 			files := ResolveFiles(fs, target)
 			units = append(units, planUnit{
-				fileSetName: fs.Metadata.Name,
+				fileSetName: fs.Metadata.Owner,
 				target:      target,
 				files:       files,
 				onDrift:     fs.Spec.OnDrift,
+				owner:       fs.Metadata.Owner,
 			})
 		}
 	}
@@ -82,7 +89,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet) ([]FileChange, error) {
 	// Start spinner display for all targets.
 	names := make([]string, len(units))
 	for i, u := range units {
-		names[i] = u.target.Name
+		names[i] = u.fullName()
 	}
 	tracker := ui.RunRefresh(names)
 
@@ -97,24 +104,25 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet) ([]FileChange, error) {
 	for i, u := range units {
 		go func(i int, u planUnit) {
 			defer wg.Done()
+			fullName := u.fullName()
 			var out []FileChange
 			for _, file := range u.files {
 				// Template rendering (deep copy vars to avoid data races)
 				if HasTemplate(file.Content, file.Vars) {
 					varsCopy := copyVars(file.Vars)
-					rendered, err := RenderTemplate(file.Content, u.target.Name, varsCopy)
+					rendered, err := RenderTemplate(file.Content, fullName, varsCopy)
 					if err != nil {
-						results[i] = unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, u.target.Name, err)}
-						tracker.Error(u.target.Name, err)
+						results[i] = unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
+						tracker.Error(fullName, err)
 						return
 					}
 					file.Content = rendered
 				}
-				change := p.planFile(u.fileSetName, u.target.Name, file, u.onDrift)
+				change := p.planFile(u.fileSetName, fullName, file, u.onDrift)
 				out = append(out, change)
 			}
 			results[i] = unitResult{changes: out}
-			tracker.Done(u.target.Name)
+			tracker.Done(fullName)
 		}(i, u)
 	}
 	wg.Wait()

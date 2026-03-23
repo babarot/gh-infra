@@ -20,12 +20,16 @@ All resources share the same top-level structure:
 apiVersion: gh-infra/v1
 kind: <Repository | RepositorySet | FileSet>
 metadata:
-  name: <resource-name>
+  # Repository: name + owner
+  # RepositorySet, FileSet: owner
   owner: <github-owner>
 
 spec:
   # Resource-specific fields
 ```
+
+- **Repository** uses `metadata.name` (repo name) and `metadata.owner` (GitHub owner) to identify a single repo.
+- **RepositorySet** and **FileSet** use `metadata.owner` to scope all entries to one owner. Individual repositories are listed in the body.
 
 ## File Organization
 

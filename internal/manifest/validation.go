@@ -141,44 +141,44 @@ func (r *Repository) Validate() error {
 
 // Validate checks that the FileSet has valid field values.
 func (fs *FileSet) Validate() error {
-	if fs.Metadata.Name == "" {
-		return fmt.Errorf("FileSet metadata.name is required")
+	if fs.Metadata.Owner == "" {
+		return fmt.Errorf("FileSet metadata.owner is required")
 	}
 	if len(fs.Spec.Repositories) == 0 {
-		return fmt.Errorf("FileSet %q: spec.repositories is required", fs.Metadata.Name)
+		return fmt.Errorf("FileSet %q: spec.repositories is required", fs.Metadata.Owner)
 	}
 	if len(fs.Spec.Files) == 0 {
-		return fmt.Errorf("FileSet %q: spec.files is required", fs.Metadata.Name)
+		return fmt.Errorf("FileSet %q: spec.files is required", fs.Metadata.Owner)
 	}
 	if fs.Spec.OnDrift == "" {
 		fs.Spec.OnDrift = OnDriftWarn
 	}
 	if err := validateOneOf("on_drift", fs.Spec.OnDrift,
 		OnDriftWarn, OnDriftOverwrite, OnDriftSkip); err != nil {
-		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Name, err)
+		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Owner, err)
 	}
 	if fs.Spec.Strategy == "" {
 		fs.Spec.Strategy = StrategyDirect
 	}
 	if err := validateOneOf("strategy", fs.Spec.Strategy,
 		StrategyDirect, StrategyPullRequest); err != nil {
-		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Name, err)
+		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Owner, err)
 	}
 	for i, f := range fs.Spec.Files {
 		if f.Path == "" {
-			return fmt.Errorf("FileSet %q: files[%d].path is required", fs.Metadata.Name, i)
+			return fmt.Errorf("FileSet %q: files[%d].path is required", fs.Metadata.Owner, i)
 		}
 		if f.Content != "" && f.Source != "" {
-			return fmt.Errorf("FileSet %q: files[%d] (%s) cannot have both content and source", fs.Metadata.Name, i, f.Path)
+			return fmt.Errorf("FileSet %q: files[%d] (%s) cannot have both content and source", fs.Metadata.Owner, i, f.Path)
 		}
 	}
 	repoNames := make(map[string]bool)
 	for _, r := range fs.Spec.Repositories {
 		if r.Name == "" {
-			return fmt.Errorf("FileSet %q: repositories[].name is required", fs.Metadata.Name)
+			return fmt.Errorf("FileSet %q: repositories[].name is required", fs.Metadata.Owner)
 		}
 		if repoNames[r.Name] {
-			return fmt.Errorf("FileSet %q: duplicate repository %q", fs.Metadata.Name, r.Name)
+			return fmt.Errorf("FileSet %q: duplicate repository %q", fs.Metadata.Owner, r.Name)
 		}
 		repoNames[r.Name] = true
 	}

@@ -114,8 +114,8 @@ Overrides can define their own `vars` for specific repos. If an override doesn't
 
 ```yaml
 repositories:
-  - babarot/gomi
-  - name: babarot/special-repo
+  - gomi
+  - name: special-repo
     overrides:
       - path: Makefile
         vars:

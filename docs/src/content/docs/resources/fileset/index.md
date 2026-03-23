@@ -12,13 +12,13 @@ sidebar:
 apiVersion: gh-infra/v1
 kind: FileSet
 metadata:
-  name: common-files
+  owner: babarot
 
 spec:
   repositories:
-    - babarot/gomi
-    - babarot/enhancd
-    - name: babarot/gh-infra
+    - gomi
+    - enhancd
+    - name: gh-infra
       overrides:
         - path: .github/CODEOWNERS
           content: |

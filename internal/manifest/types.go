@@ -230,7 +230,7 @@ type FileSet struct {
 }
 
 type FileSetMetadata struct {
-	Name string `yaml:"name"`
+	Owner string `yaml:"owner"`
 }
 
 type FileSetSpec struct {
@@ -242,7 +242,7 @@ type FileSetSpec struct {
 	Branch        string              `yaml:"branch,omitempty"`         // branch name for pull_request strategy
 }
 
-// FileSetRepository can be a simple string "owner/repo" or a struct with overrides.
+// FileSetRepository can be a simple string "repo" or a struct with overrides.
 type FileSetRepository struct {
 	Name      string      `yaml:"name"`
 	Overrides []FileEntry `yaml:"overrides,omitempty"`
@@ -262,6 +262,11 @@ func (t *FileSetRepository) UnmarshalYAML(unmarshal func(any) error) error {
 	}
 	*t = FileSetRepository(r)
 	return nil
+}
+
+// RepoFullName returns the full "owner/repo" name for a repository entry.
+func (fs *FileSet) RepoFullName(repoName string) string {
+	return fs.Metadata.Owner + "/" + repoName
 }
 
 type FileEntry struct {

@@ -7,13 +7,13 @@ import (
 )
 
 func TestFileSetRepository_UnmarshalYAML_String(t *testing.T) {
-	input := `"owner/repo"`
+	input := `"my-repo"`
 	var target FileSetRepository
 	if err := yaml.Unmarshal([]byte(input), &target); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if target.Name != "owner/repo" {
-		t.Errorf("Name = %q, want %q", target.Name, "owner/repo")
+	if target.Name != "my-repo" {
+		t.Errorf("Name = %q, want %q", target.Name, "my-repo")
 	}
 	if len(target.Overrides) != 0 {
 		t.Errorf("expected no overrides, got %d", len(target.Overrides))
@@ -22,7 +22,7 @@ func TestFileSetRepository_UnmarshalYAML_String(t *testing.T) {
 
 func TestFileSetRepository_UnmarshalYAML_Struct(t *testing.T) {
 	input := `
-name: owner/repo
+name: my-repo
 overrides:
   - path: .github/ci.yml
     content: "custom content"
@@ -31,8 +31,8 @@ overrides:
 	if err := yaml.Unmarshal([]byte(input), &target); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if target.Name != "owner/repo" {
-		t.Errorf("Name = %q, want %q", target.Name, "owner/repo")
+	if target.Name != "my-repo" {
+		t.Errorf("Name = %q, want %q", target.Name, "my-repo")
 	}
 	if len(target.Overrides) != 1 {
 		t.Fatalf("expected 1 override, got %d", len(target.Overrides))
