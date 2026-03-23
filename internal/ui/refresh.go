@@ -5,8 +5,10 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -18,25 +20,122 @@ const (
 	taskError
 )
 
-// Braille spinner frames
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
 type refreshItem struct {
-	name   string
-	status taskStatus
-	errMsg string
+	name    string
+	status  taskStatus
+	errMsg  string
+	spinner spinner.Model
+}
+
+type refreshModel struct {
+	items     []refreshItem
+	remaining int
+}
+
+type taskDoneMsg struct{ name string }
+type taskErrorMsg struct {
+	name string
+	err  error
+}
+
+func newRefreshModel(names []string) refreshModel {
+	items := make([]refreshItem, len(names))
+	for i, name := range names {
+		s := spinner.New(
+			spinner.WithSpinner(spinner.Dot),
+			spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))),
+		)
+		items[i] = refreshItem{
+			name:    name,
+			status:  taskRunning,
+			spinner: s,
+		}
+	}
+	return refreshModel{
+		items:     items,
+		remaining: len(names),
+	}
+}
+
+func (m refreshModel) Init() tea.Cmd {
+	cmds := make([]tea.Cmd, len(m.items))
+	for i := range m.items {
+		cmds[i] = m.items[i].spinner.Tick
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case taskDoneMsg:
+		for i := range m.items {
+			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+				m.items[i].status = taskDone
+				m.remaining--
+				break
+			}
+		}
+		if m.remaining <= 0 {
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case taskErrorMsg:
+		for i := range m.items {
+			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+				m.items[i].status = taskError
+				m.items[i].errMsg = msg.err.Error()
+				m.remaining--
+				break
+			}
+		}
+		if m.remaining <= 0 {
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m, nil
+
+	default:
+		var cmds []tea.Cmd
+		for i := range m.items {
+			if m.items[i].status == taskRunning {
+				var cmd tea.Cmd
+				m.items[i].spinner, cmd = m.items[i].spinner.Update(msg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+		}
+		return m, tea.Batch(cmds...)
+	}
+}
+
+func (m refreshModel) View() tea.View {
+	var b strings.Builder
+	for _, item := range m.items {
+		switch item.status {
+		case taskDone:
+			fmt.Fprintf(&b, "  %s %s\n", Green.Render("✓"), item.name)
+		case taskError:
+			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render("✗"), Bold.Render(item.name), item.errMsg)
+		case taskRunning:
+			fmt.Fprintf(&b, "  %s %s...\n", item.spinner.View(), item.name)
+		}
+	}
+	return tea.NewView(b.String())
 }
 
 // RefreshTracker tracks parallel task progress with spinners or plain text.
 type RefreshTracker struct {
-	mu       sync.Mutex
-	items    []refreshItem
-	out      *os.File
-	done     chan struct{}
+	program  *tea.Program
 	fallback bool
-	frame    int
-	stopTick chan struct{}
-	closeOnce sync.Once
+	done     chan struct{}
+	mu       sync.Mutex
 }
 
 // RunRefresh starts a spinner display for the given task names.
@@ -54,91 +153,23 @@ func RunRefresh(names []string) *RefreshTracker {
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
-	items := make([]refreshItem, len(names))
-	for i, name := range names {
-		items[i] = refreshItem{name: name, status: taskRunning}
+	model := newRefreshModel(names)
+	p := tea.NewProgram(
+		model,
+		tea.WithOutput(os.Stderr),
+	)
+
+	tracker := &RefreshTracker{
+		program: p,
+		done:    make(chan struct{}),
 	}
 
-	t := &RefreshTracker{
-		items:    items,
-		out:      f,
-		done:     make(chan struct{}),
-		stopTick: make(chan struct{}),
-	}
+	go func() {
+		defer close(tracker.done)
+		_, _ = p.Run()
+	}()
 
-	// Print initial lines
-	t.render()
-
-	// Start ticker for spinner animation
-	go t.tick()
-
-	return t
-}
-
-func (t *RefreshTracker) tick() {
-	ticker := time.NewTicker(80 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			t.mu.Lock()
-			t.frame++
-			t.mu.Unlock()
-			t.redraw()
-		case <-t.stopTick:
-			return
-		}
-	}
-}
-
-func (t *RefreshTracker) render() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	fmt.Fprint(t.out, t.view())
-}
-
-func (t *RefreshTracker) redraw() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	// Check if any are still running
-	anyRunning := false
-	for _, item := range t.items {
-		if item.status == taskRunning {
-			anyRunning = true
-			break
-		}
-	}
-
-	// Move cursor up N lines and clear each line
-	n := len(t.items)
-	fmt.Fprintf(t.out, "\x1b[%dA", n) // move up
-	fmt.Fprint(t.out, t.view())
-
-	if !anyRunning {
-		t.closeOnce.Do(func() {
-			close(t.stopTick)
-			close(t.done)
-		})
-	}
-}
-
-func (t *RefreshTracker) view() string {
-	var b strings.Builder
-	frame := spinnerFrames[t.frame%len(spinnerFrames)]
-	for _, item := range t.items {
-		// Clear line
-		b.WriteString("\x1b[2K")
-		switch item.status {
-		case taskDone:
-			fmt.Fprintf(&b, "  %s %s\n", Green.Render("✓"), item.name)
-		case taskError:
-			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render("✗"), Bold.Render(item.name), item.errMsg)
-		case taskRunning:
-			fmt.Fprintf(&b, "  %s %s...\n", Cyan.Render(frame), item.name)
-		}
-	}
-	return b.String()
+	return tracker
 }
 
 // Done marks a task as successfully completed.
@@ -147,14 +178,10 @@ func (t *RefreshTracker) Done(name string) {
 		return
 	}
 	t.mu.Lock()
-	for i := range t.items {
-		if t.items[i].name == name && t.items[i].status == taskRunning {
-			t.items[i].status = taskDone
-			break
-		}
+	defer t.mu.Unlock()
+	if t.program != nil {
+		t.program.Send(taskDoneMsg{name: name})
 	}
-	t.mu.Unlock()
-	t.redraw()
 }
 
 // Error marks a task as failed.
@@ -164,15 +191,10 @@ func (t *RefreshTracker) Error(name string, err error) {
 		return
 	}
 	t.mu.Lock()
-	for i := range t.items {
-		if t.items[i].name == name && t.items[i].status == taskRunning {
-			t.items[i].status = taskError
-			t.items[i].errMsg = err.Error()
-			break
-		}
+	defer t.mu.Unlock()
+	if t.program != nil {
+		t.program.Send(taskErrorMsg{name: name, err: err})
 	}
-	t.mu.Unlock()
-	t.redraw()
 }
 
 // Wait blocks until all tasks are reported and the display finishes.
