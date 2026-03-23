@@ -62,13 +62,19 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 
 ## Spec
 
-| Section | What you can configure |
+| Field | Description |
 |---|---|
-| [General Settings](./general/) | Description, visibility, topics, features, merge strategy |
-| [Branch Protection](./branch-protection/) | Classic branch protection rules |
-| [Rulesets](./rulesets/) | Modern rulesets with enforcement modes and bypass actors |
-| [Secrets & Variables](./secrets-variables/) | GitHub Actions secrets and repository variables |
-| [Lifecycle](./lifecycle/) | Creating and archiving repositories |
+| `description` | Repository description |
+| `homepage` | URL displayed on the repo page |
+| `visibility` | `public`, `private`, or `internal` — see [General Settings](./general/) |
+| `archived` | Archive (read-only) or unarchive — see [Lifecycle](./lifecycle/) |
+| `topics` | GitHub topics for discoverability |
+| `features` | Toggle issues, projects, wiki, discussions — see [General Settings](./general/) |
+| `merge_strategy` | Merge commit, squash, rebase options — see [General Settings](./general/) |
+| `branch_protection` | Classic branch protection rules — see [Branch Protection](./branch-protection/) |
+| `rulesets` | Modern rulesets with enforcement modes and bypass actors — see [Rulesets](./rulesets/) |
+| `secrets` | GitHub Actions secrets (via `${ENV_*}` references) — see [Secrets & Variables](./secrets-variables/) |
+| `variables` | Repository variables — see [Secrets & Variables](./secrets-variables/) |
 
 All fields are optional — declare only what you want to manage. Fields not present in the YAML are left unchanged on GitHub.
 

@@ -54,12 +54,15 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 
 ## Spec
 
-| Section | What you can configure |
-|---|---|
-| [File Sources](./sources/) | Inline content, local files, directories, and `github://` references |
-| [Templating](./templating/) | `<% %>` syntax, built-in variables, custom vars |
-| [Drift Handling](./drift/) | How to handle manual edits: `warn`, `overwrite`, or `skip` |
-| [Apply Strategy](./strategy/) | Commit directly or open a pull request |
+| Field | Default | Description |
+|---|---|---|
+| `files` | *(required)* | List of files to manage — see [File Sources](./sources/) |
+| `on_drift` | `warn` | Drift handling: `warn`, `overwrite`, or `skip` — see [Drift Handling](./drift/) |
+| `strategy` | `direct` | Apply method: `direct` or `pull_request` — see [Apply Strategy](./strategy/) |
+| `commit_message` | auto | Custom commit message |
+| `branch` | auto | Branch name for `pull_request` strategy |
+
+File content supports `<% %>` template syntax for per-repo customization — see [Templating](./templating/).
 
 ## When to Use
 
