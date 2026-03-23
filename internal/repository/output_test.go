@@ -160,10 +160,9 @@ func TestPrintPlanChanges_WithChanges(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	ui.SetWriters(&buf, &buf)
-	defer ui.ResetWriters()
+	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintPlanChanges(changes)
+	PrintPlanChanges(p, changes)
 	out := buf.String()
 
 	if !strings.Contains(out, "+ description") {
@@ -186,16 +185,15 @@ func TestPrintPlanChanges_WithChanges(t *testing.T) {
 
 func TestPrintPlanChanges_Empty(t *testing.T) {
 	var buf bytes.Buffer
-	ui.SetWriters(&buf, &buf)
-	defer ui.ResetWriters()
+	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintPlanChanges(nil)
+	PrintPlanChanges(p, nil)
 	if buf.Len() != 0 {
 		t.Errorf("expected no output for nil, got %q", buf.String())
 	}
 
 	buf.Reset()
-	PrintPlanChanges([]Change{})
+	PrintPlanChanges(p, []Change{})
 	if buf.Len() != 0 {
 		t.Errorf("expected no output for empty slice, got %q", buf.String())
 	}
@@ -206,10 +204,9 @@ func TestPrintPlanChanges_OnlyNoOp(t *testing.T) {
 		{Type: ChangeNoOp, Name: "org/repo1", Field: "description"},
 	}
 	var buf bytes.Buffer
-	ui.SetWriters(&buf, &buf)
-	defer ui.ResetWriters()
+	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintPlanChanges(changes)
+	PrintPlanChanges(p, changes)
 	if buf.Len() != 0 {
 		t.Errorf("expected no output for noop-only, got %q", buf.String())
 	}
@@ -232,10 +229,9 @@ func TestPrintApplyResults_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	ui.SetWriters(&buf, &buf)
-	defer ui.ResetWriters()
+	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintApplyResults(results)
+	PrintApplyResults(p, results)
 	out := buf.String()
 
 	if count := strings.Count(out, "✓"); count != 2 {
@@ -256,10 +252,9 @@ func TestPrintApplyResults_Errors(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	ui.SetWriters(&buf, &buf)
-	defer ui.ResetWriters()
+	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintApplyResults(results)
+	PrintApplyResults(p, results)
 	out := buf.String()
 
 	if !strings.Contains(out, "✗") {
@@ -287,10 +282,9 @@ func TestPrintApplyResults_Mixed(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	ui.SetWriters(&buf, &buf)
-	defer ui.ResetWriters()
+	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintApplyResults(results)
+	PrintApplyResults(p, results)
 	out := buf.String()
 
 	if count := strings.Count(out, "✓"); count != 2 {

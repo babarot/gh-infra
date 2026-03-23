@@ -399,7 +399,7 @@ func (p *Processor) createBlobs(repo string, changes []FileChange) ([]treeEntry,
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
 func (p *Processor) applyToEmptyRepo(repo string, changes []FileChange, opts ApplyOptions) error {
-	ui.Updating(repo, "(empty repo, using fallback)")
+	fmt.Fprintf(os.Stderr, "  Updating %s (empty repo, using fallback)...\n", repo)
 	message := opts.CommitMessage
 	if message == "" {
 		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetName)
@@ -590,7 +590,7 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 }
 
 // PrintPlan prints FileSet changes.
-func PrintPlan(changes []FileChange) {
+func PrintPlan(p ui.Printer, changes []FileChange) {
 	if len(changes) == 0 {
 		return
 	}
@@ -636,32 +636,41 @@ func PrintPlan(changes []FileChange) {
 				maxPathLen = len(c.Path)
 			}
 		}
-		ui.PlanFileSetGroup(len(g.changes), g.key.target)
+		label := fmt.Sprintf("%d file", len(g.changes))
+		if len(g.changes) != 1 {
+			label += "s"
+		}
+		p.GroupHeader("~", fmt.Sprintf("FileSet: %s → %s", ui.Bold.Render(label), ui.Bold.Render(g.key.target)))
 		for _, c := range g.changes {
 			switch c.Type {
 			case FileCreate:
-				ui.PlanFileCreate(c.Path, maxPathLen)
+				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s\n",
+					ui.Green.Render("+"), maxPathLen, c.Path, ui.Green.Render("(new file)"))
 			case FileUpdate:
-				ui.PlanFileUpdate(c.Path, maxPathLen)
+				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s\n",
+					ui.Yellow.Render("~"), maxPathLen, c.Path, ui.Yellow.Render("(content changed)"))
 			case FileDrift:
-				ui.PlanFileDrift(c.Path, c.OnDrift, maxPathLen)
+				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s  on_drift: %s\n",
+					ui.Yellow.Render("⚠"), maxPathLen, c.Path, ui.Yellow.Render("[drift]"), c.OnDrift)
 			case FileSkip:
-				ui.PlanFileSkip(c.Path, maxPathLen)
+				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s  on_drift: skip\n",
+					ui.Dim.Render("-"), maxPathLen, c.Path, ui.Dim.Render("[drift]"))
 			}
 		}
-		ui.PlanGroupEnd()
+		p.GroupEnd()
 	}
 }
 
 // PrintApplyResults prints the results of FileSet apply.
-func PrintApplyResults(results []FileApplyResult) {
+func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 	for _, r := range results {
 		if r.Skipped {
-			ui.ResultSkipped(r.Change.Target, r.Change.Path, r.Change.OnDrift)
+			p.Warning(fmt.Sprintf("%s %s", r.Change.Target, r.Change.Path),
+				fmt.Sprintf("drift detected, skipped (on_drift: %s)", r.Change.OnDrift))
 		} else if r.Err != nil {
-			ui.ResultError(r.Change.Target, r.Change.Path, r.Err)
+			p.Error(r.Change.Target, fmt.Sprintf("%s: %s", r.Change.Path, r.Err.Error()))
 		} else {
-			ui.ResultSuccess(r.Change.Target, r.Change.Path, r.Change.Type)
+			p.Success(r.Change.Target, fmt.Sprintf("%s %sd", r.Change.Path, r.Change.Type))
 		}
 	}
 }
@@ -691,7 +700,7 @@ func CountChanges(changes []FileChange) (creates, updates, drifts int) {
 	return
 }
 
-func PrintSummary(results []FileApplyResult) {
+func PrintSummary(p ui.Printer, results []FileApplyResult) {
 	succeeded := 0
 	failed := 0
 	skipped := 0
@@ -704,13 +713,13 @@ func PrintSummary(results []FileApplyResult) {
 			succeeded++
 		}
 	}
-	w := ui.DefaultPrinter.OutWriter()
-	fmt.Fprintf(w, "\nFileSet apply: %d changes applied", succeeded)
+	msg := fmt.Sprintf("FileSet apply: %d changes applied", succeeded)
 	if failed > 0 {
-		fmt.Fprintf(w, ", %d failed", failed)
+		msg += fmt.Sprintf(", %d failed", failed)
 	}
 	if skipped > 0 {
-		fmt.Fprintf(w, ", %d skipped (drift)", skipped)
+		msg += fmt.Sprintf(", %d skipped (drift)", skipped)
 	}
-	fmt.Fprintln(w, ".")
+	msg += "."
+	p.Message("\n" + msg)
 }

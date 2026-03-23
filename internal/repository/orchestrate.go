@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/babarot/gh-infra/internal/logger"
@@ -21,7 +22,7 @@ type repoResult struct {
 
 // FetchAllChanges fetches current state and computes diffs for all repos in parallel.
 // Repos that fail to fetch are skipped with a warning; successful repos are still returned.
-func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {
+func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, printer ui.Printer, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {
 	var targets []*manifest.Repository
 	for _, repo := range repos {
 		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
@@ -80,7 +81,7 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 	var errors int
 	for _, res := range results {
 		if res.err != nil {
-			ui.RefreshError(res.repo.Metadata.FullName(), res.err)
+			printer.Error(res.repo.Metadata.FullName(), res.err.Error())
 			errors++
 			continue
 		}
@@ -89,7 +90,11 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 	}
 
 	if errors > 0 {
-		ui.RefreshErrorSummary(errors)
+		label := "error"
+		if errors > 1 {
+			label = "errors"
+		}
+		printer.Warning("", fmt.Sprintf("%d %s occurred during refresh. Affected repositories were skipped.", errors, label))
 	}
 
 	logger.Info("plan complete", "total_changes", len(allChanges), "errors", errors)

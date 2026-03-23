@@ -46,6 +46,8 @@ func parseImportTargets(args []string) ([]importTarget, error) {
 }
 
 func runImport(args []string) error {
+	p := ui.NewStandardPrinter()
+
 	targets, err := parseImportTargets(args)
 	if err != nil {
 		return err
@@ -55,14 +57,15 @@ func runImport(args []string) error {
 	fetcher := repository.NewFetcher(runner)
 
 	if len(targets) == 1 {
-		return importSingleRepo(targets[0].owner, targets[0].name, fetcher)
+		return importSingleRepo(p, targets[0].owner, targets[0].name, fetcher)
 	}
 
-	return importMultipleRepos(targets, fetcher)
+	return importMultipleRepos(p, targets, fetcher)
 }
 
-func importSingleRepo(owner, name string, fetcher *repository.Fetcher) error {
-	ui.ImportStart(1)
+func importSingleRepo(p ui.Printer, owner, name string, fetcher *repository.Fetcher) error {
+	p.Phase("Importing 1 repository from GitHub API ...")
+	fmt.Fprintln(p.ErrWriter())
 
 	current, err := fetcher.FetchRepository(owner, name)
 	if err != nil {
@@ -75,15 +78,17 @@ func importSingleRepo(owner, name string, fetcher *repository.Fetcher) error {
 		return fmt.Errorf("marshal yaml: %w", err)
 	}
 
-	ui.ImportOutputStart()
+	p.Separator()
 	fmt.Fprint(os.Stdout, string(data))
 	return nil
 }
 
 const defaultImportParallel = 5
 
-func importMultipleRepos(targets []importTarget, fetcher *repository.Fetcher) error {
-	ui.ImportStart(len(targets))
+func importMultipleRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetcher) error {
+	label := "repositories"
+	p.Phase(fmt.Sprintf("Importing %d %s from GitHub API ...", len(targets), label))
+	fmt.Fprintln(p.ErrWriter())
 
 	// Start spinner display
 	names := make([]string, len(targets))
@@ -140,7 +145,7 @@ func importMultipleRepos(targets []importTarget, fetcher *repository.Fetcher) er
 		}
 	}
 
-	ui.ImportOutputStart()
+	p.Separator()
 
 	// Output YAML in order
 	first := true
@@ -155,16 +160,22 @@ func importMultipleRepos(targets []importTarget, fetcher *repository.Fetcher) er
 		first = false
 	}
 
-	// Print errors and summary
+	// Print errors
 	if failed > 0 {
 		fmt.Fprintln(os.Stdout)
 		for i, r := range results {
 			if r.err != nil {
-				ui.SkipImportError(names[i], r.err)
+				p.Warning(names[i], fmt.Sprintf("skipping: %v", r.err))
 			}
 		}
 	}
 
-	ui.ImportSummary(succeeded, failed)
+	// Summary
+	summaryMsg := fmt.Sprintf("Import complete! %s exported", ui.Bold.Render(fmt.Sprintf("%d", succeeded)))
+	if failed > 0 {
+		summaryMsg += fmt.Sprintf(", %s failed", ui.Bold.Render(fmt.Sprintf("%d", failed)))
+	}
+	summaryMsg += "."
+	p.Summary(summaryMsg)
 	return nil
 }

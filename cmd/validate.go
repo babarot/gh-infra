@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/ui"
 	"github.com/spf13/cobra"
@@ -23,17 +25,19 @@ func newValidateCmd() *cobra.Command {
 }
 
 func runValidate(path string) error {
+	p := ui.NewStandardPrinter()
+
 	parsed, err := manifest.ParseAll(path)
 	if err != nil {
 		return err
 	}
 
-	ui.ValidateSummary(len(parsed.Repositories), len(parsed.FileSets))
+	p.Success("Valid", fmt.Sprintf("%d repositories, %d filesets defined", len(parsed.Repositories), len(parsed.FileSets)))
 	for _, r := range parsed.Repositories {
-		ui.ValidateRepo(r.Metadata.FullName())
+		p.Message("  - Repository: " + r.Metadata.FullName())
 	}
 	for _, fs := range parsed.FileSets {
-		ui.ValidateFileSet(fs.Metadata.Name, len(fs.Spec.Files), len(fs.Spec.Repositories))
+		p.Message(fmt.Sprintf("  - FileSet: %s (%d files → %d repositories)", fs.Metadata.Name, len(fs.Spec.Files), len(fs.Spec.Repositories)))
 	}
 	return nil
 }

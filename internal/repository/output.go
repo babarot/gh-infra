@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"fmt"
+
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -15,28 +17,28 @@ func HasRealChanges(changes []Change) bool {
 }
 
 // PrintPlanChanges prints the repository change details (without header/footer).
-func PrintPlanChanges(changes []Change) {
+func PrintPlanChanges(p ui.Printer, changes []Change) {
 	grouped := groupByName(changes)
 	for _, group := range grouped {
 		if len(group.changes) == 0 {
 			continue
 		}
 		if isNewRepo(group.changes) {
-			ui.PlanRepoGroupNew(group.name)
+			p.GroupHeader("+", group.name+"  "+ui.Green.Render("(new)"))
 		} else {
-			ui.PlanRepoGroup(group.name)
+			p.GroupHeader("~", group.name)
 		}
 		for _, c := range group.changes {
 			switch c.Type {
 			case ChangeCreate:
-				ui.PlanCreate(c.Field, c.NewValue)
+				p.ItemCreate(c.Field, c.NewValue)
 			case ChangeUpdate:
-				ui.PlanUpdate(c.Field, ui.FormatValue(c.OldValue), ui.FormatValue(c.NewValue))
+				p.ItemUpdate(c.Field, ui.FormatValue(c.OldValue), ui.FormatValue(c.NewValue))
 			case ChangeDelete:
-				ui.PlanDelete(c.Field, c.OldValue)
+				p.ItemDelete(c.Field, c.OldValue)
 			}
 		}
-		ui.PlanGroupEnd()
+		p.GroupEnd()
 	}
 }
 
@@ -46,12 +48,12 @@ func CountChanges(changes []Change) (creates, updates, deletes int) {
 }
 
 // PrintApplyResults prints individual apply result lines (no summary).
-func PrintApplyResults(results []ApplyResult) {
+func PrintApplyResults(p ui.Printer, results []ApplyResult) {
 	for _, r := range results {
 		if r.Err != nil {
-			ui.ResultError(r.Change.Name, r.Change.Field, r.Err)
+			p.Error(r.Change.Name, fmt.Sprintf("%s: %s", r.Change.Field, r.Err.Error()))
 		} else {
-			ui.ResultSuccess(r.Change.Name, r.Change.Field, r.Change.Type)
+			p.Success(r.Change.Name, fmt.Sprintf("%s %sd", r.Change.Field, r.Change.Type))
 		}
 	}
 }

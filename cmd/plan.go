@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
@@ -38,19 +40,23 @@ func newPlanCmd() *cobra.Command {
 }
 
 func runPlan(path, filterRepo string, ci bool) error {
+	p := ui.NewStandardPrinter()
+
 	parsed, err := manifest.ParseAll(path)
 	if err != nil {
 		return err
 	}
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
-		ui.NoResources(path)
+		p.Message("No resources found in " + path)
 		return nil
 	}
 
 	runner := gh.NewRunner(false)
 
-	ui.StartPhase(path)
+	p.Phase(fmt.Sprintf("Reading desired state from %s ...", path))
+	p.Phase("Fetching current state from GitHub API ...")
+	fmt.Fprintln(p.ErrWriter())
 
 	// Phase 1: Refresh all resources in parallel
 	var repoChanges []repository.Change
@@ -62,7 +68,7 @@ func runPlan(path, filterRepo string, ci bool) error {
 		fetcher := repository.NewFetcher(runner)
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher)
+			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p)
 			return fetchErr
 		})
 	}
@@ -84,7 +90,7 @@ func runPlan(path, filterRepo string, ci bool) error {
 	hasFile := fileset.HasChanges(fileChanges)
 
 	if !hasRepo && !hasFile {
-		ui.NoChanges()
+		p.Message("\nNo changes. Infrastructure is up-to-date.")
 		if ci {
 			return nil
 		}
@@ -94,16 +100,26 @@ func runPlan(path, filterRepo string, ci bool) error {
 	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
 	fileCreates, fileUpdates, fileDrifts := fileset.CountChanges(fileChanges)
 
-	ui.PlanHeader(0, 0, 0) // top separator
+	p.Separator()
 
 	if hasRepo {
-		repository.PrintPlanChanges(repoChanges)
+		repository.PrintPlanChanges(p, repoChanges)
 	}
 	if hasFile {
-		fileset.PrintPlan(fileChanges)
+		fileset.PrintPlan(p, fileChanges)
 	}
 
-	ui.PlanFooter(repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes, fileDrifts)
+	creates := repoCreates + fileCreates
+	updates := repoUpdates + fileUpdates
+	parts := []string{
+		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", creates))),
+		fmt.Sprintf("%s to update", ui.Bold.Render(fmt.Sprintf("%d", updates))),
+		fmt.Sprintf("%s to destroy", ui.Bold.Render(fmt.Sprintf("%d", repoDeletes))),
+	}
+	if fileDrifts > 0 {
+		parts = append(parts, fmt.Sprintf("%s drifted", ui.Bold.Render(fmt.Sprintf("%d", fileDrifts))))
+	}
+	p.Summary(fmt.Sprintf("Plan: %s\nTo apply, run: %s", strings.Join(parts, ", "), ui.Bold.Render("gh infra apply")))
 
 	if ci {
 		os.Exit(1)

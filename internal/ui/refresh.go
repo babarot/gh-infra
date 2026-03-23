@@ -145,10 +145,10 @@ func RunRefresh(names []string) *RefreshTracker {
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
-	f, ok := DefaultPrinter.err.(*os.File)
+	f, ok := DefaultPrinter.ErrWriter().(*os.File)
 	if !ok || !term.IsTerminal(f.Fd()) {
 		for _, name := range names {
-			Refreshing(name)
+			DefaultPrinter.Progress(fmt.Sprintf("Refreshing %s...", name))
 		}
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
@@ -187,7 +187,7 @@ func (t *RefreshTracker) Done(name string) {
 // Error marks a task as failed.
 func (t *RefreshTracker) Error(name string, err error) {
 	if t.fallback {
-		RefreshError(name, err)
+		DefaultPrinter.Error(name, err.Error())
 		return
 	}
 	t.mu.Lock()

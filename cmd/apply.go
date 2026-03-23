@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
@@ -40,13 +41,15 @@ func newApplyCmd() *cobra.Command {
 }
 
 func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
+	p := ui.NewStandardPrinter()
+
 	parsed, err := manifest.ParseAll(path)
 	if err != nil {
 		return err
 	}
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
-		ui.NoResources(path)
+		p.Message("No resources found in " + path)
 		return nil
 	}
 
@@ -54,7 +57,9 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 
 	runner := gh.NewRunner(false)
 
-	ui.StartPhase(path)
+	p.Phase(fmt.Sprintf("Reading desired state from %s ...", path))
+	p.Phase("Fetching current state from GitHub API ...")
+	fmt.Fprintln(p.ErrWriter())
 
 	// Compute all changes in parallel
 	var repoChanges []repository.Change
@@ -68,7 +73,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 		diffOpts := repository.DiffOptions{ForceSecrets: forceSecrets}
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, diffOpts)
+			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, diffOpts)
 			return fetchErr
 		})
 	}
@@ -89,7 +94,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 	hasFile := fileset.HasChanges(fileChanges)
 
 	if !hasRepo && !hasFile {
-		ui.NoChanges()
+		p.Message("\nNo changes. Infrastructure is up-to-date.")
 		return nil
 	}
 
@@ -97,25 +102,35 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
 	fileCreates, fileUpdates, fileDrifts := fileset.CountChanges(fileChanges)
 
-	ui.PlanHeader(0, 0, 0) // top separator
+	p.Separator()
 
 	if hasRepo {
-		repository.PrintPlanChanges(repoChanges)
+		repository.PrintPlanChanges(p, repoChanges)
 	}
 	if hasFile {
-		fileset.PrintPlan(fileChanges)
+		fileset.PrintPlan(p, fileChanges)
 	}
 
-	ui.PlanFooter(repoCreates+fileCreates, repoUpdates+fileUpdates, repoDeletes, fileDrifts)
+	creates := repoCreates + fileCreates
+	updates := repoUpdates + fileUpdates
+	parts := []string{
+		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", creates))),
+		fmt.Sprintf("%s to update", ui.Bold.Render(fmt.Sprintf("%d", updates))),
+		fmt.Sprintf("%s to destroy", ui.Bold.Render(fmt.Sprintf("%d", repoDeletes))),
+	}
+	if fileDrifts > 0 {
+		parts = append(parts, fmt.Sprintf("%s drifted", ui.Bold.Render(fmt.Sprintf("%d", fileDrifts))))
+	}
+	p.Summary(fmt.Sprintf("Plan: %s\nTo apply, run: %s", strings.Join(parts, ", "), ui.Bold.Render("gh infra apply")))
 
 	// Confirm
 	if !autoApprove {
-		confirmed, err := ui.Confirm("Do you want to apply these changes?")
+		confirmed, err := p.Confirm("Do you want to apply these changes?")
 		if err != nil {
 			return err
 		}
 		if !confirmed {
-			ui.ApplyCancelled()
+			p.Message("Apply cancelled.")
 			return nil
 		}
 	}
@@ -127,7 +142,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 	if hasRepo {
 		executor := repository.NewExecutor(runner)
 		results := executor.Apply(repoChanges, targetRepos)
-		repository.PrintApplyResults(results)
+		repository.PrintApplyResults(p, results)
 		s, f := repository.CountApplyResults(results)
 		totalSucceeded += s
 		totalFailed += f
@@ -153,7 +168,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 				FileSetName:   fs.Metadata.Name,
 			}
 			results := processor.Apply(fsChanges, opts)
-			fileset.PrintApplyResults(results)
+			fileset.PrintApplyResults(p, results)
 			for _, r := range results {
 				if r.Skipped {
 					continue
@@ -168,7 +183,12 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
 	}
 
 	// Unified summary
-	ui.ApplySummary(totalSucceeded, totalFailed)
+	summaryMsg := fmt.Sprintf("Apply complete! %d changes applied", totalSucceeded)
+	if totalFailed > 0 {
+		summaryMsg += fmt.Sprintf(", %d failed", totalFailed)
+	}
+	summaryMsg += "."
+	p.Summary(summaryMsg)
 
 	if totalFailed > 0 {
 		return fmt.Errorf("apply had errors")
