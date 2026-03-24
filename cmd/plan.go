@@ -16,8 +16,9 @@ import (
 
 func newPlanCmd() *cobra.Command {
 	var (
-		repo string
-		ci   bool
+		repo          string
+		ci            bool
+		failOnUnknown bool
 	)
 
 	cmd := &cobra.Command{
@@ -29,20 +30,21 @@ func newPlanCmd() *cobra.Command {
 			if len(args) > 0 {
 				path = args[0]
 			}
-			return runPlan(path, repo, ci)
+			return runPlan(path, repo, ci, failOnUnknown)
 		},
 	}
 
 	cmd.Flags().StringVarP(&repo, "repo", "r", "", "Target specific repository only")
 	cmd.Flags().BoolVar(&ci, "ci", false, "Exit with code 1 if changes are detected")
+	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
 
 	return cmd
 }
 
-func runPlan(path, filterRepo string, ci bool) error {
+func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 	p := ui.NewStandardPrinter()
 
-	parsed, err := manifest.ParseAll(path)
+	parsed, err := manifest.ParseAll(path, manifest.ParseOptions{FailOnUnknown: failOnUnknown})
 	if err != nil {
 		return err
 	}

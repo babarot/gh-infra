@@ -1,5 +1,7 @@
 ---
 title: import
+sidebar:
+  order: 0
 ---
 
 Export existing repository settings as YAML. Useful for bootstrapping gh-infra configuration from an existing repository.
