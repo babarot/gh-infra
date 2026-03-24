@@ -14,6 +14,18 @@ type DiffOptions struct {
 	Resolver     *manifest.Resolver // Name resolver for rulesets (optional; nil = skip resolution)
 }
 
+// appendIfChanged appends a Change if desired differs from current.
+func appendIfChanged[T comparable](changes *[]Change, field string, desired *T, current T) {
+	if desired != nil && *desired != current {
+		*changes = append(*changes, Change{
+			Type:     ChangeUpdate,
+			Field:    field,
+			OldValue: current,
+			NewValue: *desired,
+		})
+	}
+}
+
 // Diff compares desired state with current state and returns changes.
 // If the repository does not exist (current.IsNew), a single ChangeCreate is returned.
 func Diff(desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
@@ -117,21 +129,10 @@ func diffFeatures(name string, desired *manifest.Repository, current *CurrentSta
 	var fieldChanges []Change
 	f := desired.Spec.Features
 
-	boolDiff := func(field string, desiredVal *bool, currentVal bool) {
-		if desiredVal != nil && *desiredVal != currentVal {
-			fieldChanges = append(fieldChanges, Change{
-				Type:     ChangeUpdate,
-				Field:    field,
-				OldValue: currentVal,
-				NewValue: *desiredVal,
-			})
-		}
-	}
-
-	boolDiff("issues", f.Issues, current.Features.Issues)
-	boolDiff("projects", f.Projects, current.Features.Projects)
-	boolDiff("wiki", f.Wiki, current.Features.Wiki)
-	boolDiff("discussions", f.Discussions, current.Features.Discussions)
+	appendIfChanged(&fieldChanges, "issues", f.Issues, current.Features.Issues)
+	appendIfChanged(&fieldChanges, "projects", f.Projects, current.Features.Projects)
+	appendIfChanged(&fieldChanges, "wiki", f.Wiki, current.Features.Wiki)
+	appendIfChanged(&fieldChanges, "discussions", f.Discussions, current.Features.Discussions)
 
 	if len(fieldChanges) == 0 {
 		return nil
@@ -154,37 +155,15 @@ func diffMergeStrategy(name string, desired *manifest.Repository, current *Curre
 	var fieldChanges []Change
 	ms := desired.Spec.MergeStrategy
 
-	boolDiff := func(field string, desiredVal *bool, currentVal bool) {
-		if desiredVal != nil && *desiredVal != currentVal {
-			fieldChanges = append(fieldChanges, Change{
-				Type:     ChangeUpdate,
-				Field:    field,
-				OldValue: currentVal,
-				NewValue: *desiredVal,
-			})
-		}
-	}
+	appendIfChanged(&fieldChanges, "allow_merge_commit", ms.AllowMergeCommit, current.MergeStrategy.AllowMergeCommit)
+	appendIfChanged(&fieldChanges, "allow_squash_merge", ms.AllowSquashMerge, current.MergeStrategy.AllowSquashMerge)
+	appendIfChanged(&fieldChanges, "allow_rebase_merge", ms.AllowRebaseMerge, current.MergeStrategy.AllowRebaseMerge)
+	appendIfChanged(&fieldChanges, "auto_delete_head_branches", ms.AutoDeleteHeadBranches, current.MergeStrategy.AutoDeleteHeadBranches)
 
-	boolDiff("allow_merge_commit", ms.AllowMergeCommit, current.MergeStrategy.AllowMergeCommit)
-	boolDiff("allow_squash_merge", ms.AllowSquashMerge, current.MergeStrategy.AllowSquashMerge)
-	boolDiff("allow_rebase_merge", ms.AllowRebaseMerge, current.MergeStrategy.AllowRebaseMerge)
-	boolDiff("auto_delete_head_branches", ms.AutoDeleteHeadBranches, current.MergeStrategy.AutoDeleteHeadBranches)
-
-	stringDiff := func(field string, desiredVal *string, currentVal string) {
-		if desiredVal != nil && *desiredVal != currentVal {
-			fieldChanges = append(fieldChanges, Change{
-				Type:     ChangeUpdate,
-				Field:    field,
-				OldValue: currentVal,
-				NewValue: *desiredVal,
-			})
-		}
-	}
-
-	stringDiff("merge_commit_title", ms.MergeCommitTitle, current.MergeStrategy.MergeCommitTitle)
-	stringDiff("merge_commit_message", ms.MergeCommitMessage, current.MergeStrategy.MergeCommitMessage)
-	stringDiff("squash_merge_commit_title", ms.SquashMergeCommitTitle, current.MergeStrategy.SquashMergeCommitTitle)
-	stringDiff("squash_merge_commit_message", ms.SquashMergeCommitMessage, current.MergeStrategy.SquashMergeCommitMessage)
+	appendIfChanged(&fieldChanges, "merge_commit_title", ms.MergeCommitTitle, current.MergeStrategy.MergeCommitTitle)
+	appendIfChanged(&fieldChanges, "merge_commit_message", ms.MergeCommitMessage, current.MergeStrategy.MergeCommitMessage)
+	appendIfChanged(&fieldChanges, "squash_merge_commit_title", ms.SquashMergeCommitTitle, current.MergeStrategy.SquashMergeCommitTitle)
+	appendIfChanged(&fieldChanges, "squash_merge_commit_message", ms.SquashMergeCommitMessage, current.MergeStrategy.SquashMergeCommitMessage)
 
 	if len(fieldChanges) == 0 {
 		return nil
@@ -469,19 +448,11 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 		}
 
 		// toggle rules
-		rulesetBoolDiff := func(field string, desired *bool, current bool) {
-			if desired != nil && *desired != current {
-				fieldChanges = append(fieldChanges, Change{
-					Type: ChangeUpdate, Field: field,
-					OldValue: current, NewValue: *desired,
-				})
-			}
-		}
-		rulesetBoolDiff("rules.non_fast_forward", drs.Rules.NonFastForward, crs.Rules.NonFastForward)
-		rulesetBoolDiff("rules.deletion", drs.Rules.Deletion, crs.Rules.Deletion)
-		rulesetBoolDiff("rules.creation", drs.Rules.Creation, crs.Rules.Creation)
-		rulesetBoolDiff("rules.required_linear_history", drs.Rules.RequiredLinearHistory, crs.Rules.RequiredLinearHistory)
-		rulesetBoolDiff("rules.required_signatures", drs.Rules.RequiredSignatures, crs.Rules.RequiredSignatures)
+		appendIfChanged(&fieldChanges, "rules.non_fast_forward", drs.Rules.NonFastForward, crs.Rules.NonFastForward)
+		appendIfChanged(&fieldChanges, "rules.deletion", drs.Rules.Deletion, crs.Rules.Deletion)
+		appendIfChanged(&fieldChanges, "rules.creation", drs.Rules.Creation, crs.Rules.Creation)
+		appendIfChanged(&fieldChanges, "rules.required_linear_history", drs.Rules.RequiredLinearHistory, crs.Rules.RequiredLinearHistory)
+		appendIfChanged(&fieldChanges, "rules.required_signatures", drs.Rules.RequiredSignatures, crs.Rules.RequiredSignatures)
 
 		// pull_request rule
 		if drs.Rules.PullRequest != nil {
@@ -498,18 +469,10 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 						OldValue: cpr.RequiredApprovingReviewCount, NewValue: *pr.RequiredApprovingReviewCount,
 					})
 				}
-				prBoolDiff := func(field string, desired *bool, current bool) {
-					if desired != nil && *desired != current {
-						fieldChanges = append(fieldChanges, Change{
-							Type: ChangeUpdate, Field: "rules.pull_request." + field,
-							OldValue: current, NewValue: *desired,
-						})
-					}
-				}
-				prBoolDiff("dismiss_stale_reviews_on_push", pr.DismissStaleReviewsOnPush, cpr.DismissStaleReviewsOnPush)
-				prBoolDiff("require_code_owner_review", pr.RequireCodeOwnerReview, cpr.RequireCodeOwnerReview)
-				prBoolDiff("require_last_push_approval", pr.RequireLastPushApproval, cpr.RequireLastPushApproval)
-				prBoolDiff("required_review_thread_resolution", pr.RequiredReviewThreadResolution, cpr.RequiredReviewThreadResolution)
+				appendIfChanged(&fieldChanges, "rules.pull_request.dismiss_stale_reviews_on_push", pr.DismissStaleReviewsOnPush, cpr.DismissStaleReviewsOnPush)
+				appendIfChanged(&fieldChanges, "rules.pull_request.require_code_owner_review", pr.RequireCodeOwnerReview, cpr.RequireCodeOwnerReview)
+				appendIfChanged(&fieldChanges, "rules.pull_request.require_last_push_approval", pr.RequireLastPushApproval, cpr.RequireLastPushApproval)
+				appendIfChanged(&fieldChanges, "rules.pull_request.required_review_thread_resolution", pr.RequiredReviewThreadResolution, cpr.RequiredReviewThreadResolution)
 			}
 		}
 
