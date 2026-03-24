@@ -16,6 +16,7 @@ Declarative GitHub infrastructure management via YAML. Like Terraform, but for G
 gh infra plan    # Show what would change
 gh infra apply   # Apply the changes
 ```
+📖 **[babarot.github.io/gh-infra](https://babarot.github.io/gh-infra/)** — Full YAML reference, usage patterns, and guides.
 
 ## Why
 
@@ -97,17 +98,13 @@ Global:
 
 plan:
   -r, --repo <owner/repo>   Target a specific repository
-      --ci                   Exit with code 1 if changes detected
+      --ci                  Exit with code 1 if changes detected
 
 apply:
   -r, --repo <owner/repo>   Target a specific repository
-      --auto-approve         Skip confirmation prompt
-      --force-secrets        Re-set all secrets (even existing ones)
+      --auto-approve        Skip confirmation prompt
+      --force-secrets       Re-set all secrets (even existing ones)
 ```
-
-## Documentation
-
-For the full YAML DSL reference, usage patterns, and advanced topics, see the [documentation](./docs/).
 
 ## License
 
