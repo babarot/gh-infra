@@ -64,7 +64,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 
 	p.Phase(fmt.Sprintf("Reading desired state from %s ...", path))
 	p.Phase("Fetching current state from GitHub API ...")
-	fmt.Fprintln(p.ErrWriter())
+	p.BlankLine()
 
 	// Phase 1: Refresh all resources in parallel
 	var repoChanges []repository.Change
@@ -89,7 +89,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 	}
 
 	if len(parsed.FileSets) > 0 {
-		processor := fileset.NewProcessor(runner)
+		processor := fileset.NewProcessor(runner, p)
 		g.Go(func() error {
 			var planErr error
 			fileChanges, planErr = processor.Plan(parsed.FileSets, tracker)

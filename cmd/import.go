@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -69,7 +68,7 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 		label = "repositories"
 	}
 	p.Phase(fmt.Sprintf("Importing %d %s from GitHub API ...", len(targets), label))
-	fmt.Fprintln(p.ErrWriter())
+	p.BlankLine()
 
 	// Start spinner display
 	names := make([]string, len(targets))
@@ -129,21 +128,22 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 	p.Separator()
 
 	// Output YAML in order
+	out := p.OutWriter()
 	first := true
 	for _, r := range results {
 		if r.err != nil {
 			continue
 		}
 		if !first {
-			fmt.Println("---")
+			fmt.Fprintln(out, "---")
 		}
-		fmt.Fprint(os.Stdout, string(r.data))
+		fmt.Fprint(out, string(r.data))
 		first = false
 	}
 
 	// Print errors
 	if failed > 0 {
-		fmt.Fprintln(os.Stdout)
+		fmt.Fprintln(out)
 		for i, r := range results {
 			if r.err != nil {
 				p.Warning(names[i], fmt.Sprintf("skipping: %v", r.err))

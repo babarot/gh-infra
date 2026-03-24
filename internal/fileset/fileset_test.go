@@ -62,7 +62,7 @@ func TestPlan_NewFile(t *testing.T) {
 			contentsKey("owner/repo", ".github/ci.yml"): gh.ErrNotFound,
 		},
 	}
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
@@ -87,7 +87,7 @@ func TestPlan_NoChange(t *testing.T) {
 		},
 		Errors: map[string]error{},
 	}
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
@@ -109,7 +109,7 @@ func TestPlan_DriftWarn(t *testing.T) {
 		},
 		Errors: map[string]error{},
 	}
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
@@ -138,7 +138,7 @@ func TestPlan_DriftOverwrite(t *testing.T) {
 		},
 		Errors: map[string]error{},
 	}
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 	fileSets := makeFileSet("owner", "repo", "overwrite", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
@@ -164,7 +164,7 @@ func TestPlan_DriftSkip(t *testing.T) {
 		},
 		Errors: map[string]error{},
 	}
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 	fileSets := makeFileSet("owner", "repo", "skip", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
@@ -226,7 +226,7 @@ func setupGitDataAPIMock(repo string) *WildcardMockRunner {
 
 func TestApply_CreateFile(t *testing.T) {
 	mock := setupGitDataAPIMock("owner/repo")
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
 	changes := []FileChange{
 		{
@@ -258,7 +258,7 @@ func TestApply_CreateFile(t *testing.T) {
 
 func TestApply_UpdateFile(t *testing.T) {
 	mock := setupGitDataAPIMock("owner/repo")
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
 	changes := []FileChange{
 		{
@@ -294,7 +294,7 @@ func TestApply_DriftWarnSkipsApply(t *testing.T) {
 		Responses: map[string][]byte{},
 		Errors:    map[string]error{},
 	}
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
 	changes := []FileChange{
 		{
@@ -325,7 +325,7 @@ func TestApply_NoOpAndSkipNotApplied(t *testing.T) {
 		Responses: map[string][]byte{},
 		Errors:    map[string]error{},
 	}
-	p := NewProcessor(mock)
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
 	changes := []FileChange{
 		{Type: FileNoOp, Target: "owner/repo", Path: "a.txt"},
