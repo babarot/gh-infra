@@ -683,17 +683,26 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 		branchName = fmt.Sprintf("gh-infra/sync-%s", opts.FileSetName)
 	}
 
-	// Create branch pointing to the new commit
+	// Create branch pointing to the new commit; if it already exists, force-update it.
 	_, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/refs", repo),
 		"--method", "POST",
 		"-f", fmt.Sprintf("ref=refs/heads/%s", branchName),
 		"-f", fmt.Sprintf("sha=%s", commitSHA),
 	)
 	if err != nil {
-		return fmt.Errorf("create branch %s: %w", branchName, err)
+		if strings.Contains(err.Error(), "Reference already exists") {
+			_, err = p.runner.Run("api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branchName),
+				"--method", "PATCH",
+				"-f", fmt.Sprintf("sha=%s", commitSHA),
+				"-F", "force=true",
+			)
+		}
+		if err != nil {
+			return fmt.Errorf("create branch %s: %w", branchName, err)
+		}
 	}
 
-	// Create PR
+	// Create PR (skip if one already exists for this head branch)
 	_, err = p.runner.Run("pr", "create",
 		"--repo", repo,
 		"--base", defaultBranch,
@@ -701,6 +710,9 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 		"--title", title,
 		"--body", fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetName),
 	)
+	if err != nil && strings.Contains(err.Error(), "already exists") {
+		return nil // PR already open for this branch
+	}
 	return err
 }
 
