@@ -15,9 +15,10 @@ import (
 
 func newApplyCmd() *cobra.Command {
 	var (
-		repo         string
-		autoApprove  bool
-		forceSecrets bool
+		repo          string
+		autoApprove   bool
+		forceSecrets  bool
+		failOnUnknown bool
 	)
 
 	cmd := &cobra.Command{
@@ -29,21 +30,22 @@ func newApplyCmd() *cobra.Command {
 			if len(args) > 0 {
 				path = args[0]
 			}
-			return runApply(path, repo, autoApprove, forceSecrets)
+			return runApply(path, repo, autoApprove, forceSecrets, failOnUnknown)
 		},
 	}
 
 	cmd.Flags().StringVarP(&repo, "repo", "r", "", "Target specific repository only")
 	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&forceSecrets, "force-secrets", false, "Always re-set all secrets (even if they already exist)")
+	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
 
 	return cmd
 }
 
-func runApply(path, filterRepo string, autoApprove, forceSecrets bool) error {
+func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown bool) error {
 	p := ui.NewStandardPrinter()
 
-	parsed, err := manifest.ParseAll(path)
+	parsed, err := manifest.ParseAll(path, manifest.ParseOptions{FailOnUnknown: failOnUnknown})
 	if err != nil {
 		return err
 	}

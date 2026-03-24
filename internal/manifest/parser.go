@@ -20,15 +20,24 @@ func ParsePath(path string) ([]*Repository, error) {
 	return result.Repositories, nil
 }
 
+// ParseOptions controls parsing behavior.
+type ParseOptions struct {
+	FailOnUnknown bool // Error on files with unknown Kind (default: skip)
+}
+
 // ParseAll parses a file or directory and returns all resources (Repository + FileSet).
-func ParseAll(path string) (*ParseResult, error) {
+func ParseAll(path string, opts ...ParseOptions) (*ParseResult, error) {
+	var opt ParseOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", path, err)
 	}
 
 	if !info.IsDir() {
-		return parseFileAll(path)
+		return parseFileAll(path, opt)
 	}
 
 	entries, err := os.ReadDir(path)
@@ -45,7 +54,7 @@ func ParseAll(path string) (*ParseResult, error) {
 		if ext != ".yaml" && ext != ".yml" {
 			continue
 		}
-		parsed, err := parseFileAll(filepath.Join(path, entry.Name()))
+		parsed, err := parseFileAll(filepath.Join(path, entry.Name()), opt)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +64,7 @@ func ParseAll(path string) (*ParseResult, error) {
 	return result, nil
 }
 
-func parseFileAll(path string) (*ParseResult, error) {
+func parseFileAll(path string, opt ParseOptions) (*ParseResult, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
@@ -100,7 +109,10 @@ func parseFileAll(path string) (*ParseResult, error) {
 		}
 		result.FileSets = []*FileSet{fs}
 	default:
-		return nil, fmt.Errorf("%s: unknown kind %q", path, doc.Kind)
+		if opt.FailOnUnknown {
+			return nil, fmt.Errorf("%s: unknown kind %q", path, doc.Kind)
+		}
+		return &ParseResult{}, nil
 	}
 
 	return result, nil

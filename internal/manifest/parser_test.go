@@ -198,9 +198,19 @@ metadata:
 		t.Fatal(err)
 	}
 
-	_, err := ParsePath(path)
+	// Default: unknown kind is silently skipped
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("expected no error with default options, got: %v", err)
+	}
+	if len(result.Repositories) != 0 || len(result.FileSets) != 0 {
+		t.Fatal("expected empty result for unknown kind")
+	}
+
+	// With FailOnUnknown: error
+	_, err = ParseAll(path, ParseOptions{FailOnUnknown: true})
 	if err == nil {
-		t.Fatal("expected error for unknown kind, got nil")
+		t.Fatal("expected error for unknown kind with FailOnUnknown, got nil")
 	}
 	if got := err.Error(); !contains(got, "unknown kind") {
 		t.Errorf("error = %q, want it to contain 'unknown kind'", got)

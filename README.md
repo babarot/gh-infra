@@ -33,15 +33,20 @@ gh-infra takes a different approach:
 ## Install
 
 ```bash
-# As a gh extension
 gh extension install babarot/gh-infra
-
-# Or with Homebrew
-brew install babarot/tap/gh-infra
-
-# Or build from source
-go install github.com/babarot/gh-infra/cmd/gh-infra@latest
 ```
+
+## Path Resolution
+
+`plan`, `apply`, and `validate` accept an optional `[path]` argument:
+
+| Argument | Example | Behavior |
+|----------|---------|----------|
+| *(none)* or `.` | `gh infra plan` | All `*.yaml` / `*.yml` in the current directory |
+| File | `gh infra plan repos/gomi.yaml` | That file only |
+| Directory | `gh infra plan repos/` | All `*.yaml` / `*.yml` directly under it (subdirectories are ignored) |
+
+YAML files that are not gh-infra manifests (e.g., GitHub Actions workflows, docker-compose) are silently skipped. Use `--fail-on-unknown` to treat them as errors instead.
 
 ## Quick Start
 
@@ -99,11 +104,16 @@ Global:
 plan:
   -r, --repo <owner/repo>   Target a specific repository
       --ci                  Exit with code 1 if changes detected
+      --fail-on-unknown     Error on YAML files with unknown Kind
 
 apply:
   -r, --repo <owner/repo>   Target a specific repository
       --auto-approve        Skip confirmation prompt
       --force-secrets       Re-set all secrets (even existing ones)
+      --fail-on-unknown     Error on YAML files with unknown Kind
+
+validate:
+      --fail-on-unknown     Error on YAML files with unknown Kind
 ```
 
 ## License

@@ -58,37 +58,16 @@ func runImport(args []string) error {
 	fetcher := repository.NewFetcher(runner)
 	resolver := manifest.NewResolver(runner, targets[0].owner)
 
-	if len(targets) == 1 {
-		return importSingleRepo(p, targets[0].owner, targets[0].name, fetcher, resolver)
-	}
-
-	return importMultipleRepos(p, targets, fetcher, resolver)
-}
-
-func importSingleRepo(p ui.Printer, owner, name string, fetcher *repository.Fetcher, resolver *manifest.Resolver) error {
-	p.Phase("Importing 1 repository from GitHub API ...")
-	fmt.Fprintln(p.ErrWriter())
-
-	current, err := fetcher.FetchRepository(owner, name)
-	if err != nil {
-		return err
-	}
-
-	m := repository.ToManifest(current, resolver)
-	data, err := goyaml.Marshal(m)
-	if err != nil {
-		return fmt.Errorf("marshal yaml: %w", err)
-	}
-
-	p.Separator()
-	fmt.Fprint(os.Stdout, string(data))
-	return nil
+	return importRepos(p, targets, fetcher, resolver)
 }
 
 const defaultImportParallel = 5
 
-func importMultipleRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetcher, resolver *manifest.Resolver) error {
-	label := "repositories"
+func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetcher, resolver *manifest.Resolver) error {
+	label := "repository"
+	if len(targets) != 1 {
+		label = "repositories"
+	}
 	p.Phase(fmt.Sprintf("Importing %d %s from GitHub API ...", len(targets), label))
 	fmt.Fprintln(p.ErrWriter())
 

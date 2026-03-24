@@ -9,6 +9,8 @@ import (
 )
 
 func newValidateCmd() *cobra.Command {
+	var failOnUnknown bool
+
 	cmd := &cobra.Command{
 		Use:   "validate [path]",
 		Short: "Validate YAML syntax and schema",
@@ -18,16 +20,19 @@ func newValidateCmd() *cobra.Command {
 			if len(args) > 0 {
 				path = args[0]
 			}
-			return runValidate(path)
+			return runValidate(path, failOnUnknown)
 		},
 	}
+
+	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
+
 	return cmd
 }
 
-func runValidate(path string) error {
+func runValidate(path string, failOnUnknown bool) error {
 	p := ui.NewStandardPrinter()
 
-	parsed, err := manifest.ParseAll(path)
+	parsed, err := manifest.ParseAll(path, manifest.ParseOptions{FailOnUnknown: failOnUnknown})
 	if err != nil {
 		return err
 	}
