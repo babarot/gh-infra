@@ -139,8 +139,7 @@ func (r *GHRunner) exec(args []string, cmdStr string) ([]byte, error) {
 func isRetryable(err error) bool {
 	// Unrecoverable errors are never retried (handled by retry-go internally)
 	// All other errors (network, timeout, etc.) are retried
-	var exitErr *ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*ExitError](err); ok {
 		stderr := strings.ToLower(exitErr.Stderr)
 		return strings.Contains(stderr, "timeout") ||
 			strings.Contains(stderr, "connection reset") ||

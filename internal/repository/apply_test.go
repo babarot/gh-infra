@@ -490,8 +490,8 @@ func TestDerefBool(t *testing.T) {
 		want bool
 	}{
 		{"nil returns false", nil, false},
-		{"true returns true", boolPtr(true), true},
-		{"false returns false", boolPtr(false), false},
+		{"true returns true", new(true), true},
+		{"false returns false", new(false), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -503,7 +503,6 @@ func TestDerefBool(t *testing.T) {
 	}
 }
 
-func boolPtr(b bool) *bool { return &b }
 
 func TestApplyRuleset_Create(t *testing.T) {
 	mock := &gh.MockRunner{}
