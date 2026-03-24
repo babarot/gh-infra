@@ -72,6 +72,21 @@ This override applies only to the current run — the YAML manifest is not modif
 
 See [apply command](../../commands/apply/#interactive-diff-viewer) for full keybindings.
 
+## Interaction with `sync_mode: create_only`
+
+`on_drift` does not apply to `create_only` files. Since `create_only` skips the file entirely once it exists, there is no content comparison and therefore no drift. Setting both on the same file is a validation error:
+
+```yaml
+# ✗ Error: on_drift cannot be set on a file with sync_mode "create_only"
+files:
+  - path: VERSION
+    content: "0.1.0"
+    sync_mode: create_only
+    on_drift: warn        # ← validation error
+```
+
+See [Sync Mode](../sync-mode/#create_only) for details.
+
 ## Interaction with `sync_mode: mirror`
 
 `on_drift` and `sync_mode: mirror` cannot be used on the **same file**. Mirror means "make the directory exactly match the source" — content drift is always resolved by overwriting, so a per-file `on_drift` would be contradictory:

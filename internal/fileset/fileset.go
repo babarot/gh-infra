@@ -153,6 +153,12 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 				}
 				file.Content = rendered
 			}
+			// create_only: create if missing, skip entirely if exists
+			if file.SyncMode == manifest.SyncModeCreateOnly {
+				change := p.planCreateOnly(u.fileSetName, fullName, file)
+				out = append(out, change)
+				continue
+			}
 			// Resolve drift handling: mirror > file-level > spec-level
 			drift := u.onDrift
 			if file.OnDrift != "" {
@@ -206,6 +212,26 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 		changes = append(changes, r.changes...)
 	}
 	return changes, nil
+}
+
+// planCreateOnly handles sync_mode: create_only — create if missing, NoOp if exists.
+func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileEntry) FileChange {
+	current, err := p.fetchFileContent(repo, file.Path)
+	if err != nil || !current.Exists {
+		return FileChange{
+			FileSet: fileSetName,
+			Target:  repo,
+			Path:    file.Path,
+			Type:    FileCreate,
+			Desired: file.Content,
+		}
+	}
+	return FileChange{
+		FileSet: fileSetName,
+		Target:  repo,
+		Path:    file.Path,
+		Type:    FileNoOp,
+	}
 }
 
 func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry, onDrift string) FileChange {

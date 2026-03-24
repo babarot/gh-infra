@@ -61,7 +61,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | Field | Default | Description |
 |---|---|---|
 | `files` | *(required)* | List of files to manage — see [File Sources](./sources/) |
-| `files[].sync_mode` | `patch` | Per-entry sync mode: `patch` (add/update) or `mirror` (add/update/delete) — see [Sync Mode](./sync-mode/) |
+| `files[].sync_mode` | `patch` | Per-entry sync mode: `patch` (add/update), `mirror` (add/update/delete), or `create_only` (create if missing, never update) — see [Sync Mode](./sync-mode/) |
 | `files[].on_drift` | spec-level | Per-entry drift override — see [Drift Handling](./drift/) |
 | `on_drift` | `warn` | Default drift handling: `warn`, `overwrite`, or `skip` — see [Drift Handling](./drift/) |
 | `commit_strategy` | `push` | Commit method: `push` or `pull_request` — see [Commit Strategy](./commit-strategy/) |

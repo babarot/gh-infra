@@ -173,7 +173,7 @@ func (f *File) Validate() error {
 			return fmt.Errorf("File %q: files[%d] (%s) cannot have both content and source", f.Metadata.FullName(), i, fe.Path)
 		}
 		if fe.SyncMode != "" {
-			if err := validateOneOf("sync_mode", fe.SyncMode, SyncModePatch, SyncModeMirror); err != nil {
+			if err := validateOneOf("sync_mode", fe.SyncMode, SyncModePatch, SyncModeMirror, SyncModeCreateOnly); err != nil {
 				return fmt.Errorf("File %q: files[%d] (%s): %w", f.Metadata.FullName(), i, fe.Path, err)
 			}
 		}
@@ -217,7 +217,7 @@ func (fs *FileSet) Validate() error {
 			return fmt.Errorf("FileSet %q: files[%d] (%s) cannot have both content and source", fs.Metadata.Owner, i, f.Path)
 		}
 		if f.SyncMode != "" {
-			if err := validateOneOf("sync_mode", f.SyncMode, SyncModePatch, SyncModeMirror); err != nil {
+			if err := validateOneOf("sync_mode", f.SyncMode, SyncModePatch, SyncModeMirror, SyncModeCreateOnly); err != nil {
 				return fmt.Errorf("FileSet %q: files[%d] (%s): %w", fs.Metadata.Owner, i, f.Path, err)
 			}
 		}
@@ -250,6 +250,9 @@ func validateFileEntryDrift(files []FileEntry, prefix string) error {
 			}
 			if f.SyncMode == SyncModeMirror {
 				return fmt.Errorf("%sfiles[%d] (%s): on_drift cannot be set on a file with sync_mode \"mirror\" (mirror always overwrites)", prefix, i, f.Path)
+			}
+			if f.SyncMode == SyncModeCreateOnly {
+				return fmt.Errorf("%sfiles[%d] (%s): on_drift cannot be set on a file with sync_mode \"create_only\" (create_only never updates)", prefix, i, f.Path)
 			}
 		}
 	}

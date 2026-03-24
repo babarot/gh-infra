@@ -24,9 +24,10 @@ const (
 	CommitStrategyPush        = "push"
 	CommitStrategyPullRequest = "pull_request"
 
-	// SyncMode values for FileEntry directory sync behavior.
-	SyncModePatch  = "patch"  // default: add/update only
-	SyncModeMirror = "mirror" // add/update + delete orphans
+	// SyncMode values for FileEntry sync behavior.
+	SyncModePatch      = "patch"       // default: add/update only
+	SyncModeMirror     = "mirror"      // add/update + delete orphans
+	SyncModeCreateOnly = "create_only" // create if missing, never update
 
 	// Resource type identifiers used in plan changes.
 	ResourceRepository       = "Repository"

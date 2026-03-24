@@ -183,6 +183,50 @@ func TestPlan_DriftSkip(t *testing.T) {
 	}
 }
 
+func TestPlan_CreateOnly_FileNotExists(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{},
+		Errors: map[string]error{
+			contentsKey("owner/repo", "VERSION"): gh.ErrNotFound,
+		},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
+		{Path: "VERSION", Content: "0.1.0", SyncMode: manifest.SyncModeCreateOnly},
+	})
+
+	changes, _ := p.Plan(fileSets, "", nil)
+
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].Type != FileCreate {
+		t.Errorf("expected FileCreate, got %s", changes[0].Type)
+	}
+}
+
+func TestPlan_CreateOnly_FileExists(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "VERSION"): contentsJSON("0.2.0", "sha1"),
+		},
+		Errors: map[string]error{},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
+		{Path: "VERSION", Content: "0.1.0", SyncMode: manifest.SyncModeCreateOnly},
+	})
+
+	changes, _ := p.Plan(fileSets, "", nil)
+
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].Type != FileNoOp {
+		t.Errorf("expected FileNoOp (file exists, create_only ignores), got %s", changes[0].Type)
+	}
+}
+
 func TestPlan_FileLevelOnDrift(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{

@@ -68,7 +68,37 @@ files:
     # README.md is never affected by the mirror above
 ```
 
-## When to use mirror
+## `create_only`
+
+Creates the file if it does not exist, but **never updates or deletes** it. Once the file is present in the target repository, gh-infra ignores it completely — no drift detection, no warnings, no overwrites.
+
+```yaml
+files:
+  - path: VERSION
+    content: "0.1.0"
+    sync_mode: create_only
+```
+
+This is useful for seed files that should be initialized once but then managed independently by the repository:
+
+- `VERSION` — set an initial version, let the repo bump it
+- `README.md` — provide a starter template, let the team customize it
+- `.env.example` — seed the file, let developers edit it
+
+### `create_only` and `on_drift`
+
+`sync_mode: create_only` and `on_drift` cannot be used on the **same file**. Since `create_only` never compares content, drift is not a concept that applies:
+
+```yaml
+# ✗ Error: on_drift cannot be set on a file with sync_mode "create_only"
+files:
+  - path: VERSION
+    content: "0.1.0"
+    sync_mode: create_only
+    on_drift: warn        # ← validation error
+```
+
+## When to use each mode
 
 | Scenario | Recommended |
 |----------|-------------|
@@ -76,3 +106,5 @@ files:
 | Shared config files where repos may add extras | `patch` |
 | Security policies (CODEOWNERS, SECURITY.md) | `patch` |
 | Template directories that should be fully controlled | `mirror` |
+| Seed files that repos manage independently after creation | `create_only` |
+| VERSION, README.md starters, .env.example | `create_only` |
