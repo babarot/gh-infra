@@ -1,14 +1,12 @@
 package repository
 
 import (
-	"context"
 	"fmt"
-	"sync"
 
 	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/parallel"
 	"github.com/babarot/gh-infra/internal/ui"
-	"golang.org/x/sync/semaphore"
 )
 
 const defaultParallel = 5
@@ -57,35 +55,20 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 		return nil, nil, nil
 	}
 
-	results := make([]repoResult, len(targets))
-	sem := semaphore.NewWeighted(defaultParallel)
-	var wg sync.WaitGroup
+	results := parallel.Map(targets, defaultParallel, func(idx int, r *manifest.Repository) repoResult {
+		logger.Debug("fetch start", "repo", r.Metadata.FullName())
+		current, err := fetcher.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
+		if err != nil {
+			logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
+			tracker.Error(fetchTaskKey(r.Metadata.FullName()), err)
+			return repoResult{index: idx, repo: r, err: err}
+		}
 
-	for i, repo := range targets {
-		wg.Add(1)
-		go func(idx int, r *manifest.Repository) {
-			defer wg.Done()
-
-			_ = sem.Acquire(context.Background(), 1)
-			defer sem.Release(1)
-
-			logger.Debug("fetch start", "repo", r.Metadata.FullName())
-			current, err := fetcher.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
-			if err != nil {
-				logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
-				tracker.Error(fetchTaskKey(r.Metadata.FullName()), err)
-				results[idx] = repoResult{index: idx, repo: r, err: err}
-				return
-			}
-
-			changes := Diff(r, current, diffOpts...)
-			logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
-			tracker.Done(fetchTaskKey(r.Metadata.FullName()))
-			results[idx] = repoResult{index: idx, repo: r, changes: changes}
-		}(i, repo)
-	}
-
-	wg.Wait()
+		changes := Diff(r, current, diffOpts...)
+		logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
+		tracker.Done(fetchTaskKey(r.Metadata.FullName()))
+		return repoResult{index: idx, repo: r, changes: changes}
+	})
 
 	var allChanges []Change
 	var targetRepos []*manifest.Repository

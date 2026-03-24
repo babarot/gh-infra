@@ -1,19 +1,17 @@
 package fileset
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/parallel"
 	"github.com/babarot/gh-infra/internal/ui"
-	"golang.org/x/sync/semaphore"
 )
 
 // FileState represents the current state of a file in a repository.
@@ -120,81 +118,72 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, tracker *ui.RefreshTracke
 		changes []FileChange
 		err     error
 	}
-	results := make([]unitResult, len(units))
-	var wg sync.WaitGroup
-	wg.Add(len(units))
-	for i, u := range units {
-		go func(i int, u planUnit) {
-			defer wg.Done()
-			fullName := u.fullName()
-			displayName := planTaskKey(fullName)
-			var out []FileChange
-			for _, file := range u.files {
-				// Template rendering (deep copy vars to avoid data races)
-				needsTemplate := HasTemplate(file.Content, file.Vars) || HasTemplate(file.Path, nil)
-				if needsTemplate {
-					varsCopy := copyVars(file.Vars)
-					// Render path
-					if HasTemplate(file.Path, nil) {
-						renderedPath, err := RenderTemplate(file.Path, fullName, varsCopy)
-						if err != nil {
-							results[i] = unitResult{err: fmt.Errorf("template path %s for %s: %w", file.Path, fullName, err)}
-							tracker.Error(displayName, err)
-							return
-						}
-						file.Path = renderedPath
-					}
-					// Render content
-					rendered, err := RenderTemplate(file.Content, fullName, varsCopy)
+	results := parallel.Map(units, 0, func(i int, u planUnit) unitResult {
+		fullName := u.fullName()
+		displayName := planTaskKey(fullName)
+		var out []FileChange
+		for _, file := range u.files {
+			// Template rendering (deep copy vars to avoid data races)
+			needsTemplate := HasTemplate(file.Content, file.Vars) || HasTemplate(file.Path, nil)
+			if needsTemplate {
+				varsCopy := copyVars(file.Vars)
+				// Render path
+				if HasTemplate(file.Path, nil) {
+					renderedPath, err := RenderTemplate(file.Path, fullName, varsCopy)
 					if err != nil {
-						results[i] = unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
 						tracker.Error(displayName, err)
-						return
+						return unitResult{err: fmt.Errorf("template path %s for %s: %w", file.Path, fullName, err)}
 					}
-					file.Content = rendered
+					file.Path = renderedPath
 				}
-				// Mirror mode forces overwrite (mirror = complete sync)
-				drift := u.onDrift
-				if file.SyncMode == manifest.SyncModeMirror {
-					drift = manifest.OnDriftOverwrite
-				}
-				change := p.planFile(u.fileSetName, fullName, file, drift)
-				out = append(out, change)
-			}
-			// Mirror mode: detect orphaned files in target repo
-			allPlannedPaths := make(map[string]bool)
-			for _, change := range out {
-				allPlannedPaths[change.Path] = true
-			}
-			mirrorDirs := make(map[string]bool)
-			for _, file := range u.files {
-				if file.SyncMode == manifest.SyncModeMirror && file.DirScope != "" {
-					mirrorDirs[file.DirScope] = true
-				}
-			}
-			for dirScope := range mirrorDirs {
-				repoFiles, err := p.fetchDirectoryContents(fullName, dirScope)
+				// Render content
+				rendered, err := RenderTemplate(file.Content, fullName, varsCopy)
 				if err != nil {
-					// Directory doesn't exist in repo yet — nothing to delete
-					continue
+					tracker.Error(displayName, err)
+					return unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
 				}
-				for _, repoFile := range repoFiles {
-					if !allPlannedPaths[repoFile] {
-						out = append(out, FileChange{
-							Type:    FileDelete,
-							Target:  fullName,
-							Path:    repoFile,
-							FileSet: u.fileSetName,
-						})
-					}
+				file.Content = rendered
+			}
+			// Mirror mode forces overwrite (mirror = complete sync)
+			drift := u.onDrift
+			if file.SyncMode == manifest.SyncModeMirror {
+				drift = manifest.OnDriftOverwrite
+			}
+			change := p.planFile(u.fileSetName, fullName, file, drift)
+			out = append(out, change)
+		}
+		// Mirror mode: detect orphaned files in target repo
+		allPlannedPaths := make(map[string]bool)
+		for _, change := range out {
+			allPlannedPaths[change.Path] = true
+		}
+		mirrorDirs := make(map[string]bool)
+		for _, file := range u.files {
+			if file.SyncMode == manifest.SyncModeMirror && file.DirScope != "" {
+				mirrorDirs[file.DirScope] = true
+			}
+		}
+		for dirScope := range mirrorDirs {
+			repoFiles, err := p.fetchDirectoryContents(fullName, dirScope)
+			if err != nil {
+				// Directory doesn't exist in repo yet — nothing to delete
+				continue
+			}
+			for _, repoFile := range repoFiles {
+				if !allPlannedPaths[repoFile] {
+					out = append(out, FileChange{
+						Type:    FileDelete,
+						Target:  fullName,
+						Path:    repoFile,
+						FileSet: u.fileSetName,
+					})
 				}
 			}
+		}
 
-			results[i] = unitResult{changes: out}
-			tracker.Done(displayName)
-		}(i, u)
-	}
-	wg.Wait()
+		tracker.Done(displayName)
+		return unitResult{changes: out}
+	})
 
 	// Flatten in original order; return first error.
 	var changes []FileChange
@@ -369,60 +358,46 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 	// Progress reporting is handled by the caller-provided reporter
 
 	// Apply repos in parallel
-	allResults := make([][]FileApplyResult, len(repoList))
-	sem := semaphore.NewWeighted(defaultApplyParallel)
-	var wg sync.WaitGroup
-
-	for i, entry := range repoList {
-		wg.Add(1)
-		go func(idx int, repo string, repoChanges []FileChange) {
-			defer wg.Done()
-			_ = sem.Acquire(context.Background(), 1)
-			defer sem.Release(1)
-
-			var results []FileApplyResult
-			var filesToApply []FileChange
-			for _, c := range repoChanges {
-				switch c.Type {
-				case FileCreate, FileUpdate, FileDelete:
-					filesToApply = append(filesToApply, c)
-				case FileDrift:
-					results = append(results, FileApplyResult{Change: c, Skipped: true})
-				case FileSkip, FileNoOp:
-					// do nothing
-				}
+	allResults := parallel.Map(repoList, defaultApplyParallel, func(_ int, entry repoEntry) []FileApplyResult {
+		var results []FileApplyResult
+		var filesToApply []FileChange
+		for _, c := range entry.changes {
+			switch c.Type {
+			case FileCreate, FileUpdate, FileDelete:
+				filesToApply = append(filesToApply, c)
+			case FileDrift:
+				results = append(results, FileApplyResult{Change: c, Skipped: true})
+			case FileSkip, FileNoOp:
+				// do nothing
 			}
+		}
 
-			if len(filesToApply) == 0 {
-				allResults[idx] = results
-				reporter.Done(repo, 0, 0)
-				return
-			}
+		if len(filesToApply) == 0 {
+			reporter.Done(entry.name, 0, 0)
+			return results
+		}
 
-			paths := make([]string, len(filesToApply))
-			for j, c := range filesToApply {
-				paths[j] = c.Path
-			}
-			reporter.Start(repo, paths)
+		paths := make([]string, len(filesToApply))
+		for j, c := range filesToApply {
+			paths[j] = c.Path
+		}
+		reporter.Start(entry.name, paths)
 
-			start := time.Now()
-			err := p.applyToRepo(repo, filesToApply, opts)
-			elapsed := time.Since(start)
+		start := time.Now()
+		err := p.applyToRepo(entry.name, filesToApply, opts)
+		elapsed := time.Since(start)
 
-			for _, c := range filesToApply {
-				results = append(results, FileApplyResult{Change: c, Err: err})
-			}
-			allResults[idx] = results
+		for _, c := range filesToApply {
+			results = append(results, FileApplyResult{Change: c, Err: err})
+		}
 
-			if err != nil {
-				reporter.Error(repo, elapsed, err)
-			} else {
-				reporter.Done(repo, elapsed, len(filesToApply))
-			}
-		}(i, entry.name, entry.changes)
-	}
-
-	wg.Wait()
+		if err != nil {
+			reporter.Error(entry.name, elapsed, err)
+		} else {
+			reporter.Done(entry.name, elapsed, len(filesToApply))
+		}
+		return results
+	})
 	reporter.Wait()
 
 	// Flatten in order

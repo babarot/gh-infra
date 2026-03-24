@@ -1,18 +1,16 @@
 package repository
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/parallel"
 	"github.com/babarot/gh-infra/internal/ui"
-	"golang.org/x/sync/semaphore"
 )
 
 // Executor applies planned changes to GitHub.
@@ -42,49 +40,36 @@ func (e *Executor) Apply(changes []Change, repos []*manifest.Repository, reporte
 	}
 
 	// Apply repo groups in parallel
-	allResults := make([][]ApplyResult, len(groups))
-	sem := semaphore.NewWeighted(defaultApplyParallel)
-	var wg sync.WaitGroup
+	allResults := parallel.Map(groups, defaultApplyParallel, func(_ int, g changeGroup) []ApplyResult {
+		fields := make([]string, 0, len(g.changes))
+		for _, c := range g.changes {
+			fields = append(fields, c.Field)
+		}
+		reporter.Start(g.name, fields)
 
-	for i, group := range groups {
-		wg.Add(1)
-		go func(idx int, g changeGroup) {
-			defer wg.Done()
-			_ = sem.Acquire(context.Background(), 1)
-			defer sem.Release(1)
+		start := time.Now()
+		var results []ApplyResult
+		for _, c := range g.changes {
+			result := e.applyChange(c, repoMap[c.Name])
+			results = append(results, result)
+		}
+		elapsed := time.Since(start)
 
-			fields := make([]string, 0, len(g.changes))
-			for _, c := range g.changes {
-				fields = append(fields, c.Field)
+		var firstErr error
+		for _, r := range results {
+			if r.Err != nil {
+				firstErr = r.Err
+				break
 			}
-			reporter.Start(g.name, fields)
+		}
 
-			start := time.Now()
-			var results []ApplyResult
-			for _, c := range g.changes {
-				result := e.applyChange(c, repoMap[c.Name])
-				results = append(results, result)
-			}
-			allResults[idx] = results
-			elapsed := time.Since(start)
-
-			var firstErr error
-			for _, r := range results {
-				if r.Err != nil {
-					firstErr = r.Err
-					break
-				}
-			}
-
-			if firstErr != nil {
-				reporter.Error(g.name, elapsed, firstErr)
-			} else {
-				reporter.Done(g.name, elapsed, len(results))
-			}
-		}(i, group)
-	}
-
-	wg.Wait()
+		if firstErr != nil {
+			reporter.Error(g.name, elapsed, firstErr)
+		} else {
+			reporter.Done(g.name, elapsed, len(results))
+		}
+		return results
+	})
 	reporter.Wait()
 
 	// Flatten in order
