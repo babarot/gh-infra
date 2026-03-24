@@ -284,7 +284,7 @@ func (p *StandardPrinter) Message(msg string) {
 
 func (p *StandardPrinter) ErrorMessage(err error) {
 	msg := strings.ReplaceAll(err.Error(), "\n", "\n  ")
-	fmt.Fprintf(p.err, "\n%s %s\n", Red.Render("Error:"), msg)
+	fmt.Fprintf(p.err, "%s %s\n", Red.Render("Error:"), msg)
 }
 
 func (p *StandardPrinter) Confirm(title string) (bool, error) {
