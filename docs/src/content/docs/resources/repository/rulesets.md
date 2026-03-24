@@ -19,8 +19,7 @@ spec:
       target: branch
       enforcement: active
       bypass_actors:
-        - actor_id: 5
-          actor_type: RepositoryRole
+        - role: admin
           bypass_mode: always
       conditions:
         ref_name:
@@ -40,7 +39,7 @@ spec:
           strict_required_status_checks_policy: true
           contexts:
             - context: "ci/test"
-              integration_id: 123
+              app: github-actions
         non_fast_forward: true
         deletion: true
         creation: false
@@ -71,20 +70,31 @@ spec:
 
 ## Bypass Actors
 
-Each entry allows a specific actor to bypass the ruleset:
+Each entry allows a specific actor to bypass the ruleset. Specify the actor type by field name:
 
 ```yaml
 bypass_actors:
-  - actor_id: 5
-    actor_type: RepositoryRole
+  - role: admin              # Built-in role: admin, write, or maintain
     bypass_mode: always
+  - team: maintainers        # Organization team by slug
+    bypass_mode: pull_request
+  - app: github-actions      # GitHub App by slug
+    bypass_mode: always
+  - org-admin: true          # Organization administrators
+  - custom-role: reviewer    # Enterprise Cloud custom role by name
+    bypass_mode: pull_request
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `actor_id` | int | Numeric ID of the actor. For `RepositoryRole`: `5` = Admin, `4` = Write |
-| `actor_type` | string | `RepositoryRole`, `Team`, `Integration`, or `OrganizationAdmin` |
-| `bypass_mode` | string | `always` (pushes and PRs) or `pull_request` (PRs only) |
+| Field | Description |
+|-------|-------------|
+| `role` | Built-in repository role: `admin`, `write`, or `maintain` |
+| `team` | Organization team slug (resolved via API) |
+| `app` | GitHub App slug (resolved via API) |
+| `org-admin` | Set to `true` for organization administrators |
+| `custom-role` | Enterprise Cloud custom role name (resolved via API) |
+| `bypass_mode` | `always` (pushes and PRs) or `pull_request` (PRs only) |
+
+Exactly one actor type field must be specified per entry. Names are automatically resolved to numeric IDs — see [Ruleset Identity Resolution](../../internals/ruleset-identity-resolution/) for details.
 
 ## Conditions
 
@@ -126,7 +136,7 @@ rules:
     strict_required_status_checks_policy: true
     contexts:
       - context: "ci/test"
-        integration_id: 123
+        app: github-actions
       - context: "ci/lint"
 ```
 
@@ -134,7 +144,7 @@ rules:
 |-------|------|-------------|
 | `strict_required_status_checks_policy` | bool | Require branch to be up to date before merging |
 | `contexts[].context` | string | Name of the required status check |
-| `contexts[].integration_id` | int | *(optional)* GitHub App ID that must provide this check |
+| `contexts[].app` | string | *(optional)* GitHub App slug that must provide this check. Omit to accept any provider |
 
 ### Toggle Rules
 

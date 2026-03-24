@@ -60,7 +60,7 @@ All settings available in [File](../file/) — file sources, templating, drift h
 - [Templating](../file/templating/) — `<% %>` syntax, built-in variables, custom vars
 - [Sync Mode](../file/sync-mode/) — `patch` (add/update) vs `mirror` (add/update/delete orphans)
 - [Drift Handling](../file/drift/) — `warn`, `overwrite`, and `skip` behaviors
-- [Commit Strategy](../file/strategy/) — `push` vs `pull_request`
+- [Commit Strategy](../file/commit-strategy/) — `push` vs `pull_request`
 
 ## When to Use FileSet
 
