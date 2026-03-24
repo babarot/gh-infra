@@ -37,6 +37,9 @@ type Printer interface {
 	Success(name, detail string)
 	Error(name, detail string)
 	Warning(name, detail string) // stderr
+	ResultSuccess(field, detail string)
+	ResultError(field, detail string)
+	ResultWarning(field, detail string)
 	Summary(msg string)
 	Message(msg string)
 
@@ -183,10 +186,10 @@ func (p *StandardPrinter) FileSkip(path string) {
 
 func renderIcon(icon string) string {
 	switch icon {
-	case "+":
-		return Green.Render("+")
-	case "-":
-		return Red.Render("-")
+	case "+", "✓":
+		return Green.Render(icon)
+	case "-", "✗":
+		return Red.Render(icon)
 	default:
 		return Yellow.Render(icon)
 	}
@@ -203,6 +206,22 @@ func (p *StandardPrinter) Error(name, detail string) {
 
 func (p *StandardPrinter) Warning(name, detail string) {
 	fmt.Fprintf(p.err, "  %s %s  %s\n", Yellow.Render("⚠"), Bold.Render(name), detail)
+}
+
+func (p *StandardPrinter) ResultSuccess(field, detail string) {
+	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
+		Green.Render("✓"), p.itemWidth(), field, detail)
+}
+
+func (p *StandardPrinter) ResultError(field, detail string) {
+	detail = strings.ReplaceAll(detail, "\n", "\n          ")
+	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
+		Red.Render("✗"), p.itemWidth(), field, detail)
+}
+
+func (p *StandardPrinter) ResultWarning(field, detail string) {
+	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
+		Yellow.Render("⚠"), p.itemWidth(), field, detail)
 }
 
 func (p *StandardPrinter) Summary(msg string) {
