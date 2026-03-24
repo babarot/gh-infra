@@ -26,7 +26,8 @@ import (
 // so they leak into the user's shell prompt.
 //
 // This drain approach is borrowed from a community fork:
-//   https://github.com/saltydk/bubbletea/commit/96c1e05
+//
+//	https://github.com/saltydk/bubbletea/commit/96c1e05
 //
 // Related upstream issues (open as of bubbletea v2.0.2, no official fix yet):
 //   - https://github.com/charmbracelet/bubbletea/issues/1590

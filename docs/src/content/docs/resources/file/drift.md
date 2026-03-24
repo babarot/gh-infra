@@ -60,6 +60,18 @@ Use this when you've intentionally allowed a repo to diverge and don't want nois
 | `overwrite` | Shows diff | Overwrites with declared content |
 | `skip` | No output | No action |
 
+## Runtime Override in Diff Viewer
+
+During `gh infra apply`, you can press `d` at the confirmation prompt to open the interactive diff viewer. Inside the viewer, press `Tab` to cycle the `on_drift` setting for the selected file:
+
+```
+warn → overwrite → skip → warn
+```
+
+This override applies only to the current run — the YAML manifest is not modified. Use this to make one-off decisions without changing your configuration. For example, you might normally use `on_drift: warn` but override a specific file to `overwrite` after reviewing the diff.
+
+See [apply command](../../commands/apply/#interactive-diff-viewer) for full keybindings.
+
 ## Interaction with `sync_mode: mirror`
 
 `on_drift` and `sync_mode: mirror` cannot be used on the **same file**. Mirror means "make the directory exactly match the source" — content drift is always resolved by overwriting, so a per-file `on_drift` would be contradictory:

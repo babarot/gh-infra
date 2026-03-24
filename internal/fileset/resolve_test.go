@@ -133,7 +133,7 @@ func TestResolveFiles_InheritsOnDrift(t *testing.T) {
 	target := manifest.FileSetRepository{
 		Name: "repo",
 		Overrides: []manifest.FileEntry{
-			{Path: "a.txt", Content: "overridden-a"}, // no OnDrift → inherit
+			{Path: "a.txt", Content: "overridden-a"},                                // no OnDrift → inherit
 			{Path: "b.txt", Content: "overridden-b", OnDrift: manifest.OnDriftWarn}, // explicit → keep
 		},
 	}

@@ -26,7 +26,8 @@ import (
 // so they leak into the user's shell prompt.
 //
 // This drain approach is borrowed from a community fork:
-//   https://github.com/saltydk/bubbletea/commit/96c1e05
+//
+//	https://github.com/saltydk/bubbletea/commit/96c1e05
 //
 // On Linux, uses a poll loop with 200ms timeout to accommodate SSH round-trip
 // latency where terminal responses may arrive in bursts.

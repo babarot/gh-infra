@@ -139,7 +139,8 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 	// Confirm
 	if !autoApprove {
-		confirmed, err := p.Confirm("Do you want to apply these changes?")
+		diffEntries := buildDiffEntries(fileChanges)
+		confirmed, err := p.ConfirmWithDiff("Do you want to apply these changes?", diffEntries)
 		if err != nil {
 			return err
 		}
@@ -147,6 +148,8 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 			p.Message("Apply cancelled.")
 			return nil
 		}
+		// Apply on_drift overrides from the diff viewer back to fileChanges
+		applyOnDriftOverrides(fileChanges, diffEntries)
 	}
 
 	totalSucceeded := 0
@@ -243,6 +246,64 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	}
 
 	return nil
+}
+
+// applyOnDriftOverrides writes on_drift changes made in the diff viewer back
+// to fileChanges, adjusting Type so that apply handles them correctly.
+func applyOnDriftOverrides(changes []fileset.FileChange, entries []ui.DiffEntry) {
+	overrides := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if e.OnDrift != "" {
+			overrides[e.Path] = e.OnDrift
+		}
+	}
+	for i := range changes {
+		newDrift, ok := overrides[changes[i].Path]
+		if !ok || newDrift == changes[i].OnDrift {
+			continue
+		}
+		changes[i].OnDrift = newDrift
+		// Re-derive Type from the new on_drift value for drifted files
+		if !changes[i].Drifted {
+			continue
+		}
+		switch newDrift {
+		case "overwrite":
+			changes[i].Type = fileset.FileUpdate
+		case "warn":
+			changes[i].Type = fileset.FileDrift
+		case "skip":
+			changes[i].Type = fileset.FileSkip
+		}
+	}
+}
+
+func buildDiffEntries(changes []fileset.FileChange) []ui.DiffEntry {
+	var entries []ui.DiffEntry
+	for _, c := range changes {
+		var icon string
+		switch c.Type {
+		case fileset.FileCreate:
+			icon = ui.IconAdd
+		case fileset.FileUpdate:
+			icon = ui.IconChange
+		case fileset.FileDelete:
+			icon = ui.IconRemove
+		case fileset.FileDrift:
+			icon = ui.IconWarning
+		default:
+			continue
+		}
+		entries = append(entries, ui.DiffEntry{
+			Path:            c.Path,
+			Icon:            icon,
+			Current:         c.Current,
+			Desired:         c.Desired,
+			OnDrift:         c.OnDrift,
+			OriginalOnDrift: c.OnDrift,
+		})
+	}
+	return entries
 }
 
 func uniqueStrings(s []string) []string {

@@ -54,6 +54,7 @@ type Printer interface {
 
 	// interaction
 	Confirm(title string) (bool, error)
+	ConfirmWithDiff(title string, diffEntries []DiffEntry) (bool, error)
 
 	// writers
 	OutWriter() io.Writer
@@ -301,6 +302,14 @@ func (p *StandardPrinter) Confirm(title string) (bool, error) {
 		return false, err
 	}
 	return confirm, nil
+}
+
+func (p *StandardPrinter) ConfirmWithDiff(title string, diffEntries []DiffEntry) (bool, error) {
+	confirmed, err := RunConfirmWithDiff(title, diffEntries)
+	if ErrFallback(err) {
+		return p.Confirm(title)
+	}
+	return confirmed, err
 }
 
 // --- Package-level utilities ---
