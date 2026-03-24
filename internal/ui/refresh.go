@@ -12,6 +12,12 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+// RefreshTask describes a task to track in the spinner display.
+type RefreshTask struct {
+	Name      string // key for Done()/Error() matching AND running label
+	DoneLabel string // shown when task completes (defaults to Name if empty)
+}
+
 type taskStatus int
 
 const (
@@ -21,10 +27,11 @@ const (
 )
 
 type refreshItem struct {
-	name    string
-	status  taskStatus
-	errMsg  string
-	spinner spinner.Model
+	name      string
+	doneLabel string
+	status    taskStatus
+	errMsg    string
+	spinner   spinner.Model
 }
 
 type refreshModel struct {
@@ -38,22 +45,27 @@ type taskErrorMsg struct {
 	err  error
 }
 
-func newRefreshModel(names []string) refreshModel {
-	items := make([]refreshItem, len(names))
-	for i, name := range names {
+func newRefreshModel(tasks []RefreshTask) refreshModel {
+	items := make([]refreshItem, len(tasks))
+	for i, task := range tasks {
 		s := spinner.New(
 			spinner.WithSpinner(spinner.Jump),
 			spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))),
 		)
+		doneLabel := task.DoneLabel
+		if doneLabel == "" {
+			doneLabel = task.Name
+		}
 		items[i] = refreshItem{
-			name:    name,
-			status:  taskRunning,
-			spinner: s,
+			name:      task.Name,
+			doneLabel: doneLabel,
+			status:    taskRunning,
+			spinner:   s,
 		}
 	}
 	return refreshModel{
 		items:     items,
-		remaining: len(names),
+		remaining: len(tasks),
 	}
 }
 
@@ -120,7 +132,7 @@ func (m refreshModel) View() tea.View {
 	for _, item := range m.items {
 		switch item.status {
 		case taskDone:
-			fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), item.name)
+			fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), item.doneLabel)
 		case taskError:
 			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render(IconError), Bold.Render(item.name), item.errMsg)
 		case taskRunning:
@@ -138,22 +150,22 @@ type RefreshTracker struct {
 	mu       sync.Mutex
 }
 
-// RunRefresh starts a spinner display for the given task names.
+// RunRefresh starts a spinner display for the given tasks.
 // Returns a non-nil tracker in all cases.
-func RunRefresh(names []string) *RefreshTracker {
-	if len(names) == 0 {
+func RunRefresh(tasks []RefreshTask) *RefreshTracker {
+	if len(tasks) == 0 {
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
 	f, ok := DefaultPrinter.ErrWriter().(*os.File)
 	if !ok || !term.IsTerminal(f.Fd()) {
-		for _, name := range names {
-			DefaultPrinter.Progress(fmt.Sprintf("Refreshing %s...", name))
+		for _, task := range tasks {
+			DefaultPrinter.Progress(task.Name + "...")
 		}
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
-	model := newRefreshModel(names)
+	model := newRefreshModel(tasks)
 	p := tea.NewProgram(
 		model,
 		tea.WithOutput(os.Stderr),

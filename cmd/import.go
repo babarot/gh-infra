@@ -72,10 +72,16 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 
 	// Start spinner display
 	names := make([]string, len(targets))
+	tasks := make([]ui.RefreshTask, len(targets))
 	for i, t := range targets {
-		names[i] = t.owner + "/" + t.name
+		fullName := t.owner + "/" + t.name
+		names[i] = fullName
+		tasks[i] = ui.RefreshTask{
+			Name:      "Importing " + fullName,
+			DoneLabel: "Imported " + fullName,
+		}
 	}
-	tracker := ui.RunRefresh(names)
+	tracker := ui.RunRefresh(tasks)
 
 	// Fetch all repos in parallel
 	type importResult struct {
@@ -94,19 +100,20 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 			defer sem.Release(1)
 
 			fullName := owner + "/" + name
+			key := "Importing " + fullName
 			current, err := fetcher.FetchRepository(owner, name)
 			if err != nil {
 				results[idx] = importResult{err: err}
-				tracker.Error(fullName, err)
+				tracker.Error(key, err)
 				return
 			}
 			m := repository.ToManifest(current, resolver)
 			data, err := goyaml.Marshal(m)
 			results[idx] = importResult{data: data, err: err}
 			if err != nil {
-				tracker.Error(fullName, err)
+				tracker.Error(key, err)
 			} else {
-				tracker.Done(fullName)
+				tracker.Done(key)
 			}
 		}(i, t.owner, t.name)
 	}

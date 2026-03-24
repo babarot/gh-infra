@@ -76,10 +76,10 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	var fileChanges []fileset.FileChange
 
 	// Collect all target names and start a single spinner display
-	var allNames []string
-	allNames = append(allNames, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
-	allNames = append(allNames, fileset.PlanTargetNames(parsed.FileSets)...)
-	tracker := ui.RunRefresh(allNames)
+	var allTasks []ui.RefreshTask
+	allTasks = append(allTasks, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
+	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSets)...)
+	tracker := ui.RunRefresh(allTasks)
 
 	g := new(errgroup.Group)
 
@@ -199,6 +199,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	}
 
 	// Print unified apply results grouped by repo
+	p.Separator()
 	printUnifiedApplyResults(p, allRepoResults, allFileResults)
 
 	// Unified summary

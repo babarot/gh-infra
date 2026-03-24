@@ -71,15 +71,30 @@ func (u planUnit) fullName() string {
 	return u.owner + "/" + u.target.Name
 }
 
-// PlanTargetNames returns display names for all FileSet targets.
-func PlanTargetNames(fileSets []*manifest.FileSet) []string {
-	var names []string
+// PlanTargetNames returns display tasks for all FileSet targets.
+func PlanTargetNames(fileSets []*manifest.FileSet) []ui.RefreshTask {
+	var tasks []ui.RefreshTask
 	for _, fs := range fileSets {
 		for _, target := range fs.Spec.Repositories {
-			names = append(names, "Comparing "+fs.Metadata.Owner+"/"+target.Name+" files")
+			fullName := fs.Metadata.Owner + "/" + target.Name
+			tasks = append(tasks, ui.RefreshTask{
+				Name:      "Fetching " + fullName + " files",
+				DoneLabel: "Fetched " + fullName + " files",
+			})
 		}
 	}
-	return names
+	return tasks
+}
+
+// planTaskKey returns the tracker key for a given fileset target.
+// This must match the Name used in PlanTargetNames.
+func planTaskKey(fullName string) string {
+	return "Fetching " + fullName + " files"
+}
+
+// applyTaskKey returns the tracker key for a fileset apply target.
+func applyTaskKey(repo string) string {
+	return "Applying " + repo + " files"
 }
 
 // Plan computes changes for all FileSets concurrently.
@@ -111,7 +126,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, tracker *ui.RefreshTracke
 		go func(i int, u planUnit) {
 			defer wg.Done()
 			fullName := u.fullName()
-			displayName := "Comparing " + fullName + " files"
+			displayName := planTaskKey(fullName)
 			var out []FileChange
 			for _, file := range u.files {
 				// Template rendering (deep copy vars to avoid data races)
@@ -351,11 +366,14 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions) []FileApplyRe
 	}
 
 	// Start spinner display
-	names := make([]string, len(repoList))
+	tasks := make([]ui.RefreshTask, len(repoList))
 	for i, e := range repoList {
-		names[i] = e.name
+		tasks[i] = ui.RefreshTask{
+			Name:      applyTaskKey(e.name),
+			DoneLabel: "Applied " + e.name + " files",
+		}
 	}
-	tracker := ui.RunRefresh(names)
+	tracker := ui.RunRefresh(tasks)
 
 	// Apply repos in parallel
 	allResults := make([][]FileApplyResult, len(repoList))
@@ -384,7 +402,7 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions) []FileApplyRe
 
 			if len(filesToApply) == 0 {
 				allResults[idx] = results
-				tracker.Done(repo)
+				tracker.Done(applyTaskKey(repo))
 				return
 			}
 
@@ -394,10 +412,11 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions) []FileApplyRe
 			}
 			allResults[idx] = results
 
+			key := applyTaskKey(repo)
 			if err != nil {
-				tracker.Error(repo, err)
+				tracker.Error(key, err)
 			} else {
-				tracker.Done(repo)
+				tracker.Done(key)
 			}
 		}(i, entry.name, entry.changes)
 	}

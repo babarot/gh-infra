@@ -41,11 +41,14 @@ func (e *Executor) Apply(changes []Change, repos []*manifest.Repository) []Apply
 	}
 
 	// Start spinner display
-	names := make([]string, len(groups))
+	tasks := make([]ui.RefreshTask, len(groups))
 	for i, g := range groups {
-		names[i] = g.name
+		tasks[i] = ui.RefreshTask{
+			Name:      "Applying " + g.name,
+			DoneLabel: "Applied " + g.name,
+		}
 	}
-	tracker := ui.RunRefresh(names)
+	tracker := ui.RunRefresh(tasks)
 
 	// Apply repo groups in parallel
 	allResults := make([][]ApplyResult, len(groups))
@@ -74,10 +77,11 @@ func (e *Executor) Apply(changes []Change, repos []*manifest.Repository) []Apply
 					break
 				}
 			}
+			key := "Applying " + g.name
 			if firstErr != nil {
-				tracker.Error(g.name, firstErr)
+				tracker.Error(key, firstErr)
 			} else {
-				tracker.Done(g.name)
+				tracker.Done(key)
 			}
 		}(i, group)
 	}
