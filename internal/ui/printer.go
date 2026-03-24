@@ -20,6 +20,7 @@ type Printer interface {
 	Separator()
 	GroupHeader(icon, name string)
 	GroupEnd()
+	SetColumnWidth(w int) // set field/path column width for Item/SubItem
 	ItemCreate(field string, value any)
 	ItemUpdate(field, old, new string)
 	ItemDelete(field string, value any)
@@ -27,6 +28,10 @@ type Printer interface {
 	SubItemCreate(field string, value any)
 	SubItemUpdate(field, old, new string)
 	SubItemDelete(field string, value any)
+	FileCreate(path string)
+	FileUpdate(path string)
+	FileDrift(path, onDrift string)
+	FileSkip(path string)
 	Success(name, detail string)
 	Error(name, detail string)
 	Warning(name, detail string) // stderr
@@ -46,8 +51,9 @@ type Printer interface {
 
 // StandardPrinter is the default terminal implementation of Printer.
 type StandardPrinter struct {
-	out io.Writer
-	err io.Writer
+	out      io.Writer
+	err      io.Writer
+	colWidth int // dynamic column width for Item/SubItem alignment
 }
 
 // NewStandardPrinter creates a StandardPrinter writing to stdout/stderr.
@@ -80,63 +86,99 @@ func (p *StandardPrinter) Separator() {
 }
 
 func (p *StandardPrinter) GroupHeader(icon, name string) {
-	var styledIcon string
-	switch icon {
-	case "+":
-		styledIcon = Green.Render("+")
-	case "-":
-		styledIcon = Red.Render("-")
-	default:
-		styledIcon = Yellow.Render(icon)
-	}
-	fmt.Fprintf(p.out, "  %s %s\n", styledIcon, Bold.Render(name))
+	fmt.Fprintf(p.out, "  %s %s\n", renderIcon(icon), Bold.Render(name))
 }
 
 func (p *StandardPrinter) GroupEnd() {
 	fmt.Fprintln(p.out)
 }
 
+// SetColumnWidth sets the field column width for subsequent Item/SubItem/File calls.
+// Pass 0 to reset to default widths.
+func (p *StandardPrinter) SetColumnWidth(w int) {
+	p.colWidth = w
+}
+
+// itemWidth returns the column width for top-level items (indent 6).
+// Adds 4 to align with sub-items (indent 10) when using the same colWidth.
+func (p *StandardPrinter) itemWidth() int {
+	if p.colWidth > 0 {
+		return p.colWidth + 4
+	}
+	return 30
+}
+
+// subItemWidth returns the column width for sub-level items (indent 10).
+func (p *StandardPrinter) subItemWidth() int {
+	if p.colWidth > 0 {
+		return p.colWidth
+	}
+	return 26
+}
+
 func (p *StandardPrinter) ItemCreate(field string, value any) {
-	fmt.Fprintf(p.out, "      %s %-30s  %s\n",
-		Green.Render("+"), field, Green.Render(fmt.Sprintf("%v", value)))
+	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
+		Green.Render("+"), p.itemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
 }
 
 func (p *StandardPrinter) ItemUpdate(field, oldVal, newVal string) {
-	fmt.Fprintf(p.out, "      %s %-30s  %s %s %s\n",
-		Yellow.Render("~"), field, Dim.Render(oldVal), Dim.Render("→"), Bold.Render(newVal))
+	fmt.Fprintf(p.out, "      %s %-*s  %s %s %s\n",
+		Yellow.Render("~"), p.itemWidth(), field, Dim.Render(oldVal), Dim.Render("→"), Bold.Render(newVal))
 }
 
 func (p *StandardPrinter) ItemDelete(field string, value any) {
-	fmt.Fprintf(p.out, "      %s %-30s  %s\n",
-		Red.Render("-"), field, Red.Render(fmt.Sprintf("%v", value)))
+	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
+		Red.Render("-"), p.itemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
 }
 
 func (p *StandardPrinter) SubGroupHeader(icon, name string) {
-	var styledIcon string
-	switch icon {
-	case "+":
-		styledIcon = Green.Render("+")
-	case "-":
-		styledIcon = Red.Render("-")
-	default:
-		styledIcon = Yellow.Render(icon)
-	}
-	fmt.Fprintf(p.out, "      %s %s\n", styledIcon, Bold.Render(name))
+	fmt.Fprintf(p.out, "      %s %s\n", renderIcon(icon), Bold.Render(name))
 }
 
 func (p *StandardPrinter) SubItemCreate(field string, value any) {
-	fmt.Fprintf(p.out, "          %s %-26s  %s\n",
-		Green.Render("+"), field, Green.Render(fmt.Sprintf("%v", value)))
+	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
+		Green.Render("+"), p.subItemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
 }
 
 func (p *StandardPrinter) SubItemUpdate(field, oldVal, newVal string) {
-	fmt.Fprintf(p.out, "          %s %-26s  %s %s %s\n",
-		Yellow.Render("~"), field, Dim.Render(oldVal), Dim.Render("→"), Bold.Render(newVal))
+	fmt.Fprintf(p.out, "          %s %-*s  %s %s %s\n",
+		Yellow.Render("~"), p.subItemWidth(), field, Dim.Render(oldVal), Dim.Render("→"), Bold.Render(newVal))
 }
 
 func (p *StandardPrinter) SubItemDelete(field string, value any) {
-	fmt.Fprintf(p.out, "          %s %-26s  %s\n",
-		Red.Render("-"), field, Red.Render(fmt.Sprintf("%v", value)))
+	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
+		Red.Render("-"), p.subItemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
+}
+
+func (p *StandardPrinter) FileCreate(path string) {
+	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
+		Green.Render("+"), p.subItemWidth(), path, Green.Render("(new file)"))
+}
+
+func (p *StandardPrinter) FileUpdate(path string) {
+	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
+		Yellow.Render("~"), p.subItemWidth(), path, Yellow.Render("(content changed)"))
+}
+
+func (p *StandardPrinter) FileDrift(path, onDrift string) {
+	fmt.Fprintf(p.out, "          %s %-*s  %s  on_drift: %s\n",
+		Yellow.Render("⚠"), p.subItemWidth(), path, Yellow.Render("[drift]"), onDrift)
+}
+
+func (p *StandardPrinter) FileSkip(path string) {
+	fmt.Fprintf(p.out, "          %s %-*s  %s  on_drift: skip\n",
+		Dim.Render("-"), p.subItemWidth(), path, Dim.Render("[drift]"))
+}
+
+func renderIcon(icon string) string {
+	switch icon {
+	case "+":
+		return Green.Render("+")
+	case "-":
+		return Red.Render("-")
+	default:
+		return Yellow.Render(icon)
+	}
 }
 
 func (p *StandardPrinter) Success(name, detail string) {

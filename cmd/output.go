@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/repository"
@@ -54,8 +53,8 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 		rChanges := repoByName[name]
 		fChanges := fileByTarget[name]
 
-		// Compute unified column width from both repo fields and file paths
-		colWidth := computeColumnWidth(rChanges, fChanges)
+		// Set unified column width for this repo group
+		p.SetColumnWidth(computeColumnWidth(rChanges, fChanges))
 
 		// Determine header icon
 		isNew := false
@@ -71,24 +70,39 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			p.GroupHeader("~", name)
 		}
 
-		out := p.OutWriter()
-
 		// Print repository changes
-		// Items are at indent 6 (4 less than subItems at 10), so add 4 to align columns
-		itemWidth := colWidth + 4
 		for _, c := range rChanges {
 			if len(c.Children) > 0 {
-				icon := changeIcon(c.Type)
+				icon := "~"
+				if c.Type == repository.ChangeCreate {
+					icon = "+"
+				} else if c.Type == repository.ChangeDelete {
+					icon = "-"
+				}
 				header := c.Field
 				if s, ok := c.NewValue.(string); ok && s != "" {
 					header = fmt.Sprintf("%s[%s]", c.Field, s)
 				}
-				fmt.Fprintf(out, "      %s %s\n", styledIcon(icon), ui.Bold.Render(header))
+				p.SubGroupHeader(icon, header)
 				for _, child := range c.Children {
-					printSubItem(out, child.Type, child.Field, child.OldValue, child.NewValue, colWidth)
+					switch child.Type {
+					case repository.ChangeCreate:
+						p.SubItemCreate(child.Field, child.NewValue)
+					case repository.ChangeUpdate:
+						p.SubItemUpdate(child.Field, ui.FormatValue(child.OldValue), ui.FormatValue(child.NewValue))
+					case repository.ChangeDelete:
+						p.SubItemDelete(child.Field, child.OldValue)
+					}
 				}
 			} else {
-				printItem(out, c.Type, c.Field, c.OldValue, c.NewValue, itemWidth)
+				switch c.Type {
+				case repository.ChangeCreate:
+					p.ItemCreate(c.Field, c.NewValue)
+				case repository.ChangeUpdate:
+					p.ItemUpdate(c.Field, ui.FormatValue(c.OldValue), ui.FormatValue(c.NewValue))
+				case repository.ChangeDelete:
+					p.ItemDelete(c.Field, c.OldValue)
+				}
 			}
 		}
 
@@ -98,14 +112,26 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			if len(fChanges) != 1 {
 				label += "s"
 			}
-			fmt.Fprintf(out, "      %s %s\n", styledIcon("~"), ui.Bold.Render(fmt.Sprintf("FileSet: %s", label)))
+			p.SubGroupHeader("~", fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
-				printFileItem(out, c, colWidth)
+				switch c.Type {
+				case fileset.FileCreate:
+					p.FileCreate(c.Path)
+				case fileset.FileUpdate:
+					p.FileUpdate(c.Path)
+				case fileset.FileDrift:
+					p.FileDrift(c.Path, c.OnDrift)
+				case fileset.FileSkip:
+					p.FileSkip(c.Path)
+				}
 			}
 		}
 
 		p.GroupEnd()
 	}
+
+	// Reset column width
+	p.SetColumnWidth(0)
 }
 
 // computeColumnWidth returns the max field/path width across both repo and file changes.
@@ -130,71 +156,4 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileCha
 		}
 	}
 	return w
-}
-
-func changeIcon(t repository.ChangeType) string {
-	switch t {
-	case repository.ChangeCreate:
-		return "+"
-	case repository.ChangeDelete:
-		return "-"
-	default:
-		return "~"
-	}
-}
-
-func styledIcon(icon string) string {
-	switch icon {
-	case "+":
-		return ui.Green.Render("+")
-	case "-":
-		return ui.Red.Render("-")
-	default:
-		return ui.Yellow.Render(icon)
-	}
-}
-
-func printItem(out io.Writer, t repository.ChangeType, field string, oldVal, newVal any, w int) {
-	switch t {
-	case repository.ChangeCreate:
-		fmt.Fprintf(out, "      %s %-*s  %s\n",
-			ui.Green.Render("+"), w, field, ui.Green.Render(fmt.Sprintf("%v", newVal)))
-	case repository.ChangeUpdate:
-		fmt.Fprintf(out, "      %s %-*s  %s %s %s\n",
-			ui.Yellow.Render("~"), w, field, ui.Dim.Render(ui.FormatValue(oldVal)), ui.Dim.Render("→"), ui.Bold.Render(ui.FormatValue(newVal)))
-	case repository.ChangeDelete:
-		fmt.Fprintf(out, "      %s %-*s  %s\n",
-			ui.Red.Render("-"), w, field, ui.Red.Render(fmt.Sprintf("%v", oldVal)))
-	}
-}
-
-func printSubItem(out io.Writer, t repository.ChangeType, field string, oldVal, newVal any, w int) {
-	switch t {
-	case repository.ChangeCreate:
-		fmt.Fprintf(out, "          %s %-*s  %s\n",
-			ui.Green.Render("+"), w, field, ui.Green.Render(fmt.Sprintf("%v", newVal)))
-	case repository.ChangeUpdate:
-		fmt.Fprintf(out, "          %s %-*s  %s %s %s\n",
-			ui.Yellow.Render("~"), w, field, ui.Dim.Render(ui.FormatValue(oldVal)), ui.Dim.Render("→"), ui.Bold.Render(ui.FormatValue(newVal)))
-	case repository.ChangeDelete:
-		fmt.Fprintf(out, "          %s %-*s  %s\n",
-			ui.Red.Render("-"), w, field, ui.Red.Render(fmt.Sprintf("%v", oldVal)))
-	}
-}
-
-func printFileItem(out io.Writer, c fileset.FileChange, w int) {
-	switch c.Type {
-	case fileset.FileCreate:
-		fmt.Fprintf(out, "          %s %-*s  %s\n",
-			ui.Green.Render("+"), w, c.Path, ui.Green.Render("(new file)"))
-	case fileset.FileUpdate:
-		fmt.Fprintf(out, "          %s %-*s  %s\n",
-			ui.Yellow.Render("~"), w, c.Path, ui.Yellow.Render("(content changed)"))
-	case fileset.FileDrift:
-		fmt.Fprintf(out, "          %s %-*s  %s  on_drift: %s\n",
-			ui.Yellow.Render("⚠"), w, c.Path, ui.Yellow.Render("[drift]"), c.OnDrift)
-	case fileset.FileSkip:
-		fmt.Fprintf(out, "          %s %-*s  %s  on_drift: skip\n",
-			ui.Dim.Render("-"), w, c.Path, ui.Dim.Render("[drift]"))
-	}
 }

@@ -666,6 +666,7 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 				maxPathLen = len(c.Path)
 			}
 		}
+		p.SetColumnWidth(maxPathLen)
 		label := fmt.Sprintf("%d file", len(g.changes))
 		if len(g.changes) != 1 {
 			label += "s"
@@ -674,21 +675,18 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 		for _, c := range g.changes {
 			switch c.Type {
 			case FileCreate:
-				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s\n",
-					ui.Green.Render("+"), maxPathLen, c.Path, ui.Green.Render("(new file)"))
+				p.FileCreate(c.Path)
 			case FileUpdate:
-				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s\n",
-					ui.Yellow.Render("~"), maxPathLen, c.Path, ui.Yellow.Render("(content changed)"))
+				p.FileUpdate(c.Path)
 			case FileDrift:
-				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s  on_drift: %s\n",
-					ui.Yellow.Render("⚠"), maxPathLen, c.Path, ui.Yellow.Render("[drift]"), c.OnDrift)
+				p.FileDrift(c.Path, c.OnDrift)
 			case FileSkip:
-				fmt.Fprintf(p.OutWriter(), "      %s %-*s  %s  on_drift: skip\n",
-					ui.Dim.Render("-"), maxPathLen, c.Path, ui.Dim.Render("[drift]"))
+				p.FileSkip(c.Path)
 			}
 		}
 		p.GroupEnd()
 	}
+	p.SetColumnWidth(0)
 }
 
 // PrintApplyResults prints the results of FileSet apply.
