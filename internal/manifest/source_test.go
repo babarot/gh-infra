@@ -489,6 +489,59 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 	}
 }
 
+func TestResolveFiles_OnDrift_LocalDirectory(t *testing.T) {
+	dir := t.TempDir()
+	subDir := filepath.Join(dir, "configs")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "a.yml"), []byte("aaa"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &SourceResolver{}
+
+	files := []FileEntry{
+		{
+			Path:    ".github",
+			Source:  "configs",
+			OnDrift: OnDriftOverwrite,
+		},
+	}
+	result, err := r.ResolveFiles(files, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+	if result[0].OnDrift != OnDriftOverwrite {
+		t.Errorf("result[0].OnDrift = %q, want %q", result[0].OnDrift, OnDriftOverwrite)
+	}
+}
+
+func TestResolveFiles_OnDrift_InlinePassthrough(t *testing.T) {
+	dir := t.TempDir()
+	r := &SourceResolver{}
+
+	files := []FileEntry{
+		{Path: "a.txt", Content: "hello", OnDrift: OnDriftSkip},
+		{Path: "b.txt", Content: "world"},
+	}
+	result, err := r.ResolveFiles(files, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result[0].OnDrift != OnDriftSkip {
+		t.Errorf("result[0].OnDrift = %q, want %q", result[0].OnDrift, OnDriftSkip)
+	}
+	if result[1].OnDrift != "" {
+		t.Errorf("result[1].OnDrift = %q, want empty", result[1].OnDrift)
+	}
+}
+
 func TestResolveFiles_DuplicatePathError(t *testing.T) {
 	dir := t.TempDir()
 

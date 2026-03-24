@@ -310,6 +310,7 @@ type FileEntry struct {
 	Source   string            `yaml:"source,omitempty"`    // local file path
 	Vars     map[string]string `yaml:"vars,omitempty"`      // template variables
 	SyncMode string            `yaml:"sync_mode,omitempty"` // patch (default), mirror
+	OnDrift  string            `yaml:"on_drift,omitempty"`  // per-file drift handling (overrides spec-level)
 	DirScope string            `yaml:"-"`                   // internal: directory path for mirror mode
 }
 

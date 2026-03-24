@@ -62,7 +62,8 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 |---|---|---|
 | `files` | *(required)* | List of files to manage — see [File Sources](./sources/) |
 | `files[].sync_mode` | `patch` | Per-entry sync mode: `patch` (add/update) or `mirror` (add/update/delete) — see [Sync Mode](./sync-mode/) |
-| `on_drift` | `warn` | Drift handling: `warn`, `overwrite`, or `skip` — see [Drift Handling](./drift/) |
+| `files[].on_drift` | spec-level | Per-entry drift override — see [Drift Handling](./drift/) |
+| `on_drift` | `warn` | Default drift handling: `warn`, `overwrite`, or `skip` — see [Drift Handling](./drift/) |
 | `commit_strategy` | `push` | Commit method: `push` or `pull_request` — see [Commit Strategy](./commit-strategy/) |
 | `commit_message` | auto | Custom commit message |
 | `branch` | auto | Branch name for `pull_request` strategy |

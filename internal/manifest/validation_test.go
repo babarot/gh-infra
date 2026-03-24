@@ -566,53 +566,44 @@ func TestValidateOneOf(t *testing.T) {
 	}
 }
 
-func TestValidateDriftMirrorConflict(t *testing.T) {
+func TestValidateFileEntryDrift(t *testing.T) {
 	tests := []struct {
 		name    string
-		onDrift string
 		files   []FileEntry
 		wantErr bool
 	}{
 		{
-			name:    "no conflict: on_drift empty",
-			onDrift: "",
-			files:   []FileEntry{{SyncMode: SyncModeMirror}},
+			name:    "no on_drift set",
+			files:   []FileEntry{{Path: "a.txt", SyncMode: SyncModeMirror}},
 			wantErr: false,
 		},
 		{
-			name:    "no conflict: no mirror files",
-			onDrift: "warn",
-			files:   []FileEntry{{SyncMode: ""}, {SyncMode: SyncModePatch}},
+			name:    "file-level on_drift without mirror",
+			files:   []FileEntry{{Path: "a.txt", OnDrift: OnDriftOverwrite}},
 			wantErr: false,
 		},
 		{
-			name:    "conflict: on_drift warn + mirror",
-			onDrift: "warn",
-			files:   []FileEntry{{SyncMode: SyncModeMirror}},
+			name:    "file-level on_drift + mirror on same file",
+			files:   []FileEntry{{Path: "a.txt", OnDrift: OnDriftWarn, SyncMode: SyncModeMirror}},
 			wantErr: true,
 		},
 		{
-			name:    "conflict: on_drift skip + mirror",
-			onDrift: "skip",
-			files:   []FileEntry{{SyncMode: SyncModeMirror}},
-			wantErr: true,
+			name: "file-level on_drift on one file, mirror on another",
+			files: []FileEntry{
+				{Path: "a.txt", OnDrift: OnDriftOverwrite},
+				{Path: ".github", SyncMode: SyncModeMirror},
+			},
+			wantErr: false,
 		},
 		{
-			name:    "conflict: on_drift overwrite + mirror",
-			onDrift: "overwrite",
-			files:   []FileEntry{{SyncMode: SyncModeMirror}},
-			wantErr: true,
-		},
-		{
-			name:    "conflict: mirror among other files",
-			onDrift: "warn",
-			files:   []FileEntry{{SyncMode: ""}, {SyncMode: SyncModeMirror}},
+			name:    "invalid file-level on_drift value",
+			files:   []FileEntry{{Path: "a.txt", OnDrift: "invalid"}},
 			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateDriftMirrorConflict(tt.onDrift, tt.files)
+			err := validateFileEntryDrift(tt.files, "")
 			if tt.wantErr && err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -621,6 +612,68 @@ func TestValidateDriftMirrorConflict(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateFileSet_OverridesOnDrift(t *testing.T) {
+	t.Run("invalid on_drift in overrides", func(t *testing.T) {
+		fs := &FileSet{
+			Metadata: FileSetMetadata{Owner: "org"},
+			Spec: FileSetSpec{
+				Repositories: []FileSetRepository{
+					{
+						Name: "repo",
+						Overrides: []FileEntry{
+							{Path: "a.txt", Content: "x", OnDrift: "bogus"},
+						},
+					},
+				},
+				Files: []FileEntry{{Path: "a.txt", Content: "x"}},
+			},
+		}
+		if err := fs.Validate(); err == nil {
+			t.Fatal("expected error for invalid on_drift in overrides")
+		}
+	})
+
+	t.Run("on_drift + mirror in overrides", func(t *testing.T) {
+		fs := &FileSet{
+			Metadata: FileSetMetadata{Owner: "org"},
+			Spec: FileSetSpec{
+				Repositories: []FileSetRepository{
+					{
+						Name: "repo",
+						Overrides: []FileEntry{
+							{Path: "a.txt", Content: "x", OnDrift: OnDriftWarn, SyncMode: SyncModeMirror},
+						},
+					},
+				},
+				Files: []FileEntry{{Path: "a.txt", Content: "x"}},
+			},
+		}
+		if err := fs.Validate(); err == nil {
+			t.Fatal("expected error for on_drift + mirror in overrides")
+		}
+	})
+
+	t.Run("valid on_drift in overrides", func(t *testing.T) {
+		fs := &FileSet{
+			Metadata: FileSetMetadata{Owner: "org"},
+			Spec: FileSetSpec{
+				Repositories: []FileSetRepository{
+					{
+						Name: "repo",
+						Overrides: []FileEntry{
+							{Path: "a.txt", Content: "x", OnDrift: OnDriftOverwrite},
+						},
+					},
+				},
+				Files: []FileEntry{{Path: "a.txt", Content: "x"}},
+			},
+		}
+		if err := fs.Validate(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestValidateFileSet_InvalidSyncMode(t *testing.T) {

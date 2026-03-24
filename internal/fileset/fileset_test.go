@@ -183,6 +183,92 @@ func TestPlan_DriftSkip(t *testing.T) {
 	}
 }
 
+func TestPlan_FileLevelOnDrift(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "a.txt"): contentsJSON("old a", "sha-a"),
+			contentsKey("owner/repo", "b.txt"): contentsJSON("old b", "sha-b"),
+		},
+		Errors: map[string]error{},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+
+	// spec-level on_drift: warn, but file "a.txt" overrides to overwrite
+	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
+		{Path: "a.txt", Content: "new a", OnDrift: manifest.OnDriftOverwrite},
+		{Path: "b.txt", Content: "new b"}, // inherits spec-level warn
+	})
+
+	changes, err := p.Plan(fileSets, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 changes, got %d", len(changes))
+	}
+
+	// a.txt: file-level overwrite → FileUpdate
+	if changes[0].Type != FileUpdate {
+		t.Errorf("a.txt: expected FileUpdate (file-level overwrite), got %s", changes[0].Type)
+	}
+	// b.txt: spec-level warn → FileDrift
+	if changes[1].Type != FileDrift {
+		t.Errorf("b.txt: expected FileDrift (spec-level warn), got %s", changes[1].Type)
+	}
+}
+
+func TestPlan_FileLevelOnDrift_Skip(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "a.txt"): contentsJSON("old a", "sha-a"),
+		},
+		Errors: map[string]error{},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+
+	// spec-level overwrite, file-level skip
+	fileSets := makeFileSet("owner", "repo", "overwrite", []manifest.FileEntry{
+		{Path: "a.txt", Content: "new a", OnDrift: manifest.OnDriftSkip},
+	})
+
+	changes, err := p.Plan(fileSets, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].Type != FileSkip {
+		t.Errorf("expected FileSkip (file-level skip overrides spec overwrite), got %s", changes[0].Type)
+	}
+}
+
+func TestPlan_FileLevelOnDrift_Warn(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "a.txt"): contentsJSON("old a", "sha-a"),
+		},
+		Errors: map[string]error{},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+
+	// spec-level overwrite, file-level warn
+	fileSets := makeFileSet("owner", "repo", "overwrite", []manifest.FileEntry{
+		{Path: "a.txt", Content: "new a", OnDrift: manifest.OnDriftWarn},
+	})
+
+	changes, err := p.Plan(fileSets, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].Type != FileDrift {
+		t.Errorf("expected FileDrift (file-level warn overrides spec overwrite), got %s", changes[0].Type)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Apply tests
 // ---------------------------------------------------------------------------

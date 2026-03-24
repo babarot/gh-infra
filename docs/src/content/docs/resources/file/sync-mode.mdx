@@ -49,9 +49,9 @@ Source (`./templates/workflows/`) contains two files. Target repo has an additio
 
 ### Mirror and `on_drift`
 
-`sync_mode: mirror` always overwrites content differences. If you explicitly set `on_drift` while any file uses mirror, gh-infra returns a validation error — the two settings contradict each other.
+`sync_mode: mirror` always overwrites content differences. Setting `on_drift` on the **same file** as `sync_mode: mirror` is a validation error — the two settings contradict each other.
 
-If you omit `on_drift`, mirror files silently use overwrite while non-mirror files use the default (`warn`). See [Drift Handling](../drift/#interaction-with-sync_mode-mirror) for details.
+Spec-level `on_drift` can coexist with mirror files elsewhere. Mirror files ignore the spec-level setting and always overwrite, while non-mirror files use it. See [Drift Handling](../drift/#interaction-with-sync_mode-mirror) for details.
 
 ### Scope
 

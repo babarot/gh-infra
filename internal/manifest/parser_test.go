@@ -930,6 +930,82 @@ spec:
 	}
 }
 
+func TestParseFileSet_FileLevelOnDrift(t *testing.T) {
+	dir := t.TempDir()
+	yamlContent := `
+apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - repo
+  on_drift: warn
+  files:
+    - path: a.txt
+      content: hello
+      on_drift: overwrite
+    - path: b.txt
+      content: world
+`
+	path := filepath.Join(dir, "fileset.yaml")
+	if err := os.WriteFile(path, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+
+	fs := result.FileSets[0]
+	if fs.Spec.OnDrift != OnDriftWarn {
+		t.Errorf("spec.on_drift = %q, want %q", fs.Spec.OnDrift, OnDriftWarn)
+	}
+	if fs.Spec.Files[0].OnDrift != OnDriftOverwrite {
+		t.Errorf("files[0].on_drift = %q, want %q", fs.Spec.Files[0].OnDrift, OnDriftOverwrite)
+	}
+	if fs.Spec.Files[1].OnDrift != "" {
+		t.Errorf("files[1].on_drift = %q, want empty", fs.Spec.Files[1].OnDrift)
+	}
+}
+
+func TestParseFile_FileLevelOnDrift(t *testing.T) {
+	dir := t.TempDir()
+	yamlContent := `
+apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: repo
+spec:
+  files:
+    - path: a.txt
+      content: hello
+      on_drift: skip
+    - path: b.txt
+      content: world
+      on_drift: overwrite
+`
+	path := filepath.Join(dir, "file.yaml")
+	if err := os.WriteFile(path, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+
+	fs := result.FileSets[0]
+	if fs.Spec.Files[0].OnDrift != OnDriftSkip {
+		t.Errorf("files[0].on_drift = %q, want %q", fs.Spec.Files[0].OnDrift, OnDriftSkip)
+	}
+	if fs.Spec.Files[1].OnDrift != OnDriftOverwrite {
+		t.Errorf("files[1].on_drift = %q, want %q", fs.Spec.Files[1].OnDrift, OnDriftOverwrite)
+	}
+}
+
 func TestMergeMergeStrategy_MergeCommitTitleMessage(t *testing.T) {
 	base := &MergeStrategy{
 		MergeCommitTitle:   Ptr("MERGE_MESSAGE"),

@@ -12,9 +12,26 @@ On the next `plan`, gh-infra detects this difference. The `on_drift` field contr
 
 ## Options
 
+`on_drift` can be set at the **spec level** (default for all files) or at the **file level** (override for a specific file).
+
 ```yaml
 spec:
-  on_drift: warn    # warn (default) | overwrite | skip
+  on_drift: warn    # spec-level default: warn | overwrite | skip
+
+  files:
+    - path: .gitignore
+      on_drift: overwrite   # file-level override
+      content: ...
+
+    - path: LICENSE
+      source: ./templates/LICENSE
+      # inherits spec-level on_drift: warn
+```
+
+### Resolution order
+
+```
+mirror (always overwrite) > file-level on_drift > spec-level on_drift > default "warn"
 ```
 
 ### `warn` (default)
@@ -45,31 +62,30 @@ Use this when you've intentionally allowed a repo to diverge and don't want nois
 
 ## Interaction with `sync_mode: mirror`
 
-`on_drift` and `sync_mode: mirror` cannot be used together. If any file entry has `sync_mode: mirror`, specifying `on_drift` explicitly is a validation error:
+`on_drift` and `sync_mode: mirror` cannot be used on the **same file**. Mirror means "make the directory exactly match the source" — content drift is always resolved by overwriting, so a per-file `on_drift` would be contradictory:
 
 ```yaml
-# ✗ Error: on_drift cannot be set when sync_mode "mirror" is used
-spec:
-  on_drift: warn
-  files:
-    - path: .github/workflows
-      source: ./templates/workflows/
-      sync_mode: mirror
+# ✗ Error: on_drift cannot be set on a file with sync_mode "mirror"
+files:
+  - path: .github/workflows
+    source: ./templates/workflows/
+    sync_mode: mirror
+    on_drift: warn        # ← validation error
 ```
 
-This is because mirror means "make the directory exactly match the source" — content drift is always resolved by overwriting, which contradicts `warn` or `skip`.
-
-If you omit `on_drift` (let it default), mirror files silently use `overwrite` while non-mirror files use the default `warn`:
+However, spec-level `on_drift` and mirror files **can coexist**. Mirror files ignore the spec-level setting and always overwrite, while non-mirror files use it:
 
 ```yaml
-# ✓ Valid: on_drift not specified, defaults apply
+# ✓ Valid: spec-level on_drift + mirror on a different file
 spec:
+  on_drift: overwrite
+
   files:
+    - path: .gitignore
+      content: ...
+      # uses spec-level on_drift: overwrite
+
     - path: .github/workflows
       source: ./templates/workflows/
-      sync_mode: mirror    # always overwrites
-
-    - path: LICENSE
-      source: ./templates/LICENSE
-      # uses default on_drift: warn
+      sync_mode: mirror    # always overwrites, ignores spec-level on_drift
 ```

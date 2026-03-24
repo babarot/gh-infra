@@ -26,6 +26,9 @@ func ResolveFiles(fs *manifest.FileSet, target manifest.FileSetRepository) []man
 			if override.SyncMode == "" {
 				override.SyncMode = f.SyncMode
 			}
+			if override.OnDrift == "" {
+				override.OnDrift = f.OnDrift
+			}
 			result = append(result, override)
 		} else {
 			result = append(result, f)

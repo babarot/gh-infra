@@ -153,8 +153,11 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 				}
 				file.Content = rendered
 			}
-			// Mirror mode forces overwrite (mirror = complete sync)
+			// Resolve drift handling: mirror > file-level > spec-level
 			drift := u.onDrift
+			if file.OnDrift != "" {
+				drift = file.OnDrift
+			}
 			if file.SyncMode == manifest.SyncModeMirror {
 				drift = manifest.OnDriftOverwrite
 			}
