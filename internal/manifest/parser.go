@@ -176,6 +176,8 @@ func parseFile(data []byte, path string) (*FileSet, error) {
 			CommitMessage:  f.Spec.CommitMessage,
 			CommitStrategy: f.Spec.CommitStrategy,
 			Branch:         f.Spec.Branch,
+			PRTitle:        f.Spec.PRTitle,
+			PRBody:         f.Spec.PRBody,
 		},
 	}
 

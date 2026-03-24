@@ -39,6 +39,10 @@ spec:
   on_drift: warn                          # warn | overwrite | skip
   commit_strategy: push                    # push | pull_request
   commit_message: "ci: sync managed files"
+  # pr_title: "chore: sync files"         # pull_request only
+  # pr_body: |                            # pull_request only
+  #   ## Summary
+  #   Automated file sync.
 ```
 :::
 
@@ -62,6 +66,8 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `commit_strategy` | `push` | Commit method: `push` or `pull_request` — see [Commit Strategy](./commit-strategy/) |
 | `commit_message` | auto | Custom commit message |
 | `branch` | auto | Branch name for `pull_request` strategy |
+| `pr_title` | `commit_message` | Custom PR title (`pull_request` only) |
+| `pr_body` | auto | Custom PR body (`pull_request` only) |
 
 File content supports `<% %>` template syntax for per-repo customization — see [Templating](./templating/).
 

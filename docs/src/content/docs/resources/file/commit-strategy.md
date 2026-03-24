@@ -26,9 +26,36 @@ spec:
   commit_strategy: pull_request
   commit_message: "ci: sync shared files"
   # branch: gh-infra/custom-branch   # optional, auto-generated if omitted
+  pr_title: "Sync shared files from gh-infra"
+  pr_body: |
+    ## Summary
+
+    Automated file sync by gh-infra.
+    Updates shared configuration files from the gh-infra central config.
+
+    ## Changed Files
+
+    - CI workflows
+    - Label definitions
+    - PR templates
+
+    ## Notes
+
+    This PR was created automatically. Please review the diff before merging.
 ```
 
 Use this when changes need review — for example, updating CI workflows that could break builds if something is wrong.
+
+### Customizing the Pull Request
+
+By default, the PR title is the `commit_message` and the body is an auto-generated description. You can override both:
+
+| Field | Default | Description |
+|---|---|---|
+| `pr_title` | value of `commit_message` | Custom title for the pull request |
+| `pr_body` | auto | Custom body/description for the pull request |
+
+The `pr_body` field supports multi-line YAML (`|`) and Markdown formatting including headings, lists, and links. This is useful when you want a structured PR description that's different from the commit message.
 
 ## How to Choose
 

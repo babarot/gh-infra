@@ -341,6 +341,8 @@ type ApplyOptions struct {
 	CommitStrategy string // "push" or "pull_request"
 	Branch         string
 	FileSetName    string
+	PRTitle        string // custom PR title (pull_request only)
+	PRBody         string // custom PR body (pull_request only)
 }
 
 const defaultApplyParallel = 5
@@ -712,12 +714,20 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 	}
 
 	// Create PR (skip if one already exists for this head branch)
+	prTitle := opts.PRTitle
+	if prTitle == "" {
+		prTitle = title
+	}
+	prBody := opts.PRBody
+	if prBody == "" {
+		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetName)
+	}
 	_, err = p.runner.Run("pr", "create",
 		"--repo", repo,
 		"--base", defaultBranch,
 		"--head", branchName,
-		"--title", title,
-		"--body", fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetName),
+		"--title", prTitle,
+		"--body", prBody,
 	)
 	if err != nil && strings.Contains(err.Error(), "already exists") {
 		return nil // PR already open for this branch

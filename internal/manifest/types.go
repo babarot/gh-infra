@@ -250,6 +250,8 @@ type FileSpec struct {
 	CommitMessage  string      `yaml:"commit_message,omitempty"`
 	CommitStrategy string      `yaml:"commit_strategy,omitempty"` // push (default), pull_request
 	Branch         string      `yaml:"branch,omitempty"`          // branch name for pull_request strategy
+	PRTitle        string      `yaml:"pr_title,omitempty"`        // custom PR title (pull_request only)
+	PRBody         string      `yaml:"pr_body,omitempty"`         // custom PR body (pull_request only)
 }
 
 // FileSet represents a set of files to distribute to target repositories.
@@ -271,6 +273,8 @@ type FileSetSpec struct {
 	CommitMessage  string              `yaml:"commit_message,omitempty"`  // custom commit message
 	CommitStrategy string              `yaml:"commit_strategy,omitempty"` // push (default), pull_request
 	Branch         string              `yaml:"branch,omitempty"`          // branch name for pull_request strategy
+	PRTitle        string              `yaml:"pr_title,omitempty"`        // custom PR title (pull_request only)
+	PRBody         string              `yaml:"pr_body,omitempty"`         // custom PR body (pull_request only)
 }
 
 // FileSetRepository can be a simple string "repo" or a struct with overrides.

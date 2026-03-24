@@ -196,6 +196,8 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 				CommitStrategy: fs.Spec.CommitStrategy,
 				Branch:         fs.Spec.Branch,
 				FileSetName:    fs.Metadata.Owner,
+				PRTitle:        fs.Spec.PRTitle,
+				PRBody:         fs.Spec.PRBody,
 			}
 			var fileReporter ui.ProgressReporter
 			if stream {
