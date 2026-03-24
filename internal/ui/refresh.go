@@ -174,6 +174,9 @@ func RunRefresh(names []string) *RefreshTracker {
 
 // Done marks a task as successfully completed.
 func (t *RefreshTracker) Done(name string) {
+	if t == nil {
+		return
+	}
 	if t.fallback {
 		return
 	}
@@ -186,6 +189,9 @@ func (t *RefreshTracker) Done(name string) {
 
 // Error marks a task as failed.
 func (t *RefreshTracker) Error(name string, err error) {
+	if t == nil {
+		return
+	}
 	if t.fallback {
 		DefaultPrinter.Error(name, err.Error())
 		return
@@ -199,6 +205,9 @@ func (t *RefreshTracker) Error(name string, err error) {
 
 // Wait blocks until all tasks are reported and the display finishes.
 func (t *RefreshTracker) Wait() {
+	if t == nil {
+		return
+	}
 	<-t.done
 }
 

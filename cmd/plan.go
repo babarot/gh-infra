@@ -70,6 +70,12 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 	var repoChanges []repository.Change
 	var fileChanges []fileset.FileChange
 
+	// Collect all target names and start a single spinner display
+	var allNames []string
+	allNames = append(allNames, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
+	allNames = append(allNames, fileset.PlanTargetNames(parsed.FileSets)...)
+	tracker := ui.RunRefresh(allNames)
+
 	g := new(errgroup.Group)
 
 	if len(parsed.Repositories) > 0 {
@@ -77,7 +83,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 		g.Go(func() error {
 			var fetchErr error
 			diffOpts := repository.DiffOptions{Resolver: resolver}
-			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, diffOpts)
+			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, tracker, diffOpts)
 			return fetchErr
 		})
 	}
@@ -86,14 +92,16 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 		processor := fileset.NewProcessor(runner)
 		g.Go(func() error {
 			var planErr error
-			fileChanges, planErr = processor.Plan(parsed.FileSets)
+			fileChanges, planErr = processor.Plan(parsed.FileSets, tracker)
 			return planErr
 		})
 	}
 
 	if err := g.Wait(); err != nil {
+		tracker.Wait()
 		return err
 	}
+	tracker.Wait()
 
 	// Phase 2: Print unified plan
 	hasRepo := repository.HasRealChanges(repoChanges)

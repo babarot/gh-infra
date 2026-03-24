@@ -75,6 +75,12 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	var targetRepos []*manifest.Repository
 	var fileChanges []fileset.FileChange
 
+	// Collect all target names and start a single spinner display
+	var allNames []string
+	allNames = append(allNames, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
+	allNames = append(allNames, fileset.PlanTargetNames(parsed.FileSets)...)
+	tracker := ui.RunRefresh(allNames)
+
 	g := new(errgroup.Group)
 
 	if len(parsed.Repositories) > 0 {
@@ -82,7 +88,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		diffOpts := repository.DiffOptions{ForceSecrets: forceSecrets, Resolver: resolver}
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, diffOpts)
+			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, tracker, diffOpts)
 			return fetchErr
 		})
 	}
@@ -91,14 +97,16 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		processor := fileset.NewProcessor(runner)
 		g.Go(func() error {
 			var planErr error
-			fileChanges, planErr = processor.Plan(parsed.FileSets)
+			fileChanges, planErr = processor.Plan(parsed.FileSets, tracker)
 			return planErr
 		})
 	}
 
 	if err := g.Wait(); err != nil {
+		tracker.Wait()
 		return err
 	}
+	tracker.Wait()
 
 	hasRepo := repository.HasRealChanges(repoChanges)
 	hasFile := fileset.HasChanges(fileChanges)

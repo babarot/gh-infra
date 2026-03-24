@@ -67,7 +67,7 @@ func TestPlan_NewFile(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
-	changes, _ := p.Plan(fileSets)
+	changes, _ := p.Plan(fileSets, nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -92,7 +92,7 @@ func TestPlan_NoChange(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
-	changes, _ := p.Plan(fileSets)
+	changes, _ := p.Plan(fileSets, nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -114,7 +114,7 @@ func TestPlan_DriftWarn(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 
-	changes, _ := p.Plan(fileSets)
+	changes, _ := p.Plan(fileSets, nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -143,7 +143,7 @@ func TestPlan_DriftOverwrite(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 
-	changes, _ := p.Plan(fileSets)
+	changes, _ := p.Plan(fileSets, nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -169,7 +169,7 @@ func TestPlan_DriftSkip(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 
-	changes, _ := p.Plan(fileSets)
+	changes, _ := p.Plan(fileSets, nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))

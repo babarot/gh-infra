@@ -69,8 +69,19 @@ func (u planUnit) fullName() string {
 	return u.owner + "/" + u.target.Name
 }
 
+// PlanTargetNames returns the full "owner/repo" names for all FileSet targets.
+func PlanTargetNames(fileSets []*manifest.FileSet) []string {
+	var names []string
+	for _, fs := range fileSets {
+		for _, target := range fs.Spec.Repositories {
+			names = append(names, fs.Metadata.Owner+"/"+target.Name)
+		}
+	}
+	return names
+}
+
 // Plan computes changes for all FileSets concurrently.
-func (p *Processor) Plan(fileSets []*manifest.FileSet) ([]FileChange, error) {
+func (p *Processor) Plan(fileSets []*manifest.FileSet, tracker *ui.RefreshTracker) ([]FileChange, error) {
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {
@@ -85,13 +96,6 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet) ([]FileChange, error) {
 			})
 		}
 	}
-
-	// Start spinner display for all targets.
-	names := make([]string, len(units))
-	for i, u := range units {
-		names[i] = u.fullName()
-	}
-	tracker := ui.RunRefresh(names)
 
 	// Process each unit concurrently; collect results in order.
 	type unitResult struct {
@@ -126,7 +130,6 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet) ([]FileChange, error) {
 		}(i, u)
 	}
 	wg.Wait()
-	tracker.Wait()
 
 	// Flatten in original order; return first error.
 	var changes []FileChange

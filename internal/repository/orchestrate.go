@@ -22,7 +22,19 @@ type repoResult struct {
 
 // FetchAllChanges fetches current state and computes diffs for all repos in parallel.
 // Repos that fail to fetch are skipped with a warning; successful repos are still returned.
-func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, printer ui.Printer, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {
+// FetchTargetNames returns the full names of repos that would be fetched (after filtering).
+func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []string {
+	var names []string
+	for _, repo := range repos {
+		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
+			continue
+		}
+		names = append(names, repo.Metadata.FullName())
+	}
+	return names
+}
+
+func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, printer ui.Printer, tracker *ui.RefreshTracker, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {
 	var targets []*manifest.Repository
 	for _, repo := range repos {
 		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
@@ -37,13 +49,6 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 	if len(targets) == 0 {
 		return nil, nil, nil
 	}
-
-	// Start spinner display for all targets
-	names := make([]string, len(targets))
-	for i, r := range targets {
-		names[i] = r.Metadata.FullName()
-	}
-	tracker := ui.RunRefresh(names)
 
 	results := make([]repoResult, len(targets))
 	sem := semaphore.NewWeighted(defaultParallel)
@@ -74,7 +79,6 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 	}
 
 	wg.Wait()
-	tracker.Wait()
 
 	var allChanges []Change
 	var targetRepos []*manifest.Repository
