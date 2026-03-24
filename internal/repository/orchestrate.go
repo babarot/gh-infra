@@ -20,18 +20,25 @@ type repoResult struct {
 	err     error
 }
 
-// FetchAllChanges fetches current state and computes diffs for all repos in parallel.
-// Repos that fail to fetch are skipped with a warning; successful repos are still returned.
-// FetchTargetNames returns display names for repos that would be fetched (after filtering).
-func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []string {
-	var names []string
+// FetchTargetNames returns display tasks for repos that would be fetched (after filtering).
+func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []ui.RefreshTask {
+	var tasks []ui.RefreshTask
 	for _, repo := range repos {
 		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
 			continue
 		}
-		names = append(names, "Fetching "+repo.Metadata.FullName())
+		tasks = append(tasks, ui.RefreshTask{
+			Name:      "Fetching " + repo.Metadata.FullName(),
+			DoneLabel: "Fetched " + repo.Metadata.FullName(),
+		})
 	}
-	return names
+	return tasks
+}
+
+// fetchTaskKey returns the tracker key for a given repo full name.
+// This must match the Name used in FetchTargetNames.
+func fetchTaskKey(fullName string) string {
+	return "Fetching " + fullName
 }
 
 func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, printer ui.Printer, tracker *ui.RefreshTracker, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {
@@ -66,14 +73,14 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 			current, err := fetcher.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
 			if err != nil {
 				logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
-				tracker.Error("Fetching "+r.Metadata.FullName(), err)
+				tracker.Error(fetchTaskKey(r.Metadata.FullName()), err)
 				results[idx] = repoResult{index: idx, repo: r, err: err}
 				return
 			}
 
 			changes := Diff(r, current, diffOpts...)
 			logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
-			tracker.Done("Fetching " + r.Metadata.FullName())
+			tracker.Done(fetchTaskKey(r.Metadata.FullName()))
 			results[idx] = repoResult{index: idx, repo: r, changes: changes}
 		}(i, repo)
 	}

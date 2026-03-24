@@ -76,10 +76,10 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	var fileChanges []fileset.FileChange
 
 	// Collect all target names and start a single spinner display
-	var allNames []string
-	allNames = append(allNames, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
-	allNames = append(allNames, fileset.PlanTargetNames(parsed.FileSets)...)
-	tracker := ui.RunRefresh(allNames)
+	var allTasks []ui.RefreshTask
+	allTasks = append(allTasks, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
+	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSets)...)
+	tracker := ui.RunRefresh(allTasks)
 
 	g := new(errgroup.Group)
 
@@ -152,12 +152,14 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	totalSucceeded := 0
 	totalFailed := 0
 
+	var allRepoResults []repository.ApplyResult
+	var allFileResults []fileset.FileApplyResult
+
 	// Apply repo changes
 	if hasRepo {
 		executor := repository.NewExecutor(runner, resolver)
-		results := executor.Apply(repoChanges, targetRepos)
-		repository.PrintApplyResults(p, results)
-		s, f := repository.CountApplyResults(results)
+		allRepoResults = executor.Apply(repoChanges, targetRepos)
+		s, f := repository.CountApplyResults(allRepoResults)
 		totalSucceeded += s
 		totalFailed += f
 	}
@@ -182,7 +184,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 				FileSetName:    fs.Metadata.Owner,
 			}
 			results := processor.Apply(fsChanges, opts)
-			fileset.PrintApplyResults(p, results)
+			allFileResults = append(allFileResults, results...)
 			for _, r := range results {
 				if r.Skipped {
 					continue
@@ -195,6 +197,10 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 			}
 		}
 	}
+
+	// Print unified apply results grouped by repo
+	p.Separator()
+	printUnifiedApplyResults(p, allRepoResults, allFileResults)
 
 	// Unified summary
 	summaryMsg := fmt.Sprintf("Apply complete! %d changes applied", totalSucceeded)

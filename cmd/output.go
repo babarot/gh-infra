@@ -65,19 +65,19 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			}
 		}
 		if isNew {
-			p.GroupHeader("+", name+"  "+ui.Green.Render("(new)"))
+			p.GroupHeader(ui.IconAdd, name+"  "+ui.Green.Render("(new)"))
 		} else {
-			p.GroupHeader("~", name)
+			p.GroupHeader(ui.IconChange, name)
 		}
 
 		// Print repository changes
 		for _, c := range rChanges {
 			if len(c.Children) > 0 {
-				icon := "~"
+				icon := ui.IconChange
 				if c.Type == repository.ChangeCreate {
-					icon = "+"
+					icon = ui.IconAdd
 				} else if c.Type == repository.ChangeDelete {
-					icon = "-"
+					icon = ui.IconRemove
 				}
 				header := c.Field
 				if s, ok := c.NewValue.(string); ok && s != "" {
@@ -112,7 +112,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			if len(fChanges) != 1 {
 				label += "s"
 			}
-			p.SubGroupHeader("~", fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
+			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
 				switch c.Type {
 				case fileset.FileCreate:
@@ -133,6 +133,95 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 	}
 
 	// Reset column width
+	p.SetColumnWidth(0)
+}
+
+// printUnifiedApplyResults prints apply results grouped by repo name,
+// mirroring the hierarchical structure of printUnifiedPlan.
+func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.FileApplyResult) {
+	// Build ordered list of unique repo names (preserving appearance order)
+	seen := make(map[string]bool)
+	var repoNames []string
+	for _, r := range repoResults {
+		name := r.Change.Name
+		if !seen[name] {
+			seen[name] = true
+			repoNames = append(repoNames, name)
+		}
+	}
+	for _, r := range fileResults {
+		name := r.Change.Target
+		if !seen[name] {
+			seen[name] = true
+			repoNames = append(repoNames, name)
+		}
+	}
+
+	// Index results by repo name
+	repoByName := make(map[string][]repository.ApplyResult)
+	for _, r := range repoResults {
+		repoByName[r.Change.Name] = append(repoByName[r.Change.Name], r)
+	}
+	fileByTarget := make(map[string][]fileset.FileApplyResult)
+	for _, r := range fileResults {
+		fileByTarget[r.Change.Target] = append(fileByTarget[r.Change.Target], r)
+	}
+
+	for _, name := range repoNames {
+		// Compute column width for this group
+		w := 0
+		for _, r := range repoByName[name] {
+			if len(r.Change.Field) > w {
+				w = len(r.Change.Field)
+			}
+		}
+		for _, r := range fileByTarget[name] {
+			if len(r.Change.Path) > w {
+				w = len(r.Change.Path)
+			}
+		}
+		p.SetColumnWidth(w)
+
+		// Determine header icon based on whether any result in this group failed
+		icon := ui.IconSuccess
+		for _, r := range repoByName[name] {
+			if r.Err != nil {
+				icon = ui.IconError
+				break
+			}
+		}
+		if icon != ui.IconError {
+			for _, r := range fileByTarget[name] {
+				if r.Err != nil {
+					icon = ui.IconError
+					break
+				}
+			}
+		}
+		p.GroupHeader(icon, name)
+
+		for _, r := range repoByName[name] {
+			if r.Err != nil {
+				p.ResultError(r.Change.Field, r.Err.Error())
+			} else {
+				p.ResultSuccess(r.Change.Field, fmt.Sprintf("%sd", r.Change.Type))
+			}
+		}
+
+		for _, r := range fileByTarget[name] {
+			if r.Skipped {
+				p.ResultWarning(r.Change.Path,
+					fmt.Sprintf("drift detected, skipped (on_drift: %s)", r.Change.OnDrift))
+			} else if r.Err != nil {
+				p.ResultError(r.Change.Path, r.Err.Error())
+			} else {
+				p.ResultSuccess(r.Change.Path, fmt.Sprintf("%sd", r.Change.Type))
+			}
+		}
+
+		p.GroupEnd()
+	}
+
 	p.SetColumnWidth(0)
 }
 
