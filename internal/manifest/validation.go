@@ -156,9 +156,9 @@ func (f *File) Validate() error {
 			return fmt.Errorf("File %q: %w", f.Metadata.FullName(), err)
 		}
 	}
-	if f.Spec.Strategy != "" {
-		if err := validateOneOf("strategy", f.Spec.Strategy,
-			StrategyDirect, StrategyPullRequest); err != nil {
+	if f.Spec.CommitStrategy != "" {
+		if err := validateOneOf("commit_strategy", f.Spec.CommitStrategy,
+			CommitStrategyPush, CommitStrategyPullRequest); err != nil {
 			return fmt.Errorf("File %q: %w", f.Metadata.FullName(), err)
 		}
 	}
@@ -191,11 +191,11 @@ func (fs *FileSet) Validate() error {
 		OnDriftWarn, OnDriftOverwrite, OnDriftSkip); err != nil {
 		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Owner, err)
 	}
-	if fs.Spec.Strategy == "" {
-		fs.Spec.Strategy = StrategyDirect
+	if fs.Spec.CommitStrategy == "" {
+		fs.Spec.CommitStrategy = CommitStrategyPush
 	}
-	if err := validateOneOf("strategy", fs.Spec.Strategy,
-		StrategyDirect, StrategyPullRequest); err != nil {
+	if err := validateOneOf("commit_strategy", fs.Spec.CommitStrategy,
+		CommitStrategyPush, CommitStrategyPullRequest); err != nil {
 		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Owner, err)
 	}
 	for i, f := range fs.Spec.Files {

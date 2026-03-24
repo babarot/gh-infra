@@ -20,9 +20,9 @@ const (
 	OnDriftOverwrite = "overwrite"
 	OnDriftSkip      = "skip"
 
-	// Strategy values for FileSet apply behavior.
-	StrategyDirect      = "direct"
-	StrategyPullRequest = "pull_request"
+	// CommitStrategy values for FileSet apply behavior.
+	CommitStrategyPush        = "push"
+	CommitStrategyPullRequest = "pull_request"
 
 	// Resource type identifiers used in plan changes.
 	ResourceRepository       = "Repository"
@@ -77,8 +77,8 @@ type Repository struct {
 }
 
 type RepositoryMetadata struct {
-	Name      string `yaml:"name"`
-	Owner     string `yaml:"owner"`
+	Name  string `yaml:"name"`
+	Owner string `yaml:"owner"`
 }
 
 func (m RepositoryMetadata) FullName() string {
@@ -241,11 +241,11 @@ func (m FileMetadata) FullName() string {
 }
 
 type FileSpec struct {
-	Files         []FileEntry `yaml:"files"`
-	OnDrift       string      `yaml:"on_drift,omitempty"`
-	CommitMessage string      `yaml:"commit_message,omitempty"`
-	Strategy      string      `yaml:"strategy,omitempty"`
-	Branch        string      `yaml:"branch,omitempty"`
+	Files          []FileEntry `yaml:"files"`
+	OnDrift        string      `yaml:"on_drift,omitempty"`
+	CommitMessage  string      `yaml:"commit_message,omitempty"`
+	CommitStrategy string      `yaml:"commit_strategy,omitempty"` // push (default), pull_request
+	Branch         string      `yaml:"branch,omitempty"`          // branch name for pull_request strategy
 }
 
 // FileSet represents a set of files to distribute to target repositories.
@@ -261,12 +261,12 @@ type FileSetMetadata struct {
 }
 
 type FileSetSpec struct {
-	Repositories  []FileSetRepository `yaml:"repositories"`
-	Files         []FileEntry         `yaml:"files"`
-	OnDrift       string              `yaml:"on_drift,omitempty"`       // warn (default), overwrite, skip
-	CommitMessage string              `yaml:"commit_message,omitempty"` // custom commit message
-	Strategy      string              `yaml:"strategy,omitempty"`       // direct (default), pull_request
-	Branch        string              `yaml:"branch,omitempty"`         // branch name for pull_request strategy
+	Repositories   []FileSetRepository `yaml:"repositories"`
+	Files          []FileEntry         `yaml:"files"`
+	OnDrift        string              `yaml:"on_drift,omitempty"`        // warn (default), overwrite, skip
+	CommitMessage  string              `yaml:"commit_message,omitempty"`  // custom commit message
+	CommitStrategy string              `yaml:"commit_strategy,omitempty"` // push (default), pull_request
+	Branch         string              `yaml:"branch,omitempty"`          // branch name for pull_request strategy
 }
 
 // FileSetRepository can be a simple string "repo" or a struct with overrides.
