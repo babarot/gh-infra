@@ -48,11 +48,12 @@ const (
 
 // Processor handles FileSet plan and apply operations.
 type Processor struct {
-	runner gh.Runner
+	runner  gh.Runner
+	printer ui.Printer
 }
 
-func NewProcessor(runner gh.Runner) *Processor {
-	return &Processor{runner: runner}
+func NewProcessor(runner gh.Runner, printer ui.Printer) *Processor {
+	return &Processor{runner: runner, printer: printer}
 }
 
 // planUnit represents one (fileSet, repository) pair to process.
@@ -429,7 +430,7 @@ func (p *Processor) createBlobs(repo string, changes []FileChange) ([]treeEntry,
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
 func (p *Processor) applyToEmptyRepo(repo string, changes []FileChange, opts ApplyOptions) error {
-	fmt.Fprintf(os.Stderr, "  Updating %s (empty repo, using fallback)...\n", repo)
+	p.printer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
 	message := opts.CommitMessage
 	if message == "" {
 		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetName)

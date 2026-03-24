@@ -68,7 +68,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 	p.Phase(fmt.Sprintf("Reading desired state from %s ...", path))
 	p.Phase("Fetching current state from GitHub API ...")
-	fmt.Fprintln(p.ErrWriter())
+	p.BlankLine()
 
 	// Compute all changes in parallel
 	var repoChanges []repository.Change
@@ -94,7 +94,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	}
 
 	if len(parsed.FileSets) > 0 {
-		processor := fileset.NewProcessor(runner)
+		processor := fileset.NewProcessor(runner, p)
 		g.Go(func() error {
 			var planErr error
 			fileChanges, planErr = processor.Plan(parsed.FileSets, tracker)
@@ -163,7 +163,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 	// Apply file changes (per FileSet for correct options)
 	if hasFile {
-		processor := fileset.NewProcessor(runner)
+		processor := fileset.NewProcessor(runner, p)
 		for _, fs := range parsed.FileSets {
 			var fsChanges []fileset.FileChange
 			for _, c := range fileChanges {

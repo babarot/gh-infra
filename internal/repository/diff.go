@@ -418,7 +418,7 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 			}
 			if drs.Conditions != nil {
 				parent.Children = append(parent.Children, Change{
-					Type: ChangeCreate, Field: "conditions", NewValue: rulesetConditionsSummary2(drs.Conditions),
+					Type: ChangeCreate, Field: "conditions", NewValue: formatConditions(drs.Conditions.RefName.Include, drs.Conditions.RefName.Exclude),
 				})
 			}
 			changes = append(changes, parent)
@@ -454,10 +454,17 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 
 		// conditions
 		if !rulesetConditionsEqual(drs.Conditions, crs.Conditions) {
+			oldCond, newCond := "(none)", "(none)"
+			if crs.Conditions != nil && crs.Conditions.RefName != nil {
+				oldCond = formatConditions(crs.Conditions.RefName.Include, crs.Conditions.RefName.Exclude)
+			}
+			if drs.Conditions != nil && drs.Conditions.RefName != nil {
+				newCond = formatConditions(drs.Conditions.RefName.Include, drs.Conditions.RefName.Exclude)
+			}
 			fieldChanges = append(fieldChanges, Change{
 				Type: ChangeUpdate, Field: "conditions",
-				OldValue: rulesetConditionsSummary(crs.Conditions),
-				NewValue: rulesetConditionsSummary2(drs.Conditions),
+				OldValue: oldCond,
+				NewValue: newCond,
 			})
 		}
 
@@ -524,7 +531,7 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 				if !rulesetStatusChecksEqual(sc.Contexts, csc.Contexts, resolver) {
 					fieldChanges = append(fieldChanges, Change{
 						Type: ChangeUpdate, Field: "rules.required_status_checks.contexts",
-						OldValue: rulesetStatusCheckNames(csc.Contexts), NewValue: rulesetStatusCheckNames2(sc.Contexts),
+						OldValue: statusCheckContexts(csc.Contexts), NewValue: desiredStatusCheckContexts(sc.Contexts),
 					})
 				}
 			}
@@ -600,18 +607,8 @@ func rulesetConditionsEqual(desired *manifest.RulesetConditions, current *Curren
 		stringSliceEqual(desired.RefName.Exclude, current.RefName.Exclude)
 }
 
-func rulesetConditionsSummary(c *CurrentRulesetConditions) string {
-	if c == nil || c.RefName == nil {
-		return "(none)"
-	}
-	return fmt.Sprintf("include:%v exclude:%v", c.RefName.Include, c.RefName.Exclude)
-}
-
-func rulesetConditionsSummary2(c *manifest.RulesetConditions) string {
-	if c == nil || c.RefName == nil {
-		return "(none)"
-	}
-	return fmt.Sprintf("include:%v exclude:%v", c.RefName.Include, c.RefName.Exclude)
+func formatConditions(include, exclude []string) string {
+	return fmt.Sprintf("include:%v exclude:%v", include, exclude)
 }
 
 func rulesetStatusChecksEqual(desired []manifest.RulesetStatusCheck, current []CurrentRulesetStatusCheck, resolver *manifest.Resolver) bool {
@@ -636,18 +633,18 @@ func rulesetStatusChecksEqual(desired []manifest.RulesetStatusCheck, current []C
 	return true
 }
 
-func rulesetStatusCheckNames(checks []CurrentRulesetStatusCheck) []string {
-	var names []string
-	for _, c := range checks {
-		names = append(names, c.Context)
+func statusCheckContexts(checks []CurrentRulesetStatusCheck) []string {
+	names := make([]string, len(checks))
+	for i, c := range checks {
+		names[i] = c.Context
 	}
 	return names
 }
 
-func rulesetStatusCheckNames2(checks []manifest.RulesetStatusCheck) []string {
-	var names []string
-	for _, c := range checks {
-		names = append(names, c.Context)
+func desiredStatusCheckContexts(checks []manifest.RulesetStatusCheck) []string {
+	names := make([]string, len(checks))
+	for i, c := range checks {
+		names[i] = c.Context
 	}
 	return names
 }

@@ -16,57 +16,6 @@ func HasRealChanges(changes []Change) bool {
 	return false
 }
 
-// PrintPlanChanges prints the repository change details (without header/footer).
-func PrintPlanChanges(p ui.Printer, changes []Change) {
-	grouped := groupByName(changes)
-	for _, group := range grouped {
-		if len(group.changes) == 0 {
-			continue
-		}
-		if isNewRepo(group.changes) {
-			p.GroupHeader("+", group.name+"  "+ui.Green.Render("(new)"))
-		} else {
-			p.GroupHeader("~", group.name)
-		}
-		for _, c := range group.changes {
-			if len(c.Children) > 0 {
-				// Hierarchical display: sub-resource with nested fields
-				icon := "~"
-				if c.Type == ChangeCreate {
-					icon = "+"
-				} else if c.Type == ChangeDelete {
-					icon = "-"
-				}
-				header := c.Field
-				if s, ok := c.NewValue.(string); ok && s != "" {
-					header = fmt.Sprintf("%s[%s]", c.Field, s)
-				}
-				p.SubGroupHeader(icon, header)
-				for _, child := range c.Children {
-					switch child.Type {
-					case ChangeCreate:
-						p.SubItemCreate(child.Field, child.NewValue)
-					case ChangeUpdate:
-						p.SubItemUpdate(child.Field, ui.FormatValue(child.OldValue), ui.FormatValue(child.NewValue))
-					case ChangeDelete:
-						p.SubItemDelete(child.Field, child.OldValue)
-					}
-				}
-			} else {
-				switch c.Type {
-				case ChangeCreate:
-					p.ItemCreate(c.Field, c.NewValue)
-				case ChangeUpdate:
-					p.ItemUpdate(c.Field, ui.FormatValue(c.OldValue), ui.FormatValue(c.NewValue))
-				case ChangeDelete:
-					p.ItemDelete(c.Field, c.OldValue)
-				}
-			}
-		}
-		p.GroupEnd()
-	}
-}
-
 // CountChanges returns the number of creates, updates, and deletes.
 func CountChanges(changes []Change) (creates, updates, deletes int) {
 	return countChanges(changes)
@@ -117,15 +66,6 @@ func groupByName(changes []Change) []changeGroup {
 		groups[idx].changes = append(groups[idx].changes, c)
 	}
 	return groups
-}
-
-func isNewRepo(changes []Change) bool {
-	for _, c := range changes {
-		if c.Type == ChangeCreate && c.Field == "repository" {
-			return true
-		}
-	}
-	return false
 }
 
 func countChanges(changes []Change) (creates, updates, deletes int) {

@@ -15,6 +15,7 @@ type Printer interface {
 	// stderr: progress/status
 	Phase(msg string)
 	Progress(msg string)
+	BlankLine() // empty line to stderr
 
 	// stdout: structured output
 	Separator()
@@ -77,6 +78,10 @@ func (p *StandardPrinter) Phase(msg string) {
 
 func (p *StandardPrinter) Progress(msg string) {
 	fmt.Fprintf(p.err, "  %s\n", msg)
+}
+
+func (p *StandardPrinter) BlankLine() {
+	fmt.Fprintln(p.err)
 }
 
 func (p *StandardPrinter) Separator() {
