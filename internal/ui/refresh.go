@@ -169,6 +169,7 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 	p := tea.NewProgram(
 		model,
 		tea.WithOutput(os.Stderr),
+		tea.WithInput(nil),
 	)
 
 	tracker := &RefreshTracker{
