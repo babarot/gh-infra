@@ -76,6 +76,17 @@ func (p *StandardPrinter) ErrWriter() io.Writer { return p.err }
 
 const Separator_ = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+// Icon constants for plan/apply output.
+const (
+	IconAdd     = "+"
+	IconChange  = "~"
+	IconRemove  = "-"
+	IconSuccess = "✓"
+	IconError   = "✗"
+	IconWarning = "⚠"
+	IconArrow   = "→"
+)
+
 func (p *StandardPrinter) Phase(msg string) {
 	fmt.Fprintf(p.err, "%s\n", msg)
 }
@@ -127,17 +138,17 @@ func (p *StandardPrinter) subItemWidth() int {
 
 func (p *StandardPrinter) ItemCreate(field string, value any) {
 	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Green.Render("+"), p.itemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
+		Green.Render(IconAdd), p.itemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
 }
 
 func (p *StandardPrinter) ItemUpdate(field, oldVal, newVal string) {
 	fmt.Fprintf(p.out, "      %s %-*s  %s %s %s\n",
-		Yellow.Render("~"), p.itemWidth(), field, Dim.Render(oldVal), Dim.Render("→"), Bold.Render(newVal))
+		Yellow.Render(IconChange), p.itemWidth(), field, Dim.Render(oldVal), Dim.Render(IconArrow), Bold.Render(newVal))
 }
 
 func (p *StandardPrinter) ItemDelete(field string, value any) {
 	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Red.Render("-"), p.itemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
+		Red.Render(IconRemove), p.itemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
 }
 
 func (p *StandardPrinter) SubGroupHeader(icon, name string) {
@@ -146,49 +157,49 @@ func (p *StandardPrinter) SubGroupHeader(icon, name string) {
 
 func (p *StandardPrinter) SubItemCreate(field string, value any) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Green.Render("+"), p.subItemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
+		Green.Render(IconAdd), p.subItemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
 }
 
 func (p *StandardPrinter) SubItemUpdate(field, oldVal, newVal string) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s %s %s\n",
-		Yellow.Render("~"), p.subItemWidth(), field, Dim.Render(oldVal), Dim.Render("→"), Bold.Render(newVal))
+		Yellow.Render(IconChange), p.subItemWidth(), field, Dim.Render(oldVal), Dim.Render(IconArrow), Bold.Render(newVal))
 }
 
 func (p *StandardPrinter) SubItemDelete(field string, value any) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Red.Render("-"), p.subItemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
+		Red.Render(IconRemove), p.subItemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
 }
 
 func (p *StandardPrinter) FileCreate(path string) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Green.Render("+"), p.subItemWidth(), path, Green.Render("(new file)"))
+		Green.Render(IconAdd), p.subItemWidth(), path, Green.Render("(new file)"))
 }
 
 func (p *StandardPrinter) FileUpdate(path string) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Yellow.Render("~"), p.subItemWidth(), path, Yellow.Render("(content changed)"))
+		Yellow.Render(IconChange), p.subItemWidth(), path, Yellow.Render("(content changed)"))
 }
 
 func (p *StandardPrinter) FileDelete(path string) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Red.Render("-"), p.subItemWidth(), path, Red.Render("(deleted)"))
+		Red.Render(IconRemove), p.subItemWidth(), path, Red.Render("(deleted)"))
 }
 
 func (p *StandardPrinter) FileDrift(path, onDrift string) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s  on_drift: %s\n",
-		Yellow.Render("⚠"), p.subItemWidth(), path, Yellow.Render("[drift]"), onDrift)
+		Yellow.Render(IconWarning), p.subItemWidth(), path, Yellow.Render("[drift]"), onDrift)
 }
 
 func (p *StandardPrinter) FileSkip(path string) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s  on_drift: skip\n",
-		Dim.Render("-"), p.subItemWidth(), path, Dim.Render("[drift]"))
+		Dim.Render(IconRemove), p.subItemWidth(), path, Dim.Render("[drift]"))
 }
 
 func renderIcon(icon string) string {
 	switch icon {
-	case "+", "✓":
+	case IconAdd, IconSuccess:
 		return Green.Render(icon)
-	case "-", "✗":
+	case IconRemove, IconError:
 		return Red.Render(icon)
 	default:
 		return Yellow.Render(icon)
@@ -196,32 +207,32 @@ func renderIcon(icon string) string {
 }
 
 func (p *StandardPrinter) Success(name, detail string) {
-	fmt.Fprintf(p.out, "  %s %s  %s\n", Green.Render("✓"), Bold.Render(name), detail)
+	fmt.Fprintf(p.out, "  %s %s  %s\n", Green.Render(IconSuccess), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) Error(name, detail string) {
 	detail = strings.ReplaceAll(detail, "\n", "\n    ")
-	fmt.Fprintf(p.out, "  %s %s  %s\n", Red.Render("✗"), Bold.Render(name), detail)
+	fmt.Fprintf(p.out, "  %s %s  %s\n", Red.Render(IconError), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) Warning(name, detail string) {
-	fmt.Fprintf(p.err, "  %s %s  %s\n", Yellow.Render("⚠"), Bold.Render(name), detail)
+	fmt.Fprintf(p.err, "  %s %s  %s\n", Yellow.Render(IconWarning), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) ResultSuccess(field, detail string) {
 	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Green.Render("✓"), p.itemWidth(), field, detail)
+		Green.Render(IconSuccess), p.itemWidth(), field, detail)
 }
 
 func (p *StandardPrinter) ResultError(field, detail string) {
 	detail = strings.ReplaceAll(detail, "\n", "\n          ")
 	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Red.Render("✗"), p.itemWidth(), field, detail)
+		Red.Render(IconError), p.itemWidth(), field, detail)
 }
 
 func (p *StandardPrinter) ResultWarning(field, detail string) {
 	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Yellow.Render("⚠"), p.itemWidth(), field, detail)
+		Yellow.Render(IconWarning), p.itemWidth(), field, detail)
 }
 
 func (p *StandardPrinter) Summary(msg string) {

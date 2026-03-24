@@ -120,9 +120,9 @@ func (m refreshModel) View() tea.View {
 	for _, item := range m.items {
 		switch item.status {
 		case taskDone:
-			fmt.Fprintf(&b, "  %s %s\n", Green.Render("✓"), item.name)
+			fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), item.name)
 		case taskError:
-			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render("✗"), Bold.Render(item.name), item.errMsg)
+			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render(IconError), Bold.Render(item.name), item.errMsg)
 		case taskRunning:
 			fmt.Fprintf(&b, "  %s %s...\n", item.spinner.View(), item.name)
 		}

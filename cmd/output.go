@@ -65,19 +65,19 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			}
 		}
 		if isNew {
-			p.GroupHeader("+", name+"  "+ui.Green.Render("(new)"))
+			p.GroupHeader(ui.IconAdd, name+"  "+ui.Green.Render("(new)"))
 		} else {
-			p.GroupHeader("~", name)
+			p.GroupHeader(ui.IconChange, name)
 		}
 
 		// Print repository changes
 		for _, c := range rChanges {
 			if len(c.Children) > 0 {
-				icon := "~"
+				icon := ui.IconChange
 				if c.Type == repository.ChangeCreate {
-					icon = "+"
+					icon = ui.IconAdd
 				} else if c.Type == repository.ChangeDelete {
-					icon = "-"
+					icon = ui.IconRemove
 				}
 				header := c.Field
 				if s, ok := c.NewValue.(string); ok && s != "" {
@@ -112,7 +112,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			if len(fChanges) != 1 {
 				label += "s"
 			}
-			p.SubGroupHeader("~", fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
+			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
 				switch c.Type {
 				case fileset.FileCreate:
@@ -183,17 +183,17 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 		p.SetColumnWidth(w)
 
 		// Determine header icon based on whether any result in this group failed
-		icon := "✓"
+		icon := ui.IconSuccess
 		for _, r := range repoByName[name] {
 			if r.Err != nil {
-				icon = "✗"
+				icon = ui.IconError
 				break
 			}
 		}
-		if icon != "✗" {
+		if icon != ui.IconError {
 			for _, r := range fileByTarget[name] {
 				if r.Err != nil {
-					icon = "✗"
+					icon = ui.IconError
 					break
 				}
 			}

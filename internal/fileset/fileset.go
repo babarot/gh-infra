@@ -761,7 +761,7 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 		if len(g.changes) != 1 {
 			label += "s"
 		}
-		p.GroupHeader("~", fmt.Sprintf("FileSet: %s → %s", ui.Bold.Render(label), ui.Bold.Render(g.key.target)))
+		p.GroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s → %s", ui.Bold.Render(label), ui.Bold.Render(g.key.target)))
 		for _, c := range g.changes {
 			switch c.Type {
 			case FileCreate:
