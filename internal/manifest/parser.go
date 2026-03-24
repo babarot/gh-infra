@@ -170,12 +170,12 @@ func parseFile(data []byte, path string) (*FileSet, error) {
 		Kind:       KindFileSet,
 		Metadata:   FileSetMetadata{Owner: f.Metadata.Owner},
 		Spec: FileSetSpec{
-			Repositories:  []FileSetRepository{{Name: f.Metadata.Name}},
-			Files:         f.Spec.Files,
-			OnDrift:       f.Spec.OnDrift,
-			CommitMessage: f.Spec.CommitMessage,
-			Strategy:      f.Spec.Strategy,
-			Branch:        f.Spec.Branch,
+			Repositories:   []FileSetRepository{{Name: f.Metadata.Name}},
+			Files:          f.Spec.Files,
+			OnDrift:        f.Spec.OnDrift,
+			CommitMessage:  f.Spec.CommitMessage,
+			CommitStrategy: f.Spec.CommitStrategy,
+			Branch:         f.Spec.Branch,
 		},
 	}
 

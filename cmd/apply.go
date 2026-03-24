@@ -175,10 +175,10 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 				continue
 			}
 			opts := fileset.ApplyOptions{
-				CommitMessage: fs.Spec.CommitMessage,
-				Strategy:      fs.Spec.Strategy,
-				Branch:        fs.Spec.Branch,
-				FileSetName:   fs.Metadata.Owner,
+				CommitMessage:  fs.Spec.CommitMessage,
+				CommitStrategy: fs.Spec.CommitStrategy,
+				Branch:         fs.Spec.Branch,
+				FileSetName:    fs.Metadata.Owner,
 			}
 			results := processor.Apply(fsChanges, opts)
 			fileset.PrintApplyResults(p, results)

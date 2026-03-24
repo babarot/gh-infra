@@ -73,7 +73,7 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 
 			changes := Diff(r, current, diffOpts...)
 			logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
-			tracker.Done("Fetching "+r.Metadata.FullName())
+			tracker.Done("Fetching " + r.Metadata.FullName())
 			results[idx] = repoResult{index: idx, repo: r, changes: changes}
 		}(i, repo)
 	}

@@ -37,7 +37,7 @@ spec:
       source: github://babarot/shared-config/workflows/ci.yml
 
   on_drift: warn                          # warn | overwrite | skip
-  strategy: direct                        # direct | pull_request
+  commit_strategy: push                    # push | pull_request
   commit_message: "ci: sync managed files"
 ```
 :::

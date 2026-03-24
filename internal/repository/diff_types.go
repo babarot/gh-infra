@@ -14,9 +14,9 @@ const (
 // Change represents a single field-level change.
 type Change struct {
 	Type     ChangeType
-	Resource string   // "Repository", "BranchProtection", "Secret", "Variable"
-	Name     string   // "babarot/my-project"
-	Field    string   // "description", "topics", etc.
+	Resource string // "Repository", "BranchProtection", "Secret", "Variable"
+	Name     string // "babarot/my-project"
+	Field    string // "description", "topics", etc.
 	OldValue any
 	NewValue any
 	Children []Change // Sub-field details for hierarchical display

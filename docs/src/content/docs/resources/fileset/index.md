@@ -38,7 +38,7 @@ spec:
       source: ./templates/LICENSE
 
   on_drift: warn
-  strategy: direct
+  commit_strategy: push
   commit_message: "ci: sync shared files"
 ```
 :::

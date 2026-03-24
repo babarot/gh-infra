@@ -10,7 +10,7 @@ import (
 
 // DiffOptions controls diff behavior.
 type DiffOptions struct {
-	ForceSecrets bool              // Always re-set existing secrets
+	ForceSecrets bool               // Always re-set existing secrets
 	Resolver     *manifest.Resolver // Name resolver for rulesets (optional; nil = skip resolution)
 }
 

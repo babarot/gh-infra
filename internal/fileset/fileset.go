@@ -114,8 +114,20 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, tracker *ui.RefreshTracke
 			var out []FileChange
 			for _, file := range u.files {
 				// Template rendering (deep copy vars to avoid data races)
-				if HasTemplate(file.Content, file.Vars) {
+				needsTemplate := HasTemplate(file.Content, file.Vars) || HasTemplate(file.Path, nil)
+				if needsTemplate {
 					varsCopy := copyVars(file.Vars)
+					// Render path
+					if HasTemplate(file.Path, nil) {
+						renderedPath, err := RenderTemplate(file.Path, fullName, varsCopy)
+						if err != nil {
+							results[i] = unitResult{err: fmt.Errorf("template path %s for %s: %w", file.Path, fullName, err)}
+							tracker.Error(displayName, err)
+							return
+						}
+						file.Path = renderedPath
+					}
+					// Render content
 					rendered, err := RenderTemplate(file.Content, fullName, varsCopy)
 					if err != nil {
 						results[i] = unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
@@ -246,10 +258,10 @@ func (p *Processor) fetchFileContent(repo, path string) (*FileState, error) {
 
 // ApplyOptions configures apply behavior from FileSet spec.
 type ApplyOptions struct {
-	CommitMessage string
-	Strategy      string // "direct" or "pull_request"
-	Branch        string
-	FileSetName   string
+	CommitMessage  string
+	CommitStrategy string // "push" or "pull_request"
+	Branch         string
+	FileSetName    string
 }
 
 const defaultApplyParallel = 5
@@ -404,7 +416,7 @@ func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []F
 	}
 
 	// 4. Update ref or create PR
-	if opts.Strategy == manifest.StrategyPullRequest {
+	if opts.CommitStrategy == manifest.CommitStrategyPullRequest {
 		return p.createPR(repo, branch, commitSHA, message, opts)
 	}
 	return p.updateRef(repo, branch, commitSHA)

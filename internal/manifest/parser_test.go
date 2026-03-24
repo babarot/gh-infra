@@ -777,7 +777,7 @@ spec:
     - path: LICENSE
       content: "MIT"
   on_drift: overwrite
-  strategy: direct
+  commit_strategy: push
 `
 	path := filepath.Join(dir, "file.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -808,8 +808,8 @@ spec:
 	if fs.Spec.OnDrift != "overwrite" {
 		t.Errorf("on_drift = %q, want %q", fs.Spec.OnDrift, "overwrite")
 	}
-	if fs.Spec.Strategy != "direct" {
-		t.Errorf("strategy = %q, want %q", fs.Spec.Strategy, "direct")
+	if fs.Spec.CommitStrategy != "push" {
+		t.Errorf("commit_strategy = %q, want %q", fs.Spec.CommitStrategy, "push")
 	}
 }
 
