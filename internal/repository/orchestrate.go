@@ -22,14 +22,14 @@ type repoResult struct {
 
 // FetchAllChanges fetches current state and computes diffs for all repos in parallel.
 // Repos that fail to fetch are skipped with a warning; successful repos are still returned.
-// FetchTargetNames returns the full names of repos that would be fetched (after filtering).
+// FetchTargetNames returns display names for repos that would be fetched (after filtering).
 func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []string {
 	var names []string
 	for _, repo := range repos {
 		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
 			continue
 		}
-		names = append(names, repo.Metadata.FullName())
+		names = append(names, "Fetching "+repo.Metadata.FullName())
 	}
 	return names
 }
@@ -66,14 +66,14 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 			current, err := fetcher.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
 			if err != nil {
 				logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
-				tracker.Error(r.Metadata.FullName(), err)
+				tracker.Error("Fetching "+r.Metadata.FullName(), err)
 				results[idx] = repoResult{index: idx, repo: r, err: err}
 				return
 			}
 
 			changes := Diff(r, current, diffOpts...)
 			logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
-			tracker.Done(r.Metadata.FullName())
+			tracker.Done("Fetching "+r.Metadata.FullName())
 			results[idx] = repoResult{index: idx, repo: r, changes: changes}
 		}(i, repo)
 	}

@@ -120,12 +120,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 
 	p.Separator()
 
-	if hasRepo {
-		repository.PrintPlanChanges(p, repoChanges)
-	}
-	if hasFile {
-		fileset.PrintPlan(p, fileChanges)
-	}
+	printUnifiedPlan(p, repoChanges, fileChanges)
 
 	creates := repoCreates + fileCreates
 	updates := repoUpdates + fileUpdates

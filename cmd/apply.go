@@ -122,12 +122,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 	p.Separator()
 
-	if hasRepo {
-		repository.PrintPlanChanges(p, repoChanges)
-	}
-	if hasFile {
-		fileset.PrintPlan(p, fileChanges)
-	}
+	printUnifiedPlan(p, repoChanges, fileChanges)
 
 	creates := repoCreates + fileCreates
 	updates := repoUpdates + fileUpdates

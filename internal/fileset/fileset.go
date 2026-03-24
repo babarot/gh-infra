@@ -69,12 +69,12 @@ func (u planUnit) fullName() string {
 	return u.owner + "/" + u.target.Name
 }
 
-// PlanTargetNames returns the full "owner/repo" names for all FileSet targets.
+// PlanTargetNames returns display names for all FileSet targets.
 func PlanTargetNames(fileSets []*manifest.FileSet) []string {
 	var names []string
 	for _, fs := range fileSets {
 		for _, target := range fs.Spec.Repositories {
-			names = append(names, fs.Metadata.Owner+"/"+target.Name)
+			names = append(names, "Comparing "+fs.Metadata.Owner+"/"+target.Name+" files")
 		}
 	}
 	return names
@@ -109,6 +109,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, tracker *ui.RefreshTracke
 		go func(i int, u planUnit) {
 			defer wg.Done()
 			fullName := u.fullName()
+			displayName := "Comparing " + fullName + " files"
 			var out []FileChange
 			for _, file := range u.files {
 				// Template rendering (deep copy vars to avoid data races)
@@ -117,7 +118,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, tracker *ui.RefreshTracke
 					rendered, err := RenderTemplate(file.Content, fullName, varsCopy)
 					if err != nil {
 						results[i] = unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
-						tracker.Error(fullName, err)
+						tracker.Error(displayName, err)
 						return
 					}
 					file.Content = rendered
@@ -126,7 +127,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, tracker *ui.RefreshTracke
 				out = append(out, change)
 			}
 			results[i] = unitResult{changes: out}
-			tracker.Done(fullName)
+			tracker.Done(displayName)
 		}(i, u)
 	}
 	wg.Wait()
