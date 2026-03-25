@@ -799,13 +799,14 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 		}
 		p.GroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s → %s", ui.Bold.Render(label), ui.Bold.Render(g.key.target)))
 		for _, c := range g.changes {
+			added, removed := DiffStat(c.Current, c.Desired)
 			switch c.Type {
 			case FileCreate:
-				p.FileCreate(c.Path)
+				p.FileCreate(c.Path, added)
 			case FileUpdate:
-				p.FileUpdate(c.Path)
+				p.FileUpdate(c.Path, added, removed)
 			case FileDelete:
-				p.FileDelete(c.Path)
+				p.FileDelete(c.Path, removed)
 			}
 		}
 		p.GroupEnd()
@@ -844,6 +845,35 @@ func CountChanges(changes []FileChange) (creates, updates, deletes int) {
 			updates++
 		case FileDelete:
 			deletes++
+		}
+	}
+	return
+}
+
+// DiffStat counts added and removed lines between two strings.
+func DiffStat(current, desired string) (added, removed int) {
+	currentLines := strings.Split(strings.TrimRight(current, "\n"), "\n")
+	desiredLines := strings.Split(strings.TrimRight(desired, "\n"), "\n")
+	if current == "" {
+		currentLines = nil
+	}
+	if desired == "" {
+		desiredLines = nil
+	}
+
+	// Build a simple line-count diff using a map
+	counts := make(map[string]int)
+	for _, line := range currentLines {
+		counts[line]--
+	}
+	for _, line := range desiredLines {
+		counts[line]++
+	}
+	for _, n := range counts {
+		if n > 0 {
+			added += n
+		} else if n < 0 {
+			removed += -n
 		}
 	}
 	return

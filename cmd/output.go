@@ -131,13 +131,14 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			}
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
+				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				switch c.Type {
 				case fileset.FileCreate:
-					p.FileCreate(c.Path)
+					p.FileCreate(c.Path, added)
 				case fileset.FileUpdate:
-					p.FileUpdate(c.Path)
+					p.FileUpdate(c.Path, added, removed)
 				case fileset.FileDelete:
-					p.FileDelete(c.Path)
+					p.FileDelete(c.Path, removed)
 				}
 			}
 		}
