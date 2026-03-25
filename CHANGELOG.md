@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.4.0](https://github.com/babarot/gh-infra/compare/v0.3.0...v0.4.0) - 2026-03-25
+### Bug fixes
+- fix: support exempt bypass mode in rulesets validation by @yagihash in https://github.com/babarot/gh-infra/pull/29
+### Deprecated features
+- Rename sync_mode to reconcile and commit_strategy to on_apply by @babarot in https://github.com/babarot/gh-infra/pull/24
+- Deprecate on_drift and simplify file change handling by @babarot in https://github.com/babarot/gh-infra/pull/25
+- Rename on_apply to via and improve docs by @babarot in https://github.com/babarot/gh-infra/pull/26
+### Improvements
+- Show diff stat in file change plan output by @babarot in https://github.com/babarot/gh-infra/pull/27
+- Highlight delivery method in plan output by @babarot in https://github.com/babarot/gh-infra/pull/30
+
 ## [v0.3.0](https://github.com/babarot/gh-infra/compare/v0.2.0...v0.3.0) - 2026-03-25
 ### New Features
 - Add interactive diff viewer with on_drift toggle to apply flow by @babarot in https://github.com/babarot/gh-infra/pull/17
