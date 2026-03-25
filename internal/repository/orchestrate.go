@@ -26,8 +26,8 @@ func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []ui.Refr
 			continue
 		}
 		tasks = append(tasks, ui.RefreshTask{
-			Name:      "Fetching " + repo.Metadata.FullName(),
-			DoneLabel: "Fetched " + repo.Metadata.FullName(),
+			Name:      "Fetching " + repo.Metadata.FullName() + " (repo)",
+			DoneLabel: "Fetched " + repo.Metadata.FullName() + " (repo)",
 		})
 	}
 	return tasks
@@ -36,7 +36,7 @@ func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []ui.Refr
 // fetchTaskKey returns the tracker key for a given repo full name.
 // This must match the Name used in FetchTargetNames.
 func fetchTaskKey(fullName string) string {
-	return "Fetching " + fullName
+	return "Fetching " + fullName + " (repo)"
 }
 
 func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, printer ui.Printer, tracker *ui.RefreshTracker, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {

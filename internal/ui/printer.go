@@ -43,6 +43,7 @@ type Printer interface {
 	ResultSuccess(field, detail string)
 	ResultError(field, detail string)
 	ResultWarning(field, detail string)
+	Detail(msg string)
 	StreamStart(name, detail string)
 	StreamDone(name, detail string)
 	StreamError(name, detail string)
@@ -258,6 +259,10 @@ func (p *StandardPrinter) ResultError(field, detail string) {
 func (p *StandardPrinter) ResultWarning(field, detail string) {
 	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
 		Yellow.Render(IconWarning), p.itemWidth(), field, detail)
+}
+
+func (p *StandardPrinter) Detail(msg string) {
+	fmt.Fprintf(p.out, "      %s\n", Dim.Render(msg))
 }
 
 func (p *StandardPrinter) StreamStart(name, detail string) {

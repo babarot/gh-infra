@@ -173,7 +173,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 					names = append(names, c.Name)
 				}
 			}
-			reporter = ui.NewSpinnerReporter(uniqueStrings(names), "Applying", "Applied")
+			reporter = ui.NewSpinnerReporter(uniqueStrings(names), "Applying", "Applied", "(repo)")
 		}
 		allRepoResults = executor.Apply(repoChanges, targetRepos, reporter)
 		s, f := repository.CountApplyResults(allRepoResults)
@@ -210,7 +210,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 				for _, c := range fsChanges {
 					targets = append(targets, c.Target)
 				}
-				fileReporter = ui.NewSpinnerReporter(uniqueStrings(targets), "Applying", "Applied")
+				fileReporter = ui.NewSpinnerReporter(uniqueStrings(targets), "Applying", "Applied", "(files)")
 			}
 			results := processor.Apply(fsChanges, opts, fileReporter)
 			allFileResults = append(allFileResults, results...)

@@ -24,15 +24,16 @@ type FileState struct {
 
 // FileChange represents a planned change for a file.
 type FileChange struct {
-	FileSet string // FileSet owner
-	Target  string // owner/repo
-	Path    string
-	Type    ChangeType
-	Current string // current content (if exists)
-	Desired string // desired content
-	SHA     string // current SHA (for updates)
-	OnDrift string // warn, overwrite, skip
-	Drifted bool   // file exists but content differs
+	FileSet        string // FileSet owner
+	Target         string // owner/repo
+	Path           string
+	Type           ChangeType
+	Current        string // current content (if exists)
+	Desired        string // desired content
+	SHA            string // current SHA (for updates)
+	OnDrift        string // warn, overwrite, skip
+	Drifted        bool   // file exists but content differs
+	CommitStrategy string // "push" or "pull_request" (from FileSet spec)
 }
 
 type ChangeType string
@@ -58,11 +59,12 @@ func NewProcessor(runner gh.Runner, printer ui.Printer) *Processor {
 
 // planUnit represents one (fileSet, repository) pair to process.
 type planUnit struct {
-	fileSetName string
-	target      manifest.FileSetRepository
-	files       []manifest.FileEntry
-	onDrift     string
-	owner       string
+	fileSetName    string
+	target         manifest.FileSetRepository
+	files          []manifest.FileEntry
+	onDrift        string
+	owner          string
+	commitStrategy string
 }
 
 // fullName returns the full "owner/repo" name for this unit's target.
@@ -81,8 +83,8 @@ func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.Refre
 				continue
 			}
 			tasks = append(tasks, ui.RefreshTask{
-				Name:      "Fetching " + fullName + " files",
-				DoneLabel: "Fetched " + fullName + " files",
+				Name:      "Fetching " + fullName + " (files)",
+				DoneLabel: "Fetched " + fullName + " (files)",
 			})
 		}
 	}
@@ -92,12 +94,12 @@ func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.Refre
 // planTaskKey returns the tracker key for a given fileset target.
 // This must match the Name used in PlanTargetNames.
 func planTaskKey(fullName string) string {
-	return "Fetching " + fullName + " files"
+	return "Fetching " + fullName + " (files)"
 }
 
 // applyTaskKey returns the tracker key for a fileset apply target.
 func applyTaskKey(repo string) string {
-	return "Applying " + repo + " files"
+	return "Applying " + repo + " (files)"
 }
 
 // Plan computes changes for all FileSets concurrently.
@@ -113,11 +115,12 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 			}
 			files := ResolveFiles(fs, target)
 			units = append(units, planUnit{
-				fileSetName: fs.Metadata.Owner,
-				target:      target,
-				files:       files,
-				onDrift:     fs.Spec.OnDrift,
-				owner:       fs.Metadata.Owner,
+				fileSetName:    fs.Metadata.Owner,
+				target:         target,
+				files:          files,
+				onDrift:        fs.Spec.OnDrift,
+				owner:          fs.Metadata.Owner,
+				commitStrategy: fs.Spec.CommitStrategy,
 			})
 		}
 	}
@@ -197,6 +200,11 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 					})
 				}
 			}
+		}
+
+		// Tag all changes with the commit strategy for display
+		for i := range out {
+			out[i].CommitStrategy = u.commitStrategy
 		}
 
 		tracker.Done(displayName)
@@ -424,11 +432,16 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 		reporter.Start(entry.name, paths)
 
 		start := time.Now()
-		err := p.applyToRepo(entry.name, filesToApply, opts)
+		prURL, err := p.applyToRepo(entry.name, filesToApply, opts)
 		elapsed := time.Since(start)
 
 		for _, c := range filesToApply {
-			results = append(results, FileApplyResult{Change: c, Err: err})
+			results = append(results, FileApplyResult{
+				Change:         c,
+				Err:            err,
+				CommitStrategy: opts.CommitStrategy,
+				PRURL:          prURL,
+			})
 		}
 
 		if err != nil {
@@ -449,9 +462,11 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 }
 
 type FileApplyResult struct {
-	Change  FileChange
-	Err     error
-	Skipped bool
+	Change         FileChange
+	Err            error
+	Skipped        bool
+	CommitStrategy string // "push" or "pull_request"
+	PRURL          string // non-empty when commit_strategy is pull_request
 }
 
 func groupChangesByTarget(changes []FileChange) map[string][]FileChange {
@@ -473,13 +488,14 @@ type treeEntry struct {
 
 // applyToRepo creates a single commit with all file changes using Git Data API.
 // Falls back to Contents API for empty repositories (no commits yet).
-func (p *Processor) applyToRepo(repo string, changes []FileChange, opts ApplyOptions) error {
+// applyToRepo returns (prURL, error). prURL is non-empty only for pull_request strategy.
+func (p *Processor) applyToRepo(repo string, changes []FileChange, opts ApplyOptions) (string, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(repo)
 	if err != nil {
 		if strings.Contains(err.Error(), "repository is empty") {
-			return p.applyToEmptyRepo(repo, changes, opts)
+			return "", p.applyToEmptyRepo(repo, changes, opts)
 		}
-		return fmt.Errorf("get HEAD: %w", err)
+		return "", fmt.Errorf("get HEAD: %w", err)
 	}
 
 	message := resolveCommitMessage(opts)
@@ -497,30 +513,30 @@ func resolveCommitMessage(opts ApplyOptions) string {
 // applyViaGitDataAPI creates blobs, a tree, a commit, and updates the ref
 // (or creates a PR) in a single atomic operation. All files are included in
 // one commit regardless of count.
-func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []FileChange, message string, opts ApplyOptions) error {
+func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []FileChange, message string, opts ApplyOptions) (string, error) {
 	// 1. Create blobs
 	entries, err := p.createBlobs(repo, changes)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// 2. Create tree
 	treeSHA, err := p.createTree(repo, headSHA, entries)
 	if err != nil {
-		return fmt.Errorf("create tree: %w", err)
+		return "", fmt.Errorf("create tree: %w", err)
 	}
 
 	// 3. Create commit
 	commitSHA, err := p.createCommit(repo, message, treeSHA, headSHA)
 	if err != nil {
-		return fmt.Errorf("create commit: %w", err)
+		return "", fmt.Errorf("create commit: %w", err)
 	}
 
 	// 4. Update ref or create PR
 	if opts.CommitStrategy == manifest.CommitStrategyPullRequest {
 		return p.createPR(repo, branch, commitSHA, message, opts)
 	}
-	return p.updateRef(repo, branch, commitSHA)
+	return "", p.updateRef(repo, branch, commitSHA)
 }
 
 // createBlobs creates a Git blob for each file change and returns tree entries.
@@ -717,7 +733,8 @@ func (p *Processor) updateRef(repo, branch, commitSHA string) error {
 	return err
 }
 
-func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts ApplyOptions) error {
+// createPR creates a pull request and returns its URL.
+func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts ApplyOptions) (string, error) {
 	branchName := opts.Branch
 	if branchName == "" {
 		branchName = fmt.Sprintf("gh-infra/sync-%s", opts.FileSetName)
@@ -738,7 +755,7 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 			)
 		}
 		if err != nil {
-			return fmt.Errorf("create branch %s: %w", branchName, err)
+			return "", fmt.Errorf("create branch %s: %w", branchName, err)
 		}
 	}
 
@@ -751,7 +768,7 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 	if prBody == "" {
 		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetName)
 	}
-	_, err = p.runner.Run("pr", "create",
+	out, err := p.runner.Run("pr", "create",
 		"--repo", repo,
 		"--base", defaultBranch,
 		"--head", branchName,
@@ -759,9 +776,21 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 		"--body", prBody,
 	)
 	if err != nil && strings.Contains(err.Error(), "already exists") {
-		return nil // PR already open for this branch
+		// Retrieve existing PR URL
+		existing, lookupErr := p.runner.Run("pr", "view",
+			"--repo", repo,
+			branchName,
+			"--json", "url", "--jq", ".url",
+		)
+		if lookupErr == nil {
+			return strings.TrimSpace(string(existing)), nil
+		}
+		return "", nil // PR already open but couldn't get URL
 	}
-	return err
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // PrintPlan prints FileSet changes.

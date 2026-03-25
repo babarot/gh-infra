@@ -124,6 +124,11 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			if len(fChanges) != 1 {
 				label += "s"
 			}
+			// Show commit strategy if available
+			strategy := fChanges[0].CommitStrategy
+			if strategy != "" {
+				label += ", " + strategy
+			}
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
 				switch c.Type {
@@ -220,6 +225,8 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 			}
 		}
 
+		var prURL string
+		var commitStrategy string
 		for _, r := range fileByTarget[name] {
 			if r.Skipped {
 				p.ResultWarning(r.Change.Path,
@@ -229,6 +236,19 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 			} else {
 				p.ResultSuccess(r.Change.Path, fmt.Sprintf("%sd", r.Change.Type))
 			}
+			if r.CommitStrategy != "" {
+				commitStrategy = r.CommitStrategy
+			}
+			if r.PRURL != "" {
+				prURL = r.PRURL
+			}
+		}
+		if commitStrategy != "" {
+			label := "via " + commitStrategy
+			if prURL != "" {
+				label += " → " + prURL
+			}
+			p.Detail(label)
 		}
 
 		p.GroupEnd()
