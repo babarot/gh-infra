@@ -26,9 +26,6 @@ func ResolveFiles(fs *manifest.FileSet, target manifest.FileSetRepository) []man
 			if override.Reconcile == "" {
 				override.Reconcile = f.Reconcile
 			}
-			if override.OnDrift == "" {
-				override.OnDrift = f.OnDrift
-			}
 			result = append(result, override)
 		} else {
 			result = append(result, f)

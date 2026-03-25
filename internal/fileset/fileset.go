@@ -31,8 +31,6 @@ type FileChange struct {
 	Current string // current content (if exists)
 	Desired string // desired content
 	SHA     string // current SHA (for updates)
-	OnDrift string // warn, overwrite, skip
-	Drifted bool   // file exists but content differs
 	OnApply string // "push" or "pull_request" (from FileSet spec)
 }
 
@@ -43,8 +41,6 @@ const (
 	FileUpdate ChangeType = "update"
 	FileDelete ChangeType = "delete"
 	FileNoOp   ChangeType = "noop"
-	FileDrift  ChangeType = "drift"
-	FileSkip   ChangeType = "skip"
 )
 
 // Processor handles FileSet plan and apply operations.
@@ -62,7 +58,6 @@ type planUnit struct {
 	fileSetName string
 	target      manifest.FileSetRepository
 	files       []manifest.FileEntry
-	onDrift     string
 	owner       string
 	onApply     string
 }
@@ -118,7 +113,6 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 				fileSetName: fs.Metadata.Owner,
 				target:      target,
 				files:       files,
-				onDrift:     fs.Spec.OnDrift,
 				owner:       fs.Metadata.Owner,
 				onApply:     fs.Spec.OnApply,
 			})
@@ -162,15 +156,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 				out = append(out, change)
 				continue
 			}
-			// Resolve drift handling: mirror > file-level > spec-level
-			drift := u.onDrift
-			if file.OnDrift != "" {
-				drift = file.OnDrift
-			}
-			if file.Reconcile == manifest.ReconcileMirror {
-				drift = manifest.OnDriftOverwrite
-			}
-			change := p.planFile(u.fileSetName, fullName, file, drift)
+			change := p.planFile(u.fileSetName, fullName, file)
 			out = append(out, change)
 		}
 		// Mirror mode: detect orphaned files in target repo
@@ -242,7 +228,7 @@ func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileE
 	}
 }
 
-func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry, onDrift string) FileChange {
+func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) FileChange {
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileChange{
@@ -251,7 +237,6 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry, 
 			Path:    file.Path,
 			Type:    FileCreate,
 			Desired: file.Content,
-			OnDrift: onDrift,
 		}
 	}
 
@@ -265,48 +250,18 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry, 
 			Target:  repo,
 			Path:    file.Path,
 			Type:    FileNoOp,
-			OnDrift: onDrift,
 		}
 	}
 
-	// Content differs — drift detected
-	switch onDrift {
-	case manifest.OnDriftSkip:
-		return FileChange{
-			FileSet: fileSetName,
-			Target:  repo,
-			Path:    file.Path,
-			Type:    FileSkip,
-			Current: current.Content,
-			Desired: file.Content,
-			SHA:     current.SHA,
-			OnDrift: onDrift,
-			Drifted: true,
-		}
-	case manifest.OnDriftWarn:
-		return FileChange{
-			FileSet: fileSetName,
-			Target:  repo,
-			Path:    file.Path,
-			Type:    FileDrift,
-			Current: current.Content,
-			Desired: file.Content,
-			SHA:     current.SHA,
-			OnDrift: onDrift,
-			Drifted: true,
-		}
-	default: // "overwrite"
-		return FileChange{
-			FileSet: fileSetName,
-			Target:  repo,
-			Path:    file.Path,
-			Type:    FileUpdate,
-			Current: current.Content,
-			Desired: file.Content,
-			SHA:     current.SHA,
-			OnDrift: onDrift,
-			Drifted: true,
-		}
+	// Content differs — update
+	return FileChange{
+		FileSet: fileSetName,
+		Target:  repo,
+		Path:    file.Path,
+		Type:    FileUpdate,
+		Current: current.Content,
+		Desired: file.Content,
+		SHA:     current.SHA,
 	}
 }
 
@@ -413,9 +368,7 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 			switch c.Type {
 			case FileCreate, FileUpdate, FileDelete:
 				filesToApply = append(filesToApply, c)
-			case FileDrift:
-				results = append(results, FileApplyResult{Change: c, Skipped: true})
-			case FileSkip, FileNoOp:
+			case FileNoOp:
 				// do nothing
 			}
 		}
@@ -462,9 +415,8 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 }
 
 type FileApplyResult struct {
-	Change         FileChange
-	Err            error
-	Skipped        bool
+	Change  FileChange
+	Err     error
 	OnApply string // "push" or "pull_request"
 	PRURL   string // non-empty when on_apply is pull_request
 }
@@ -854,10 +806,6 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 				p.FileUpdate(c.Path)
 			case FileDelete:
 				p.FileDelete(c.Path)
-			case FileDrift:
-				p.FileDrift(c.Path, c.OnDrift)
-			case FileSkip:
-				p.FileSkip(c.Path)
 			}
 		}
 		p.GroupEnd()
@@ -868,10 +816,7 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 // PrintApplyResults prints the results of FileSet apply.
 func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 	for _, r := range results {
-		if r.Skipped {
-			p.Warning(fmt.Sprintf("%s %s", r.Change.Target, r.Change.Path),
-				fmt.Sprintf("drift detected, skipped (on_drift: %s)", r.Change.OnDrift))
-		} else if r.Err != nil {
+		if r.Err != nil {
 			p.Error(r.Change.Target, fmt.Sprintf("%s: %s", r.Change.Path, r.Err.Error()))
 		} else {
 			p.Success(r.Change.Target, fmt.Sprintf("%s %sd", r.Change.Path, r.Change.Type))
@@ -882,15 +827,15 @@ func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 // HasChanges returns true if any file changes are non-noop.
 func HasChanges(changes []FileChange) bool {
 	for _, c := range changes {
-		if c.Type != FileNoOp && c.Type != FileSkip {
+		if c.Type != FileNoOp {
 			return true
 		}
 	}
 	return false
 }
 
-// CountChanges returns create, update, delete, drift counts.
-func CountChanges(changes []FileChange) (creates, updates, deletes, drifts int) {
+// CountChanges returns create, update, delete counts.
+func CountChanges(changes []FileChange) (creates, updates, deletes int) {
 	for _, c := range changes {
 		switch c.Type {
 		case FileCreate:
@@ -899,8 +844,6 @@ func CountChanges(changes []FileChange) (creates, updates, deletes, drifts int) 
 			updates++
 		case FileDelete:
 			deletes++
-		case FileDrift:
-			drifts++
 		}
 	}
 	return
@@ -909,11 +852,8 @@ func CountChanges(changes []FileChange) (creates, updates, deletes, drifts int) 
 func PrintSummary(p ui.Printer, results []FileApplyResult) {
 	succeeded := 0
 	failed := 0
-	skipped := 0
 	for _, r := range results {
-		if r.Skipped {
-			skipped++
-		} else if r.Err != nil {
+		if r.Err != nil {
 			failed++
 		} else {
 			succeeded++
@@ -922,9 +862,6 @@ func PrintSummary(p ui.Printer, results []FileApplyResult) {
 	msg := fmt.Sprintf("FileSet apply: %d changes applied", succeeded)
 	if failed > 0 {
 		msg += fmt.Sprintf(", %d failed", failed)
-	}
-	if skipped > 0 {
-		msg += fmt.Sprintf(", %d skipped (drift)", skipped)
 	}
 	msg += "."
 	p.Message("\n" + msg)

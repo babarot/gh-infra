@@ -532,37 +532,7 @@ spec:
 	if fs.Spec.Files[0].Content != "name: CI" {
 		t.Errorf("files[0].content = %q, want %q", fs.Spec.Files[0].Content, "name: CI")
 	}
-	if fs.Spec.OnDrift != "overwrite" {
-		t.Errorf("on_drift = %q, want %q", fs.Spec.OnDrift, "overwrite")
-	}
-}
-
-func TestParseFileSet_DefaultOnDrift(t *testing.T) {
-	dir := t.TempDir()
-	content := `
-apiVersion: v1
-kind: FileSet
-metadata:
-  owner: org
-spec:
-  repositories:
-    - repo
-  files:
-    - path: file.txt
-      content: hello
-`
-	path := filepath.Join(dir, "fileset.yaml")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := ParseAll(path)
-	if err != nil {
-		t.Fatalf("ParseAll returned error: %v", err)
-	}
-	if result.FileSets[0].Spec.OnDrift != "warn" {
-		t.Errorf("default on_drift = %q, want %q", result.FileSets[0].Spec.OnDrift, "warn")
-	}
+	// on_drift is deprecated; just verify parsing succeeds without error
 }
 
 func TestParseFileSet_SourceFile(t *testing.T) {
@@ -684,7 +654,8 @@ spec:
 	}
 }
 
-func TestParseFileSet_InvalidOnDrift(t *testing.T) {
+func TestParseFileSet_DeprecatedOnDrift(t *testing.T) {
+	// on_drift is deprecated; parsing should succeed (field is accepted but ignored)
 	dir := t.TempDir()
 	content := `
 apiVersion: v1
@@ -697,7 +668,7 @@ spec:
   files:
     - path: file.txt
       content: hello
-  on_drift: invalid
+  on_drift: overwrite
 `
 	path := filepath.Join(dir, "fs.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -705,11 +676,8 @@ spec:
 	}
 
 	_, err := ParseAll(path)
-	if err == nil {
-		t.Fatal("expected error for invalid on_drift, got nil")
-	}
-	if !contains(err.Error(), "invalid on_drift") {
-		t.Errorf("error = %q, want it to contain 'invalid on_drift'", err.Error())
+	if err != nil {
+		t.Fatalf("on_drift is deprecated but should still parse: %v", err)
 	}
 }
 
@@ -805,38 +773,9 @@ spec:
 	if len(fs.Spec.Files) != 2 {
 		t.Fatalf("files count = %d, want 2", len(fs.Spec.Files))
 	}
-	if fs.Spec.OnDrift != "overwrite" {
-		t.Errorf("on_drift = %q, want %q", fs.Spec.OnDrift, "overwrite")
-	}
+	// on_drift is deprecated; just verify on_apply is parsed
 	if fs.Spec.OnApply != "push" {
 		t.Errorf("on_apply = %q, want %q", fs.Spec.OnApply, "push")
-	}
-}
-
-func TestParseFile_DefaultOnDrift(t *testing.T) {
-	dir := t.TempDir()
-	content := `
-apiVersion: v1
-kind: File
-metadata:
-  owner: org
-  name: repo
-spec:
-  files:
-    - path: file.txt
-      content: hello
-`
-	path := filepath.Join(dir, "file.yaml")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := ParseAll(path)
-	if err != nil {
-		t.Fatalf("ParseAll returned error: %v", err)
-	}
-	if result.FileSets[0].Spec.OnDrift != "warn" {
-		t.Errorf("default on_drift = %q, want %q", result.FileSets[0].Spec.OnDrift, "warn")
 	}
 }
 
@@ -930,7 +869,8 @@ spec:
 	}
 }
 
-func TestParseFileSet_FileLevelOnDrift(t *testing.T) {
+func TestParseFileSet_DeprecatedFileLevelOnDrift(t *testing.T) {
+	// on_drift at file level is deprecated; parsing should still succeed
 	dir := t.TempDir()
 	yamlContent := `
 apiVersion: gh-infra/v1
@@ -953,24 +893,14 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	_, err := ParseAll(path)
 	if err != nil {
-		t.Fatalf("ParseAll returned error: %v", err)
-	}
-
-	fs := result.FileSets[0]
-	if fs.Spec.OnDrift != OnDriftWarn {
-		t.Errorf("spec.on_drift = %q, want %q", fs.Spec.OnDrift, OnDriftWarn)
-	}
-	if fs.Spec.Files[0].OnDrift != OnDriftOverwrite {
-		t.Errorf("files[0].on_drift = %q, want %q", fs.Spec.Files[0].OnDrift, OnDriftOverwrite)
-	}
-	if fs.Spec.Files[1].OnDrift != "" {
-		t.Errorf("files[1].on_drift = %q, want empty", fs.Spec.Files[1].OnDrift)
+		t.Fatalf("on_drift is deprecated but should still parse: %v", err)
 	}
 }
 
-func TestParseFile_FileLevelOnDrift(t *testing.T) {
+func TestParseFile_DeprecatedFileLevelOnDrift(t *testing.T) {
+	// on_drift at file level is deprecated; parsing should still succeed
 	dir := t.TempDir()
 	yamlContent := `
 apiVersion: gh-infra/v1
@@ -992,17 +922,9 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	_, err := ParseAll(path)
 	if err != nil {
-		t.Fatalf("ParseAll returned error: %v", err)
-	}
-
-	fs := result.FileSets[0]
-	if fs.Spec.Files[0].OnDrift != OnDriftSkip {
-		t.Errorf("files[0].on_drift = %q, want %q", fs.Spec.Files[0].OnDrift, OnDriftSkip)
-	}
-	if fs.Spec.Files[1].OnDrift != OnDriftOverwrite {
-		t.Errorf("files[1].on_drift = %q, want %q", fs.Spec.Files[1].OnDrift, OnDriftOverwrite)
+		t.Fatalf("on_drift is deprecated but should still parse: %v", err)
 	}
 }
 

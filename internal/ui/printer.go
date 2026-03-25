@@ -35,8 +35,6 @@ type Printer interface {
 	FileCreate(path string)
 	FileUpdate(path string)
 	FileDelete(path string)
-	FileDrift(path, onDrift string)
-	FileSkip(path string)
 	Success(name, detail string)
 	Error(name, detail string)
 	Warning(name, detail string) // stderr
@@ -222,16 +220,6 @@ func (p *StandardPrinter) FileUpdate(path string) {
 func (p *StandardPrinter) FileDelete(path string) {
 	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
 		Red.Render(IconRemove), p.subItemWidth(), path, Red.Render("(deleted)"))
-}
-
-func (p *StandardPrinter) FileDrift(path, onDrift string) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s  on_drift: %s\n",
-		Yellow.Render(IconWarning), p.subItemWidth(), path, Yellow.Render("[drift]"), onDrift)
-}
-
-func (p *StandardPrinter) FileSkip(path string) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s  on_drift: skip\n",
-		Dim.Render(IconRemove), p.subItemWidth(), path, Dim.Render("[drift]"))
 }
 
 func renderIcon(icon string) string {

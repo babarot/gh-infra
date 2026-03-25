@@ -175,7 +175,6 @@ func parseFile(data []byte, path string) (*FileSet, []string, error) {
 		Spec: FileSetSpec{
 			Repositories:  []FileSetRepository{{Name: f.Metadata.Name}},
 			Files:         f.Spec.Files,
-			OnDrift:       f.Spec.OnDrift,
 			CommitMessage: f.Spec.CommitMessage,
 			OnApply:       f.Spec.OnApply,
 			Branch:        f.Spec.Branch,

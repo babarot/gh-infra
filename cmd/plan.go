@@ -121,7 +121,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 	}
 
 	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
-	fileCreates, fileUpdates, fileDeletes, fileDrifts := fileset.CountChanges(fileChanges)
+	fileCreates, fileUpdates, fileDeletes := fileset.CountChanges(fileChanges)
 	creates := repoCreates + fileCreates
 	updates := repoUpdates + fileUpdates
 	deletes := repoDeletes + fileDeletes
@@ -134,9 +134,6 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", creates))),
 		fmt.Sprintf("%s to update", ui.Bold.Render(fmt.Sprintf("%d", updates))),
 		fmt.Sprintf("%s to destroy", ui.Bold.Render(fmt.Sprintf("%d", deletes))),
-	}
-	if fileDrifts > 0 {
-		parts = append(parts, fmt.Sprintf("%s drifted", ui.Bold.Render(fmt.Sprintf("%d", fileDrifts))))
 	}
 	p.Summary(fmt.Sprintf("Plan: %s\nTo apply, run: %s", strings.Join(parts, ", "), ui.Bold.Render("gh infra apply")))
 
