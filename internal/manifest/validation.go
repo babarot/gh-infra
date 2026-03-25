@@ -150,9 +150,9 @@ func (f *File) Validate() error {
 	if len(f.Spec.Files) == 0 {
 		return fmt.Errorf("File %q: spec.files is required", f.Metadata.FullName())
 	}
-	if f.Spec.OnApply != "" {
-		if err := validateOneOf("on_apply", f.Spec.OnApply,
-			OnApplyPush, OnApplyPullRequest); err != nil {
+	if f.Spec.Via != "" {
+		if err := validateOneOf("via", f.Spec.Via,
+			ViaPush, ViaPullRequest); err != nil {
 			return fmt.Errorf("File %q: %w", f.Metadata.FullName(), err)
 		}
 	}
@@ -183,11 +183,11 @@ func (fs *FileSet) Validate() error {
 	if len(fs.Spec.Files) == 0 {
 		return fmt.Errorf("FileSet %q: spec.files is required", fs.Metadata.Owner)
 	}
-	if fs.Spec.OnApply == "" {
-		fs.Spec.OnApply = OnApplyPush
+	if fs.Spec.Via == "" {
+		fs.Spec.Via = ViaPush
 	}
-	if err := validateOneOf("on_apply", fs.Spec.OnApply,
-		OnApplyPush, OnApplyPullRequest); err != nil {
+	if err := validateOneOf("via", fs.Spec.Via,
+		ViaPush, ViaPullRequest); err != nil {
 		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Owner, err)
 	}
 	for i, f := range fs.Spec.Files {

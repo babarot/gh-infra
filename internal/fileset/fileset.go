@@ -31,7 +31,7 @@ type FileChange struct {
 	Current string // current content (if exists)
 	Desired string // desired content
 	SHA     string // current SHA (for updates)
-	OnApply string // "push" or "pull_request" (from FileSet spec)
+	Via string // "push" or "pull_request" (from FileSet spec)
 }
 
 type ChangeType string
@@ -59,7 +59,7 @@ type planUnit struct {
 	target      manifest.FileSetRepository
 	files       []manifest.FileEntry
 	owner       string
-	onApply     string
+	via         string
 }
 
 // fullName returns the full "owner/repo" name for this unit's target.
@@ -114,7 +114,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 				target:      target,
 				files:       files,
 				owner:       fs.Metadata.Owner,
-				onApply:     fs.Spec.OnApply,
+				via:         fs.Spec.Via,
 			})
 		}
 	}
@@ -190,7 +190,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 
 		// Tag all changes with the commit strategy for display
 		for i := range out {
-			out[i].OnApply = u.onApply
+			out[i].Via = u.via
 		}
 
 		tracker.Done(displayName)
@@ -330,7 +330,7 @@ func (p *Processor) fetchDirectoryContents(repo, dirPath string) ([]string, erro
 // ApplyOptions configures apply behavior from FileSet spec.
 type ApplyOptions struct {
 	CommitMessage string
-	OnApply       string // "push" or "pull_request"
+	Via           string // "push" or "pull_request"
 	Branch        string
 	FileSetName   string
 	PRTitle       string // custom PR title (pull_request only)
@@ -390,10 +390,10 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 
 		for _, c := range filesToApply {
 			results = append(results, FileApplyResult{
-				Change:         c,
-				Err:            err,
-				OnApply: opts.OnApply,
-				PRURL:          prURL,
+				Change: c,
+				Err:    err,
+				Via:    opts.Via,
+				PRURL:  prURL,
 			})
 		}
 
@@ -415,10 +415,10 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 }
 
 type FileApplyResult struct {
-	Change  FileChange
-	Err     error
-	OnApply string // "push" or "pull_request"
-	PRURL   string // non-empty when on_apply is pull_request
+	Change FileChange
+	Err    error
+	Via    string // "push" or "pull_request"
+	PRURL  string // non-empty when via is pull_request
 }
 
 func groupChangesByTarget(changes []FileChange) map[string][]FileChange {
@@ -485,7 +485,7 @@ func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []F
 	}
 
 	// 4. Update ref or create PR
-	if opts.OnApply == manifest.OnApplyPullRequest {
+	if opts.Via == manifest.ViaPullRequest {
 		return p.createPR(repo, branch, commitSHA, message, opts)
 	}
 	return "", p.updateRef(repo, branch, commitSHA)

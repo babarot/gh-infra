@@ -15,7 +15,7 @@ The process:
 1. Create a **blob** for each file's content
 2. Create a **tree** containing all blobs (deletions use SHA=null)
 3. Create a **commit** pointing to that tree
-4. Update the default branch **ref** to the new commit (`on_apply: push`), or create a new branch and open a PR (`on_apply: pull_request`)
+4. Update the default branch **ref** to the new commit (`via: push`), or create a new branch and open a PR (`via: pull_request`)
 
 This applies to both `push` and `pull_request` — changes are always a single commit.
 
@@ -23,7 +23,7 @@ This applies to both `push` and `pull_request` — changes are always a single c
 
 Repositories with **no commits** (e.g. freshly created) cannot use the Git Data API because there is no existing HEAD to use as the `base_tree`. In this case, gh-infra automatically falls back to the **Contents API**.
 
-The Contents API can only operate on one file per request, so **each file becomes a separate commit**. The `on_apply` setting is ignored — all files are pushed directly to the default branch.
+The Contents API can only operate on one file per request, so **each file becomes a separate commit**. The `via` setting is ignored — all files are pushed directly to the default branch.
 
 ```
 # Normal repository (Git Data API)

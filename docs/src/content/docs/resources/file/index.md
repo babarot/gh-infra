@@ -36,7 +36,7 @@ spec:
     - path: .github/workflows/ci.yml
       source: github://babarot/shared-config/workflows/ci.yml
 
-  on_apply: push                           # push | pull_request
+  via: pus                                # push | pull_request
   commit_message: "ci: sync managed files"
   # pr_title: "chore: sync files"         # pull_request only
   # pr_body: |                            # pull_request only
@@ -61,7 +61,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 |---|---|---|
 | `files` | *(required)* | List of files to manage — see [File Sources](./sources/) |
 | `files[].reconcile` | `patch` | Per-entry reconcile mode: `patch` (add/update), `mirror` (add/update/delete), or `create_only` (create if missing, never update) — see [Reconcile](./reconcile/). |
-| `on_apply` | `push` | Apply method: `push` or `pull_request` — see [On Apply](./on-apply/). |
+| `via` | `push` | Delivery method: `push` or `pull_request` — see [Delivery Method](./delivery/). |
 | `commit_message` | auto | Custom commit message |
 | `branch` | auto | Branch name for `pull_request` mode |
 | `pr_title` | `commit_message` | Custom PR title (`pull_request` only) |
