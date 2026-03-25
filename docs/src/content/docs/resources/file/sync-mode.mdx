@@ -6,22 +6,38 @@ sidebar:
 
 import { FileTree } from '@astrojs/starlight/components';
 
-The sync mode controls **what happens to files in the target repository that are not declared in your manifest**.
+`sync_mode` is a per-file setting that controls how gh-infra synchronizes each file entry with the target repository. It determines three things:
+
+1. **Whether to create** a file that doesn't exist yet
+2. **Whether to update** a file whose content has drifted from the manifest
+3. **Whether to delete** files in the target that aren't declared in the manifest
+
+There are three modes:
+
+| Mode | Creates | Updates | Deletes orphans |
+|------|---------|---------|-----------------|
+| `patch` (default) | Yes | Yes | No |
+| `mirror` | Yes | Yes | Yes |
+| `create_only` | Yes | No | No |
 
 ## `patch` (default)
 
-Only adds and updates files. Extra files in the target directory are left untouched.
+Adds files that are missing and updates files whose content differs from the manifest. Files that exist in the target but are **not** declared in the manifest are left untouched.
 
 ```yaml
 files:
   - path: .github/workflows
     source: ./templates/workflows/
-    # sync_mode: patch (default — extra files are ignored)
+    # sync_mode: patch  ← default, can be omitted
 ```
+
+This is the right choice when you want to manage specific files without interfering with files that repos maintain on their own. For instance, you can push a shared CI workflow into `.github/workflows/` without deleting repo-specific workflows that already exist there.
+
+Drift detection works normally in `patch` mode — see [Drift Handling](../drift/) for how `on_drift` controls what happens when a file's content differs.
 
 ## `mirror`
 
-Makes the target directory an exact mirror of the source. Files not in the source are **deleted** from the target repository.
+Makes the target directory an **exact copy** of the source. In addition to creating and updating files (like `patch`), `mirror` also **deletes** any file in the target directory that is not present in the source. This guarantees that after `apply`, the target directory contains exactly the files declared in the manifest — nothing more, nothing less.
 
 ```yaml
 files:
@@ -30,9 +46,18 @@ files:
     sync_mode: mirror
 ```
 
+### How mirror works
+
+During `plan`, gh-infra:
+
+1. Expands the source directory into individual file entries (e.g. `ci.yml`, `release.yml`)
+2. Plans a create or update for each of those files, just like `patch`
+3. Fetches the list of all files currently in the target directory (`.github/workflows/` in this example)
+4. Any file found in the target that is **not** in the planned set is marked for **deletion**
+
 ### Example
 
-Source (`./templates/workflows/`) contains two files. Target repo has an additional `repo-dedicated.yml` that is not in the source:
+Source directory `./templates/workflows/` contains two files. The target repo has an additional `repo-dedicated.yml`:
 
 <FileTree>
 - ./templates/workflows/ (source)
@@ -40,37 +65,67 @@ Source (`./templates/workflows/`) contains two files. Target repo has an additio
   - release.yml
 </FileTree>
 
+After `apply`:
+
 <FileTree>
-- .github/workflows/ (target repo after apply)
-  - ci.yml ← updated
-  - release.yml ← updated
+- .github/workflows/ (target repo)
+  - ci.yml ← synced
+  - release.yml ← synced
   - **repo-dedicated.yml** ← **deleted**
 </FileTree>
 
-### Mirror and `on_drift`
+### Scope is limited to the declared path
 
-`sync_mode: mirror` always overwrites content differences. Setting `on_drift` on the **same file** as `sync_mode: mirror` is a validation error — the two settings contradict each other.
-
-Spec-level `on_drift` can coexist with mirror files elsewhere. Mirror files ignore the spec-level setting and always overwrite, while non-mirror files use it. See [Drift Handling](../drift/#interaction-with-sync_mode-mirror) for details.
-
-### Scope
-
-Mirror only affects the directory specified by `path`. Files outside that directory are never touched.
+Mirror mode only deletes files within the directory specified by `path`. It never touches files outside that directory, even if other file entries exist in the same manifest:
 
 ```yaml
 files:
   - path: .github/workflows
     source: ./templates/workflows/
-    sync_mode: mirror    # only deletes from .github/workflows/
+    sync_mode: mirror
+    # ↑ only deletes orphans inside .github/workflows/
 
   - path: README.md
     content: "# My Project"
-    # README.md is never affected by the mirror above
+    # ↑ unaffected by the mirror above
 ```
+
+### Mirror always overwrites
+
+Mirror mode forces `on_drift: overwrite` for all files within its scope. Content differences are always resolved by writing the declared content — there is no concept of "warn and skip" in a mirrored directory.
+
+Because of this, setting `on_drift` on the **same file entry** as `sync_mode: mirror` is a **validation error**:
+
+```yaml
+# ✗ Error
+files:
+  - path: .github/workflows
+    source: ./templates/workflows/
+    sync_mode: mirror
+    on_drift: warn        # ← contradicts mirror, validation fails
+```
+
+Spec-level `on_drift` can coexist with mirror entries. Mirror files ignore the spec-level setting, while non-mirror files respect it:
+
+```yaml
+spec:
+  on_drift: overwrite       # applies to non-mirror files
+
+  files:
+    - path: .gitignore
+      content: ...
+      # ↑ uses spec-level on_drift: overwrite
+
+    - path: .github/workflows
+      source: ./templates/workflows/
+      sync_mode: mirror     # ↑ always overwrites, ignores spec-level on_drift
+```
+
+See [Drift Handling — Interaction with mirror](../drift/#interaction-with-sync_mode-mirror) for the full resolution order.
 
 ## `create_only`
 
-Creates the file if it does not exist, but **never updates or deletes** it. Once the file is present in the target repository, gh-infra ignores it completely — no drift detection, no warnings, no overwrites.
+Creates the file if it does **not** exist in the target repository. If the file already exists — regardless of whether its content matches the manifest — gh-infra does nothing: no update, no deletion, no drift detection, no warnings.
 
 ```yaml
 files:
@@ -79,18 +134,18 @@ files:
     sync_mode: create_only
 ```
 
-This is useful for seed files that should be initialized once but then managed independently by the repository:
+This is useful for **seed files** that should be initialized once and then managed independently by each repository:
 
-- `VERSION` — set an initial version, let the repo bump it
+- `VERSION` — set an initial version, let the repo bump it over time
 - `README.md` — provide a starter template, let the team customize it
-- `.env.example` — seed the file, let developers edit it
+- `.env.example` — seed the file, let developers edit it freely
 
-### `create_only` and `on_drift`
+### create_only skips drift entirely
 
-`sync_mode: create_only` and `on_drift` cannot be used on the **same file**. Since `create_only` never compares content, drift is not a concept that applies:
+Since `create_only` never compares content after the file exists, the concept of drift does not apply. Setting `on_drift` on the same file entry is a **validation error**:
 
 ```yaml
-# ✗ Error: on_drift cannot be set on a file with sync_mode "create_only"
+# ✗ Error
 files:
   - path: VERSION
     content: "0.1.0"
@@ -98,13 +153,44 @@ files:
     on_drift: warn        # ← validation error
 ```
 
-## When to use each mode
+## Comparing the three modes
+
+Think of the three modes as a spectrum of control:
+
+```
+create_only ──────── patch ──────── mirror
+ (least control)                    (most control)
+```
+
+- **`create_only`** — fire and forget. Once the file exists, gh-infra hands off ownership to the repo.
+- **`patch`** — gh-infra keeps its files in sync but doesn't interfere with other files in the same directory.
+- **`mirror`** — gh-infra takes full ownership of the directory. Nothing exists there unless the manifest declares it.
+
+### When to use each mode
 
 | Scenario | Recommended |
 |----------|-------------|
-| CI workflows that must be identical across repos | `mirror` |
-| Shared config files where repos may add extras | `patch` |
+| Shared CI workflows that must be identical across repos | `mirror` |
+| Template directories fully controlled by a central team | `mirror` |
+| Config files where repos may add their own extras alongside | `patch` |
 | Security policies (CODEOWNERS, SECURITY.md) | `patch` |
-| Template directories that should be fully controlled | `mirror` |
-| Seed files that repos manage independently after creation | `create_only` |
-| VERSION, README.md starters, .env.example | `create_only` |
+| Starter files that repos manage independently after creation | `create_only` |
+
+### Mixing modes in one manifest
+
+Different file entries can use different sync modes within the same manifest. This is common — for example, you might mirror the CI directory while seeding a README:
+
+```yaml
+files:
+  - path: .github/workflows
+    source: ./templates/workflows/
+    sync_mode: mirror
+
+  - path: .github/CODEOWNERS
+    content: "* @platform-team"
+    # sync_mode: patch (default)
+
+  - path: README.md
+    source: ./templates/README.md.tmpl
+    sync_mode: create_only
+```

@@ -16,7 +16,7 @@ Declarative GitHub infrastructure management via YAML. Like Terraform, but for G
 gh infra plan    # Show what would change
 gh infra apply   # Apply the changes
 ```
-📖 **[babarot.github.io/gh-infra](https://babarot.github.io/gh-infra/)** — Full YAML reference, usage patterns, and guides.
+📖 **[babarot.github.io/gh-infra](https://babarot.github.io/gh-infra/introduction/getting-started/)** — Full YAML reference, usage patterns, and guides.
 
 ## Why
 
