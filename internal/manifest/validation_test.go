@@ -226,8 +226,7 @@ func TestValidateFile(t *testing.T) {
 			f: &File{
 				Metadata: FileMetadata{Name: "repo", Owner: "org"},
 				Spec: FileSpec{
-					Files:   []FileEntry{{Path: "LICENSE", Content: "MIT"}},
-					OnDrift: "overwrite",
+					Files: []FileEntry{{Path: "LICENSE", Content: "MIT"}},
 				},
 			},
 		},
@@ -258,17 +257,6 @@ func TestValidateFile(t *testing.T) {
 				Spec:     FileSpec{},
 			},
 			wantErr: "spec.files is required",
-		},
-		{
-			name: "invalid on_drift",
-			f: &File{
-				Metadata: FileMetadata{Name: "repo", Owner: "org"},
-				Spec: FileSpec{
-					Files:   []FileEntry{{Path: "LICENSE"}},
-					OnDrift: "delete",
-				},
-			},
-			wantErr: "invalid on_drift",
 		},
 		{
 			name: "empty file path fails",
@@ -324,7 +312,6 @@ func TestValidateFileSet(t *testing.T) {
 				Spec: FileSetSpec{
 					Repositories: []FileSetRepository{{Name: "repo"}},
 					Files:        []FileEntry{{Path: "LICENSE", Content: "MIT"}},
-					OnDrift:      "overwrite",
 				},
 			},
 		},
@@ -359,19 +346,7 @@ func TestValidateFileSet(t *testing.T) {
 			wantErr: "spec.files is required",
 		},
 		{
-			name: "invalid on_drift",
-			fs: &FileSet{
-				Metadata: FileSetMetadata{Owner: "org"},
-				Spec: FileSetSpec{
-					Repositories: []FileSetRepository{{Name: "repo"}},
-					Files:        []FileEntry{{Path: "LICENSE"}},
-					OnDrift:      "delete",
-				},
-			},
-			wantErr: "invalid on_drift",
-		},
-		{
-			name: "default on_drift is warn",
+			name: "default fileset without on_drift",
 			fs: &FileSet{
 				Metadata: FileSetMetadata{Owner: "org"},
 				Spec: FileSetSpec{
@@ -566,115 +541,6 @@ func TestValidateOneOf(t *testing.T) {
 	}
 }
 
-func TestValidateFileEntryDrift(t *testing.T) {
-	tests := []struct {
-		name    string
-		files   []FileEntry
-		wantErr bool
-	}{
-		{
-			name:    "no on_drift set",
-			files:   []FileEntry{{Path: "a.txt", Reconcile: ReconcileMirror}},
-			wantErr: false,
-		},
-		{
-			name:    "file-level on_drift without mirror",
-			files:   []FileEntry{{Path: "a.txt", OnDrift: OnDriftOverwrite}},
-			wantErr: false,
-		},
-		{
-			name:    "file-level on_drift + mirror on same file",
-			files:   []FileEntry{{Path: "a.txt", OnDrift: OnDriftWarn, Reconcile: ReconcileMirror}},
-			wantErr: true,
-		},
-		{
-			name: "file-level on_drift on one file, mirror on another",
-			files: []FileEntry{
-				{Path: "a.txt", OnDrift: OnDriftOverwrite},
-				{Path: ".github", Reconcile: ReconcileMirror},
-			},
-			wantErr: false,
-		},
-		{
-			name:    "invalid file-level on_drift value",
-			files:   []FileEntry{{Path: "a.txt", OnDrift: "invalid"}},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateFileEntryDrift(tt.files, "")
-			if tt.wantErr && err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !tt.wantErr && err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestValidateFileSet_OverridesOnDrift(t *testing.T) {
-	t.Run("invalid on_drift in overrides", func(t *testing.T) {
-		fs := &FileSet{
-			Metadata: FileSetMetadata{Owner: "org"},
-			Spec: FileSetSpec{
-				Repositories: []FileSetRepository{
-					{
-						Name: "repo",
-						Overrides: []FileEntry{
-							{Path: "a.txt", Content: "x", OnDrift: "bogus"},
-						},
-					},
-				},
-				Files: []FileEntry{{Path: "a.txt", Content: "x"}},
-			},
-		}
-		if err := fs.Validate(); err == nil {
-			t.Fatal("expected error for invalid on_drift in overrides")
-		}
-	})
-
-	t.Run("on_drift + mirror in overrides", func(t *testing.T) {
-		fs := &FileSet{
-			Metadata: FileSetMetadata{Owner: "org"},
-			Spec: FileSetSpec{
-				Repositories: []FileSetRepository{
-					{
-						Name: "repo",
-						Overrides: []FileEntry{
-							{Path: "a.txt", Content: "x", OnDrift: OnDriftWarn, Reconcile: ReconcileMirror},
-						},
-					},
-				},
-				Files: []FileEntry{{Path: "a.txt", Content: "x"}},
-			},
-		}
-		if err := fs.Validate(); err == nil {
-			t.Fatal("expected error for on_drift + mirror in overrides")
-		}
-	})
-
-	t.Run("valid on_drift in overrides", func(t *testing.T) {
-		fs := &FileSet{
-			Metadata: FileSetMetadata{Owner: "org"},
-			Spec: FileSetSpec{
-				Repositories: []FileSetRepository{
-					{
-						Name: "repo",
-						Overrides: []FileEntry{
-							{Path: "a.txt", Content: "x", OnDrift: OnDriftOverwrite},
-						},
-					},
-				},
-				Files: []FileEntry{{Path: "a.txt", Content: "x"}},
-			},
-		}
-		if err := fs.Validate(); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-}
 
 func TestValidateFileSet_InvalidReconcile(t *testing.T) {
 	tests := []struct {

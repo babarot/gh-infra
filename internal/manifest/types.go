@@ -258,7 +258,6 @@ func (m FileMetadata) FullName() string {
 
 type FileSpec struct {
 	Files         []FileEntry `yaml:"files"`
-	OnDrift       string      `yaml:"on_drift,omitempty"`
 	CommitMessage string      `yaml:"commit_message,omitempty"`
 	OnApply       string      `yaml:"on_apply,omitempty"` // push (default), pull_request
 	Branch        string      `yaml:"branch,omitempty"`   // branch name for pull_request on_apply
@@ -267,6 +266,7 @@ type FileSpec struct {
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedCommitStrategy string   `yaml:"commit_strategy,omitempty"`
+	DeprecatedOnDrift        string   `yaml:"on_drift,omitempty"`
 	DeprecationWarnings      []string `yaml:"-"`
 }
 
@@ -287,6 +287,11 @@ func (s *FileSpec) UnmarshalYAML(unmarshal func(any) error) error {
 		s.OnApply = s.DeprecatedCommitStrategy
 		s.DeprecatedCommitStrategy = ""
 	}
+	if s.DeprecatedOnDrift != "" {
+		s.DeprecationWarnings = append(s.DeprecationWarnings,
+			"\"on_drift\" is deprecated and will be ignored")
+		s.DeprecatedOnDrift = ""
+	}
 	return nil
 }
 
@@ -305,7 +310,6 @@ type FileSetMetadata struct {
 type FileSetSpec struct {
 	Repositories  []FileSetRepository `yaml:"repositories"`
 	Files         []FileEntry         `yaml:"files"`
-	OnDrift       string              `yaml:"on_drift,omitempty"`       // warn (default), overwrite, skip
 	CommitMessage string              `yaml:"commit_message,omitempty"` // custom commit message
 	OnApply       string              `yaml:"on_apply,omitempty"`       // push (default), pull_request
 	Branch        string              `yaml:"branch,omitempty"`         // branch name for pull_request on_apply
@@ -314,6 +318,7 @@ type FileSetSpec struct {
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedCommitStrategy string   `yaml:"commit_strategy,omitempty"`
+	DeprecatedOnDrift        string   `yaml:"on_drift,omitempty"`
 	DeprecationWarnings      []string `yaml:"-"`
 }
 
@@ -333,6 +338,11 @@ func (s *FileSetSpec) UnmarshalYAML(unmarshal func(any) error) error {
 			"\"commit_strategy\" is deprecated, use \"on_apply\" instead")
 		s.OnApply = s.DeprecatedCommitStrategy
 		s.DeprecatedCommitStrategy = ""
+	}
+	if s.DeprecatedOnDrift != "" {
+		s.DeprecationWarnings = append(s.DeprecationWarnings,
+			"\"on_drift\" is deprecated and will be ignored")
+		s.DeprecatedOnDrift = ""
 	}
 	return nil
 }
@@ -367,14 +377,14 @@ func (fs *FileSet) RepoFullName(repoName string) string {
 type FileEntry struct {
 	Path      string            `yaml:"path"`
 	Content   string            `yaml:"content,omitempty"`
-	Source    string            `yaml:"source,omitempty"`      // local file path
-	Vars      map[string]string `yaml:"vars,omitempty"`        // template variables
-	Reconcile string            `yaml:"reconcile,omitempty"`   // patch (default), mirror, create_only
-	OnDrift   string            `yaml:"on_drift,omitempty"`    // per-file drift handling (overrides spec-level)
-	DirScope  string            `yaml:"-"`                     // internal: directory path for mirror mode
+	Source    string            `yaml:"source,omitempty"`    // local file path
+	Vars      map[string]string `yaml:"vars,omitempty"`      // template variables
+	Reconcile string            `yaml:"reconcile,omitempty"` // patch (default), mirror, create_only
+	DirScope  string            `yaml:"-"`                   // internal: directory path for mirror mode
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty"`
+	DeprecatedOnDrift   string   `yaml:"on_drift,omitempty"`
 	DeprecationWarnings []string `yaml:"-"`
 }
 
@@ -394,6 +404,11 @@ func (fe *FileEntry) UnmarshalYAML(unmarshal func(any) error) error {
 			fmt.Sprintf("%s: \"sync_mode\" is deprecated, use \"reconcile\" instead", fe.Path))
 		fe.Reconcile = fe.DeprecatedSyncMode
 		fe.DeprecatedSyncMode = ""
+	}
+	if fe.DeprecatedOnDrift != "" {
+		fe.DeprecationWarnings = append(fe.DeprecationWarnings,
+			fmt.Sprintf("%s: \"on_drift\" is deprecated and will be ignored", fe.Path))
+		fe.DeprecatedOnDrift = ""
 	}
 	return nil
 }

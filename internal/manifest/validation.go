@@ -150,15 +150,6 @@ func (f *File) Validate() error {
 	if len(f.Spec.Files) == 0 {
 		return fmt.Errorf("File %q: spec.files is required", f.Metadata.FullName())
 	}
-	if err := validateFileEntryDrift(f.Spec.Files, fmt.Sprintf("File %q: ", f.Metadata.FullName())); err != nil {
-		return err
-	}
-	if f.Spec.OnDrift != "" {
-		if err := validateOneOf("on_drift", f.Spec.OnDrift,
-			OnDriftWarn, OnDriftOverwrite, OnDriftSkip); err != nil {
-			return fmt.Errorf("File %q: %w", f.Metadata.FullName(), err)
-		}
-	}
 	if f.Spec.OnApply != "" {
 		if err := validateOneOf("on_apply", f.Spec.OnApply,
 			OnApplyPush, OnApplyPullRequest); err != nil {
@@ -192,16 +183,6 @@ func (fs *FileSet) Validate() error {
 	if len(fs.Spec.Files) == 0 {
 		return fmt.Errorf("FileSet %q: spec.files is required", fs.Metadata.Owner)
 	}
-	if err := validateFileEntryDrift(fs.Spec.Files, fmt.Sprintf("FileSet %q: ", fs.Metadata.Owner)); err != nil {
-		return err
-	}
-	if fs.Spec.OnDrift == "" {
-		fs.Spec.OnDrift = OnDriftWarn
-	}
-	if err := validateOneOf("on_drift", fs.Spec.OnDrift,
-		OnDriftWarn, OnDriftOverwrite, OnDriftSkip); err != nil {
-		return fmt.Errorf("FileSet %q: %w", fs.Metadata.Owner, err)
-	}
 	if fs.Spec.OnApply == "" {
 		fs.Spec.OnApply = OnApplyPush
 	}
@@ -231,30 +212,6 @@ func (fs *FileSet) Validate() error {
 			return fmt.Errorf("FileSet %q: duplicate repository %q", fs.Metadata.Owner, r.Name)
 		}
 		repoNames[r.Name] = true
-		if err := validateFileEntryDrift(r.Overrides, fmt.Sprintf("FileSet %q: repositories[%s].overrides: ", fs.Metadata.Owner, r.Name)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// validateFileEntryDrift checks that no single file has both on_drift and
-// sync_mode: mirror set. Mirror always overwrites, so per-file on_drift
-// would be contradictory.
-func validateFileEntryDrift(files []FileEntry, prefix string) error {
-	for i, f := range files {
-		if f.OnDrift != "" {
-			if err := validateOneOf("on_drift", f.OnDrift,
-				OnDriftWarn, OnDriftOverwrite, OnDriftSkip); err != nil {
-				return fmt.Errorf("%sfiles[%d] (%s): %w", prefix, i, f.Path, err)
-			}
-			if f.Reconcile == ReconcileMirror {
-				return fmt.Errorf("%sfiles[%d] (%s): on_drift cannot be set on a file with reconcile \"mirror\" (mirror always overwrites)", prefix, i, f.Path)
-			}
-			if f.Reconcile == ReconcileCreateOnly {
-				return fmt.Errorf("%sfiles[%d] (%s): on_drift cannot be set on a file with reconcile \"create_only\" (create_only never updates)", prefix, i, f.Path)
-			}
-		}
 	}
 	return nil
 }

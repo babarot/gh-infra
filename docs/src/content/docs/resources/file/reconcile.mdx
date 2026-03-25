@@ -33,8 +33,6 @@ files:
 
 This is the right choice when you want to manage specific files without interfering with files that repos maintain on their own. For instance, you can push a shared CI workflow into `.github/workflows/` without deleting repo-specific workflows that already exist there.
 
-Drift detection works normally in `patch` mode — see [Drift Handling](../on-drift/) for how `on_drift` controls what happens when a file's content differs.
-
 ## `mirror`
 
 Makes the target directory an **exact copy** of the source. In addition to creating and updating files (like `patch`), `mirror` also **deletes** any file in the target directory that is not present in the source. This guarantees that after `apply`, the target directory contains exactly the files declared in the manifest — nothing more, nothing less.
@@ -90,42 +88,9 @@ files:
     # ↑ unaffected by the mirror above
 ```
 
-### Mirror always overwrites
-
-Mirror mode forces `on_drift: overwrite` for all files within its scope. Content differences are always resolved by writing the declared content — there is no concept of "warn and skip" in a mirrored directory.
-
-Because of this, setting `on_drift` on the **same file entry** as `reconcile: mirror` is a **validation error**:
-
-```yaml
-# ✗ Error
-files:
-  - path: .github/workflows
-    source: ./templates/workflows/
-    reconcile: mirror
-    on_drift: warn        # ← contradicts mirror, validation fails
-```
-
-Spec-level `on_drift` can coexist with mirror entries. Mirror files ignore the spec-level setting, while non-mirror files respect it:
-
-```yaml
-spec:
-  on_drift: overwrite       # applies to non-mirror files
-
-  files:
-    - path: .gitignore
-      content: ...
-      # ↑ uses spec-level on_drift: overwrite
-
-    - path: .github/workflows
-      source: ./templates/workflows/
-      reconcile: mirror     # ↑ always overwrites, ignores spec-level on_drift
-```
-
-See [Drift Handling — Interaction with mirror](../on-drift/#interaction-with-reconcile-mirror) for the full resolution order.
-
 ## `create_only`
 
-Creates the file if it does **not** exist in the target repository. If the file already exists — regardless of whether its content matches the manifest — gh-infra does nothing: no update, no deletion, no drift detection, no warnings.
+Creates the file if it does **not** exist in the target repository. If the file already exists — regardless of whether its content matches the manifest — gh-infra does nothing: no update, no deletion, no content comparison.
 
 ```yaml
 files:
@@ -139,19 +104,6 @@ This is useful for **seed files** that should be initialized once and then manag
 - `VERSION` — set an initial version, let the repo bump it over time
 - `README.md` — provide a starter template, let the team customize it
 - `.env.example` — seed the file, let developers edit it freely
-
-### create_only skips drift entirely
-
-Since `create_only` never compares content after the file exists, the concept of drift does not apply. Setting `on_drift` on the same file entry is a **validation error**:
-
-```yaml
-# ✗ Error
-files:
-  - path: VERSION
-    content: "0.1.0"
-    reconcile: create_only
-    on_drift: warn        # ← validation error
-```
 
 ## Comparing the three modes
 

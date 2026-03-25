@@ -121,29 +121,3 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 	}
 }
 
-func TestResolveFiles_InheritsOnDrift(t *testing.T) {
-	fs := &manifest.FileSet{
-		Spec: manifest.FileSetSpec{
-			Files: []manifest.FileEntry{
-				{Path: "a.txt", Content: "aaa", OnDrift: manifest.OnDriftOverwrite},
-				{Path: "b.txt", Content: "bbb", OnDrift: manifest.OnDriftSkip},
-			},
-		},
-	}
-	target := manifest.FileSetRepository{
-		Name: "repo",
-		Overrides: []manifest.FileEntry{
-			{Path: "a.txt", Content: "overridden-a"},                                // no OnDrift → inherit
-			{Path: "b.txt", Content: "overridden-b", OnDrift: manifest.OnDriftWarn}, // explicit → keep
-		},
-	}
-
-	result := ResolveFiles(fs, target)
-
-	if result[0].OnDrift != manifest.OnDriftOverwrite {
-		t.Errorf("result[0].OnDrift = %q, want %q (should inherit)", result[0].OnDrift, manifest.OnDriftOverwrite)
-	}
-	if result[1].OnDrift != manifest.OnDriftWarn {
-		t.Errorf("result[1].OnDrift = %q, want %q (should keep explicit)", result[1].OnDrift, manifest.OnDriftWarn)
-	}
-}

@@ -123,7 +123,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 	// Print unified plan
 	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
-	fileCreates, fileUpdates, fileDeletes, fileDrifts := fileset.CountChanges(fileChanges)
+	fileCreates, fileUpdates, fileDeletes := fileset.CountChanges(fileChanges)
 	creates := repoCreates + fileCreates
 	updates := repoUpdates + fileUpdates
 	deletes := repoDeletes + fileDeletes
@@ -136,9 +136,6 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", creates))),
 		fmt.Sprintf("%s to update", ui.Bold.Render(fmt.Sprintf("%d", updates))),
 		fmt.Sprintf("%s to destroy", ui.Bold.Render(fmt.Sprintf("%d", deletes))),
-	}
-	if fileDrifts > 0 {
-		parts = append(parts, fmt.Sprintf("%s drifted", ui.Bold.Render(fmt.Sprintf("%d", fileDrifts))))
 	}
 	p.Summary(fmt.Sprintf("Plan: %s\nTo apply, run: %s", strings.Join(parts, ", "), ui.Bold.Render("gh infra apply")))
 
@@ -153,8 +150,8 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 			p.Message("Apply cancelled.")
 			return nil
 		}
-		// Apply on_drift overrides from the diff viewer back to fileChanges
-		applyOnDriftOverrides(fileChanges, diffEntries)
+		// Apply skip selections from the diff viewer back to fileChanges
+		applySkipSelections(fileChanges, diffEntries)
 	}
 
 	totalSucceeded := 0
@@ -220,9 +217,6 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 			results := processor.Apply(fsChanges, opts, fileReporter)
 			allFileResults = append(allFileResults, results...)
 			for _, r := range results {
-				if r.Skipped {
-					continue
-				}
 				if r.Err != nil {
 					totalFailed++
 				} else {
@@ -253,32 +247,20 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	return nil
 }
 
-// applyOnDriftOverrides writes on_drift changes made in the diff viewer back
-// to fileChanges, adjusting Type so that apply handles them correctly.
-func applyOnDriftOverrides(changes []fileset.FileChange, entries []ui.DiffEntry) {
-	overrides := make(map[string]string, len(entries))
+// applySkipSelections writes skip selections from the diff viewer back
+// to fileChanges, setting skipped entries to FileNoOp so they are not applied.
+func applySkipSelections(changes []fileset.FileChange, entries []ui.DiffEntry) {
+	// Build a set of target+path keys that were marked as skipped
+	type key struct{ target, path string }
+	skipped := make(map[key]bool, len(entries))
 	for _, e := range entries {
-		if e.OnDrift != "" {
-			overrides[e.Path] = e.OnDrift
+		if e.Skip {
+			skipped[key{e.Target, e.Path}] = true
 		}
 	}
 	for i := range changes {
-		newDrift, ok := overrides[changes[i].Path]
-		if !ok || newDrift == changes[i].OnDrift {
-			continue
-		}
-		changes[i].OnDrift = newDrift
-		// Re-derive Type from the new on_drift value for drifted files
-		if !changes[i].Drifted {
-			continue
-		}
-		switch newDrift {
-		case "overwrite":
-			changes[i].Type = fileset.FileUpdate
-		case "warn":
-			changes[i].Type = fileset.FileDrift
-		case "skip":
-			changes[i].Type = fileset.FileSkip
+		if skipped[key{changes[i].Target, changes[i].Path}] {
+			changes[i].Type = fileset.FileNoOp
 		}
 	}
 }
@@ -294,18 +276,15 @@ func buildDiffEntries(changes []fileset.FileChange) []ui.DiffEntry {
 			icon = ui.IconChange
 		case fileset.FileDelete:
 			icon = ui.IconRemove
-		case fileset.FileDrift:
-			icon = ui.IconWarning
 		default:
 			continue
 		}
 		entries = append(entries, ui.DiffEntry{
-			Path:            c.Path,
-			Icon:            icon,
-			Current:         c.Current,
-			Desired:         c.Desired,
-			OnDrift:         c.OnDrift,
-			OriginalOnDrift: c.OnDrift,
+			Path:    c.Path,
+			Target:  c.Target,
+			Icon:    icon,
+			Current: c.Current,
+			Desired: c.Desired,
 		})
 	}
 	return entries

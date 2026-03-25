@@ -42,27 +42,17 @@ Press `d` to open a full-screen diff viewer before deciding:
 | Key | Action |
 |-----|--------|
 | `↑`/`↓` or `j`/`k` | Select file |
-| `Tab` | Cycle `on_drift` (warn → overwrite → skip) |
-| `Shift+Tab` | Cycle `on_drift` backwards |
+| `Tab` | Toggle apply/skip for the selected file |
 | `d`/`u` | Scroll diff pane |
 | `q`/`Esc` | Return to confirmation |
 
-The diff viewer shows different content depending on the `on_drift` setting:
+Each file defaults to **apply**. Use `Tab` to toggle a file to **skip** if you want to exclude it from the current run. Skipped files are shown dimmed in the viewer. The YAML manifest is not modified — this is a runtime-only decision.
 
-| `on_drift` | Right pane shows |
-|------------|-----------------|
-| `warn` | Unified diff (current → desired) |
-| `overwrite` | Desired content in green |
-| `skip` | Current content (will be kept as-is) |
-
-Changing `on_drift` with `Tab` in the viewer takes effect for that apply run — the YAML file is not modified. This lets you decide per-file whether to apply, skip, or just warn without editing configuration.
-
-When you return to the confirmation prompt, any overrides are shown as a summary:
+When you return to the confirmation prompt, any skipped files are shown as a summary:
 
 ```
-  on_drift overrides (this run only):
-    .gitignore: warn → overwrite
-    go.mod: warn → skip
+  Skipped files (this run only):
+    go.mod
 
 > Do you want to apply these changes? (yes / no / diff)
 ```

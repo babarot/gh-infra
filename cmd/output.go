@@ -24,7 +24,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 		}
 	}
 	for _, c := range fileChanges {
-		if c.Type == fileset.FileNoOp || c.Type == fileset.FileSkip {
+		if c.Type == fileset.FileNoOp {
 			continue
 		}
 		if !seen[c.Target] {
@@ -138,10 +138,6 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 					p.FileUpdate(c.Path)
 				case fileset.FileDelete:
 					p.FileDelete(c.Path)
-				case fileset.FileDrift:
-					p.FileDrift(c.Path, c.OnDrift)
-				case fileset.FileSkip:
-					p.FileSkip(c.Path)
 				}
 			}
 		}
@@ -228,10 +224,7 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 		var prURL string
 		var commitStrategy string
 		for _, r := range fileByTarget[name] {
-			if r.Skipped {
-				p.ResultWarning(r.Change.Path,
-					fmt.Sprintf("drift detected, skipped (on_drift: %s)", r.Change.OnDrift))
-			} else if r.Err != nil {
+			if r.Err != nil {
 				p.ResultError(r.Change.Path, r.Err.Error())
 			} else {
 				p.ResultSuccess(r.Change.Path, fmt.Sprintf("%sd", r.Change.Type))

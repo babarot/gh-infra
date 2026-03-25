@@ -38,14 +38,13 @@ func contentsKey(repo, path string) string {
 	return fmt.Sprintf("api repos/%s/contents/%s", repo, path)
 }
 
-func makeFileSet(owner, repo, onDrift string, files []manifest.FileEntry) []*manifest.FileSet {
+func makeFileSet(owner, repo string, files []manifest.FileEntry) []*manifest.FileSet {
 	return []*manifest.FileSet{
 		{
 			Metadata: manifest.FileSetMetadata{Owner: owner},
 			Spec: manifest.FileSetSpec{
 				Repositories: []manifest.FileSetRepository{{Name: repo}},
 				Files:        files,
-				OnDrift:      onDrift,
 			},
 		},
 	}
@@ -63,7 +62,7 @@ func TestPlan_NewFile(t *testing.T) {
 		},
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
@@ -88,7 +87,7 @@ func TestPlan_NoChange(t *testing.T) {
 		Errors: map[string]error{},
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
@@ -102,7 +101,7 @@ func TestPlan_NoChange(t *testing.T) {
 	}
 }
 
-func TestPlan_DriftWarn(t *testing.T) {
+func TestPlan_ContentDiffers(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
 			contentsKey("owner/repo", ".github/ci.yml"): contentsJSON("old content", "sha1"),
@@ -110,36 +109,7 @@ func TestPlan_DriftWarn(t *testing.T) {
 		Errors: map[string]error{},
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
-		{Path: ".github/ci.yml", Content: "new content"},
-	})
-
-	changes, _ := p.Plan(fileSets, "", nil)
-
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d", len(changes))
-	}
-	c := changes[0]
-	if c.Type != FileDrift {
-		t.Errorf("expected FileDrift, got %s", c.Type)
-	}
-	if !c.Drifted {
-		t.Error("expected Drifted=true")
-	}
-	if c.SHA != "sha1" {
-		t.Errorf("expected SHA=sha1, got %s", c.SHA)
-	}
-}
-
-func TestPlan_DriftOverwrite(t *testing.T) {
-	mock := &gh.MockRunner{
-		Responses: map[string][]byte{
-			contentsKey("owner/repo", ".github/ci.yml"): contentsJSON("old content", "sha1"),
-		},
-		Errors: map[string]error{},
-	}
-	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	fileSets := makeFileSet("owner", "repo", "overwrite", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 
@@ -152,34 +122,8 @@ func TestPlan_DriftOverwrite(t *testing.T) {
 	if c.Type != FileUpdate {
 		t.Errorf("expected FileUpdate, got %s", c.Type)
 	}
-	if !c.Drifted {
-		t.Error("expected Drifted=true")
-	}
-}
-
-func TestPlan_DriftSkip(t *testing.T) {
-	mock := &gh.MockRunner{
-		Responses: map[string][]byte{
-			contentsKey("owner/repo", ".github/ci.yml"): contentsJSON("old content", "sha1"),
-		},
-		Errors: map[string]error{},
-	}
-	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	fileSets := makeFileSet("owner", "repo", "skip", []manifest.FileEntry{
-		{Path: ".github/ci.yml", Content: "new content"},
-	})
-
-	changes, _ := p.Plan(fileSets, "", nil)
-
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d", len(changes))
-	}
-	c := changes[0]
-	if c.Type != FileSkip {
-		t.Errorf("expected FileSkip, got %s", c.Type)
-	}
-	if !c.Drifted {
-		t.Error("expected Drifted=true")
+	if c.SHA != "sha1" {
+		t.Errorf("expected SHA=sha1, got %s", c.SHA)
 	}
 }
 
@@ -191,7 +135,7 @@ func TestPlan_CreateOnly_FileNotExists(t *testing.T) {
 		},
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
 		{Path: "VERSION", Content: "0.1.0", Reconcile: manifest.ReconcileCreateOnly},
 	})
 
@@ -213,7 +157,7 @@ func TestPlan_CreateOnly_FileExists(t *testing.T) {
 		Errors: map[string]error{},
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
 		{Path: "VERSION", Content: "0.1.0", Reconcile: manifest.ReconcileCreateOnly},
 	})
 
@@ -227,7 +171,7 @@ func TestPlan_CreateOnly_FileExists(t *testing.T) {
 	}
 }
 
-func TestPlan_FileLevelOnDrift(t *testing.T) {
+func TestPlan_MultipleFilesDiffer(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
 			contentsKey("owner/repo", "a.txt"): contentsJSON("old a", "sha-a"),
@@ -237,10 +181,9 @@ func TestPlan_FileLevelOnDrift(t *testing.T) {
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-	// spec-level on_drift: warn, but file "a.txt" overrides to overwrite
-	fileSets := makeFileSet("owner", "repo", "warn", []manifest.FileEntry{
-		{Path: "a.txt", Content: "new a", OnDrift: manifest.OnDriftOverwrite},
-		{Path: "b.txt", Content: "new b"}, // inherits spec-level warn
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
+		{Path: "a.txt", Content: "new a"},
+		{Path: "b.txt", Content: "new b"},
 	})
 
 	changes, err := p.Plan(fileSets, "", nil)
@@ -251,65 +194,12 @@ func TestPlan_FileLevelOnDrift(t *testing.T) {
 		t.Fatalf("expected 2 changes, got %d", len(changes))
 	}
 
-	// a.txt: file-level overwrite → FileUpdate
+	// Both files differ → FileUpdate
 	if changes[0].Type != FileUpdate {
-		t.Errorf("a.txt: expected FileUpdate (file-level overwrite), got %s", changes[0].Type)
+		t.Errorf("a.txt: expected FileUpdate, got %s", changes[0].Type)
 	}
-	// b.txt: spec-level warn → FileDrift
-	if changes[1].Type != FileDrift {
-		t.Errorf("b.txt: expected FileDrift (spec-level warn), got %s", changes[1].Type)
-	}
-}
-
-func TestPlan_FileLevelOnDrift_Skip(t *testing.T) {
-	mock := &gh.MockRunner{
-		Responses: map[string][]byte{
-			contentsKey("owner/repo", "a.txt"): contentsJSON("old a", "sha-a"),
-		},
-		Errors: map[string]error{},
-	}
-	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-
-	// spec-level overwrite, file-level skip
-	fileSets := makeFileSet("owner", "repo", "overwrite", []manifest.FileEntry{
-		{Path: "a.txt", Content: "new a", OnDrift: manifest.OnDriftSkip},
-	})
-
-	changes, err := p.Plan(fileSets, "", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d", len(changes))
-	}
-	if changes[0].Type != FileSkip {
-		t.Errorf("expected FileSkip (file-level skip overrides spec overwrite), got %s", changes[0].Type)
-	}
-}
-
-func TestPlan_FileLevelOnDrift_Warn(t *testing.T) {
-	mock := &gh.MockRunner{
-		Responses: map[string][]byte{
-			contentsKey("owner/repo", "a.txt"): contentsJSON("old a", "sha-a"),
-		},
-		Errors: map[string]error{},
-	}
-	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-
-	// spec-level overwrite, file-level warn
-	fileSets := makeFileSet("owner", "repo", "overwrite", []manifest.FileEntry{
-		{Path: "a.txt", Content: "new a", OnDrift: manifest.OnDriftWarn},
-	})
-
-	changes, err := p.Plan(fileSets, "", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d", len(changes))
-	}
-	if changes[0].Type != FileDrift {
-		t.Errorf("expected FileDrift (file-level warn overrides spec overwrite), got %s", changes[0].Type)
+	if changes[1].Type != FileUpdate {
+		t.Errorf("b.txt: expected FileUpdate, got %s", changes[1].Type)
 	}
 }
 
@@ -419,38 +309,7 @@ func flattenCalls(calls [][]string) []string {
 	return flat
 }
 
-func TestApply_DriftWarnSkipsApply(t *testing.T) {
-	mock := &gh.MockRunner{
-		Responses: map[string][]byte{},
-		Errors:    map[string]error{},
-	}
-	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-
-	changes := []FileChange{
-		{
-			FileSet: "ci-files",
-			Target:  "owner/repo",
-			Path:    ".github/ci.yml",
-			Type:    FileDrift,
-			OnDrift: "warn",
-			Drifted: true,
-		},
-	}
-
-	results := p.Apply(changes, ApplyOptions{FileSetName: "test"}, ui.NoopReporter{})
-
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-	if !results[0].Skipped {
-		t.Error("expected Skipped=true for drift/warn")
-	}
-	if len(mock.Called) != 0 {
-		t.Errorf("expected no runner calls, got %d", len(mock.Called))
-	}
-}
-
-func TestApply_NoOpAndSkipNotApplied(t *testing.T) {
+func TestApply_NoOpNotApplied(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{},
 		Errors:    map[string]error{},
@@ -459,13 +318,13 @@ func TestApply_NoOpAndSkipNotApplied(t *testing.T) {
 
 	changes := []FileChange{
 		{Type: FileNoOp, Target: "owner/repo", Path: "a.txt"},
-		{Type: FileSkip, Target: "owner/repo", Path: "b.txt"},
+		{Type: FileNoOp, Target: "owner/repo", Path: "b.txt"},
 	}
 
 	results := p.Apply(changes, ApplyOptions{FileSetName: "test"}, ui.NoopReporter{})
 
 	if len(results) != 0 {
-		t.Errorf("expected 0 results for noop/skip, got %d", len(results))
+		t.Errorf("expected 0 results for noop, got %d", len(results))
 	}
 	if len(mock.Called) != 0 {
 		t.Errorf("expected no runner calls, got %d", len(mock.Called))
@@ -476,14 +335,14 @@ func TestApply_NoOpAndSkipNotApplied(t *testing.T) {
 // HasChanges tests
 // ---------------------------------------------------------------------------
 
-func TestHasChanges_AllNoOpAndSkip(t *testing.T) {
+func TestHasChanges_AllNoOp(t *testing.T) {
 	changes := []FileChange{
 		{Type: FileNoOp},
-		{Type: FileSkip},
+		{Type: FileNoOp},
 		{Type: FileNoOp},
 	}
 	if HasChanges(changes) {
-		t.Error("expected HasChanges=false for all noop/skip")
+		t.Error("expected HasChanges=false for all noop")
 	}
 }
 
@@ -501,11 +360,6 @@ func TestHasChanges_WithCreateOrUpdate(t *testing.T) {
 		{
 			name:    "with update",
 			changes: []FileChange{{Type: FileUpdate}},
-			want:    true,
-		},
-		{
-			name:    "with drift",
-			changes: []FileChange{{Type: FileDrift}},
 			want:    true,
 		},
 		{
@@ -533,14 +387,10 @@ func TestCountChanges(t *testing.T) {
 		{Type: FileCreate},
 		{Type: FileCreate},
 		{Type: FileUpdate},
-		{Type: FileDrift},
-		{Type: FileDrift},
-		{Type: FileDrift},
 		{Type: FileNoOp},
-		{Type: FileSkip},
 	}
 
-	creates, updates, _, drifts := CountChanges(changes)
+	creates, updates, deletes := CountChanges(changes)
 
 	if creates != 2 {
 		t.Errorf("creates: got %d, want 2", creates)
@@ -548,8 +398,8 @@ func TestCountChanges(t *testing.T) {
 	if updates != 1 {
 		t.Errorf("updates: got %d, want 1", updates)
 	}
-	if drifts != 3 {
-		t.Errorf("drifts: got %d, want 3", drifts)
+	if deletes != 0 {
+		t.Errorf("deletes: got %d, want 0", deletes)
 	}
 }
 
@@ -564,8 +414,7 @@ func TestPrintPlan(t *testing.T) {
 	changes := []FileChange{
 		{FileSet: "ci", Target: "org/repo-a", Path: ".github/ci.yml", Type: FileCreate},
 		{FileSet: "ci", Target: "org/repo-a", Path: ".github/lint.yml", Type: FileUpdate},
-		{FileSet: "ci", Target: "org/repo-b", Path: ".github/ci.yml", Type: FileDrift, OnDrift: "warn"},
-		{FileSet: "ci", Target: "org/repo-b", Path: ".github/skip.yml", Type: FileSkip, OnDrift: "skip"},
+		{FileSet: "ci", Target: "org/repo-b", Path: ".github/ci.yml", Type: FileDelete},
 		{FileSet: "ci", Target: "org/repo-c", Path: ".github/ci.yml", Type: FileNoOp},
 	}
 
@@ -585,14 +434,6 @@ func TestPrintPlan(t *testing.T) {
 	}
 	if !strings.Contains(output, "(content changed)") {
 		t.Errorf("expected '(content changed)' in output, got:\n%s", output)
-	}
-	// Check drift line
-	if !strings.Contains(output, "[drift]") {
-		t.Errorf("expected '[drift]' in output, got:\n%s", output)
-	}
-	// Check skip line
-	if !strings.Contains(output, "skip") {
-		t.Errorf("expected 'skip' in output, got:\n%s", output)
 	}
 	// Check grouping headers
 	if !strings.Contains(output, "org/repo-a") {
@@ -644,29 +485,16 @@ func TestPrintApplyResults(t *testing.T) {
 			Change: FileChange{Target: "org/repo", Path: "b.txt", Type: FileUpdate},
 			Err:    fmt.Errorf("permission denied"),
 		},
-		{
-			Change:  FileChange{Target: "org/repo", Path: "c.txt", OnDrift: "warn"},
-			Skipped: true,
-		},
 	}
 
 	PrintApplyResults(p, results)
 	output := buf.String()
 
-	if !strings.Contains(output, "✓") {
-		t.Errorf("expected success marker in output, got:\n%s", output)
-	}
-	if !strings.Contains(output, "✗") {
-		t.Errorf("expected error marker in output, got:\n%s", output)
+	if !strings.Contains(output, "a.txt") {
+		t.Errorf("expected success entry in output, got:\n%s", output)
 	}
 	if !strings.Contains(output, "permission denied") {
 		t.Errorf("expected error message in output, got:\n%s", output)
-	}
-	if !strings.Contains(output, "⚠") {
-		t.Errorf("expected skip/drift marker in output, got:\n%s", output)
-	}
-	if !strings.Contains(output, "skipped") {
-		t.Errorf("expected 'skipped' in output, got:\n%s", output)
 	}
 }
 
@@ -682,7 +510,6 @@ func TestPrintSummary(t *testing.T) {
 		{Change: FileChange{}, Err: nil},
 		{Change: FileChange{}, Err: nil},
 		{Change: FileChange{}, Err: fmt.Errorf("error")},
-		{Change: FileChange{}, Skipped: true},
 	}
 
 	PrintSummary(p, results)
@@ -693,9 +520,6 @@ func TestPrintSummary(t *testing.T) {
 	}
 	if !strings.Contains(output, "1 failed") {
 		t.Errorf("expected '1 failed', got:\n%s", output)
-	}
-	if !strings.Contains(output, "1 skipped") {
-		t.Errorf("expected '1 skipped', got:\n%s", output)
 	}
 }
 
@@ -827,7 +651,6 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 						DirScope: "config",
 					},
 				},
-				OnDrift: "warn",
 			},
 		},
 	}
@@ -850,11 +673,10 @@ func TestCountChanges_WithDeletes(t *testing.T) {
 		{Type: FileUpdate},
 		{Type: FileDelete},
 		{Type: FileDelete},
-		{Type: FileDrift},
 		{Type: FileNoOp},
 	}
 
-	creates, updates, deletes, drifts := CountChanges(changes)
+	creates, updates, deletes := CountChanges(changes)
 
 	if creates != 1 {
 		t.Errorf("creates: got %d, want 1", creates)
@@ -864,9 +686,6 @@ func TestCountChanges_WithDeletes(t *testing.T) {
 	}
 	if deletes != 2 {
 		t.Errorf("deletes: got %d, want 2", deletes)
-	}
-	if drifts != 1 {
-		t.Errorf("drifts: got %d, want 1", drifts)
 	}
 }
 

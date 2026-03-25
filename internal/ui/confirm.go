@@ -85,17 +85,18 @@ var huhIndigo = lipgloss.NewStyle().Foreground(lipgloss.Color("#7571F9")).Bold(t
 func (m *confirmDiffModel) View() tea.View {
 	var b strings.Builder
 
-	// Show on_drift overrides if any
-	overrides := DriftOverrides(m.diffEntries)
-	if len(overrides) > 0 {
+	// Show skipped files if any
+	var skipped []DiffEntry
+	for _, e := range m.diffEntries {
+		if e.Skip {
+			skipped = append(skipped, e)
+		}
+	}
+	if len(skipped) > 0 {
 		b.WriteString("\n")
-		b.WriteString(Yellow.Render("  on_drift overrides (this run only):") + "\n")
-		for _, o := range overrides {
-			b.WriteString(fmt.Sprintf("    %s: %s → %s\n",
-				o.Path,
-				Dim.Render(o.From),
-				Bold.Render(o.To),
-			))
+		b.WriteString(Dim.Render("  Skipped files (will not be applied):") + "\n")
+		for _, e := range skipped {
+			b.WriteString(fmt.Sprintf("    %s\n", Dim.Render(e.Path)))
 		}
 	}
 

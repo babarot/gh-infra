@@ -36,7 +36,6 @@ spec:
     - path: .github/workflows/ci.yml
       source: github://babarot/shared-config/workflows/ci.yml
 
-  on_drift: warn                          # warn | overwrite | skip
   on_apply: push                           # push | pull_request
   commit_message: "ci: sync managed files"
   # pr_title: "chore: sync files"         # pull_request only
@@ -62,8 +61,6 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 |---|---|---|
 | `files` | *(required)* | List of files to manage — see [File Sources](./sources/) |
 | `files[].reconcile` | `patch` | Per-entry reconcile mode: `patch` (add/update), `mirror` (add/update/delete), or `create_only` (create if missing, never update) — see [Reconcile](./reconcile/). |
-| `files[].on_drift` | spec-level | Per-entry drift override — see [Drift Handling](./on-drift/) |
-| `on_drift` | `warn` | Default drift handling: `warn`, `overwrite`, or `skip` — see [Drift Handling](./on-drift/) |
 | `on_apply` | `push` | Apply method: `push` or `pull_request` — see [On Apply](./on-apply/). |
 | `commit_message` | auto | Custom commit message |
 | `branch` | auto | Branch name for `pull_request` mode |
