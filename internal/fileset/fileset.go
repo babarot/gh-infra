@@ -31,7 +31,7 @@ type FileChange struct {
 	Current string // current content (if exists)
 	Desired string // desired content
 	SHA     string // current SHA (for updates)
-	Via string // "push" or "pull_request" (from FileSet spec)
+	Via     string // "push" or "pull_request" (from FileSet spec)
 }
 
 type ChangeType string

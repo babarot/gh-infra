@@ -68,16 +68,16 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 		Spec: manifest.FileSetSpec{
 			Files: []manifest.FileEntry{
 				{
-					Path:     "config/a.yml",
-					Content:  "original-a",
-					DirScope: "config",
+					Path:      "config/a.yml",
+					Content:   "original-a",
+					DirScope:  "config",
 					Reconcile: manifest.ReconcileMirror,
-					Vars:     map[string]string{"env": "prod"},
+					Vars:      map[string]string{"env": "prod"},
 				},
 				{
-					Path:     "config/b.yml",
-					Content:  "original-b",
-					DirScope: "config",
+					Path:      "config/b.yml",
+					Content:   "original-b",
+					DirScope:  "config",
 					Reconcile: manifest.ReconcileMirror,
 				},
 			},
@@ -120,4 +120,3 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 		t.Errorf("result[1].Reconcile = %q, want %q", result[1].Reconcile, manifest.ReconcileMirror)
 	}
 }
-

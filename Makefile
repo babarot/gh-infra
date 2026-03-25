@@ -9,6 +9,9 @@ TEST_PKGS := ./internal/repository/ ./internal/fileset/ ./internal/gh/ ./interna
 test:
 	go test $(TEST_PKGS) -coverprofile=coverage.out -covermode=count
 
+lint:
+	golangci-lint run ./...
+
 build:
 	go build -ldflags $(LDFLAGS) -trimpath -o $(BINARY_NAME) ./cmd/gh-infra/
 
@@ -46,4 +49,4 @@ demos:
 	@echo "Copying assets to docs/public/..."
 	@cp docs/tapes/demo.gif docs/tapes/demo-light.gif docs/public/
 
-.PHONY: all test build install clean docs docs-build docs-install demos
+.PHONY: all test lint build install clean docs docs-build docs-install demos

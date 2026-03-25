@@ -464,8 +464,8 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 
 	files := []FileEntry{
 		{
-			Path:     ".github/workflows",
-			Source:   "configs",
+			Path:      ".github/workflows",
+			Source:    "configs",
 			Reconcile: ReconcileMirror,
 		},
 	}

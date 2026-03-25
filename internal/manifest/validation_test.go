@@ -481,6 +481,36 @@ func TestValidateRulesets(t *testing.T) {
 			wantErr: "must be one of",
 		},
 		{
+			name: "valid bypass_mode always",
+			setup: func(r *Repository) {
+				r.Spec.Rulesets = []Ruleset{
+					{Name: "rs", BypassActors: []RulesetBypassActor{
+						{Role: "admin", BypassMode: "always"},
+					}},
+				}
+			},
+		},
+		{
+			name: "valid bypass_mode pull_request",
+			setup: func(r *Repository) {
+				r.Spec.Rulesets = []Ruleset{
+					{Name: "rs", BypassActors: []RulesetBypassActor{
+						{Role: "admin", BypassMode: "pull_request"},
+					}},
+				}
+			},
+		},
+		{
+			name: "valid bypass_mode exempt",
+			setup: func(r *Repository) {
+				r.Spec.Rulesets = []Ruleset{
+					{Name: "rs", BypassActors: []RulesetBypassActor{
+						{Role: "admin", BypassMode: "exempt"},
+					}},
+				}
+			},
+		},
+		{
 			name: "invalid bypass_mode",
 			setup: func(r *Repository) {
 				r.Spec.Rulesets = []Ruleset{
@@ -540,7 +570,6 @@ func TestValidateOneOf(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
-
 
 func TestValidateFileSet_InvalidReconcile(t *testing.T) {
 	tests := []struct {

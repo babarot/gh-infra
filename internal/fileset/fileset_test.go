@@ -590,10 +590,10 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 				Repositories: []manifest.FileSetRepository{{Name: "repo"}},
 				Files: []manifest.FileEntry{
 					{
-						Path:     "config/file1.yml",
-						Content:  "content1",
+						Path:      "config/file1.yml",
+						Content:   "content1",
 						Reconcile: manifest.ReconcileMirror,
-						DirScope: "config",
+						DirScope:  "config",
 					},
 				},
 			},
@@ -645,10 +645,10 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 				Repositories: []manifest.FileSetRepository{{Name: "repo"}},
 				Files: []manifest.FileEntry{
 					{
-						Path:     "config/file1.yml",
-						Content:  "content1",
+						Path:      "config/file1.yml",
+						Content:   "content1",
 						Reconcile: manifest.ReconcilePatch,
-						DirScope: "config",
+						DirScope:  "config",
 					},
 				},
 			},
