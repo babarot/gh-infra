@@ -81,8 +81,8 @@ func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.Refre
 				continue
 			}
 			tasks = append(tasks, ui.RefreshTask{
-				Name:      "Fetching " + fullName + " files",
-				DoneLabel: "Fetched " + fullName + " files",
+				Name:      "Fetching " + fullName + " (files)",
+				DoneLabel: "Fetched " + fullName + " (files)",
 			})
 		}
 	}
@@ -92,12 +92,12 @@ func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.Refre
 // planTaskKey returns the tracker key for a given fileset target.
 // This must match the Name used in PlanTargetNames.
 func planTaskKey(fullName string) string {
-	return "Fetching " + fullName + " files"
+	return "Fetching " + fullName + " (files)"
 }
 
 // applyTaskKey returns the tracker key for a fileset apply target.
 func applyTaskKey(repo string) string {
-	return "Applying " + repo + " files"
+	return "Applying " + repo + " (files)"
 }
 
 // Plan computes changes for all FileSets concurrently.

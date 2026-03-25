@@ -22,14 +22,20 @@ type SpinnerReporter struct {
 }
 
 // NewSpinnerReporter creates a spinner-based reporter for the given task names.
-// Each name gets a "Applying <name>" / "Applied <name>" label pair.
-func NewSpinnerReporter(names []string, verb, pastVerb string) *SpinnerReporter {
+// Parts are joined with spaces to form labels: "verb name suffix" / "pastVerb name suffix".
+func NewSpinnerReporter(names []string, verb, pastVerb, suffix string) *SpinnerReporter {
 	tasks := make([]RefreshTask, len(names))
 	taskMap := make(map[string]RefreshTask, len(names))
 	for i, name := range names {
+		label := verb + " " + name
+		doneLabel := pastVerb + " " + name
+		if suffix != "" {
+			label += " " + suffix
+			doneLabel += " " + suffix
+		}
 		t := RefreshTask{
-			Name:      verb + " " + name,
-			DoneLabel: pastVerb + " " + name,
+			Name:      label,
+			DoneLabel: doneLabel,
 		}
 		tasks[i] = t
 		taskMap[name] = t
