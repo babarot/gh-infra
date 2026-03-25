@@ -745,7 +745,7 @@ spec:
     - path: LICENSE
       content: "MIT"
   on_drift: overwrite
-  on_apply: push
+  via: push
 `
 	path := filepath.Join(dir, "file.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -773,9 +773,9 @@ spec:
 	if len(fs.Spec.Files) != 2 {
 		t.Fatalf("files count = %d, want 2", len(fs.Spec.Files))
 	}
-	// on_drift is deprecated; just verify on_apply is parsed
-	if fs.Spec.OnApply != "push" {
-		t.Errorf("on_apply = %q, want %q", fs.Spec.OnApply, "push")
+	// on_drift is deprecated; just verify via is parsed
+	if fs.Spec.Via != "push" {
+		t.Errorf("via = %q, want %q", fs.Spec.Via, "push")
 	}
 }
 

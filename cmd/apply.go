@@ -198,7 +198,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 			}
 			opts := fileset.ApplyOptions{
 				CommitMessage: fs.Spec.CommitMessage,
-				OnApply:       fs.Spec.OnApply,
+				Via:           fs.Spec.Via,
 				Branch:        fs.Spec.Branch,
 				FileSetName:   fs.Metadata.Owner,
 				PRTitle:       fs.Spec.PRTitle,

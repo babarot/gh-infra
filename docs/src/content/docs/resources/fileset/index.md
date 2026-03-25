@@ -37,7 +37,7 @@ spec:
     - path: LICENSE
       source: ./templates/LICENSE
 
-  on_apply: push
+  via: push
   commit_message: "ci: sync shared files"
 ```
 :::
@@ -58,7 +58,7 @@ All settings available in [File](../file/) — file sources, templating, reconci
 - [File Sources](../file/sources/) — Inline content, local files, directories, and `github://` references
 - [Templating](../file/templating/) — `<% %>` syntax, built-in variables, custom vars
 - [Reconcile](../file/reconcile/) — `patch` (add/update) vs `mirror` (add/update/delete orphans)
-- [Apply Method](../file/on-apply/) — `push` vs `pull_request`
+- [Delivery Method](../file/delivery/) — `push` vs `pull_request`
 
 ## When to Use FileSet
 

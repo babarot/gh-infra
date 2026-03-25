@@ -1,18 +1,12 @@
 ---
 title: Reconcile
 sidebar:
-  order: 5
+  order: 4
 ---
 
 import { FileTree } from '@astrojs/starlight/components';
 
-`reconcile` is a per-file setting that controls how gh-infra reconciles each file entry with the target repository. It determines three things:
-
-1. **Whether to create** a file that doesn't exist yet
-2. **Whether to update** a file whose content has drifted from the manifest
-3. **Whether to delete** files in the target that aren't declared in the manifest
-
-There are three modes:
+`reconcile` controls how gh-infra manages each file entry in the target repository. There are three modes:
 
 | Mode | Creates | Updates | Deletes orphans |
 |------|---------|---------|-----------------|
@@ -22,20 +16,26 @@ There are three modes:
 
 ## `patch` (default)
 
-Adds files that are missing and updates files whose content differs from the manifest. Files that exist in the target but are **not** declared in the manifest are left untouched.
+Manages the declared files without touching anything else in the target directory.
 
 ```yaml
 files:
-  - path: .github/workflows
-    source: ./templates/workflows/
+  - path: .github/CODEOWNERS
+    content: "* @platform-team"
     # reconcile: patch  ← default, can be omitted
 ```
 
-This is the right choice when you want to manage specific files without interfering with files that repos maintain on their own. For instance, you can push a shared CI workflow into `.github/workflows/` without deleting repo-specific workflows that already exist there.
+**What happens:**
+
+- File doesn't exist → **created**
+- File exists, content matches → **no action**
+- File exists, content differs → **overwritten** with the declared content
+
+Use this for config files, security policies, or any file where you want gh-infra to keep it up to date but leave other files in the same directory alone.
 
 ## `mirror`
 
-Makes the target directory an **exact copy** of the source. In addition to creating and updating files (like `patch`), `mirror` also **deletes** any file in the target directory that is not present in the source. This guarantees that after `apply`, the target directory contains exactly the files declared in the manifest — nothing more, nothing less.
+Makes the target directory an **exact copy** of the source. Any file in the target that is not in the source is **deleted**.
 
 ```yaml
 files:
@@ -44,37 +44,14 @@ files:
     reconcile: mirror
 ```
 
-### How mirror works
+**What happens:**
 
-During `plan`, gh-infra:
+- File in source, not in target → **created**
+- File in source, content differs → **overwritten**
+- File in target, not in source → **deleted**
+- File in source, content matches → **no action**
 
-1. Expands the source directory into individual file entries (e.g. `ci.yml`, `release.yml`)
-2. Plans a create or update for each of those files, just like `patch`
-3. Fetches the list of all files currently in the target directory (`.github/workflows/` in this example)
-4. Any file found in the target that is **not** in the planned set is marked for **deletion**
-
-### Example
-
-Source directory `./templates/workflows/` contains two files. The target repo has an additional `repo-dedicated.yml`:
-
-<FileTree>
-- ./templates/workflows/ (source)
-  - ci.yml
-  - release.yml
-</FileTree>
-
-After `apply`:
-
-<FileTree>
-- .github/workflows/ (target repo)
-  - ci.yml ← synced
-  - release.yml ← synced
-  - **repo-dedicated.yml** ← **deleted**
-</FileTree>
-
-### Scope is limited to the declared path
-
-Mirror mode only deletes files within the directory specified by `path`. It never touches files outside that directory, even if other file entries exist in the same manifest:
+Mirror only affects the directory specified by `path`. Files outside that directory are never touched:
 
 ```yaml
 files:
@@ -88,9 +65,18 @@ files:
     # ↑ unaffected by the mirror above
 ```
 
+**Example:** source has `ci.yml` and `release.yml`. Target repo also has `repo-dedicated.yml`:
+
+<FileTree>
+- .github/workflows/ (after apply)
+  - ci.yml ← synced
+  - release.yml ← synced
+  - **repo-dedicated.yml** ← **deleted**
+</FileTree>
+
 ## `create_only`
 
-Creates the file if it does **not** exist in the target repository. If the file already exists — regardless of whether its content matches the manifest — gh-infra does nothing: no update, no deletion, no content comparison.
+Creates the file once. If it already exists, gh-infra ignores it completely — no update, no comparison.
 
 ```yaml
 files:
@@ -99,38 +85,16 @@ files:
     reconcile: create_only
 ```
 
-This is useful for **seed files** that should be initialized once and then managed independently by each repository:
+**What happens:**
 
-- `VERSION` — set an initial version, let the repo bump it over time
-- `README.md` — provide a starter template, let the team customize it
-- `.env.example` — seed the file, let developers edit it freely
+- File doesn't exist → **created**
+- File exists (any content) → **no action**
 
-## Comparing the three modes
+Use this for seed files that repositories manage independently after creation: `VERSION`, `README.md`, `.env.example`, etc.
 
-Think of the three modes as a spectrum of control:
+## Mixing modes
 
-```
-create_only ──────── patch ──────── mirror
- (least control)                    (most control)
-```
-
-- **`create_only`** — fire and forget. Once the file exists, gh-infra hands off ownership to the repo.
-- **`patch`** — gh-infra keeps its files in sync but doesn't interfere with other files in the same directory.
-- **`mirror`** — gh-infra takes full ownership of the directory. Nothing exists there unless the manifest declares it.
-
-### When to use each mode
-
-| Scenario | Recommended |
-|----------|-------------|
-| Shared CI workflows that must be identical across repos | `mirror` |
-| Template directories fully controlled by a central team | `mirror` |
-| Config files where repos may add their own extras alongside | `patch` |
-| Security policies (CODEOWNERS, SECURITY.md) | `patch` |
-| Starter files that repos manage independently after creation | `create_only` |
-
-### Mixing modes in one manifest
-
-Different file entries can use different reconcile modes within the same manifest. This is common — for example, you might mirror the CI directory while seeding a README:
+Different files can use different modes in the same manifest:
 
 ```yaml
 files:

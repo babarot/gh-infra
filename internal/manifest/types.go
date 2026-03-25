@@ -22,13 +22,13 @@ const (
 	OnDriftOverwrite = "overwrite"
 	OnDriftSkip      = "skip"
 
-	// OnApply values for FileSet apply behavior.
-	OnApplyPush        = "push"
-	OnApplyPullRequest = "pull_request"
+	// Via values for FileSet apply behavior.
+	ViaPush        = "push"
+	ViaPullRequest = "pull_request"
 
-	// Deprecated: use OnApply* constants instead.
-	CommitStrategyPush        = OnApplyPush
-	CommitStrategyPullRequest = OnApplyPullRequest
+	// Deprecated: use Via* constants instead.
+	CommitStrategyPush        = ViaPush
+	CommitStrategyPullRequest = ViaPullRequest
 
 	// Reconcile values for FileEntry reconcile behavior.
 	ReconcilePatch      = "patch"       // default: add/update only
@@ -259,18 +259,19 @@ func (m FileMetadata) FullName() string {
 type FileSpec struct {
 	Files         []FileEntry `yaml:"files"`
 	CommitMessage string      `yaml:"commit_message,omitempty"`
-	OnApply       string      `yaml:"on_apply,omitempty"` // push (default), pull_request
-	Branch        string      `yaml:"branch,omitempty"`   // branch name for pull_request on_apply
+	Via           string      `yaml:"via,omitempty"`      // push (default), pull_request
+	Branch        string      `yaml:"branch,omitempty"`   // branch name for pull_request via
 	PRTitle       string      `yaml:"pr_title,omitempty"` // custom PR title (pull_request only)
 	PRBody        string      `yaml:"pr_body,omitempty"`  // custom PR body (pull_request only)
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedCommitStrategy string   `yaml:"commit_strategy,omitempty"`
+	DeprecatedOnApply        string   `yaml:"on_apply,omitempty"`
 	DeprecatedOnDrift        string   `yaml:"on_drift,omitempty"`
 	DeprecationWarnings      []string `yaml:"-"`
 }
 
-// UnmarshalYAML handles migration from commit_strategy to on_apply.
+// UnmarshalYAML handles migration from commit_strategy/on_apply to via.
 func (s *FileSpec) UnmarshalYAML(unmarshal func(any) error) error {
 	type raw FileSpec
 	var r raw
@@ -278,14 +279,27 @@ func (s *FileSpec) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 	*s = FileSpec(r)
-	if s.DeprecatedCommitStrategy != "" && s.OnApply != "" {
+	// Check for conflicting deprecated fields
+	if s.DeprecatedCommitStrategy != "" && s.DeprecatedOnApply != "" {
 		return fmt.Errorf("cannot specify both \"commit_strategy\" and \"on_apply\"")
+	}
+	if s.DeprecatedCommitStrategy != "" && s.Via != "" {
+		return fmt.Errorf("cannot specify both \"commit_strategy\" and \"via\"")
+	}
+	if s.DeprecatedOnApply != "" && s.Via != "" {
+		return fmt.Errorf("cannot specify both \"on_apply\" and \"via\"")
 	}
 	if s.DeprecatedCommitStrategy != "" {
 		s.DeprecationWarnings = append(s.DeprecationWarnings,
-			"\"commit_strategy\" is deprecated, use \"on_apply\" instead")
-		s.OnApply = s.DeprecatedCommitStrategy
+			"\"commit_strategy\" is deprecated, use \"via\" instead")
+		s.Via = s.DeprecatedCommitStrategy
 		s.DeprecatedCommitStrategy = ""
+	}
+	if s.DeprecatedOnApply != "" {
+		s.DeprecationWarnings = append(s.DeprecationWarnings,
+			"\"on_apply\" is deprecated, use \"via\" instead")
+		s.Via = s.DeprecatedOnApply
+		s.DeprecatedOnApply = ""
 	}
 	if s.DeprecatedOnDrift != "" {
 		s.DeprecationWarnings = append(s.DeprecationWarnings,
@@ -311,18 +325,19 @@ type FileSetSpec struct {
 	Repositories  []FileSetRepository `yaml:"repositories"`
 	Files         []FileEntry         `yaml:"files"`
 	CommitMessage string              `yaml:"commit_message,omitempty"` // custom commit message
-	OnApply       string              `yaml:"on_apply,omitempty"`       // push (default), pull_request
-	Branch        string              `yaml:"branch,omitempty"`         // branch name for pull_request on_apply
+	Via           string              `yaml:"via,omitempty"`            // push (default), pull_request
+	Branch        string              `yaml:"branch,omitempty"`         // branch name for pull_request via
 	PRTitle       string              `yaml:"pr_title,omitempty"`       // custom PR title (pull_request only)
 	PRBody        string              `yaml:"pr_body,omitempty"`        // custom PR body (pull_request only)
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedCommitStrategy string   `yaml:"commit_strategy,omitempty"`
+	DeprecatedOnApply        string   `yaml:"on_apply,omitempty"`
 	DeprecatedOnDrift        string   `yaml:"on_drift,omitempty"`
 	DeprecationWarnings      []string `yaml:"-"`
 }
 
-// UnmarshalYAML handles migration from commit_strategy to on_apply.
+// UnmarshalYAML handles migration from commit_strategy/on_apply to via.
 func (s *FileSetSpec) UnmarshalYAML(unmarshal func(any) error) error {
 	type raw FileSetSpec
 	var r raw
@@ -330,14 +345,27 @@ func (s *FileSetSpec) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 	*s = FileSetSpec(r)
-	if s.DeprecatedCommitStrategy != "" && s.OnApply != "" {
+	// Check for conflicting deprecated fields
+	if s.DeprecatedCommitStrategy != "" && s.DeprecatedOnApply != "" {
 		return fmt.Errorf("cannot specify both \"commit_strategy\" and \"on_apply\"")
+	}
+	if s.DeprecatedCommitStrategy != "" && s.Via != "" {
+		return fmt.Errorf("cannot specify both \"commit_strategy\" and \"via\"")
+	}
+	if s.DeprecatedOnApply != "" && s.Via != "" {
+		return fmt.Errorf("cannot specify both \"on_apply\" and \"via\"")
 	}
 	if s.DeprecatedCommitStrategy != "" {
 		s.DeprecationWarnings = append(s.DeprecationWarnings,
-			"\"commit_strategy\" is deprecated, use \"on_apply\" instead")
-		s.OnApply = s.DeprecatedCommitStrategy
+			"\"commit_strategy\" is deprecated, use \"via\" instead")
+		s.Via = s.DeprecatedCommitStrategy
 		s.DeprecatedCommitStrategy = ""
+	}
+	if s.DeprecatedOnApply != "" {
+		s.DeprecationWarnings = append(s.DeprecationWarnings,
+			"\"on_apply\" is deprecated, use \"via\" instead")
+		s.Via = s.DeprecatedOnApply
+		s.DeprecatedOnApply = ""
 	}
 	if s.DeprecatedOnDrift != "" {
 		s.DeprecationWarnings = append(s.DeprecationWarnings,
