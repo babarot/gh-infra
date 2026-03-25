@@ -106,7 +106,7 @@ func (r *Repository) Validate() error {
 				}
 			}
 			if err := validateOneOf("rulesets.bypass_actors.bypass_mode", ba.BypassMode,
-				"always", "pull_request"); err != nil {
+				"always", "pull_request", "exempt"); err != nil {
 				return fmt.Errorf("%s: %w", r.Metadata.Name, err)
 			}
 		}
