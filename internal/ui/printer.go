@@ -32,9 +32,9 @@ type Printer interface {
 	SubItemCreate(field string, value any)
 	SubItemUpdate(field, old, new string)
 	SubItemDelete(field string, value any)
-	FileCreate(path string)
-	FileUpdate(path string)
-	FileDelete(path string)
+	FileCreate(path string, lines int)
+	FileUpdate(path string, added, removed int)
+	FileDelete(path string, lines int)
 	Success(name, detail string)
 	Error(name, detail string)
 	Warning(name, detail string) // stderr
@@ -207,19 +207,58 @@ func (p *StandardPrinter) SubItemDelete(field string, value any) {
 		Red.Render(IconRemove), p.subItemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
 }
 
-func (p *StandardPrinter) FileCreate(path string) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Green.Render(IconAdd), p.subItemWidth(), path, Green.Render("(new file)"))
+// File change descriptions used in plan output.
+var fileDescs = map[string]string{
+	"create": "(new file)",
+	"update": "(content changed)",
+	"delete": "(deleted)",
 }
 
-func (p *StandardPrinter) FileUpdate(path string) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Yellow.Render(IconChange), p.subItemWidth(), path, Yellow.Render("(content changed)"))
+// fileDescWidth is computed from the longest description + 1 padding.
+var fileDescWidth = func() int {
+	max := 0
+	for _, d := range fileDescs {
+		if len(d) > max {
+			max = len(d)
+		}
+	}
+	return max + 1
+}()
+
+func (p *StandardPrinter) FileCreate(path string, lines int) {
+	desc := Green.Render(fmt.Sprintf("%-*s", fileDescWidth, fileDescs["create"]))
+	stat := formatDiffStat(lines, 0)
+	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
+		Green.Render(IconAdd), p.subItemWidth(), path, desc, stat)
 }
 
-func (p *StandardPrinter) FileDelete(path string) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Red.Render(IconRemove), p.subItemWidth(), path, Red.Render("(deleted)"))
+func (p *StandardPrinter) FileUpdate(path string, added, removed int) {
+	desc := Yellow.Render(fmt.Sprintf("%-*s", fileDescWidth, fileDescs["update"]))
+	stat := formatDiffStat(added, removed)
+	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
+		Yellow.Render(IconChange), p.subItemWidth(), path, desc, stat)
+}
+
+func (p *StandardPrinter) FileDelete(path string, lines int) {
+	desc := Red.Render(fmt.Sprintf("%-*s", fileDescWidth, fileDescs["delete"]))
+	stat := formatDiffStat(0, lines)
+	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
+		Red.Render(IconRemove), p.subItemWidth(), path, desc, stat)
+}
+
+// formatDiffStat formats added/removed line counts like git diff --stat.
+func formatDiffStat(added, removed int) string {
+	if added == 0 && removed == 0 {
+		return ""
+	}
+	var parts []string
+	if added > 0 {
+		parts = append(parts, Green.Render(fmt.Sprintf("+%d", added)))
+	}
+	if removed > 0 {
+		parts = append(parts, Red.Render(fmt.Sprintf("-%d", removed)))
+	}
+	return " " + strings.Join(parts, " ")
 }
 
 func renderIcon(icon string) string {
