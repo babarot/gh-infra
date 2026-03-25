@@ -124,10 +124,10 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			if len(fChanges) != 1 {
 				label += "s"
 			}
-			// Show apply method if available
-			strategy := fChanges[0].Via
-			if strategy != "" {
-				label += ", " + strategy
+			// Show delivery method if available
+			via := fChanges[0].Via
+			if via != "" {
+				label += ", via " + ui.Cyan.Render(via)
 			}
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {

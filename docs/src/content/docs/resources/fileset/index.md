@@ -53,7 +53,7 @@ All repositories in the set belong to this owner. Individual repo names are list
 
 ## Shared Features
 
-All settings available in [File](../file/) — file sources, templating, reconcile modes, and apply methods — work identically in `FileSet`. See the File documentation for details:
+All settings available in [File](../file/) — file sources, templating, reconcile modes, and delivery methods — work identically in `FileSet`. See the File documentation for details:
 
 - [File Sources](../file/sources/) — Inline content, local files, directories, and `github://` references
 - [Templating](../file/templating/) — `<% %>` syntax, built-in variables, custom vars
