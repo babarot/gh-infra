@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.5.0](https://github.com/babarot/gh-infra/compare/v0.4.0...v0.5.0) - 2026-03-26
+### New Features
+- Add GitHub Actions settings management by @babarot in https://github.com/babarot/gh-infra/pull/34
+### Refactorings
+- Add custom struct tag validator for manifest types by @babarot in https://github.com/babarot/gh-infra/pull/32
+
 ## [v0.4.0](https://github.com/babarot/gh-infra/compare/v0.3.0...v0.4.0) - 2026-03-25
 ### Bug fixes
 - fix: support exempt bypass mode in rulesets validation by @yagihash in https://github.com/babarot/gh-infra/pull/29
