@@ -81,6 +81,121 @@ func TestTryParseAPIError_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestTryParseAPIError_ErrorsAsString(t *testing.T) {
+	// Real response from fork-pr-approval on private repos: errors is a plain string
+	stderr := `{"message":"Validation Failed","errors":"Fork PR approval is not allowed for private repositories.","documentation_url":"https://docs.github.com/rest","status":"422"}`
+	got := tryParseAPIError(stderr)
+	if got == nil {
+		t.Fatal("expected non-nil APIError")
+	}
+	if got.Status != 422 {
+		t.Errorf("status: got %d, want 422", got.Status)
+	}
+	if got.Message != "Validation Failed" {
+		t.Errorf("message: got %q, want %q", got.Message, "Validation Failed")
+	}
+	if len(got.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(got.Errors))
+	}
+	if got.Errors[0] != "Fork PR approval is not allowed for private repositories." {
+		t.Errorf("errors[0]: got %q", got.Errors[0])
+	}
+}
+
+func TestTryParseAPIError_JSONFollowedByText(t *testing.T) {
+	// gh cli outputs JSON + human-readable text concatenated on stderr
+	stderr := `{"message":"Validation Failed","errors":"some error","status":"422"}gh: some error (Validation Failed)`
+	got := tryParseAPIError(stderr)
+	if got == nil {
+		t.Fatal("expected non-nil APIError")
+	}
+	if got.Status != 422 {
+		t.Errorf("status: got %d, want 422", got.Status)
+	}
+}
+
+func TestTryParseAPIError_StatusAsNumber(t *testing.T) {
+	stderr := `{"message":"Validation Failed","status":422}`
+	got := tryParseAPIError(stderr)
+	if got == nil {
+		t.Fatal("expected non-nil APIError")
+	}
+	if got.Status != 422 {
+		t.Errorf("status: got %d, want 422", got.Status)
+	}
+}
+
+func TestTryParseAPIError_GHMessageFormat(t *testing.T) {
+	// When stderr has no JSON, only the gh cli human-readable format
+	tests := []struct {
+		name       string
+		stderr     string
+		wantNil    bool
+		wantStatus int
+	}{
+		{
+			name:       "Validation Failed from gh cli",
+			stderr:     "gh: Fork PR approval is not allowed for private repositories. (Validation Failed)",
+			wantStatus: 422,
+		},
+		{
+			name:       "Not Found from gh cli",
+			stderr:     "gh: Resource not accessible (Not Found)",
+			wantStatus: 404,
+		},
+		{
+			name:    "unrecognized label",
+			stderr:  "gh: something happened (Unknown Error)",
+			wantNil: true,
+		},
+		{
+			name:    "no parentheses",
+			stderr:  "gh: something went wrong",
+			wantNil: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tryParseAPIError(tt.stderr)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("expected nil, got %+v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("expected non-nil APIError")
+			}
+			if got.Status != tt.wantStatus {
+				t.Errorf("status: got %d, want %d", got.Status, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestExtractJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain JSON", `{"message":"Not Found"}`, `{"message":"Not Found"}`},
+		{"JSON + trailing text", `{"message":"err"}gh: err`, `{"message":"err"}`},
+		{"no JSON", "plain text", ""},
+		{"nested braces", `{"a":{"b":"c"}}trailing`, `{"a":{"b":"c"}}`},
+		{"brace in string value", `{"message":"value with } inside","status":"422"}`, `{"message":"value with } inside","status":"422"}`},
+		{"escaped quote in string", `{"message":"say \"hello\"","status":"404"}`, `{"message":"say \"hello\"","status":"404"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractJSON(tt.input)
+			if got != tt.want {
+				t.Errorf("extractJSON(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExitError_Error(t *testing.T) {
 	tests := []struct {
 		name string

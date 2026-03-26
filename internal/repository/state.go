@@ -540,9 +540,9 @@ func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, erro
 		}
 	}
 
-	// 4. Fork PR approval (may 404 on user-owned repos — ignore gracefully)
+	// 4. Fork PR approval (may 404 on user-owned repos or 422 on private repos — ignore gracefully)
 	out, err = f.runner.Run("api", fullName+"/actions/permissions/fork-pr-contributor-approval")
-	if err != nil && !errors.Is(err, gh.ErrNotFound) {
+	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrValidation) {
 		return result, fmt.Errorf("fetch actions fork-pr-approval for %s/%s: %w", owner, name, err)
 	}
 	if err == nil {
