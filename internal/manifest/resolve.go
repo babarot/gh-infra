@@ -3,10 +3,25 @@ package manifest
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/gh"
 )
+
+// parseIDPrefix checks if s has the form "id:<number>" and returns the numeric ID.
+// This is used to handle unresolvable entities (private apps, deleted teams, etc.)
+// that were exported with a numeric fallback by import.
+func parseIDPrefix(s string) (int, bool) {
+	if !strings.HasPrefix(s, "id:") {
+		return 0, false
+	}
+	id, err := strconv.Atoi(s[3:])
+	if err != nil {
+		return 0, false
+	}
+	return id, true
+}
 
 // Well-known built-in repository role IDs.
 var roleIDs = map[string]int{
@@ -120,7 +135,11 @@ func (r *Resolver) ResolveStatusChecks(checks []RulesetStatusCheck) ([]ResolvedS
 }
 
 // ResolveAppID resolves a GitHub App slug to its App ID.
+// Accepts "id:<number>" form for private/unresolvable apps.
 func (r *Resolver) ResolveAppID(slug string) (int, error) {
+	if id, ok := parseIDPrefix(slug); ok {
+		return id, nil
+	}
 	if id, ok := r.appCache[slug]; ok {
 		return id, nil
 	}
@@ -139,6 +158,9 @@ func (r *Resolver) ResolveAppID(slug string) (int, error) {
 }
 
 func (r *Resolver) resolveTeamID(slug string) (int, error) {
+	if id, ok := parseIDPrefix(slug); ok {
+		return id, nil
+	}
 	out, err := r.runner.Run("api", fmt.Sprintf("orgs/%s/teams/%s", r.owner, slug))
 	if err != nil {
 		return 0, fmt.Errorf("fetch team %q: %w", slug, err)
@@ -153,6 +175,9 @@ func (r *Resolver) resolveTeamID(slug string) (int, error) {
 }
 
 func (r *Resolver) resolveCustomRoleID(name string) (int, error) {
+	if id, ok := parseIDPrefix(name); ok {
+		return id, nil
+	}
 	out, err := r.runner.Run("api", fmt.Sprintf("orgs/%s/custom-repository-roles", r.owner))
 	if err != nil {
 		return 0, fmt.Errorf("fetch custom roles: %w", err)

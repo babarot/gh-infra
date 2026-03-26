@@ -439,3 +439,101 @@ func TestReverseStatusCheck_CheckRunsFails(t *testing.T) {
 		t.Errorf("App = %q, want id:15368", got.App)
 	}
 }
+
+// ─── id: prefix resolution (private/unresolvable entities) ───
+
+func TestParseIDPrefix(t *testing.T) {
+	tests := []struct {
+		input string
+		id    int
+		ok    bool
+	}{
+		{"id:12345", 12345, true},
+		{"id:0", 0, true},
+		{"id:abc", 0, false},
+		{"github-actions", 0, false},
+		{"id:", 0, false},
+		{"", 0, false},
+	}
+	for _, tt := range tests {
+		id, ok := parseIDPrefix(tt.input)
+		if ok != tt.ok || id != tt.id {
+			t.Errorf("parseIDPrefix(%q) = (%d, %v), want (%d, %v)", tt.input, id, ok, tt.id, tt.ok)
+		}
+	}
+}
+
+func TestResolveAppID_IDPrefix(t *testing.T) {
+	// No API call should be made — the mock has no responses
+	mock := &gh.MockRunner{}
+	r := NewResolver(mock, "myorg")
+
+	id, err := r.ResolveAppID("id:12345")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != 12345 {
+		t.Errorf("id = %d, want 12345", id)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected 0 API calls, got %d", len(mock.Called))
+	}
+}
+
+func TestResolveBypassActors_AppIDPrefix(t *testing.T) {
+	// Simulate private app: import exported "id:99999", plan should resolve without API
+	mock := &gh.MockRunner{}
+	r := NewResolver(mock, "myorg")
+
+	actors := []RulesetBypassActor{{App: "id:99999", BypassMode: "always"}}
+	got, err := r.ResolveBypassActors(actors)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].ActorID != 99999 {
+		t.Errorf("ActorID = %d, want 99999", got[0].ActorID)
+	}
+	if got[0].ActorType != "Integration" {
+		t.Errorf("ActorType = %q, want Integration", got[0].ActorType)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected 0 API calls, got %d", len(mock.Called))
+	}
+}
+
+func TestResolveBypassActors_TeamIDPrefix(t *testing.T) {
+	mock := &gh.MockRunner{}
+	r := NewResolver(mock, "myorg")
+
+	actors := []RulesetBypassActor{{Team: "id:42", BypassMode: "always"}}
+	got, err := r.ResolveBypassActors(actors)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].ActorID != 42 {
+		t.Errorf("ActorID = %d, want 42", got[0].ActorID)
+	}
+	if got[0].ActorType != "Team" {
+		t.Errorf("ActorType = %q, want Team", got[0].ActorType)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected 0 API calls, got %d", len(mock.Called))
+	}
+}
+
+func TestResolveBypassActors_CustomRoleIDPrefix(t *testing.T) {
+	mock := &gh.MockRunner{}
+	r := NewResolver(mock, "myorg")
+
+	actors := []RulesetBypassActor{{CustomRole: "id:99", BypassMode: "always"}}
+	got, err := r.ResolveBypassActors(actors)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].ActorID != 99 {
+		t.Errorf("ActorID = %d, want 99", got[0].ActorID)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected 0 API calls, got %d", len(mock.Called))
+	}
+}
