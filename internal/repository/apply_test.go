@@ -802,3 +802,18 @@ func TestBuildRulesetPayload_WithResolver(t *testing.T) {
 		t.Errorf("integration_id = %v, want 15368", checks[0]["integration_id"])
 	}
 }
+
+func TestApplyAllSettings_EmptyActions(t *testing.T) {
+	// actions: {} should not panic during new repo creation.
+	mock := &gh.MockRunner{}
+	exec := NewExecutor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	repo.Spec.Actions = &manifest.Actions{} // empty — Enabled is nil
+
+	// applyAllSettings is called after createRepo for new repos.
+	err := exec.applyAllSettings(repo)
+	if err != nil {
+		t.Fatalf("unexpected error for empty actions block: %v", err)
+	}
+}
