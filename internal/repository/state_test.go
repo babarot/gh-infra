@@ -277,7 +277,9 @@ func TestCurrentState_FullName(t *testing.T) {
 func TestFetchActionsSettings(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
-			"api repos/myorg/myrepo/actions/permissions": []byte(`{"enabled":true,"allowed_actions":"all","sha_pinning_required":true}`),
+			"api repos/myorg/myrepo/actions/permissions": []byte(
+				`{"enabled":true,"allowed_actions":"all","sha_pinning_required":true}`,
+			),
 			"api repos/myorg/myrepo/actions/permissions/workflow": []byte(`{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}`),
 			"api repos/myorg/myrepo/actions/permissions/fork-pr-contributor-approval": []byte(`{"approval_policy":"first_time_contributors"}`),
 		},
