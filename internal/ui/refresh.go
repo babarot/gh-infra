@@ -10,6 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/term"
+
+	"github.com/babarot/gh-infra/internal/logger"
 )
 
 // RefreshTask describes a task to track in the spinner display.
@@ -181,8 +183,10 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
+	// When logging is active, spinners would interleave with log lines and
+	// produce unreadable output. Fall back to plain-text progress instead.
 	f, ok := DefaultPrinter.ErrWriter().(*os.File)
-	if !ok || !term.IsTerminal(f.Fd()) {
+	if !ok || !term.IsTerminal(f.Fd()) || logger.Enabled() {
 		for _, task := range tasks {
 			DefaultPrinter.Progress(task.Name + "...")
 		}
