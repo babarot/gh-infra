@@ -21,6 +21,7 @@ type DiffEntry struct {
 }
 
 // GenerateDiff produces a unified diff string between current and desired content.
+// Tabs are expanded to spaces so indentation is consistent across context/add/delete lines.
 func GenerateDiff(current, desired, path string) string {
 	diff, _ := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
 		A:        difflib.SplitLines(current),
@@ -29,7 +30,12 @@ func GenerateDiff(current, desired, path string) string {
 		ToFile:   path + " (desired)",
 		Context:  3,
 	})
-	return diff
+	return expandTabs(diff)
+}
+
+// expandTabs replaces tab characters with 4 spaces for consistent terminal rendering.
+func expandTabs(s string) string {
+	return strings.ReplaceAll(s, "\t", "    ")
 }
 
 // RunDiffViewer launches an interactive full-screen diff viewer.

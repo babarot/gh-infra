@@ -31,6 +31,12 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 			continue
 		}
 
+		// Resolve patch file paths to their contents before propagating
+		patches, err := resolvePatches(entry.Patches, yamlDir)
+		if err != nil {
+			return nil, fmt.Errorf("resolve patches for %s: %w", entry.Path, err)
+		}
+
 		if strings.HasPrefix(entry.Source, githubScheme) {
 			entries, err := r.resolveGitHub(entry.Source, entry.Path)
 			if err != nil {
@@ -40,6 +46,7 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 			isDir := len(entries) > 1 || strings.HasSuffix(entry.Source, "/")
 			for i := range entries {
 				entries[i].Vars = entry.Vars
+				entries[i].Patches = patches
 				entries[i].Reconcile = entry.Reconcile
 				if isDir {
 					entries[i].DirScope = entry.Path
@@ -55,6 +62,7 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 			isDir := len(entries) > 1 || strings.HasSuffix(entry.Source, "/")
 			for i := range entries {
 				entries[i].Vars = entry.Vars
+				entries[i].Patches = patches
 				entries[i].Reconcile = entry.Reconcile
 				if isDir {
 					entries[i].DirScope = entry.Path
@@ -221,4 +229,31 @@ func (r *SourceResolver) resolveGitHubDir(data []byte, owner, repo, dirPath, ref
 		}
 	}
 	return entries, nil
+}
+
+// resolvePatches resolves patch entries: file paths are read from disk,
+// inline strings (containing newlines) are kept as-is.
+func resolvePatches(patches []string, yamlDir string) ([]string, error) {
+	if len(patches) == 0 {
+		return nil, nil
+	}
+	resolved := make([]string, 0, len(patches))
+	for i, p := range patches {
+		if strings.ContainsRune(p, '\n') {
+			// Inline patch content
+			resolved = append(resolved, p)
+			continue
+		}
+		// File path — resolve relative to YAML directory
+		patchPath := p
+		if !filepath.IsAbs(patchPath) {
+			patchPath = filepath.Join(yamlDir, patchPath)
+		}
+		content, err := os.ReadFile(patchPath)
+		if err != nil {
+			return nil, fmt.Errorf("patches[%d]: %w", i, err)
+		}
+		resolved = append(resolved, string(content))
+	}
+	return resolved, nil
 }

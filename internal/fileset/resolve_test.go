@@ -120,3 +120,70 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 		t.Errorf("result[1].Reconcile = %q, want %q", result[1].Reconcile, manifest.ReconcileMirror)
 	}
 }
+
+func TestResolveFiles_InheritsPatches(t *testing.T) {
+	patches := []string{"--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n"}
+	fs := &manifest.FileSet{
+		Spec: manifest.FileSetSpec{
+			Files: []manifest.FileEntry{
+				{
+					Path:    ".tagpr",
+					Content: "original",
+					Patches: patches,
+				},
+			},
+		},
+	}
+	target := manifest.FileSetRepository{
+		Name: "repo",
+		Overrides: []manifest.FileEntry{
+			// Override content but don't set Patches — should inherit
+			{Path: ".tagpr", Content: "overridden"},
+		},
+	}
+
+	result := ResolveFiles(fs, target)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(result))
+	}
+	if result[0].Content != "overridden" {
+		t.Errorf("Content = %q, want %q", result[0].Content, "overridden")
+	}
+	if len(result[0].Patches) != 1 {
+		t.Fatalf("Patches should be inherited, got %d patches", len(result[0].Patches))
+	}
+	if result[0].Patches[0] != patches[0] {
+		t.Errorf("Patches[0] = %q, want %q", result[0].Patches[0], patches[0])
+	}
+}
+
+func TestResolveFiles_OverridePatchesReplacesOriginal(t *testing.T) {
+	fs := &manifest.FileSet{
+		Spec: manifest.FileSetSpec{
+			Files: []manifest.FileEntry{
+				{
+					Path:    ".tagpr",
+					Content: "original",
+					Patches: []string{"original-patch"},
+				},
+			},
+		},
+	}
+	target := manifest.FileSetRepository{
+		Name: "repo",
+		Overrides: []manifest.FileEntry{
+			// Override provides its own patches — should NOT inherit original
+			{Path: ".tagpr", Content: "overridden", Patches: []string{"override-patch"}},
+		},
+	}
+
+	result := ResolveFiles(fs, target)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(result))
+	}
+	if len(result[0].Patches) != 1 || result[0].Patches[0] != "override-patch" {
+		t.Errorf("Patches should use override's patches, got %v", result[0].Patches)
+	}
+}

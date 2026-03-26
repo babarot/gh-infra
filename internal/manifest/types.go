@@ -395,6 +395,7 @@ type FileEntry struct {
 	Path      string            `yaml:"path"                validate:"required"`
 	Content   string            `yaml:"content,omitempty" validate:"exclusive=source"`
 	Source    string            `yaml:"source,omitempty"`
+	Patches   []string          `yaml:"patches,omitempty"`
 	Vars      map[string]string `yaml:"vars,omitempty"`
 	Reconcile string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
 	DirScope  string            `yaml:"-"`

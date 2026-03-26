@@ -489,6 +489,108 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 	}
 }
 
+func TestResolvePatches(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a patch file with tab characters (the real-world case)
+	patchContent := "--- a/.tagpr\n+++ b/.tagpr\n@@ -1,3 +1,3 @@\n [tagpr]\n-\tvPrefix = true\n+\tvPrefix = false\n \tchangelog = true\n"
+	if err := os.WriteFile(filepath.Join(dir, "my.patch"), []byte(patchContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("file path is resolved", func(t *testing.T) {
+		patches, err := resolvePatches([]string{"my.patch"}, dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(patches) != 1 {
+			t.Fatalf("expected 1 patch, got %d", len(patches))
+		}
+		if patches[0] != patchContent {
+			t.Errorf("patch content mismatch:\ngot:  %q\nwant: %q", patches[0], patchContent)
+		}
+	})
+
+	t.Run("inline content is kept as-is", func(t *testing.T) {
+		inline := "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n"
+		patches, err := resolvePatches([]string{inline}, dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if patches[0] != inline {
+			t.Errorf("inline patch should be kept as-is")
+		}
+	})
+
+	t.Run("mixed file and inline", func(t *testing.T) {
+		inline := "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b\n"
+		patches, err := resolvePatches([]string{"my.patch", inline}, dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(patches) != 2 {
+			t.Fatalf("expected 2 patches, got %d", len(patches))
+		}
+		if patches[0] != patchContent {
+			t.Errorf("first patch should be file content")
+		}
+		if patches[1] != inline {
+			t.Errorf("second patch should be inline content")
+		}
+	})
+
+	t.Run("missing file returns error", func(t *testing.T) {
+		_, err := resolvePatches([]string{"nonexistent.patch"}, dir)
+		if err == nil {
+			t.Fatal("expected error for missing patch file")
+		}
+	})
+
+	t.Run("nil patches returns nil", func(t *testing.T) {
+		patches, err := resolvePatches(nil, dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if patches != nil {
+			t.Errorf("expected nil, got %v", patches)
+		}
+	})
+}
+
+func TestResolveFiles_PatchesPropagated(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "src.txt"), []byte("content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	patchContent := "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n"
+	if err := os.WriteFile(filepath.Join(dir, "fix.patch"), []byte(patchContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &SourceResolver{}
+	files := []FileEntry{
+		{
+			Path:    "dest.txt",
+			Source:  "src.txt",
+			Patches: []string{"fix.patch"},
+		},
+	}
+	result, err := r.ResolveFiles(files, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result))
+	}
+	if len(result[0].Patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(result[0].Patches))
+	}
+	// Patch file path should be resolved to its content
+	if result[0].Patches[0] != patchContent {
+		t.Errorf("patch should be resolved to file content:\ngot:  %q\nwant: %q", result[0].Patches[0], patchContent)
+	}
+}
+
 func TestResolveFiles_DuplicatePathError(t *testing.T) {
 	dir := t.TempDir()
 
