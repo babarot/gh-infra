@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.6.0](https://github.com/babarot/gh-infra/compare/v0.5.1...v0.6.0) - 2026-03-26
+### New Features
+- Add `patches` support for applying unified diffs to file content by @babarot in https://github.com/babarot/gh-infra/pull/48
+### Bug fixes
+- Fix phantom diff for private GitHub App bypass actors by @babarot in https://github.com/babarot/gh-infra/pull/43
+- Add ErrValidation sentinel for HTTP 422 errors by @babarot in https://github.com/babarot/gh-infra/pull/45
+- Handle HTTP 403 gracefully when fetching rulesets on Free plan by @babarot in https://github.com/babarot/gh-infra/pull/49
+### Improvements
+- Error on importing non-existent repository by @babarot in https://github.com/babarot/gh-infra/pull/38
+- Support multi-document YAML files in manifest parser by @babarot in https://github.com/babarot/gh-infra/pull/39
+- Disable spinners when logging is active by @babarot in https://github.com/babarot/gh-infra/pull/46
+
 ## [v0.5.1](https://github.com/babarot/gh-infra/compare/v0.5.0...v0.5.1) - 2026-03-26
 ### Improvements
 - Add sha_pinning_required, fix validation, and improve docs/tests by @babarot in https://github.com/babarot/gh-infra/pull/35
