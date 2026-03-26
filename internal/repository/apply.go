@@ -227,7 +227,7 @@ func (e *Executor) applyAllSettings(repo *manifest.Repository) error {
 	}
 
 	// Actions (permissions, workflow defaults, selected actions, fork PR)
-	if a := repo.Spec.Actions; a != nil {
+	if a := repo.Spec.Actions; a != nil && a.Enabled != nil {
 		if err := e.applyActionsPermissions(owner, name, a); err != nil {
 			return err
 		}
@@ -717,6 +717,9 @@ func (e *Executor) applyActions(c Change, repo *manifest.Repository) error {
 }
 
 func (e *Executor) applyActionsPermissions(owner, name string, a *manifest.Actions) error {
+	if a.Enabled == nil {
+		return nil // nothing to apply (empty actions block)
+	}
 	// GitHub API requires "enabled" in every PUT to this endpoint.
 	// Validation ensures enabled is always set when other actions fields are present.
 	payload := map[string]any{
