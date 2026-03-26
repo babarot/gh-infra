@@ -74,7 +74,7 @@ func (r *Repository) Validate() error {
 		// To avoid silently changing the enabled state, require it whenever
 		// any other actions field is specified.
 		if a.Enabled == nil {
-			hasOtherField := a.AllowedActions != nil || a.WorkflowPermissions != nil ||
+			hasOtherField := a.AllowedActions != nil || a.SHAPinningRequired != nil || a.WorkflowPermissions != nil ||
 				a.CanApprovePullRequests != nil || a.SelectedActions != nil || a.ForkPRApproval != nil
 			if hasOtherField {
 				return fmt.Errorf("%s: actions.enabled is required when other actions fields are specified (add \"enabled: true\" or \"enabled: false\")", name)

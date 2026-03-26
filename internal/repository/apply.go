@@ -704,7 +704,7 @@ func (e *Executor) applyActions(c Change, repo *manifest.Repository) error {
 	name := repo.Metadata.Name
 
 	switch {
-	case c.Field == "enabled" || c.Field == "allowed_actions":
+	case c.Field == "enabled" || c.Field == "allowed_actions" || c.Field == "sha_pinning_required":
 		return e.applyActionsPermissions(owner, name, a)
 	case c.Field == "workflow_permissions" || c.Field == "can_approve_pull_requests":
 		return e.applyActionsWorkflow(owner, name, a)
@@ -727,6 +727,9 @@ func (e *Executor) applyActionsPermissions(owner, name string, a *manifest.Actio
 	}
 	if a.AllowedActions != nil {
 		payload["allowed_actions"] = *a.AllowedActions
+	}
+	if a.SHAPinningRequired != nil {
+		payload["sha_pinning_required"] = *a.SHAPinningRequired
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

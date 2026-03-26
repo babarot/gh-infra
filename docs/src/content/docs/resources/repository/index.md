@@ -51,6 +51,7 @@ spec:
   actions:
     enabled: true
     allowed_actions: selected
+    sha_pinning_required: true
     workflow_permissions: read
     can_approve_pull_requests: false
     selected_actions:
@@ -84,7 +85,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `rulesets` | Modern rulesets with enforcement modes and bypass actors — see [Rulesets](./rulesets/) |
 | `secrets` | GitHub Actions secrets (via `${ENV_*}` references) — see [Secrets & Variables](./secrets-variables/) |
 | `variables` | Repository variables — see [Secrets & Variables](./secrets-variables/) |
-| `actions` | GitHub Actions permissions, workflow defaults, and fork PR policy — see [Actions](./actions/) |
+| `actions` | GitHub Actions permissions, SHA pinning, workflow defaults, and fork PR policy — see [Actions](./actions/) |
 
 All fields are optional — declare only what you want to manage. Fields not present in the YAML are left unchanged on GitHub.
 The one exception is `spec.actions.enabled`: when managing any other Actions setting, GitHub requires `enabled` to be sent too. See [Actions](./actions/).

@@ -491,14 +491,16 @@ func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, erro
 		return result, fmt.Errorf("fetch actions permissions for %s/%s: %w", owner, name, err)
 	}
 	var perms struct {
-		Enabled        bool   `json:"enabled"`
-		AllowedActions string `json:"allowed_actions"`
+		Enabled            bool   `json:"enabled"`
+		AllowedActions     string `json:"allowed_actions"`
+		SHAPinningRequired bool   `json:"sha_pinning_required"`
 	}
 	if err := json.Unmarshal(out, &perms); err != nil {
 		return result, nil
 	}
 	result.Enabled = perms.Enabled
 	result.AllowedActions = perms.AllowedActions
+	result.SHAPinningRequired = perms.SHAPinningRequired
 
 	// 2. Workflow permissions (GITHUB_TOKEN defaults)
 	out, err = f.runner.Run("api", fullName+"/actions/permissions/workflow")

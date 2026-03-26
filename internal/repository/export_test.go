@@ -175,6 +175,27 @@ func TestToManifest_NoBranchProtection(t *testing.T) {
 	}
 }
 
+func TestToManifest_Actions(t *testing.T) {
+	state := &CurrentState{
+		Owner: "myorg",
+		Name:  "myrepo",
+		Actions: CurrentActions{
+			Enabled:            true,
+			AllowedActions:     "all",
+			SHAPinningRequired: true,
+		},
+	}
+
+	repo := ToManifest(state, nil)
+
+	if repo.Spec.Actions == nil {
+		t.Fatal("expected actions to be exported")
+	}
+	assertBoolPtr(t, "Actions.Enabled", repo.Spec.Actions.Enabled, true)
+	assertStringPtr(t, "Actions.AllowedActions", repo.Spec.Actions.AllowedActions, "all")
+	assertBoolPtr(t, "Actions.SHAPinningRequired", repo.Spec.Actions.SHAPinningRequired, true)
+}
+
 func TestToManifest_NilStatusChecks(t *testing.T) {
 	state := &CurrentState{
 		Owner: "myorg",

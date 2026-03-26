@@ -4,7 +4,7 @@ sidebar:
   order: 5
 ---
 
-Manage GitHub Actions permissions, workflow defaults, allowed actions, and fork PR approval policies.
+Manage GitHub Actions permissions, SHA pinning, workflow defaults, allowed actions, and fork PR approval policies.
 
 ## Example
 
@@ -13,6 +13,7 @@ spec:
   actions:
     enabled: true
     allowed_actions: selected
+    sha_pinning_required: true
     workflow_permissions: read
     can_approve_pull_requests: false
     selected_actions:
@@ -30,6 +31,11 @@ spec:
 |-------|------|--------|-------------|
 | `enabled` | bool | | Enable or disable Actions for this repository. `false` stops all workflows. Required when any other actions field is set, due to a GitHub API limitation |
 | `allowed_actions` | string | `all`, `local_only`, `selected` | Which Actions are allowed to run |
+| `sha_pinning_required` | bool | | Require actions to be pinned to a full commit SHA instead of tags or branches |
+
+:::tip
+`sha_pinning_required: true` is a strong supply-chain hardening default for repositories that use third-party actions.
+:::
 
 ### `allowed_actions` values
 
@@ -98,7 +104,6 @@ For open-source projects, `all_external_contributors` is the safest choice to pr
 
 The following Actions settings are **not yet supported** by gh-infra:
 
-- `sha_pinning_required` — GitHub Enterprise only
 - Artifact and log retention period
 - Cache retention and storage limits
 - OIDC subject claim customization

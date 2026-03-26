@@ -687,6 +687,7 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 	// Order matters: enabled/allowed_actions must be applied before selected_actions
 	appendIfChanged(&fieldChanges, "enabled", a.Enabled, current.Actions.Enabled)
 	appendIfChanged(&fieldChanges, "allowed_actions", a.AllowedActions, current.Actions.AllowedActions)
+	appendIfChanged(&fieldChanges, "sha_pinning_required", a.SHAPinningRequired, current.Actions.SHAPinningRequired)
 	appendIfChanged(&fieldChanges, "workflow_permissions", a.WorkflowPermissions, current.Actions.WorkflowPermissions)
 	appendIfChanged(&fieldChanges, "can_approve_pull_requests", a.CanApprovePullRequests, current.Actions.CanApprovePullRequests)
 

@@ -629,6 +629,26 @@ func TestValidateActions_EnabledRequiredWithOtherFields(t *testing.T) {
 	}
 }
 
+func TestValidateActions_EnabledRequiredWithSHAPinning(t *testing.T) {
+	repo := &Repository{
+		APIVersion: APIVersion,
+		Kind:       KindRepository,
+		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
+		Spec: RepositorySpec{
+			Actions: &Actions{
+				SHAPinningRequired: Ptr(true),
+			},
+		},
+	}
+	err := repo.Validate()
+	if err == nil {
+		t.Fatal("expected error when enabled is missing but sha_pinning_required is set")
+	}
+	if !strings.Contains(err.Error(), "enabled is required") {
+		t.Errorf("error = %q, expected mention of enabled", err)
+	}
+}
+
 func TestValidateActions_SelectedActionsWithoutSelected(t *testing.T) {
 	repo := &Repository{
 		APIVersion: APIVersion,
