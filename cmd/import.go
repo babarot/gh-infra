@@ -78,6 +78,7 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 		tasks[i] = ui.RefreshTask{
 			Name:      "Importing " + fullName,
 			DoneLabel: "Imported " + fullName,
+			FailLabel: "Failed " + fullName,
 		}
 	}
 	tracker := ui.RunRefresh(tasks)
@@ -92,13 +93,17 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 		key := "Importing " + fullName
 		current, err := fetcher.FetchRepository(t.owner, t.name)
 		if err != nil {
-			tracker.Error(key, err)
+			tracker.Fail(key)
 			return importResult{err: err}
+		}
+		if current.IsNew {
+			tracker.Fail(key)
+			return importResult{err: fmt.Errorf("repository %s not found on GitHub", fullName)}
 		}
 		m := repository.ToManifest(current, resolver)
 		data, err := goyaml.Marshal(m)
 		if err != nil {
-			tracker.Error(key, err)
+			tracker.Fail(key)
 		} else {
 			tracker.Done(key)
 		}
@@ -133,7 +138,7 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 		first = false
 	}
 
-	// Print errors
+	// Print errors to stderr so they remain visible when stdout is redirected
 	if failed > 0 {
 		for i, r := range results {
 			if r.err != nil {
