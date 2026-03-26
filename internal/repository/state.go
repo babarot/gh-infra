@@ -285,11 +285,11 @@ func (f *Fetcher) fetchRulesets(owner, name string) (map[string]*CurrentRuleset,
 		"--paginate",
 	)
 	if err != nil {
-		// 404 means rulesets not available (e.g., free plan, GHES without rulesets)
-		if errors.Is(err, gh.ErrNotFound) {
+		// 404/403 means rulesets not available (e.g., free plan private repo, GHES without rulesets)
+		if errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden) {
 			return make(map[string]*CurrentRuleset), nil
 		}
-		// All other errors (403, 429, 5xx) propagate to prevent false diffs
+		// All other errors (429, 5xx) propagate to prevent false diffs
 		return nil, fmt.Errorf("fetch rulesets for %s/%s: %w", owner, name, err)
 	}
 

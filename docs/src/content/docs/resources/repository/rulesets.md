@@ -10,6 +10,15 @@ Configure [GitHub repository rulesets](https://docs.github.com/en/repositories/c
 Rulesets and `branch_protection` are independent features. You can use either or both. Classic branch protection uses the [Branch Protection API](../branch-protection/), while rulesets use the [Repository Rulesets API](https://docs.github.com/en/rest/repos/rules).
 :::
 
+:::caution[GitHub Free plan limitation]
+Repository rulesets are **not available** for private repositories on the GitHub Free plan. On Free plan private repos:
+
+- **`import`** silently omits rulesets from the exported manifest (the Rulesets API returns HTTP 403).
+- **`plan` / `apply`** will fail with an API error if your manifest contains `rulesets` for a Free plan private repo.
+
+To use rulesets on private repositories, upgrade to GitHub Pro, GitHub Team, or GitHub Enterprise. Alternatively, use classic [`branch_protection`](../branch-protection/) on public repositories.
+:::
+
 ## Example
 
 ```yaml
