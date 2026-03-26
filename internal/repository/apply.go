@@ -718,13 +718,9 @@ func (e *Executor) applyActions(c Change, repo *manifest.Repository) error {
 
 func (e *Executor) applyActionsPermissions(owner, name string, a *manifest.Actions) error {
 	// GitHub API requires "enabled" in every PUT to this endpoint.
-	// Default to true if not specified in the manifest.
-	enabled := true
-	if a.Enabled != nil {
-		enabled = *a.Enabled
-	}
+	// Validation ensures enabled is always set when other actions fields are present.
 	payload := map[string]any{
-		"enabled": enabled,
+		"enabled": *a.Enabled,
 	}
 	if a.AllowedActions != nil {
 		payload["allowed_actions"] = *a.AllowedActions

@@ -609,6 +609,26 @@ func TestValidateFileSet_InvalidReconcile(t *testing.T) {
 	}
 }
 
+func TestValidateActions_EnabledRequiredWithOtherFields(t *testing.T) {
+	repo := &Repository{
+		APIVersion: APIVersion,
+		Kind:       KindRepository,
+		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
+		Spec: RepositorySpec{
+			Actions: &Actions{
+				AllowedActions: Ptr("all"),
+			},
+		},
+	}
+	err := repo.Validate()
+	if err == nil {
+		t.Fatal("expected error when enabled is missing but other actions fields are set")
+	}
+	if !strings.Contains(err.Error(), "enabled is required") {
+		t.Errorf("error = %q, expected mention of enabled", err)
+	}
+}
+
 func TestValidateActions_SelectedActionsWithoutSelected(t *testing.T) {
 	repo := &Repository{
 		APIVersion: APIVersion,
@@ -616,6 +636,7 @@ func TestValidateActions_SelectedActionsWithoutSelected(t *testing.T) {
 		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
 		Spec: RepositorySpec{
 			Actions: &Actions{
+				Enabled:        Ptr(true),
 				AllowedActions: Ptr("all"),
 				SelectedActions: &SelectedActions{
 					GithubOwnedAllowed: Ptr(true),
@@ -639,6 +660,7 @@ func TestValidateActions_SelectedActionsWithSelected(t *testing.T) {
 		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
 		Spec: RepositorySpec{
 			Actions: &Actions{
+				Enabled:        Ptr(true),
 				AllowedActions: Ptr("selected"),
 				SelectedActions: &SelectedActions{
 					GithubOwnedAllowed: Ptr(true),
@@ -658,6 +680,7 @@ func TestValidateActions_InvalidAllowedActions(t *testing.T) {
 		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
 		Spec: RepositorySpec{
 			Actions: &Actions{
+				Enabled:        Ptr(true),
 				AllowedActions: Ptr("none"),
 			},
 		},
@@ -675,6 +698,7 @@ func TestValidateActions_InvalidWorkflowPermissions(t *testing.T) {
 		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
 		Spec: RepositorySpec{
 			Actions: &Actions{
+				Enabled:             Ptr(true),
 				WorkflowPermissions: Ptr("admin"),
 			},
 		},

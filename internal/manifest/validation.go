@@ -68,8 +68,18 @@ func (r *Repository) Validate() error {
 			return err
 		}
 	}
-	// Actions: cross-field check
+	// Actions: cross-field checks
 	if a := r.Spec.Actions; a != nil {
+		// GitHub API requires "enabled" in every PUT to /actions/permissions.
+		// To avoid silently changing the enabled state, require it whenever
+		// any other actions field is specified.
+		if a.Enabled == nil {
+			hasOtherField := a.AllowedActions != nil || a.WorkflowPermissions != nil ||
+				a.CanApprovePullRequests != nil || a.SelectedActions != nil || a.ForkPRApproval != nil
+			if hasOtherField {
+				return fmt.Errorf("%s: actions.enabled is required when other actions fields are specified", name)
+			}
+		}
 		if a.SelectedActions != nil {
 			if a.AllowedActions == nil || *a.AllowedActions != "selected" {
 				return fmt.Errorf("%s: actions.selected_actions can only be used when allowed_actions is \"selected\"", name)
