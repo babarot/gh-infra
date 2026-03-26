@@ -624,8 +624,8 @@ func TestValidateActions_EnabledRequiredWithOtherFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when enabled is missing but other actions fields are set")
 	}
-	if !strings.Contains(err.Error(), "enabled is required") {
-		t.Errorf("error = %q, expected mention of enabled", err)
+	if !strings.Contains(err.Error(), "enabled is required") || !strings.Contains(err.Error(), "add") {
+		t.Errorf("error = %q, expected mention of enabled with fix suggestion", err)
 	}
 }
 

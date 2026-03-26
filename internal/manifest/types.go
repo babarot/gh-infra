@@ -135,6 +135,9 @@ type MergeStrategy struct {
 	MergeCommitMessage       *string `yaml:"merge_commit_message,omitempty"        validate:"omitempty,oneof=PR_TITLE PR_BODY BLANK"`
 }
 
+// Actions controls GitHub Actions permissions for a repository.
+// Enabled is required by the GitHub API in every PUT to /actions/permissions,
+// so validation enforces it whenever any other actions field is specified.
 type Actions struct {
 	Enabled                *bool            `yaml:"enabled,omitempty"`
 	AllowedActions         *string          `yaml:"allowed_actions,omitempty"         validate:"omitempty,oneof=all local_only selected"`

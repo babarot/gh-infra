@@ -77,12 +77,12 @@ func (r *Repository) Validate() error {
 			hasOtherField := a.AllowedActions != nil || a.WorkflowPermissions != nil ||
 				a.CanApprovePullRequests != nil || a.SelectedActions != nil || a.ForkPRApproval != nil
 			if hasOtherField {
-				return fmt.Errorf("%s: actions.enabled is required when other actions fields are specified", name)
+				return fmt.Errorf("%s: actions.enabled is required when other actions fields are specified (add \"enabled: true\" or \"enabled: false\")", name)
 			}
 		}
 		if a.SelectedActions != nil {
 			if a.AllowedActions == nil || *a.AllowedActions != "selected" {
-				return fmt.Errorf("%s: actions.selected_actions can only be used when allowed_actions is \"selected\"", name)
+				return fmt.Errorf("%s: actions.selected_actions can only be used when allowed_actions is \"selected\" (add \"allowed_actions: selected\")", name)
 			}
 		}
 	}
