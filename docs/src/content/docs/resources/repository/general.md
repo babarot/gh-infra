@@ -29,6 +29,17 @@ spec:
 | `archived` | bool | `true` to archive (read-only). Reversible — set to `false` to unarchive |
 | `topics` | list | GitHub topics for discoverability |
 
+### Archiving
+
+Set `archived: true` to mark a repository as read-only:
+
+```yaml
+spec:
+  archived: true
+```
+
+This is reversible — set it back to `false` to unarchive.
+
 ## Features
 
 Toggle repository features on or off:

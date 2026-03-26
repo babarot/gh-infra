@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -1331,5 +1332,139 @@ func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
 	fields := collectChildFields(changes)
 	if !fields["rules.required_status_checks.contexts"] {
 		t.Error("expected status checks change (different integration ID), but got none")
+	}
+}
+
+// --- Actions diff tests ---
+
+func TestDiffActions_NoSpec(t *testing.T) {
+	desired := baseDesired()
+	current := baseState()
+	changes := Diff(desired, current)
+	for _, c := range changes {
+		if c.Resource == manifest.ResourceActions {
+			t.Fatal("expected no actions changes when spec.actions is nil")
+		}
+	}
+}
+
+func TestDiffActions_NoChange(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled:             manifest.Ptr(true),
+		AllowedActions:      manifest.Ptr("all"),
+		WorkflowPermissions: manifest.Ptr("read"),
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:             true,
+		AllowedActions:      "all",
+		WorkflowPermissions: "read",
+	}
+	changes := Diff(desired, current)
+	for _, c := range changes {
+		if c.Resource == manifest.ResourceActions {
+			t.Fatal("expected no actions changes when state matches desired")
+		}
+	}
+}
+
+func TestDiffActions_DetectsChanges(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled:                manifest.Ptr(true),
+		AllowedActions:         manifest.Ptr("selected"),
+		WorkflowPermissions:    manifest.Ptr("read"),
+		CanApprovePullRequests: manifest.Ptr(false),
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+			VerifiedAllowed:    manifest.Ptr(true),
+			PatternsAllowed:    []string{"actions/*"},
+		},
+		ForkPRApproval: manifest.Ptr("all_external_contributors"),
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:                true,
+		AllowedActions:         "all",
+		WorkflowPermissions:    "write",
+		CanApprovePullRequests: true,
+		ForkPRApproval:         "first_time_contributors",
+	}
+
+	changes := Diff(desired, current)
+
+	var actionsChange *Change
+	for i := range changes {
+		if changes[i].Resource == manifest.ResourceActions {
+			actionsChange = &changes[i]
+			break
+		}
+	}
+	if actionsChange == nil {
+		t.Fatal("expected actions change, got none")
+	}
+
+	fields := make(map[string]bool)
+	for _, c := range actionsChange.Children {
+		fields[c.Field] = true
+	}
+
+	want := []string{
+		"allowed_actions",
+		"workflow_permissions",
+		"can_approve_pull_requests",
+		"selected_actions.github_owned_allowed",
+		"selected_actions.verified_allowed",
+		"selected_actions.patterns_allowed",
+		"fork_pr_approval",
+	}
+	for _, f := range want {
+		if !fields[f] {
+			t.Errorf("missing expected field change: %s", f)
+		}
+	}
+}
+
+func TestDiffActions_ChildOrder(t *testing.T) {
+	// Verify enabled/allowed_actions come before selected_actions
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled:        manifest.Ptr(true),
+		AllowedActions: manifest.Ptr("selected"),
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+		},
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:        false,
+		AllowedActions: "all",
+	}
+
+	changes := Diff(desired, current)
+
+	var actionsChange *Change
+	for i := range changes {
+		if changes[i].Resource == manifest.ResourceActions {
+			actionsChange = &changes[i]
+			break
+		}
+	}
+	if actionsChange == nil {
+		t.Fatal("expected actions change")
+	}
+
+	// enabled and allowed_actions should appear before selected_actions.*
+	sawSelected := false
+	for _, c := range actionsChange.Children {
+		if c.Field == "enabled" || c.Field == "allowed_actions" {
+			if sawSelected {
+				t.Errorf("field %q appeared after selected_actions.*", c.Field)
+			}
+		}
+		if strings.HasPrefix(c.Field, "selected_actions.") {
+			sawSelected = true
+		}
 	}
 }

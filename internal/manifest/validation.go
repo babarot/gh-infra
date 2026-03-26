@@ -68,6 +68,14 @@ func (r *Repository) Validate() error {
 			return err
 		}
 	}
+	// Actions: cross-field check
+	if a := r.Spec.Actions; a != nil {
+		if a.SelectedActions != nil {
+			if a.AllowedActions == nil || *a.AllowedActions != "selected" {
+				return fmt.Errorf("%s: actions.selected_actions can only be used when allowed_actions is \"selected\"", name)
+			}
+		}
+	}
 	return nil
 }
 

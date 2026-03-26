@@ -46,6 +46,7 @@ const (
 	ResourceSecret           = "Secret"
 	ResourceVariable         = "Variable"
 	ResourceRuleset          = "Ruleset"
+	ResourceActions          = "Actions"
 
 	// Ruleset enforcement values.
 	RulesetEnforcementActive   = "active"
@@ -113,6 +114,7 @@ type RepositorySpec struct {
 	Rulesets         []Ruleset          `yaml:"rulesets,omitempty"          validate:"unique=name"`
 	Secrets          []Secret           `yaml:"secrets,omitempty"           validate:"unique=name"`
 	Variables        []Variable         `yaml:"variables,omitempty"         validate:"unique=name"`
+	Actions          *Actions           `yaml:"actions,omitempty"`
 }
 
 type Features struct {
@@ -131,6 +133,21 @@ type MergeStrategy struct {
 	SquashMergeCommitMessage *string `yaml:"squash_merge_commit_message,omitempty" validate:"omitempty,oneof=COMMIT_MESSAGES PR_BODY BLANK"`
 	MergeCommitTitle         *string `yaml:"merge_commit_title,omitempty"          validate:"omitempty,oneof=MERGE_MESSAGE PR_TITLE"`
 	MergeCommitMessage       *string `yaml:"merge_commit_message,omitempty"        validate:"omitempty,oneof=PR_TITLE PR_BODY BLANK"`
+}
+
+type Actions struct {
+	Enabled                *bool            `yaml:"enabled,omitempty"`
+	AllowedActions         *string          `yaml:"allowed_actions,omitempty"         validate:"omitempty,oneof=all local_only selected"`
+	WorkflowPermissions    *string          `yaml:"workflow_permissions,omitempty"    validate:"omitempty,oneof=read write"`
+	CanApprovePullRequests *bool            `yaml:"can_approve_pull_requests,omitempty"`
+	SelectedActions        *SelectedActions `yaml:"selected_actions,omitempty"`
+	ForkPRApproval         *string          `yaml:"fork_pr_approval,omitempty"        validate:"omitempty,oneof=first_time_contributors_new_to_github first_time_contributors all_external_contributors"`
+}
+
+type SelectedActions struct {
+	GithubOwnedAllowed *bool    `yaml:"github_owned_allowed,omitempty"`
+	VerifiedAllowed    *bool    `yaml:"verified_allowed,omitempty"`
+	PatternsAllowed    []string `yaml:"patterns_allowed,omitempty"`
 }
 
 type BranchProtection struct {

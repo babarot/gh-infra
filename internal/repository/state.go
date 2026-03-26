@@ -65,6 +65,13 @@ func (f *Fetcher) FetchRepository(owner, name string) (*CurrentState, error) {
 		return err
 	})
 
+	var actions CurrentActions
+	g.Go(func() error {
+		var err error
+		actions, err = f.fetchActionsSettings(owner, name)
+		return err
+	})
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
@@ -73,6 +80,7 @@ func (f *Fetcher) FetchRepository(owner, name string) (*CurrentState, error) {
 	repo.Rulesets = rulesets
 	repo.Secrets = secrets
 	repo.Variables = vars
+	repo.Actions = actions
 
 	return repo, nil
 }
@@ -467,6 +475,72 @@ func (f *Fetcher) fetchVariables(owner, name string) (map[string]string, error) 
 	for _, v := range vars {
 		result[v.Name] = v.Value
 	}
+	return result, nil
+}
+
+func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, error) {
+	var result CurrentActions
+	fullName := fmt.Sprintf("repos/%s/%s", owner, name)
+
+	// 1. Actions permissions (enabled + allowed_actions)
+	out, err := f.runner.Run("api", fullName+"/actions/permissions")
+	if err != nil {
+		// Actions API may not be available (e.g. 404 on some repo types)
+		return result, nil
+	}
+	var perms struct {
+		Enabled        bool   `json:"enabled"`
+		AllowedActions string `json:"allowed_actions"`
+	}
+	if err := json.Unmarshal(out, &perms); err != nil {
+		return result, nil
+	}
+	result.Enabled = perms.Enabled
+	result.AllowedActions = perms.AllowedActions
+
+	// 2. Workflow permissions (GITHUB_TOKEN defaults)
+	out, err = f.runner.Run("api", fullName+"/actions/permissions/workflow")
+	if err == nil {
+		var wf struct {
+			DefaultWorkflowPermissions   string `json:"default_workflow_permissions"`
+			CanApprovePullRequestReviews bool   `json:"can_approve_pull_request_reviews"`
+		}
+		if json.Unmarshal(out, &wf) == nil {
+			result.WorkflowPermissions = wf.DefaultWorkflowPermissions
+			result.CanApprovePullRequests = wf.CanApprovePullRequestReviews
+		}
+	}
+
+	// 3. Selected actions (only when allowed_actions == "selected")
+	if result.AllowedActions == "selected" {
+		out, err = f.runner.Run("api", fullName+"/actions/permissions/selected-actions")
+		if err == nil {
+			var sa struct {
+				GithubOwnedAllowed bool     `json:"github_owned_allowed"`
+				VerifiedAllowed    bool     `json:"verified_allowed"`
+				PatternsAllowed    []string `json:"patterns_allowed"`
+			}
+			if json.Unmarshal(out, &sa) == nil {
+				result.SelectedActions = &CurrentSelectedActions{
+					GithubOwnedAllowed: sa.GithubOwnedAllowed,
+					VerifiedAllowed:    sa.VerifiedAllowed,
+					PatternsAllowed:    sa.PatternsAllowed,
+				}
+			}
+		}
+	}
+
+	// 4. Fork PR approval (may 404 on user-owned repos — ignore gracefully)
+	out, err = f.runner.Run("api", fullName+"/actions/permissions/fork-pr-contributor-approval")
+	if err == nil {
+		var fpr struct {
+			ApprovalPolicy string `json:"approval_policy"`
+		}
+		if json.Unmarshal(out, &fpr) == nil {
+			result.ForkPRApproval = fpr.ApprovalPolicy
+		}
+	}
+
 	return result, nil
 }
 

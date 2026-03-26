@@ -59,7 +59,7 @@ All settings available in [Repository](../repository/) — general settings, bra
 - [Branch Protection](../repository/branch-protection/) — Classic branch protection rules
 - [Rulesets](../repository/rulesets/) — Modern rulesets with enforcement modes and bypass actors
 - [Secrets & Variables](../repository/secrets-variables/) — GitHub Actions secrets and repository variables
-- [Lifecycle](../repository/lifecycle/) — Creating and archiving repositories
+- [Actions](../repository/actions/) — GitHub Actions permissions and workflow defaults
 
 ## When to Use RepositorySet
 

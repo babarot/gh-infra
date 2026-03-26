@@ -54,6 +54,7 @@ func Diff(desired *manifest.Repository, current *CurrentState, opts ...DiffOptio
 	changes = append(changes, diffRulesets(name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
+	changes = append(changes, diffActions(name, desired, current)...)
 
 	return changes
 }
@@ -673,6 +674,54 @@ func diffVariables(name string, desired *manifest.Repository, current *CurrentSt
 	}
 
 	return changes
+}
+
+func diffActions(name string, desired *manifest.Repository, current *CurrentState) []Change {
+	if desired.Spec.Actions == nil {
+		return nil
+	}
+
+	var fieldChanges []Change
+	a := desired.Spec.Actions
+
+	// Order matters: enabled/allowed_actions must be applied before selected_actions
+	appendIfChanged(&fieldChanges, "enabled", a.Enabled, current.Actions.Enabled)
+	appendIfChanged(&fieldChanges, "allowed_actions", a.AllowedActions, current.Actions.AllowedActions)
+	appendIfChanged(&fieldChanges, "workflow_permissions", a.WorkflowPermissions, current.Actions.WorkflowPermissions)
+	appendIfChanged(&fieldChanges, "can_approve_pull_requests", a.CanApprovePullRequests, current.Actions.CanApprovePullRequests)
+
+	// selected_actions sub-fields (only when allowed_actions == "selected")
+	if a.SelectedActions != nil {
+		sa := a.SelectedActions
+		var currentSA CurrentSelectedActions
+		if current.Actions.SelectedActions != nil {
+			currentSA = *current.Actions.SelectedActions
+		}
+		appendIfChanged(&fieldChanges, "selected_actions.github_owned_allowed", sa.GithubOwnedAllowed, currentSA.GithubOwnedAllowed)
+		appendIfChanged(&fieldChanges, "selected_actions.verified_allowed", sa.VerifiedAllowed, currentSA.VerifiedAllowed)
+		if !stringSliceEqual(sa.PatternsAllowed, currentSA.PatternsAllowed) {
+			fieldChanges = append(fieldChanges, Change{
+				Type:     ChangeUpdate,
+				Field:    "selected_actions.patterns_allowed",
+				OldValue: currentSA.PatternsAllowed,
+				NewValue: sa.PatternsAllowed,
+			})
+		}
+	}
+
+	appendIfChanged(&fieldChanges, "fork_pr_approval", a.ForkPRApproval, current.Actions.ForkPRApproval)
+
+	if len(fieldChanges) == 0 {
+		return nil
+	}
+
+	return []Change{{
+		Type:     ChangeUpdate,
+		Resource: manifest.ResourceActions,
+		Name:     name,
+		Field:    "actions",
+		Children: fieldChanges,
+	}}
 }
 
 func stringSliceEqual(a, b []string) bool {

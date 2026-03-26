@@ -608,3 +608,79 @@ func TestValidateFileSet_InvalidReconcile(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateActions_SelectedActionsWithoutSelected(t *testing.T) {
+	repo := &Repository{
+		APIVersion: APIVersion,
+		Kind:       KindRepository,
+		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
+		Spec: RepositorySpec{
+			Actions: &Actions{
+				AllowedActions: Ptr("all"),
+				SelectedActions: &SelectedActions{
+					GithubOwnedAllowed: Ptr(true),
+				},
+			},
+		},
+	}
+	err := repo.Validate()
+	if err == nil {
+		t.Fatal("expected error for selected_actions with allowed_actions != selected")
+	}
+	if !strings.Contains(err.Error(), "selected_actions") {
+		t.Errorf("error = %q, expected mention of selected_actions", err)
+	}
+}
+
+func TestValidateActions_SelectedActionsWithSelected(t *testing.T) {
+	repo := &Repository{
+		APIVersion: APIVersion,
+		Kind:       KindRepository,
+		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
+		Spec: RepositorySpec{
+			Actions: &Actions{
+				AllowedActions: Ptr("selected"),
+				SelectedActions: &SelectedActions{
+					GithubOwnedAllowed: Ptr(true),
+				},
+			},
+		},
+	}
+	if err := repo.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateActions_InvalidAllowedActions(t *testing.T) {
+	repo := &Repository{
+		APIVersion: APIVersion,
+		Kind:       KindRepository,
+		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
+		Spec: RepositorySpec{
+			Actions: &Actions{
+				AllowedActions: Ptr("none"),
+			},
+		},
+	}
+	err := repo.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid allowed_actions value")
+	}
+}
+
+func TestValidateActions_InvalidWorkflowPermissions(t *testing.T) {
+	repo := &Repository{
+		APIVersion: APIVersion,
+		Kind:       KindRepository,
+		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
+		Spec: RepositorySpec{
+			Actions: &Actions{
+				WorkflowPermissions: Ptr("admin"),
+			},
+		},
+	}
+	err := repo.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid workflow_permissions value")
+	}
+}

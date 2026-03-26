@@ -113,6 +113,8 @@ func (e *Executor) applyChange(c Change, repo *manifest.Repository) ApplyResult 
 		err = e.applySecret(c, repo)
 	case c.Resource == manifest.ResourceVariable:
 		err = e.applyVariable(c, repo)
+	case c.Resource == manifest.ResourceActions:
+		err = e.applyActions(c, repo)
 	default:
 		err = fmt.Errorf("unknown resource type: %s", c.Resource)
 	}
@@ -221,6 +223,26 @@ func (e *Executor) applyAllSettings(repo *manifest.Repository) error {
 	for _, t := range repo.Spec.Topics {
 		if _, err := e.runner.Run("repo", "edit", fullName, "--add-topic", t); err != nil {
 			return wrapError(err, fullName, "add-topic:"+t)
+		}
+	}
+
+	// Actions (permissions, workflow defaults, selected actions, fork PR)
+	if a := repo.Spec.Actions; a != nil {
+		if err := e.applyActionsPermissions(owner, name, a); err != nil {
+			return err
+		}
+		if err := e.applyActionsWorkflow(owner, name, a); err != nil {
+			return err
+		}
+		if a.SelectedActions != nil {
+			if err := e.applyActionsSelectedActions(owner, name, a); err != nil {
+				return err
+			}
+		}
+		if a.ForkPRApproval != nil {
+			if err := e.applyActionsForkPR(owner, name, a); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -671,6 +693,113 @@ func (e *Executor) applyVariable(c Change, repo *manifest.Repository) error {
 		"--body", value,
 	)
 	return wrapError(err, fullName, "variable:"+c.Field)
+}
+
+func (e *Executor) applyActions(c Change, repo *manifest.Repository) error {
+	a := repo.Spec.Actions
+	if a == nil {
+		return nil
+	}
+	owner := repo.Metadata.Owner
+	name := repo.Metadata.Name
+
+	switch {
+	case c.Field == "enabled" || c.Field == "allowed_actions":
+		return e.applyActionsPermissions(owner, name, a)
+	case c.Field == "workflow_permissions" || c.Field == "can_approve_pull_requests":
+		return e.applyActionsWorkflow(owner, name, a)
+	case c.Field == "fork_pr_approval":
+		return e.applyActionsForkPR(owner, name, a)
+	case strings.HasPrefix(c.Field, "selected_actions."):
+		return e.applyActionsSelectedActions(owner, name, a)
+	}
+	return nil
+}
+
+func (e *Executor) applyActionsPermissions(owner, name string, a *manifest.Actions) error {
+	payload := map[string]any{}
+	if a.Enabled != nil {
+		payload["enabled"] = *a.Enabled
+	}
+	if a.AllowedActions != nil {
+		payload["allowed_actions"] = *a.AllowedActions
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = e.runner.Run("api",
+		fmt.Sprintf("repos/%s/%s/actions/permissions", owner, name),
+		"--method", "PUT",
+		"--body", string(body),
+	)
+	return wrapError(err, owner+"/"+name, "actions.permissions")
+}
+
+func (e *Executor) applyActionsWorkflow(owner, name string, a *manifest.Actions) error {
+	payload := map[string]any{}
+	if a.WorkflowPermissions != nil {
+		payload["default_workflow_permissions"] = *a.WorkflowPermissions
+	}
+	if a.CanApprovePullRequests != nil {
+		payload["can_approve_pull_request_reviews"] = *a.CanApprovePullRequests
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = e.runner.Run("api",
+		fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", owner, name),
+		"--method", "PUT",
+		"--body", string(body),
+	)
+	return wrapError(err, owner+"/"+name, "actions.workflow")
+}
+
+func (e *Executor) applyActionsSelectedActions(owner, name string, a *manifest.Actions) error {
+	if a.SelectedActions == nil {
+		return nil
+	}
+	sa := a.SelectedActions
+	payload := map[string]any{}
+	if sa.GithubOwnedAllowed != nil {
+		payload["github_owned_allowed"] = *sa.GithubOwnedAllowed
+	}
+	if sa.VerifiedAllowed != nil {
+		payload["verified_allowed"] = *sa.VerifiedAllowed
+	}
+	if sa.PatternsAllowed != nil {
+		payload["patterns_allowed"] = sa.PatternsAllowed
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = e.runner.Run("api",
+		fmt.Sprintf("repos/%s/%s/actions/permissions/selected-actions", owner, name),
+		"--method", "PUT",
+		"--body", string(body),
+	)
+	return wrapError(err, owner+"/"+name, "actions.selected_actions")
+}
+
+func (e *Executor) applyActionsForkPR(owner, name string, a *manifest.Actions) error {
+	if a.ForkPRApproval == nil {
+		return nil
+	}
+	payload := map[string]any{
+		"approval_policy": *a.ForkPRApproval,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = e.runner.Run("api",
+		fmt.Sprintf("repos/%s/%s/actions/permissions/fork-pr-contributor-approval", owner, name),
+		"--method", "PUT",
+		"--body", string(body),
+	)
+	return wrapError(err, owner+"/"+name, "actions.fork_pr_approval")
 }
 
 func wrapError(err error, repo, field string) error {

@@ -17,6 +17,7 @@ type CurrentState struct {
 	Rulesets         map[string]*CurrentRuleset          // name → ruleset
 	Secrets          []string                            // names only (values are opaque)
 	Variables        map[string]string                   // name → value
+	Actions          CurrentActions
 }
 
 func (r *CurrentState) FullName() string {
@@ -109,4 +110,19 @@ type CurrentRulesetStatusChecks struct {
 type CurrentRulesetStatusCheck struct {
 	Context       string
 	IntegrationID int
+}
+
+type CurrentActions struct {
+	Enabled                bool
+	AllowedActions         string
+	WorkflowPermissions    string
+	CanApprovePullRequests bool
+	SelectedActions        *CurrentSelectedActions // nil when allowed_actions != "selected"
+	ForkPRApproval         string                  // empty on user-owned repos
+}
+
+type CurrentSelectedActions struct {
+	GithubOwnedAllowed bool
+	VerifiedAllowed    bool
+	PatternsAllowed    []string
 }
