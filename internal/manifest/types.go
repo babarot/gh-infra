@@ -141,6 +141,7 @@ type MergeStrategy struct {
 type Actions struct {
 	Enabled                *bool            `yaml:"enabled,omitempty"`
 	AllowedActions         *string          `yaml:"allowed_actions,omitempty"         validate:"omitempty,oneof=all local_only selected"`
+	SHAPinningRequired     *bool            `yaml:"sha_pinning_required,omitempty"`
 	WorkflowPermissions    *string          `yaml:"workflow_permissions,omitempty"    validate:"omitempty,oneof=read write"`
 	CanApprovePullRequests *bool            `yaml:"can_approve_pull_requests,omitempty"`
 	SelectedActions        *SelectedActions `yaml:"selected_actions,omitempty"`

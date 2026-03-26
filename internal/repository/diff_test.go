@@ -1353,12 +1353,14 @@ func TestDiffActions_NoChange(t *testing.T) {
 	desired.Spec.Actions = &manifest.Actions{
 		Enabled:             manifest.Ptr(true),
 		AllowedActions:      manifest.Ptr("all"),
+		SHAPinningRequired:  manifest.Ptr(true),
 		WorkflowPermissions: manifest.Ptr("read"),
 	}
 	current := baseState()
 	current.Actions = CurrentActions{
 		Enabled:             true,
 		AllowedActions:      "all",
+		SHAPinningRequired:  true,
 		WorkflowPermissions: "read",
 	}
 	changes := Diff(desired, current)
@@ -1374,6 +1376,7 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 	desired.Spec.Actions = &manifest.Actions{
 		Enabled:                manifest.Ptr(true),
 		AllowedActions:         manifest.Ptr("selected"),
+		SHAPinningRequired:     manifest.Ptr(true),
 		WorkflowPermissions:    manifest.Ptr("read"),
 		CanApprovePullRequests: manifest.Ptr(false),
 		SelectedActions: &manifest.SelectedActions{
@@ -1387,6 +1390,7 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 	current.Actions = CurrentActions{
 		Enabled:                true,
 		AllowedActions:         "all",
+		SHAPinningRequired:     false,
 		WorkflowPermissions:    "write",
 		CanApprovePullRequests: true,
 		ForkPRApproval:         "first_time_contributors",
@@ -1412,6 +1416,7 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 
 	want := []string{
 		"allowed_actions",
+		"sha_pinning_required",
 		"workflow_permissions",
 		"can_approve_pull_requests",
 		"selected_actions.github_owned_allowed",

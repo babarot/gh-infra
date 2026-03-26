@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -815,5 +816,39 @@ func TestApplyAllSettings_EmptyActions(t *testing.T) {
 	err := exec.applyAllSettings(repo)
 	if err != nil {
 		t.Fatalf("unexpected error for empty actions block: %v", err)
+	}
+}
+
+func TestApplyActionsPermissions_WithSHAPinningRequired(t *testing.T) {
+	mock := &gh.MockRunner{}
+	exec := NewExecutor(mock, nil)
+
+	err := exec.applyActionsPermissions("myorg", "myrepo", &manifest.Actions{
+		Enabled:            manifest.Ptr(true),
+		AllowedActions:     manifest.Ptr("all"),
+		SHAPinningRequired: manifest.Ptr(true),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	}
+	call := mock.Called[0]
+	if len(call) != 6 {
+		t.Fatalf("unexpected call args: %v", call)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(call[5]), &payload); err != nil {
+		t.Fatalf("failed to parse payload: %v", err)
+	}
+	if payload["enabled"] != true {
+		t.Errorf("enabled = %v, want true", payload["enabled"])
+	}
+	if payload["allowed_actions"] != "all" {
+		t.Errorf("allowed_actions = %v, want all", payload["allowed_actions"])
+	}
+	if payload["sha_pinning_required"] != true {
+		t.Errorf("sha_pinning_required = %v, want true", payload["sha_pinning_required"])
 	}
 }

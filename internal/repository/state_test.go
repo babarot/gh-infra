@@ -273,3 +273,37 @@ func TestCurrentState_FullName(t *testing.T) {
 		t.Errorf("FullName() = %q, want myorg/myrepo", got)
 	}
 }
+
+func TestFetchActionsSettings(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/actions/permissions": []byte(`{"enabled":true,"allowed_actions":"all","sha_pinning_required":true}`),
+			"api repos/myorg/myrepo/actions/permissions/workflow": []byte(`{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}`),
+			"api repos/myorg/myrepo/actions/permissions/fork-pr-contributor-approval": []byte(`{"approval_policy":"first_time_contributors"}`),
+		},
+	}
+
+	f := NewFetcher(mock)
+	actions, err := f.fetchActionsSettings("myorg", "myrepo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !actions.Enabled {
+		t.Error("expected Enabled = true")
+	}
+	if actions.AllowedActions != "all" {
+		t.Errorf("AllowedActions = %q, want all", actions.AllowedActions)
+	}
+	if !actions.SHAPinningRequired {
+		t.Error("expected SHAPinningRequired = true")
+	}
+	if actions.WorkflowPermissions != "read" {
+		t.Errorf("WorkflowPermissions = %q, want read", actions.WorkflowPermissions)
+	}
+	if actions.CanApprovePullRequests {
+		t.Error("expected CanApprovePullRequests = false")
+	}
+	if actions.ForkPRApproval != "first_time_contributors" {
+		t.Errorf("ForkPRApproval = %q, want first_time_contributors", actions.ForkPRApproval)
+	}
+}

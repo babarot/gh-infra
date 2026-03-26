@@ -126,9 +126,10 @@ func ToManifest(r *CurrentState, resolver *manifest.Resolver) *manifest.Reposito
 	}
 
 	// Actions
-	if r.Actions.Enabled || r.Actions.AllowedActions != "" {
+	if r.Actions.Enabled || r.Actions.AllowedActions != "" || r.Actions.SHAPinningRequired {
 		actions := &manifest.Actions{
 			Enabled:                manifest.Ptr(r.Actions.Enabled),
+			SHAPinningRequired:     manifest.Ptr(r.Actions.SHAPinningRequired),
 			CanApprovePullRequests: manifest.Ptr(r.Actions.CanApprovePullRequests),
 		}
 		if r.Actions.AllowedActions != "" {

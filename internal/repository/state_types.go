@@ -115,6 +115,7 @@ type CurrentRulesetStatusCheck struct {
 type CurrentActions struct {
 	Enabled                bool
 	AllowedActions         string
+	SHAPinningRequired     bool
 	WorkflowPermissions    string
 	CanApprovePullRequests bool
 	SelectedActions        *CurrentSelectedActions // nil when allowed_actions != "selected"
