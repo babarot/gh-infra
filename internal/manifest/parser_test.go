@@ -997,3 +997,170 @@ func TestMergeMergeStrategy_NilOverride(t *testing.T) {
 		t.Error("expected base returned when override is nil")
 	}
 }
+
+func TestParseAll_MultiDocument_TwoRepositories(t *testing.T) {
+	dir := t.TempDir()
+	content := `apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: repo-a
+  owner: my-org
+spec:
+  description: "Repo A"
+  visibility: public
+---
+apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: repo-b
+  owner: my-org
+spec:
+  description: "Repo B"
+  visibility: private
+`
+	path := filepath.Join(dir, "repos.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if len(result.Repositories) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(result.Repositories))
+	}
+	if result.Repositories[0].Metadata.Name != "repo-a" {
+		t.Errorf("first repo name = %q, want %q", result.Repositories[0].Metadata.Name, "repo-a")
+	}
+	if result.Repositories[1].Metadata.Name != "repo-b" {
+		t.Errorf("second repo name = %q, want %q", result.Repositories[1].Metadata.Name, "repo-b")
+	}
+}
+
+func TestParseAll_MultiDocument_MixedKinds(t *testing.T) {
+	dir := t.TempDir()
+	content := `apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: my-repo
+  owner: my-org
+spec:
+  description: "A repo"
+  visibility: public
+---
+apiVersion: gh-infra/v1
+kind: File
+metadata:
+  name: my-repo
+  owner: my-org
+spec:
+  files:
+    - path: .github/CODEOWNERS
+      content: |
+        * @my-org
+  via: push
+`
+	path := filepath.Join(dir, "mixed.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if len(result.Repositories) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(result.Repositories))
+	}
+	if len(result.FileSets) != 1 {
+		t.Fatalf("expected 1 fileset, got %d", len(result.FileSets))
+	}
+	if result.Repositories[0].Metadata.Name != "my-repo" {
+		t.Errorf("repo name = %q, want %q", result.Repositories[0].Metadata.Name, "my-repo")
+	}
+}
+
+func TestParseAll_MultiDocument_SingleDocStillWorks(t *testing.T) {
+	dir := t.TempDir()
+	content := `apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: solo
+  owner: my-org
+spec:
+  visibility: public
+`
+	path := filepath.Join(dir, "single.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if len(result.Repositories) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(result.Repositories))
+	}
+	if result.Repositories[0].Metadata.Name != "solo" {
+		t.Errorf("repo name = %q, want %q", result.Repositories[0].Metadata.Name, "solo")
+	}
+}
+
+func TestParseAll_MultiDocument_LeadingSeparator(t *testing.T) {
+	dir := t.TempDir()
+	// Some YAML files start with --- as the first line
+	content := `---
+apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: repo-a
+  owner: my-org
+spec:
+  visibility: public
+---
+apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: repo-b
+  owner: my-org
+spec:
+  visibility: private
+`
+	path := filepath.Join(dir, "leading.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if len(result.Repositories) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(result.Repositories))
+	}
+}
+
+func TestSplitDocuments(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  int
+	}{
+		{"single", "kind: Repository\nname: foo", 1},
+		{"two docs", "kind: Repository\nname: foo\n---\nkind: File\nname: bar", 2},
+		{"leading separator", "---\nkind: Repository\nname: foo", 1},
+		{"trailing separator", "kind: Repository\nname: foo\n---\n", 1},
+		{"empty between", "kind: A\n---\n\n---\nkind: B", 2},
+		{"only separators", "\n---\n---\n", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			docs := splitDocuments([]byte(tt.input))
+			if len(docs) != tt.want {
+				t.Errorf("splitDocuments() returned %d docs, want %d", len(docs), tt.want)
+			}
+		})
+	}
+}

@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -77,9 +78,48 @@ func parseFileAll(path string, opt ParseOptions) (*ParseResult, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
+	docs := splitDocuments(data)
+	result := &ParseResult{}
+
+	for i, docData := range docs {
+		parsed, err := parseDocument(docData, path, i+1, opt)
+		if err != nil {
+			return nil, err
+		}
+		result.Repositories = append(result.Repositories, parsed.Repositories...)
+		result.FileSets = append(result.FileSets, parsed.FileSets...)
+		result.Warnings = append(result.Warnings, parsed.Warnings...)
+	}
+
+	return result, nil
+}
+
+// splitDocuments splits YAML data on "---" document separators,
+// returning one []byte per document. Empty documents are skipped.
+func splitDocuments(data []byte) [][]byte {
+	sep := []byte("\n---")
+	parts := bytes.Split(data, sep)
+
+	var docs [][]byte
+	for _, part := range parts {
+		trimmed := bytes.TrimSpace(part)
+		if len(trimmed) == 0 {
+			continue
+		}
+		docs = append(docs, part)
+	}
+	return docs
+}
+
+// parseDocument parses a single YAML document within a file.
+// docNum is the 1-based document index, used for error messages.
+func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*ParseResult, error) {
 	var doc Document
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		if len(splitDocuments(data)) <= 1 {
+			return nil, fmt.Errorf("parse %s: %w", path, err)
+		}
+		return nil, fmt.Errorf("parse %s (document %d): %w", path, docNum, err)
 	}
 
 	result := &ParseResult{}
@@ -115,7 +155,6 @@ func parseFileAll(path string, opt ParseOptions) (*ParseResult, error) {
 		if opt.FailOnUnknown {
 			return nil, fmt.Errorf("%s: unknown kind %q", path, doc.Kind)
 		}
-		return &ParseResult{}, nil
 	}
 
 	return result, nil
