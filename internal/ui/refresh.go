@@ -14,8 +14,9 @@ import (
 
 // RefreshTask describes a task to track in the spinner display.
 type RefreshTask struct {
-	Name      string // key for Done()/Error() matching AND running label
-	DoneLabel string // shown when task completes (defaults to Name if empty)
+	Name      string // key for Done()/Error()/Fail() matching AND running label
+	DoneLabel string // shown when task completes successfully (defaults to Name if empty)
+	FailLabel string // shown when task fails via Fail() (defaults to Name if empty)
 }
 
 type taskStatus int
@@ -24,11 +25,13 @@ const (
 	taskRunning taskStatus = iota
 	taskDone
 	taskError
+	taskFailed
 )
 
 type refreshItem struct {
 	name      string
 	doneLabel string
+	failLabel string
 	status    taskStatus
 	errMsg    string
 	spinner   spinner.Model
@@ -44,6 +47,7 @@ type taskErrorMsg struct {
 	name string
 	err  error
 }
+type taskFailMsg struct{ name string }
 
 func newRefreshModel(tasks []RefreshTask) refreshModel {
 	items := make([]refreshItem, len(tasks))
@@ -56,9 +60,14 @@ func newRefreshModel(tasks []RefreshTask) refreshModel {
 		if doneLabel == "" {
 			doneLabel = task.Name
 		}
+		failLabel := task.FailLabel
+		if failLabel == "" {
+			failLabel = task.Name
+		}
 		items[i] = refreshItem{
 			name:      task.Name,
 			doneLabel: doneLabel,
+			failLabel: failLabel,
 			status:    taskRunning,
 			spinner:   s,
 		}
@@ -106,6 +115,19 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case taskFailMsg:
+		for i := range m.items {
+			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+				m.items[i].status = taskFailed
+				m.remaining--
+				break
+			}
+		}
+		if m.remaining <= 0 {
+			return m, tea.Quit
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -135,6 +157,8 @@ func (m refreshModel) View() tea.View {
 			fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), item.doneLabel)
 		case taskError:
 			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render(IconError), Bold.Render(item.name), item.errMsg)
+		case taskFailed:
+			fmt.Fprintf(&b, "  %s %s\n", Red.Render(IconError), item.failLabel)
 		case taskRunning:
 			fmt.Fprintf(&b, "  %s %s...\n", item.spinner.View(), item.name)
 		}
@@ -204,7 +228,23 @@ func (t *RefreshTracker) Done(name string) {
 	}
 }
 
-// Error marks a task as failed.
+// Fail marks a task as failed without inline error detail.
+// Use this when the error detail will be displayed separately (e.g. via Printer.Warning).
+func (t *RefreshTracker) Fail(name string) {
+	if t == nil {
+		return
+	}
+	if t.fallback {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.program != nil {
+		t.program.Send(taskFailMsg{name: name})
+	}
+}
+
+// Error marks a task as failed with inline error detail.
 func (t *RefreshTracker) Error(name string, err error) {
 	if t == nil {
 		return
