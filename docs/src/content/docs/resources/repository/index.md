@@ -87,6 +87,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `actions` | GitHub Actions permissions, workflow defaults, and fork PR policy — see [Actions](./actions/) |
 
 All fields are optional — declare only what you want to manage. Fields not present in the YAML are left unchanged on GitHub.
+The one exception is `spec.actions.enabled`: when managing any other Actions setting, GitHub requires `enabled` to be sent too. See [Actions](./actions/).
 
 ## When to Use
 
