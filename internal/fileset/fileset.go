@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pmezard/go-difflib/difflib"
+
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 	"github.com/babarot/gh-infra/internal/ui"
-	"github.com/pmezard/go-difflib/difflib"
 )
 
 // FileState represents the current state of a file in a repository.
@@ -864,7 +865,7 @@ func DiffStat(current, desired string) (added, removed int) {
 		B:       difflib.SplitLines(desired),
 		Context: 0, // no context lines — only +/- lines
 	})
-	for _, line := range strings.Split(diff, "\n") {
+	for line := range strings.SplitSeq(diff, "\n") {
 		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
 			added++
 		} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
