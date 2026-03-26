@@ -67,6 +67,11 @@ func parseLevel(s string) charmlog.Level {
 	}
 }
 
+// Enabled returns true if any log output is active (i.e. the level is not silent).
+func Enabled() bool {
+	return Default.GetLevel() <= charmlog.ErrorLevel
+}
+
 // IsTrace returns true if the current log level includes trace output.
 func IsTrace() bool {
 	return Default.GetLevel() <= LevelTrace
