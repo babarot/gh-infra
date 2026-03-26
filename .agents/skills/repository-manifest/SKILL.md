@@ -218,8 +218,6 @@ Each `name` must be unique within the list.
 - **Archiving**: Set `archived: true` (reversible — set `false` to unarchive).
 - **Deletion**: **Not supported.** Use `gh repo delete` directly.
 
----
-
 ## RepositorySet (kind: RepositorySet)
 
 Manages settings for **multiple** repositories with shared defaults.

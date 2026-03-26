@@ -54,7 +54,6 @@ Each entry in `files` requires `path` and either `content` or `source`:
 | `vars` | Custom template variables (map of string → string) |
 | `reconcile` | Reconcile mode: `patch` (default), `mirror`, or `create_only` |
 
----
 
 ## File Sources
 
@@ -115,8 +114,6 @@ files:
 
 Pin to a tag (e.g., `@v1.0.0`) in production. Use unpinned during development.
 
----
-
 ## Templating
 
 gh-infra uses `<% %>` delimiters — no conflict with `${{ }}` (GitHub Actions), `{{ }}` (Go/Helm), or any other template system. No escaping needed.
@@ -152,8 +149,6 @@ Two-pass expansion:
 2. File content is expanded (can reference both `.Repo` and `.Vars`)
 
 Undefined variable references cause an error — no silent empty strings.
-
----
 
 ## Reconcile Mode
 
@@ -202,8 +197,6 @@ files:
 
 Different files can use different modes in the same manifest.
 
----
-
 ## Delivery Method (via)
 
 ### push (default)
@@ -232,8 +225,6 @@ spec:
 
 If a PR already exists for the branch, gh-infra updates it.
 
----
-
 ## YAML Anchors
 
 Avoid duplicating inline content within a single file:
@@ -250,8 +241,6 @@ spec:
 ```
 
 Anchors work within a single file only (YAML spec limitation).
-
----
 
 ## FileSet (kind: FileSet)
 
