@@ -34,7 +34,7 @@ func ParseAll(path string, opts ...ParseOptions) (*ParseResult, error) {
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("stat %s: %w", path, err)
+		return nil, err
 	}
 
 	if !info.IsDir() {
