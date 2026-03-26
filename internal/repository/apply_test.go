@@ -252,6 +252,40 @@ func TestApplyWithErrForbidden(t *testing.T) {
 	}
 }
 
+func TestApplyWithErrValidation(t *testing.T) {
+	validationErr := fmt.Errorf("%w: %w", gh.ErrValidation, &gh.ExitError{
+		Cmd: "repo edit myorg/myrepo", ExitCode: 1,
+		APIError: &gh.APIError{Status: 422, Message: "Validation Failed"},
+	})
+
+	mock := &gh.MockRunner{
+		Errors: map[string]error{
+			"repo edit myorg/myrepo --description new desc": validationErr,
+		},
+	}
+	exec := NewExecutor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "description",
+			NewValue: "new desc",
+		},
+	}
+
+	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	errMsg := results[0].Err.Error()
+	if !strings.Contains(errMsg, "validation failed") {
+		t.Errorf("expected user-friendly validation message, got %q", errMsg)
+	}
+}
+
 func TestApplyVariableSet(t *testing.T) {
 	mock := &gh.MockRunner{}
 	exec := NewExecutor(mock, nil)

@@ -819,6 +819,9 @@ func wrapError(err error, repo, field string) error {
 	if errors.Is(err, gh.ErrForbidden) {
 		return fmt.Errorf("no permission to edit %s: check token scopes", repo)
 	}
+	if errors.Is(err, gh.ErrValidation) {
+		return fmt.Errorf("validation failed for %s %s: %w", repo, field, err)
+	}
 	return fmt.Errorf("update %s %s: %w", repo, field, err)
 }
 

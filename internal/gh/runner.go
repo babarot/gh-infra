@@ -136,7 +136,7 @@ func (r *GHRunner) exec(args []string, cmdStr string) ([]byte, error) {
 			}
 			return nil, retry.Unrecoverable(fmt.Errorf("%w: %w", ErrForbidden, exitErr))
 		case 422:
-			return nil, retry.Unrecoverable(exitErr)
+			return nil, retry.Unrecoverable(fmt.Errorf("%w: %w", ErrValidation, exitErr))
 		}
 	}
 
