@@ -1,0 +1,208 @@
+---
+title: Patches
+sidebar:
+  order: 3
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+`patches` applies unified diff patches to file content before syncing. This lets you share a common template across repositories while making targeted, per-repo modifications — without duplicating the entire file.
+
+## Quick Example
+
+Suppose you have a shared `.gitignore` template used across all repositories:
+
+```gitignore
+# templates/common/.gitignore
+node_modules/
+.env
+.env.local
+*.log
+coverage/
+```
+
+Most repos use it as-is, but your frontend repo also needs to ignore `dist/` and `.next/`. Instead of duplicating the entire file, apply a patch:
+
+```yaml
+files:
+  - path: .gitignore
+    source: ./templates/common/.gitignore
+    patches:
+      - ./patches/frontend-gitignore.patch
+```
+
+Where `patches/frontend-gitignore.patch` is a standard unified diff:
+
+```diff
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,3 +3,5 @@
+ .env
+ .env.local
+ *.log
++dist/
++.next/
+ coverage/
+```
+
+The result is the full shared `.gitignore` with `dist/` and `.next/` added. When the shared template is updated (e.g., adding `.DS_Store`), every repo gets the change — including the frontend repo, where the patch is reapplied on top.
+
+## Patch Sources
+
+Each entry in `patches` can be either a **file path** or **inline content**.
+
+### File path (recommended)
+
+```yaml
+patches:
+  - ./patches/frontend-gitignore.patch
+```
+
+Paths are resolved relative to the YAML file's location. This is the recommended approach because:
+
+- Tabs and whitespace are preserved exactly as written
+- You can generate patches with `diff -u` and use them directly
+- Patches are easier to review in their own files
+
+### Inline content
+
+```yaml
+patches:
+  - |
+    --- a/.gitignore
+    +++ b/.gitignore
+    @@ -1,3 +1,4 @@
+     node_modules/
+     .env
+    +.vscode/
+     *.log
+```
+
+:::caution
+Inline patches embedded in YAML can silently corrupt whitespace. YAML block scalars (`|`) strip leading indentation and may convert tabs to spaces. If the source file uses tab indentation (e.g., `Makefile`, git config files), the patch context lines won't match and the patch will fail.
+
+**Use file paths instead of inline content** for any file that contains tabs.
+:::
+
+## Multiple Patches
+
+Multiple patches are applied in sequence. The output of each patch becomes the input for the next:
+
+```yaml
+patches:
+  - ./patches/add-build-ignores.patch
+  - ./patches/add-ide-ignores.patch
+```
+
+## Processing Order
+
+Patches are applied after template expansion:
+
+```
+source/content → template rendering (<% %>) → patches → sync to GitHub
+```
+
+This means patch context lines must match the **template-expanded** content, not the raw template.
+
+## Creating Patch Files
+
+<Steps>
+
+1. **Copy the source file and make your changes**
+
+   ```bash
+   cp templates/common/.gitignore /tmp/.gitignore-original
+   cp templates/common/.gitignore /tmp/.gitignore-modified
+   # Edit /tmp/.gitignore-modified with your changes
+   ```
+
+2. **Generate the unified diff**
+
+   ```bash
+   diff -u /tmp/.gitignore-original /tmp/.gitignore-modified > patches/frontend-gitignore.patch
+   ```
+
+3. **Clean up the file headers** (optional but conventional)
+
+   Replace the temp paths with `a/` and `b/` prefixes:
+
+   ```diff
+   --- a/.gitignore
+   +++ b/.gitignore
+   ```
+
+</Steps>
+
+:::tip
+The `@@ -start,count +start,count @@` hunk header must accurately reflect the number of lines in the hunk. Count all lines in the hunk body: context lines (no prefix) + removed lines (`-`) = old count; context lines + added lines (`+`) = new count.
+:::
+
+## Error Handling
+
+### Hunk header mismatch
+
+If the line counts in `@@ ... @@` don't match the actual hunk lines:
+
+```
+patches[0]: invalid hunk header: line counts in @@ ... @@ do not match
+  the actual number of diff lines.
+  Hint: verify the numbers after @@ (e.g. @@ -3,5 +3,5 @@) equal
+  the lines in that hunk.
+```
+
+Fix: recount the lines in the hunk and update the header.
+
+### Context mismatch
+
+If the context lines in the patch don't match the source content:
+
+```
+patches[0]: patch context does not match the source content.
+  Hint: the context lines (lines without +/-) in the patch must exactly
+  match the source file.
+```
+
+Common causes:
+- **Tabs vs spaces** — the source uses tabs but the patch has spaces (use a file path instead of inline)
+- **Source changed** — the template was updated but the patch wasn't
+- **Template expansion** — the patch targets raw template syntax instead of expanded content
+
+## Interaction with Overrides
+
+In `FileSet`, per-repo overrides inherit `patches` from the base entry if the override doesn't specify its own:
+
+```yaml
+spec:
+  repositories:
+    - name: web-app
+      overrides:
+        - path: .gitignore
+          source: ./templates/alt-gitignore  # patches inherited from base
+    - name: mobile-app
+      overrides:
+        - path: .gitignore
+          patches:
+            - ./patches/mobile-gitignore.patch  # replaces base patches
+  files:
+    - path: .gitignore
+      source: ./templates/common/.gitignore
+      patches:
+        - ./patches/default-extra-ignores.patch
+```
+
+- `web-app`: uses overridden source with the base `default-extra-ignores.patch`
+- `mobile-app`: uses base source with the overridden `mobile-gitignore.patch`
+- All other repos: use base source with `default-extra-ignores.patch`
+
+## When to Use Patches vs a Separate File
+
+Patches are best when the result is **mostly the shared template** with a few targeted changes. If a repo's file diverges significantly from the template, a separate file is simpler and easier to maintain.
+
+| Situation | Approach |
+|---|---|
+| Add 2–3 lines to a shared `.gitignore` | `patches` — the base stays in sync, only the delta is yours |
+| Change one setting in a config file | `patches` — surgical edit, template updates flow through |
+| Replace more than half the file's content | Separate `source` or `content` — a patch this large is hard to read and breaks easily when the template changes |
+| File has no relation to the shared template | Separate `source` or `content` — patching implies a shared base |
+
+A good rule of thumb: **if the patch is longer than the original file, use a separate file instead.**

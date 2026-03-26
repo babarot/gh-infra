@@ -57,6 +57,7 @@ All settings available in [File](../file/) — file sources, templating, reconci
 
 - [File Sources](../file/sources/) — Inline content, local files, directories, and `github://` references
 - [Templating](../file/templating/) — `<% %>` syntax, built-in variables, custom vars
+- [Patches](../file/patches/) — Unified diff patches for per-repo customization of shared templates
 - [Reconcile](../file/reconcile/) — `patch` (add/update) vs `mirror` (add/update/delete orphans)
 - [Delivery Method](../file/delivery/) — `push` vs `pull_request`
 

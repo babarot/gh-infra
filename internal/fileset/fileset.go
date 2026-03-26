@@ -12,6 +12,7 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 	"github.com/babarot/gh-infra/internal/ui"
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 // FileState represents the current state of a file in a repository.
@@ -144,6 +145,15 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 					return unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
 				}
 				file.Content = rendered
+			}
+			// Apply unified diff patches (after template rendering)
+			if len(file.Patches) > 0 {
+				patched, err := ApplyPatches(file.Content, file.Patches)
+				if err != nil {
+					tracker.Error(displayName, err)
+					return unitResult{err: fmt.Errorf("patch %s for %s: %w", file.Path, fullName, err)}
+				}
+				file.Content = patched
 			}
 			// create_only: create if missing, skip entirely if exists
 			if file.Reconcile == manifest.ReconcileCreateOnly {
@@ -845,30 +855,20 @@ func CountChanges(changes []FileChange) (creates, updates, deletes int) {
 	return
 }
 
-// DiffStat counts added and removed lines between two strings.
+// DiffStat counts added and removed lines between two strings using a proper
+// sequence diff algorithm. This correctly handles line moves (reordering) as
+// additions and removals, matching what unified diff displays.
 func DiffStat(current, desired string) (added, removed int) {
-	currentLines := strings.Split(strings.TrimRight(current, "\n"), "\n")
-	desiredLines := strings.Split(strings.TrimRight(desired, "\n"), "\n")
-	if current == "" {
-		currentLines = nil
-	}
-	if desired == "" {
-		desiredLines = nil
-	}
-
-	// Build a simple line-count diff using a map
-	counts := make(map[string]int)
-	for _, line := range currentLines {
-		counts[line]--
-	}
-	for _, line := range desiredLines {
-		counts[line]++
-	}
-	for _, n := range counts {
-		if n > 0 {
-			added += n
-		} else if n < 0 {
-			removed += -n
+	diff, _ := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+		A:       difflib.SplitLines(current),
+		B:       difflib.SplitLines(desired),
+		Context: 0, // no context lines — only +/- lines
+	})
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			added++
+		} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+			removed++
 		}
 	}
 	return
