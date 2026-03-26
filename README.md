@@ -36,6 +36,16 @@ gh-infra takes a different approach:
 gh extension install babarot/gh-infra
 ```
 
+### Agent Skills (optional)
+
+Install gh-infra skills for your coding agent (Claude Code, Codex, Cursor, etc.):
+
+```bash
+npx skills add babarot/gh-infra
+```
+
+This gives your agent knowledge of gh-infra commands, YAML schema, and CI/CD patterns so it can write and manage manifests for you.
+
 ## Quick Start
 
 ### 1. Import an existing repository
