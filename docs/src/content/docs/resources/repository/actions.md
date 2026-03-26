@@ -6,10 +6,6 @@ sidebar:
 
 Manage GitHub Actions permissions, workflow defaults, allowed actions, and fork PR approval policies.
 
-:::note[`enabled` is required]
-The GitHub API requires `enabled` in every write to the permissions endpoint. To avoid silently changing whether Actions is on or off, gh-infra requires `enabled` whenever any other actions field is specified. This is the only field in gh-infra where an explicit value is mandatory — it exists because the API does not support partial updates for this setting.
-:::
-
 ## Example
 
 ```yaml
@@ -32,7 +28,7 @@ spec:
 
 | Field | Type | Values | Description |
 |-------|------|--------|-------------|
-| `enabled` | bool | | **Required** when any other actions field is set. Enable or disable Actions for this repository. `false` stops all workflows |
+| `enabled` | bool | | Enable or disable Actions for this repository. `false` stops all workflows. Required when any other actions field is set, due to a GitHub API limitation |
 | `allowed_actions` | string | `all`, `local_only`, `selected` | Which Actions are allowed to run |
 
 ### `allowed_actions` values
