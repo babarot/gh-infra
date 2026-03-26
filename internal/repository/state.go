@@ -485,8 +485,10 @@ func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, erro
 	// 1. Actions permissions (enabled + allowed_actions)
 	out, err := f.runner.Run("api", fullName+"/actions/permissions")
 	if err != nil {
-		// Actions API may not be available (e.g. 404 on some repo types)
-		return result, nil
+		if errors.Is(err, gh.ErrNotFound) {
+			return result, nil // Actions API not available for this repo
+		}
+		return result, fmt.Errorf("fetch actions permissions for %s/%s: %w", owner, name, err)
 	}
 	var perms struct {
 		Enabled        bool   `json:"enabled"`
@@ -500,6 +502,9 @@ func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, erro
 
 	// 2. Workflow permissions (GITHUB_TOKEN defaults)
 	out, err = f.runner.Run("api", fullName+"/actions/permissions/workflow")
+	if err != nil && !errors.Is(err, gh.ErrNotFound) {
+		return result, fmt.Errorf("fetch actions workflow permissions for %s/%s: %w", owner, name, err)
+	}
 	if err == nil {
 		var wf struct {
 			DefaultWorkflowPermissions   string `json:"default_workflow_permissions"`
@@ -514,6 +519,9 @@ func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, erro
 	// 3. Selected actions (only when allowed_actions == "selected")
 	if result.AllowedActions == "selected" {
 		out, err = f.runner.Run("api", fullName+"/actions/permissions/selected-actions")
+		if err != nil && !errors.Is(err, gh.ErrNotFound) {
+			return result, fmt.Errorf("fetch actions selected-actions for %s/%s: %w", owner, name, err)
+		}
 		if err == nil {
 			var sa struct {
 				GithubOwnedAllowed bool     `json:"github_owned_allowed"`
@@ -532,6 +540,9 @@ func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, erro
 
 	// 4. Fork PR approval (may 404 on user-owned repos — ignore gracefully)
 	out, err = f.runner.Run("api", fullName+"/actions/permissions/fork-pr-contributor-approval")
+	if err != nil && !errors.Is(err, gh.ErrNotFound) {
+		return result, fmt.Errorf("fetch actions fork-pr-approval for %s/%s: %w", owner, name, err)
+	}
 	if err == nil {
 		var fpr struct {
 			ApprovalPolicy string `json:"approval_policy"`

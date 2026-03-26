@@ -129,9 +129,13 @@ func ToManifest(r *CurrentState, resolver *manifest.Resolver) *manifest.Reposito
 	if r.Actions.Enabled || r.Actions.AllowedActions != "" {
 		actions := &manifest.Actions{
 			Enabled:                manifest.Ptr(r.Actions.Enabled),
-			AllowedActions:         manifest.Ptr(r.Actions.AllowedActions),
-			WorkflowPermissions:    manifest.Ptr(r.Actions.WorkflowPermissions),
 			CanApprovePullRequests: manifest.Ptr(r.Actions.CanApprovePullRequests),
+		}
+		if r.Actions.AllowedActions != "" {
+			actions.AllowedActions = manifest.Ptr(r.Actions.AllowedActions)
+		}
+		if r.Actions.WorkflowPermissions != "" {
+			actions.WorkflowPermissions = manifest.Ptr(r.Actions.WorkflowPermissions)
 		}
 		if r.Actions.SelectedActions != nil {
 			actions.SelectedActions = &manifest.SelectedActions{
