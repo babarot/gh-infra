@@ -183,6 +183,8 @@ func TestExtractJSON(t *testing.T) {
 		{"JSON + trailing text", `{"message":"err"}gh: err`, `{"message":"err"}`},
 		{"no JSON", "plain text", ""},
 		{"nested braces", `{"a":{"b":"c"}}trailing`, `{"a":{"b":"c"}}`},
+		{"brace in string value", `{"message":"value with } inside","status":"422"}`, `{"message":"value with } inside","status":"422"}`},
+		{"escaped quote in string", `{"message":"say \"hello\"","status":"404"}`, `{"message":"say \"hello\"","status":"404"}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

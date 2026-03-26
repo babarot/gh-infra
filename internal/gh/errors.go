@@ -99,15 +99,33 @@ func tryParseAPIError(stderr string) *APIError {
 
 // extractJSON returns the leading JSON object from s, or "" if none found.
 // This handles the case where gh cli appends a human-readable line after the JSON.
+// It correctly skips braces inside JSON string literals.
 func extractJSON(s string) string {
 	start := strings.IndexByte(s, '{')
 	if start < 0 {
 		return ""
 	}
-	// Find the matching closing brace.
 	depth := 0
+	inString := false
+	escaped := false
 	for i := start; i < len(s); i++ {
-		switch s[i] {
+		ch := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch ch {
 		case '{':
 			depth++
 		case '}':
