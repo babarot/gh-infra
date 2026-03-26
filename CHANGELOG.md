@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.5.1](https://github.com/babarot/gh-infra/compare/v0.5.0...v0.5.1) - 2026-03-26
+### Improvements
+- Add sha_pinning_required, fix validation, and improve docs/tests by @babarot in https://github.com/babarot/gh-infra/pull/35
+
 ## [v0.5.0](https://github.com/babarot/gh-infra/compare/v0.4.0...v0.5.0) - 2026-03-26
 ### New Features
 - Add GitHub Actions settings management by @babarot in https://github.com/babarot/gh-infra/pull/34
