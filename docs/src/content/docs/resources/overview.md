@@ -47,3 +47,36 @@ gh infra plan ./repos/gomi.yaml  # A single file
 ```
 
 Multiple resource kinds can coexist in the same directory. gh-infra processes each file based on its `kind`.
+
+### Multi-Document YAML
+
+A single YAML file can contain multiple documents separated by `---`. This lets you group related resources together without creating separate files:
+
+```yaml
+apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: my-app
+  owner: my-org
+spec:
+  description: "Application repository"
+  visibility: public
+---
+apiVersion: gh-infra/v1
+kind: File
+metadata:
+  name: my-app
+  owner: my-org
+spec:
+  files:
+    - path: .github/CODEOWNERS
+      content: |
+        * @my-org/platform
+  via: push
+```
+
+You can mix any resource kinds within a single file. Each document is parsed independently, so they do not share YAML anchors or other state.
+
+:::tip
+Multi-document YAML works well for pairing a Repository with its File resource — everything about a single repo lives in one place.
+:::

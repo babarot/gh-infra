@@ -174,5 +174,5 @@ spec:
 ```
 
 :::note
-YAML anchors work within a single file only. They cannot cross file boundaries — this is a YAML spec limitation. If you need to share content across files, use `source` to reference a local file instead.
+YAML anchors work within a single document only. They cannot cross document boundaries (`---`) or file boundaries — this is a YAML spec limitation. If you need to share content across files, use `source` to reference a local file instead.
 :::
