@@ -24,18 +24,13 @@ type FileState struct {
 	Exists  bool
 }
 
-// FileChange holds the common diff information for a file change in any direction.
-type FileChange struct {
+// FileApplyChange represents a planned file change for the apply direction (push to GitHub).
+type FileApplyChange struct {
 	Target  string // owner/repo
 	Path    string
 	Type    ChangeType
-	Current string // content before the change
-	Desired string // content after the change
-}
-
-// FileApplyChange extends FileChange with apply-specific (push to GitHub) metadata.
-type FileApplyChange struct {
-	FileChange
+	Current string // current content (if exists)
+	Desired string // desired content
 	FileSet string // FileSet owner
 	SHA     string // current SHA (for updates via Contents API)
 	Via     string // "push" or "pull_request" (from FileSet spec)
@@ -190,8 +185,10 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 			for _, repoFile := range repoFiles {
 				if !allPlannedPaths[repoFile] {
 					out = append(out, FileApplyChange{
-						FileChange: FileChange{Type: FileDelete, Target: fullName, Path: repoFile},
-						FileSet:    u.fileSetName,
+						Type:    FileDelete,
+						Target:  fullName,
+						Path:    repoFile,
+						FileSet: u.fileSetName,
 					})
 				}
 			}
@@ -222,13 +219,13 @@ func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileE
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileApplyChange{
-			FileChange: FileChange{Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content},
-			FileSet:    fileSetName,
+			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
+			FileSet: fileSetName,
 		}
 	}
 	return FileApplyChange{
-		FileChange: FileChange{Target: repo, Path: file.Path, Type: FileNoOp},
-		FileSet:    fileSetName,
+		Target: repo, Path: file.Path, Type: FileNoOp,
+		FileSet: fileSetName,
 	}
 }
 
@@ -236,8 +233,8 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) 
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileApplyChange{
-			FileChange: FileChange{Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content},
-			FileSet:    fileSetName,
+			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
+			FileSet: fileSetName,
 		}
 	}
 
@@ -247,16 +244,15 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) 
 
 	if currentContent == desiredContent {
 		return FileApplyChange{
-			FileChange: FileChange{Target: repo, Path: file.Path, Type: FileNoOp},
-			FileSet:    fileSetName,
+			Target: repo, Path: file.Path, Type: FileNoOp,
+			FileSet: fileSetName,
 		}
 	}
 
 	// Content differs — update
 	return FileApplyChange{
-		FileChange: FileChange{Target: repo, Path: file.Path, Type: FileUpdate, Current: current.Content, Desired: file.Content},
-		FileSet:    fileSetName,
-		SHA:        current.SHA,
+		Target: repo, Path: file.Path, Type: FileUpdate, Current: current.Content, Desired: file.Content,
+		FileSet: fileSetName, SHA: current.SHA,
 	}
 }
 
@@ -818,16 +814,6 @@ func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 			p.Success(r.Change.Target, fmt.Sprintf("%s %sd", r.Change.Path, r.Change.Type))
 		}
 	}
-}
-
-// HasFileChanges returns true if any base file changes are non-noop.
-func HasFileChanges(changes []FileChange) bool {
-	for _, c := range changes {
-		if c.Type != FileNoOp {
-			return true
-		}
-	}
-	return false
 }
 
 // HasChanges returns true if any apply file changes are non-noop.

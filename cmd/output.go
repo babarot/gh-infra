@@ -82,44 +82,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			p.GroupHeader(ui.IconChange, name)
 		}
 
-		// Print repository changes
-		for _, c := range rChanges {
-			if len(c.Children) > 0 {
-				var icon string
-				switch c.Type {
-				case repository.ChangeCreate:
-					icon = ui.IconAdd
-				case repository.ChangeDelete:
-					icon = ui.IconRemove
-				default:
-					icon = ui.IconChange
-				}
-				header := c.Field
-				if s, ok := c.NewValue.(string); ok && s != "" {
-					header = fmt.Sprintf("%s[%s]", c.Field, s)
-				}
-				p.SubGroupHeader(icon, header)
-				for _, child := range c.Children {
-					switch child.Type {
-					case repository.ChangeCreate:
-						p.SubItemCreate(child.Field, child.NewValue)
-					case repository.ChangeUpdate:
-						p.SubItemUpdate(child.Field, ui.FormatValue(child.OldValue), ui.FormatValue(child.NewValue))
-					case repository.ChangeDelete:
-						p.SubItemDelete(child.Field, child.OldValue)
-					}
-				}
-			} else {
-				switch c.Type {
-				case repository.ChangeCreate:
-					p.ItemCreate(c.Field, c.NewValue)
-				case repository.ChangeUpdate:
-					p.ItemUpdate(c.Field, ui.FormatValue(c.OldValue), ui.FormatValue(c.NewValue))
-				case repository.ChangeDelete:
-					p.ItemDelete(c.Field, c.OldValue)
-				}
-			}
-		}
+		printRepoChanges(p, rChanges)
 
 		// Print fileset changes (inline under same repo group)
 		if len(fChanges) > 0 {
@@ -278,9 +241,71 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileApp
 	return w
 }
 
+func computeImportColumnWidth(rChanges []repository.Change, fChanges []fileset.FileImportChange) int {
+	w := 0
+	for _, c := range rChanges {
+		if len(c.Children) > 0 {
+			for _, child := range c.Children {
+				if len(child.Field) > w {
+					w = len(child.Field)
+				}
+			}
+		} else if len(c.Field) > w {
+			w = len(c.Field)
+		}
+	}
+	for _, c := range fChanges {
+		if len(c.Path) > w {
+			w = len(c.Path)
+		}
+	}
+	return w
+}
+
+func printRepoChanges(p ui.Printer, changes []repository.Change) {
+	for _, c := range changes {
+		if len(c.Children) > 0 {
+			var icon string
+			switch c.Type {
+			case repository.ChangeCreate:
+				icon = ui.IconAdd
+			case repository.ChangeDelete:
+				icon = ui.IconRemove
+			default:
+				icon = ui.IconChange
+			}
+			header := c.Field
+			if s, ok := c.NewValue.(string); ok && s != "" {
+				header = fmt.Sprintf("%s[%s]", c.Field, s)
+			}
+			p.SubGroupHeader(icon, header)
+			for _, child := range c.Children {
+				switch child.Type {
+				case repository.ChangeCreate:
+					p.SubItemCreate(child.Field, child.NewValue)
+				case repository.ChangeUpdate:
+					p.SubItemUpdate(child.Field, ui.FormatValue(child.OldValue), ui.FormatValue(child.NewValue))
+				case repository.ChangeDelete:
+					p.SubItemDelete(child.Field, child.OldValue)
+				}
+			}
+			continue
+		}
+
+		switch c.Type {
+		case repository.ChangeCreate:
+			p.ItemCreate(c.Field, c.NewValue)
+		case repository.ChangeUpdate:
+			p.ItemUpdate(c.Field, ui.FormatValue(c.OldValue), ui.FormatValue(c.NewValue))
+		case repository.ChangeDelete:
+			p.ItemDelete(c.Field, c.OldValue)
+		}
+	}
+}
+
 // printUnifiedImportPlan prints import changes grouped by repo, similar to printUnifiedPlan.
 // It shows file diffs with +N -M stats to indicate what will be written locally.
-func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileBaseChanges []fileset.FileChange, importChanges []fileset.FileImportChange) {
+func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []fileset.FileImportChange) {
 	// Collect repo names from changes
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -290,8 +315,8 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileB
 			repoNames = append(repoNames, c.Name)
 		}
 	}
-	for _, c := range fileBaseChanges {
-		if c.Type == fileset.FileNoOp {
+	for _, c := range importChanges {
+		if !shouldDisplayImportChange(c) {
 			continue
 		}
 		if !seen[c.Target] {
@@ -300,10 +325,10 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileB
 		}
 	}
 
-	// Index file changes by target
-	fileByTarget := make(map[string][]fileset.FileChange)
-	for _, c := range fileBaseChanges {
-		if c.Type == fileset.FileNoOp {
+	// Index changes by target
+	fileByTarget := make(map[string][]fileset.FileImportChange)
+	for _, c := range importChanges {
+		if !shouldDisplayImportChange(c) {
 			continue
 		}
 		fileByTarget[c.Target] = append(fileByTarget[c.Target], c)
@@ -317,27 +342,12 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileB
 		rChanges := repoByName[name]
 		fChanges := fileByTarget[name]
 
-		// Compute column width
-		w := 0
-		for _, c := range rChanges {
-			if len(c.Field) > w {
-				w = len(c.Field)
-			}
-		}
-		for _, c := range fChanges {
-			if len(c.Path) > w {
-				w = len(c.Path)
-			}
-		}
-		p.SetColumnWidth(w)
+		p.SetColumnWidth(computeImportColumnWidth(rChanges, fChanges))
 
 		p.ActionHeader(name, "will be imported")
 		p.GroupHeader(ui.IconChange, name)
 
-		// Print repo changes
-		for _, c := range rChanges {
-			p.ItemUpdate(c.Field, "", fmt.Sprintf("%v", c.NewValue))
-		}
+		printRepoChanges(p, rChanges)
 
 		// Print file changes with diff stats
 		if len(fChanges) > 0 {
@@ -347,6 +357,11 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileB
 			}
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
+				if c.WriteMode == fileset.ImportSkip {
+					p.FileWarning(c.Path, c.Reason)
+					continue
+				}
+
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				switch c.Type {
 				case fileset.FileCreate:
@@ -356,6 +371,9 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileB
 				case fileset.FileDelete:
 					p.FileDelete(c.Path, removed)
 				}
+				for _, w := range c.Warnings {
+					p.FileWarning(c.Path, w)
+				}
 			}
 		}
 
@@ -363,4 +381,14 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileB
 	}
 
 	p.SetColumnWidth(0)
+}
+
+func shouldDisplayImportChange(c fileset.FileImportChange) bool {
+	if c.WriteMode == fileset.ImportSkip {
+		return true
+	}
+	if c.Type != fileset.FileNoOp {
+		return true
+	}
+	return len(c.Warnings) > 0
 }

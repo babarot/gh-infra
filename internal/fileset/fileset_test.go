@@ -250,8 +250,8 @@ func TestApply_CreateFile(t *testing.T) {
 
 	changes := []FileApplyChange{
 		{
-			FileChange: FileChange{Target: "owner/repo", Path: ".github/ci.yml", Type: FileCreate, Desired: "name: CI"},
-			FileSet:    "ci-files",
+			Target: "owner/repo", Path: ".github/ci.yml", Type: FileCreate, Desired: "name: CI",
+			FileSet: "ci-files",
 		},
 	}
 
@@ -279,9 +279,8 @@ func TestApply_UpdateFile(t *testing.T) {
 
 	changes := []FileApplyChange{
 		{
-			FileChange: FileChange{Target: "owner/repo", Path: ".github/ci.yml", Type: FileUpdate, Desired: "name: CI v2"},
-			FileSet:    "ci-files",
-			SHA:        "old123",
+			Target: "owner/repo", Path: ".github/ci.yml", Type: FileUpdate, Desired: "name: CI v2",
+			FileSet: "ci-files", SHA: "old123",
 		},
 	}
 
@@ -311,8 +310,8 @@ func TestApply_NoOpNotApplied(t *testing.T) {
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Type: FileNoOp, Target: "owner/repo", Path: "a.txt"}},
-		{FileChange: FileChange{Type: FileNoOp, Target: "owner/repo", Path: "b.txt"}},
+		{Type: FileNoOp, Target: "owner/repo", Path: "a.txt"},
+		{Type: FileNoOp, Target: "owner/repo", Path: "b.txt"},
 	}
 
 	results := p.Apply(changes, ApplyOptions{FileSetName: "test"}, ui.NoopReporter{})
@@ -331,9 +330,9 @@ func TestApply_NoOpNotApplied(t *testing.T) {
 
 func TestHasChanges_AllNoOp(t *testing.T) {
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Type: FileNoOp}},
-		{FileChange: FileChange{Type: FileNoOp}},
-		{FileChange: FileChange{Type: FileNoOp}},
+		{Type: FileNoOp},
+		{Type: FileNoOp},
+		{Type: FileNoOp},
 	}
 	if HasChanges(changes) {
 		t.Error("expected HasChanges=false for all noop")
@@ -348,12 +347,12 @@ func TestHasChanges_WithCreateOrUpdate(t *testing.T) {
 	}{
 		{
 			name:    "with create",
-			changes: []FileApplyChange{{FileChange: FileChange{Type: FileNoOp}}, {FileChange: FileChange{Type: FileCreate}}},
+			changes: []FileApplyChange{{Type: FileNoOp}, {Type: FileCreate}},
 			want:    true,
 		},
 		{
 			name:    "with update",
-			changes: []FileApplyChange{{FileChange: FileChange{Type: FileUpdate}}},
+			changes: []FileApplyChange{{Type: FileUpdate}},
 			want:    true,
 		},
 		{
@@ -378,10 +377,10 @@ func TestHasChanges_WithCreateOrUpdate(t *testing.T) {
 
 func TestCountChanges(t *testing.T) {
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Type: FileCreate}},
-		{FileChange: FileChange{Type: FileCreate}},
-		{FileChange: FileChange{Type: FileUpdate}},
-		{FileChange: FileChange{Type: FileNoOp}},
+		{Type: FileCreate},
+		{Type: FileCreate},
+		{Type: FileUpdate},
+		{Type: FileNoOp},
 	}
 
 	creates, updates, deletes := CountChanges(changes)
@@ -406,10 +405,10 @@ func TestPrintPlan(t *testing.T) {
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Target: "org/repo-a", Path: ".github/ci.yml", Type: FileCreate}, FileSet: "ci"},
-		{FileChange: FileChange{Target: "org/repo-a", Path: ".github/lint.yml", Type: FileUpdate}, FileSet: "ci"},
-		{FileChange: FileChange{Target: "org/repo-b", Path: ".github/ci.yml", Type: FileDelete}, FileSet: "ci"},
-		{FileChange: FileChange{Target: "org/repo-c", Path: ".github/ci.yml", Type: FileNoOp}, FileSet: "ci"},
+		{Target: "org/repo-a", Path: ".github/ci.yml", Type: FileCreate, FileSet: "ci"},
+		{Target: "org/repo-a", Path: ".github/lint.yml", Type: FileUpdate, FileSet: "ci"},
+		{Target: "org/repo-b", Path: ".github/ci.yml", Type: FileDelete, FileSet: "ci"},
+		{Target: "org/repo-c", Path: ".github/ci.yml", Type: FileNoOp, FileSet: "ci"},
 	}
 
 	PrintPlan(p, changes)
@@ -443,7 +442,7 @@ func TestPrintPlan_AllNoOp(t *testing.T) {
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Target: "org/repo", Path: "a.txt", Type: FileNoOp}, FileSet: "ci"},
+		{Target: "org/repo", Path: "a.txt", Type: FileNoOp, FileSet: "ci"},
 	}
 
 	PrintPlan(p, changes)
@@ -472,11 +471,11 @@ func TestPrintApplyResults(t *testing.T) {
 
 	results := []FileApplyResult{
 		{
-			Change: FileApplyChange{FileChange: FileChange{Target: "org/repo", Path: "a.txt", Type: FileCreate}},
+			Change: FileApplyChange{Target: "org/repo", Path: "a.txt", Type: FileCreate},
 			Err:    nil,
 		},
 		{
-			Change: FileApplyChange{FileChange: FileChange{Target: "org/repo", Path: "b.txt", Type: FileUpdate}},
+			Change: FileApplyChange{Target: "org/repo", Path: "b.txt", Type: FileUpdate},
 			Err:    fmt.Errorf("permission denied"),
 		},
 	}
@@ -663,11 +662,11 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 
 func TestCountChanges_WithDeletes(t *testing.T) {
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Type: FileCreate}},
-		{FileChange: FileChange{Type: FileUpdate}},
-		{FileChange: FileChange{Type: FileDelete}},
-		{FileChange: FileChange{Type: FileDelete}},
-		{FileChange: FileChange{Type: FileNoOp}},
+		{Type: FileCreate},
+		{Type: FileUpdate},
+		{Type: FileDelete},
+		{Type: FileDelete},
+		{Type: FileNoOp},
 	}
 
 	creates, updates, deletes := CountChanges(changes)
@@ -685,8 +684,8 @@ func TestCountChanges_WithDeletes(t *testing.T) {
 
 func TestHasChanges_FileDelete(t *testing.T) {
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Type: FileNoOp}},
-		{FileChange: FileChange{Type: FileDelete}},
+		{Type: FileNoOp},
+		{Type: FileDelete},
 	}
 	if !HasChanges(changes) {
 		t.Error("expected HasChanges=true when FileDelete is present")
@@ -695,7 +694,7 @@ func TestHasChanges_FileDelete(t *testing.T) {
 
 func TestHasChanges_OnlyDeletes(t *testing.T) {
 	changes := []FileApplyChange{
-		{FileChange: FileChange{Type: FileDelete}},
+		{Type: FileDelete},
 	}
 	if !HasChanges(changes) {
 		t.Error("expected HasChanges=true when only FileDelete changes exist")

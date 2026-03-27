@@ -35,6 +35,7 @@ type Printer interface {
 	FileCreate(path string, lines int)
 	FileUpdate(path string, added, removed int)
 	FileDelete(path string, lines int)
+	FileWarning(path, detail string)
 	Success(name, detail string)
 	Error(name, detail string)
 	Warning(name, detail string) // stderr
@@ -244,6 +245,11 @@ func (p *StandardPrinter) FileDelete(path string, lines int) {
 	stat := formatDiffStat(0, lines)
 	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
 		Red.Render(IconRemove), p.subItemWidth(), path, desc, stat)
+}
+
+func (p *StandardPrinter) FileWarning(path, detail string) {
+	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
+		Yellow.Render(IconWarning), p.subItemWidth(), path, detail)
 }
 
 // formatDiffStat formats added/removed line counts like git diff --stat.

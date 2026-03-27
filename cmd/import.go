@@ -176,20 +176,28 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 
 	// --- Repository import ---
 	var repoUpdated int
+	var repoChanges []repository.Change
 	if len(matchedRepos) > 0 {
 		key := "Importing " + fullName + " (repo)"
 		fetcher := repository.NewFetcher(runner)
 		resolver := manifest.NewResolver(runner, target.owner)
 
-		current, err := fetcher.FetchRepository(target.owner, target.name)
+		githubState, err := fetcher.FetchRepository(target.owner, target.name)
 		if err != nil {
 			failAll()
 			return err
 		}
 
-		imported := repository.ToManifest(current, resolver)
+		imported := repository.ToManifest(githubState, resolver)
 
+		// Compute diff: local manifest vs GitHub state
+		// Diff returns "what would change if we apply local to GitHub"
+		// For import display, we swap OldValue/NewValue to show "GitHub → local"
 		for _, repo := range matchedRepos {
+			diffOpts := repository.DiffOptions{Resolver: resolver}
+			changes := repository.Diff(repo, githubState, diffOpts)
+			repoChanges = append(repoChanges, swapChanges(changes)...)
+
 			if err := readManifestBytes(repo.SourcePath()); err != nil {
 				failAll()
 				return err
@@ -223,21 +231,7 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	tracker.Wait()
 
 	// --- Display using unified plan output ---
-	fileBaseChanges := fileset.ToFileChanges(importChanges)
-
-	// Build repo changes for display (repo spec update = single "update" change)
-	var repoChanges []repository.Change
-	if repoUpdated > 0 {
-		repoChanges = append(repoChanges, repository.Change{
-			Type:     repository.ChangeUpdate,
-			Resource: "Repository",
-			Name:     fullName,
-			Field:    "spec",
-			NewValue: fmt.Sprintf("imported into %s", relativePath(matchedRepos[0].SourcePath())),
-		})
-	}
-
-	hasChanges := len(repoChanges) > 0 || fileset.HasFileChanges(fileBaseChanges)
+	hasChanges := repository.HasRealChanges(repoChanges) || fileset.HasImportChanges(importChanges)
 
 	if !hasChanges && !skippedRepoSet {
 		p.Message("\nNothing to import. Local state is up-to-date.")
@@ -251,21 +245,7 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 
 	if hasChanges {
-		printUnifiedImportPlan(p, repoChanges, fileBaseChanges, importChanges)
-	}
-
-	// Skip warnings
-	for _, c := range importChanges {
-		if c.WriteMode == fileset.ImportSkip {
-			p.ResultWarning(c.Path, c.Reason)
-		}
-	}
-
-	// Warnings (patches, templates)
-	for _, c := range importChanges {
-		for _, w := range c.Warnings {
-			p.Warning(c.Path, w)
-		}
+		printUnifiedImportPlan(p, repoChanges, importChanges)
 	}
 
 	written, unchanged, skipped := fileset.ImportSummary(importChanges)
@@ -314,6 +294,30 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	))
 
 	return nil
+}
+
+// swapChanges reverses repository changes for import display.
+// Diff produces changes that would update GitHub from local manifest state.
+// For import, we need the opposite direction: local state updated from GitHub.
+func swapChanges(changes []repository.Change) []repository.Change {
+	swapped := make([]repository.Change, len(changes))
+	for i, c := range changes {
+		if len(c.Children) > 0 {
+			c.Children = swapChanges(c.Children)
+		} else {
+			c.OldValue, c.NewValue = c.NewValue, c.OldValue
+		}
+
+		switch c.Type {
+		case repository.ChangeCreate:
+			c.Type = repository.ChangeDelete
+		case repository.ChangeDelete:
+			c.Type = repository.ChangeCreate
+		}
+
+		swapped[i] = c
+	}
+	return swapped
 }
 
 const defaultImportParallel = 5

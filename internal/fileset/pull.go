@@ -17,9 +17,13 @@ const (
 	ImportSkip        ImportWriteMode = "skip"   // skipped (create_only, not on GitHub, etc.)
 )
 
-// FileImportChange extends FileChange with import-specific (GitHub → local) metadata.
+// FileImportChange represents a planned file change for the import direction (GitHub → local).
 type FileImportChange struct {
-	FileChange
+	Target       string // owner/repo
+	Path         string
+	Type         ChangeType
+	Current      string // current local content
+	Desired      string // content from GitHub (what will be written)
 	WriteMode    ImportWriteMode
 	LocalTarget  string   // write-back destination path
 	ManifestPath string   // path to the manifest YAML file (for inline edits)
@@ -72,7 +76,8 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) 
 
 func planImportEntry(proc *Processor, file manifest.FileEntry, fileIndex int, repo string, fs *manifest.FileSet) FileImportChange {
 	change := FileImportChange{
-		FileChange:   FileChange{Target: repo, Path: file.Path},
+		Target:       repo,
+		Path:         file.Path,
 		ManifestPath: fs.SourcePath(),
 		DocIndex:     fs.DocIndex(),
 		FileIndex:    fileIndex,
@@ -121,7 +126,7 @@ func planImportEntry(proc *Processor, file manifest.FileEntry, fileIndex int, re
 		currentLocal = file.Content
 	}
 
-	// Set FileChange fields: Current = local, Desired = GitHub (what will be written)
+	// Current = local, Desired = GitHub (what will be written)
 	change.Current = currentLocal
 	change.Desired = state.Content
 
@@ -221,11 +226,12 @@ func ImportSummary(changes []FileImportChange) (written, unchanged, skipped int)
 	return
 }
 
-// ToFileChanges extracts the base FileChange from each import change for unified plan display.
-func ToFileChanges(changes []FileImportChange) []FileChange {
-	out := make([]FileChange, len(changes))
-	for i := range changes {
-		out[i] = changes[i].FileChange
+// HasImportChanges returns true if any import changes are non-noop and non-skip.
+func HasImportChanges(changes []FileImportChange) bool {
+	for _, c := range changes {
+		if c.Type != FileNoOp && c.WriteMode != ImportSkip {
+			return true
+		}
 	}
-	return out
+	return false
 }
