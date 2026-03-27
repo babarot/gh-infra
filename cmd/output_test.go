@@ -44,7 +44,7 @@ func TestSwapChanges_ReversesTypesAndValues(t *testing.T) {
 		},
 	}
 
-	swapped := swapChanges(changes)
+	swapped := repository.ReverseChanges(changes)
 	children := swapped[0].Children
 
 	if children[0].Type != repository.ChangeUpdate {

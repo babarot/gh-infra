@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -97,58 +96,43 @@ func runImportInto(args []string, searchPath string, dryRun bool) error {
 	return nil
 }
 
+type importMatches struct {
+	repositories   []*manifest.Repository
+	fileSets       []*manifest.FileSet
+	skippedRepoSet bool
+}
+
+type repoImportPlan struct {
+	changes      []repository.Change
+	manifestEdits map[string][]byte
+	updatedDocs  int
+}
+
 func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath string, dryRun bool) error {
 	parsed, err := manifest.ParseAll(searchPath)
 	if err != nil {
 		return err
 	}
 
-	// Find matching Repository manifests (skip RepositorySet — reverse merge not yet supported)
-	var matchedRepos []*manifest.Repository
-	var skippedRepoSet bool
-	for _, repo := range parsed.Repositories {
-		if repo.Metadata.FullName() == fullName {
-			if repo.FromSet() {
-				skippedRepoSet = true
-				continue
-			}
-			matchedRepos = append(matchedRepos, repo)
-		}
-	}
-
-	// Find matching FileSet manifests
-	var matchedFileSets []*manifest.FileSet
-	for _, fs := range parsed.FileSets {
-		for _, r := range fs.Spec.Repositories {
-			if fs.RepoFullName(r.Name) == fullName {
-				matchedFileSets = append(matchedFileSets, fs)
-				break
-			}
-		}
-	}
-
-	if len(matchedRepos) == 0 && len(matchedFileSets) == 0 {
+	matches := findImportMatches(parsed, fullName)
+	if len(matches.repositories) == 0 && len(matches.fileSets) == 0 {
 		return fmt.Errorf("no manifests found for %s in %s", fullName, searchPath)
 	}
 
 	runner := gh.NewRunner(false)
+	manifestBytes := make(map[string][]byte)
+	readManifestBytes := func(sourcePath string) error {
+		if _, ok := manifestBytes[sourcePath]; !ok {
+			data, err := os.ReadFile(sourcePath)
+			if err != nil {
+				return fmt.Errorf("read manifest %s: %w", sourcePath, err)
+			}
+			manifestBytes[sourcePath] = data
+		}
+		return nil
+	}
 
-	// Build spinner tasks
-	var tasks []ui.RefreshTask
-	if len(matchedRepos) > 0 {
-		tasks = append(tasks, ui.RefreshTask{
-			Name:      "Importing " + fullName + " (repo)",
-			DoneLabel: "Imported " + fullName + " (repo)",
-			FailLabel: "Failed " + fullName + " (repo)",
-		})
-	}
-	if len(matchedFileSets) > 0 {
-		tasks = append(tasks, ui.RefreshTask{
-			Name:      "Importing " + fullName + " (files)",
-			DoneLabel: "Imported " + fullName + " (files)",
-			FailLabel: "Failed " + fullName + " (files)",
-		})
-	}
+	tasks := buildImportTasks(fullName, len(matches.repositories) > 0, len(matches.fileSets) > 0)
 
 	p.Phase(fmt.Sprintf("Importing from %s ...", fullName))
 	p.BlankLine()
@@ -162,73 +146,23 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 		tracker.Wait()
 	}
 
-	// Collect manifest bytes for in-place edits (repo spec + inline content)
-	manifestBytes := make(map[string][]byte)
-	readManifestBytes := func(sourcePath string) error {
-		if _, ok := manifestBytes[sourcePath]; !ok {
-			data, err := os.ReadFile(sourcePath)
-			if err != nil {
-				return fmt.Errorf("read manifest %s: %w", sourcePath, err)
-			}
-			manifestBytes[sourcePath] = data
-		}
-		return nil
-	}
-
-	// --- Repository import ---
-	var repoUpdated int
-	var repoChanges []repository.Change
-	repoChangedFiles := make(map[string]bool)
-	if len(matchedRepos) > 0 {
+	var repoPlan repoImportPlan
+	if len(matches.repositories) > 0 {
 		key := "Importing " + fullName + " (repo)"
-		fetcher := repository.NewFetcher(runner)
-		resolver := manifest.NewResolver(runner, target.owner)
-
-		githubState, err := fetcher.FetchRepository(target.owner, target.name)
+		repoPlan, err = planRepositoryImport(target, matches.repositories, runner, readManifestBytes, manifestBytes)
 		if err != nil {
 			failAll()
 			return err
 		}
-
-		imported := repository.ToManifest(githubState, resolver)
-
-		// Compute diff: local manifest vs GitHub state
-		// Diff returns "what would change if we apply local to GitHub"
-		// For import display, we swap OldValue/NewValue to show "GitHub → local"
-		for _, repo := range matchedRepos {
-			diffOpts := repository.DiffOptions{Resolver: resolver}
-			changes := repository.Diff(repo, githubState, diffOpts)
-			swapped := swapChanges(changes)
-			repoChanges = append(repoChanges, swapped...)
-			if !repository.HasRealChanges(changes) {
-				continue
-			}
-
-			if err := readManifestBytes(repo.SourcePath()); err != nil {
-				failAll()
-				return err
-			}
-
-			data := manifestBytes[repo.SourcePath()]
-			data, err = fileset.ReplaceYAMLNode(data, repo.DocIndex(), "$.spec", imported.Spec)
-			if err != nil {
-				failAll()
-				return fmt.Errorf("update spec in %s: %w", repo.SourcePath(), err)
-			}
-			manifestBytes[repo.SourcePath()] = data
-			repoChangedFiles[repo.SourcePath()] = true
-			repoUpdated++
-		}
 		tracker.Done(key)
 	}
 
-	// --- FileSet import ---
 	var importChanges []fileset.FileImportChange
-	if len(matchedFileSets) > 0 {
+	if len(matches.fileSets) > 0 {
 		key := "Importing " + fullName + " (files)"
 		processor := fileset.NewProcessor(runner, p)
 
-		importChanges, err = fileset.PlanPull(processor, matchedFileSets, fullName)
+		importChanges, err = fileset.PlanPull(processor, matches.fileSets, fullName)
 		if err != nil {
 			failAll()
 			return err
@@ -237,26 +171,25 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 	tracker.Wait()
 
-	// --- Display using unified plan output ---
-	hasChanges := repository.HasRealChanges(repoChanges) || fileset.HasImportChanges(importChanges)
+	hasChanges := repository.HasRealChanges(repoPlan.changes) || fileset.HasImportChanges(importChanges)
 
-	if !hasChanges && !skippedRepoSet {
+	if !hasChanges && !matches.skippedRepoSet {
 		p.Message("\nNothing to import. Local state is up-to-date.")
 		return nil
 	}
 
 	p.Separator()
 
-	if skippedRepoSet {
+	if matches.skippedRepoSet {
 		p.Warning(fullName, "RepositorySet import not yet supported, use `gh infra import "+fullName+"`")
 	}
 
 	if hasChanges {
-		printUnifiedImportPlan(p, repoChanges, importChanges)
+		printUnifiedImportPlan(p, repoPlan.changes, importChanges)
 	}
 
 	written, unchanged, skipped := fileset.ImportSummary(importChanges)
-	totalWritten := repoUpdated + written
+	totalWritten := repoPlan.updatedDocs + written
 
 	if dryRun {
 		p.Summary(fmt.Sprintf("Dry run: %s to write, %s unchanged, %s to skip.",
@@ -273,7 +206,7 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 
 	// Read manifest bytes for file inline edits
-	for _, fs := range matchedFileSets {
+	for _, fs := range matches.fileSets {
 		if err := readManifestBytes(fs.SourcePath()); err != nil {
 			return err
 		}
@@ -285,18 +218,8 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 
 	// Write back repo spec changes
-	if repoUpdated > 0 {
-		paths := make([]string, 0, len(repoChangedFiles))
-		for path := range repoChangedFiles {
-			paths = append(paths, path)
-		}
-		sort.Strings(paths)
-		for _, path := range paths {
-			data := manifestBytes[path]
-			if err := os.WriteFile(path, data, 0644); err != nil {
-				return fmt.Errorf("write %s: %w", path, err)
-			}
-		}
+	if err := writeRepoImportEdits(repoPlan.manifestEdits); err != nil {
+		return err
 	}
 
 	p.Summary(fmt.Sprintf("Import complete! %s written, %s unchanged, %s skipped.",
@@ -308,31 +231,105 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	return nil
 }
 
-// swapChanges reverses repository changes for import display.
-// Diff produces changes that would update GitHub from local manifest state.
-// For import, we need the opposite direction: local state updated from GitHub.
-func swapChanges(changes []repository.Change) []repository.Change {
-	swapped := make([]repository.Change, len(changes))
-	for i, c := range changes {
-		if len(c.Children) > 0 {
-			c.Children = swapChanges(c.Children)
-		} else {
-			c.OldValue, c.NewValue = c.NewValue, c.OldValue
-		}
+const defaultImportParallel = 5
 
-		switch c.Type {
-		case repository.ChangeCreate:
-			c.Type = repository.ChangeDelete
-		case repository.ChangeDelete:
-			c.Type = repository.ChangeCreate
-		}
+func findImportMatches(parsed *manifest.ParseResult, fullName string) importMatches {
+	var matches importMatches
 
-		swapped[i] = c
+	for _, repo := range parsed.Repositories {
+		if repo.Metadata.FullName() != fullName {
+			continue
+		}
+		if repo.FromSet() {
+			matches.skippedRepoSet = true
+			continue
+		}
+		matches.repositories = append(matches.repositories, repo)
 	}
-	return swapped
+
+	for _, fs := range parsed.FileSets {
+		for _, r := range fs.Spec.Repositories {
+			if fs.RepoFullName(r.Name) == fullName {
+				matches.fileSets = append(matches.fileSets, fs)
+				break
+			}
+		}
+	}
+
+	return matches
 }
 
-const defaultImportParallel = 5
+func buildImportTasks(fullName string, includeRepo, includeFiles bool) []ui.RefreshTask {
+	var tasks []ui.RefreshTask
+	if includeRepo {
+		tasks = append(tasks, ui.RefreshTask{
+			Name:      "Importing " + fullName + " (repo)",
+			DoneLabel: "Imported " + fullName + " (repo)",
+			FailLabel: "Failed " + fullName + " (repo)",
+		})
+	}
+	if includeFiles {
+		tasks = append(tasks, ui.RefreshTask{
+			Name:      "Importing " + fullName + " (files)",
+			DoneLabel: "Imported " + fullName + " (files)",
+			FailLabel: "Failed " + fullName + " (files)",
+		})
+	}
+	return tasks
+}
+
+func planRepositoryImport(target importTarget, repos []*manifest.Repository, runner gh.Runner, readManifestBytes func(string) error, manifestBytes map[string][]byte) (repoImportPlan, error) {
+	fetcher := repository.NewFetcher(runner)
+	resolver := manifest.NewResolver(runner, target.owner)
+
+	githubState, err := fetcher.FetchRepository(target.owner, target.name)
+	if err != nil {
+		return repoImportPlan{}, err
+	}
+
+	imported := repository.ToManifest(githubState, resolver)
+	plan := repoImportPlan{manifestEdits: make(map[string][]byte)}
+
+	for _, repo := range repos {
+		diffOpts := repository.DiffOptions{Resolver: resolver}
+		changes := repository.Diff(repo, githubState, diffOpts)
+		plan.changes = append(plan.changes, repository.ReverseChanges(changes)...)
+		if !repository.HasRealChanges(changes) {
+			continue
+		}
+
+		if err := readManifestBytes(repo.SourcePath()); err != nil {
+			return repoImportPlan{}, err
+		}
+		data := manifestBytes[repo.SourcePath()]
+		data, err = fileset.ReplaceYAMLNode(data, repo.DocIndex(), "$.spec", imported.Spec)
+		if err != nil {
+			return repoImportPlan{}, fmt.Errorf("update spec in %s: %w", repo.SourcePath(), err)
+		}
+		manifestBytes[repo.SourcePath()] = data
+		plan.manifestEdits[repo.SourcePath()] = data
+		plan.updatedDocs++
+	}
+
+	return plan, nil
+}
+
+func writeRepoImportEdits(manifestEdits map[string][]byte) error {
+	if len(manifestEdits) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(manifestEdits))
+	for path := range manifestEdits {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if err := os.WriteFile(path, manifestEdits[path], 0644); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+	}
+	return nil
+}
 
 func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetcher, resolver *manifest.Resolver) error {
 	label := "repository"
@@ -428,17 +425,4 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 	summaryMsg += "."
 	p.Summary(summaryMsg)
 	return nil
-}
-
-// relativePath attempts to make a path relative to the current working directory.
-func relativePath(absPath string) string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return absPath
-	}
-	rel, err := filepath.Rel(cwd, absPath)
-	if err != nil {
-		return absPath
-	}
-	return rel
 }
