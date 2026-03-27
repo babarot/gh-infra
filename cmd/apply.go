@@ -41,7 +41,7 @@ func newApplyCmd() *cobra.Command {
 }
 
 func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown bool) error {
-	result, err := runPipeline(PipelineOptions{
+	result, err := plan.Run(plan.Options{
 		Path:          path,
 		FilterRepo:    filterRepo,
 		FailOnUnknown: failOnUnknown,
@@ -169,7 +169,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 }
 
 // applySkipSelections writes skip selections from the diff viewer back
-// to fileChanges, setting skipped entries to FileNoOp so they are not applied.
+// to fileChanges, setting skipped entries to ChangeNoOp so they are not applied.
 func applySkipSelections(changes []fileset.FileChange, entries []ui.DiffEntry) {
 	type key struct{ target, path string }
 	skipped := make(map[key]bool, len(entries))

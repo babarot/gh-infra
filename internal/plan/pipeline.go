@@ -1,4 +1,4 @@
-package cmd
+package plan
 
 import (
 	"fmt"
@@ -9,13 +9,12 @@ import (
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/plan"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// PipelineOptions configures the shared plan pipeline.
-type PipelineOptions struct {
+// Options configures the shared plan pipeline.
+type Options struct {
 	Path          string
 	FilterRepo    string
 	FailOnUnknown bool
@@ -23,8 +22,8 @@ type PipelineOptions struct {
 	DryRun        bool // true = plan only (skip secret resolution)
 }
 
-// PipelineResult holds the outcome of the plan phase.
-type PipelineResult struct {
+// Result holds the outcome of the plan phase.
+type Result struct {
 	RepoChanges []repository.Change
 	FileChanges []fileset.FileChange
 	TargetRepos []*manifest.Repository
@@ -40,9 +39,9 @@ type PipelineResult struct {
 	HasChanges bool
 }
 
-// runPipeline executes the shared plan phase used by both plan and apply commands.
+// Run executes the shared plan phase used by both plan and apply commands.
 // It parses manifests, fetches current state, computes diffs, and prints the plan.
-func runPipeline(opts PipelineOptions) (*PipelineResult, error) {
+func Run(opts Options) (*Result, error) {
 	p := ui.NewStandardPrinter()
 
 	parsed, err := manifest.ParseAll(opts.Path, manifest.ParseOptions{FailOnUnknown: opts.FailOnUnknown})
@@ -57,7 +56,7 @@ func runPipeline(opts PipelineOptions) (*PipelineResult, error) {
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
 		p.Message("No resources found in " + opts.Path)
-		return &PipelineResult{Printer: p}, nil
+		return &Result{Printer: p}, nil
 	}
 
 	if !opts.DryRun {
@@ -116,7 +115,7 @@ func runPipeline(opts PipelineOptions) (*PipelineResult, error) {
 	hasRepo := repository.HasChanges(repoChanges)
 	hasFile := fileset.HasChanges(fileChanges)
 
-	result := &PipelineResult{
+	result := &Result{
 		RepoChanges: repoChanges,
 		FileChanges: fileChanges,
 		TargetRepos: targetRepos,
@@ -142,7 +141,7 @@ func runPipeline(opts PipelineOptions) (*PipelineResult, error) {
 	p.Separator()
 	p.Legend(result.Creates > 0, result.Updates > 0, result.Deletes > 0)
 
-	plan.PrintPlan(p, repoChanges, fileChanges)
+	PrintPlan(p, repoChanges, fileChanges)
 
 	parts := []string{
 		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", result.Creates))),
