@@ -155,7 +155,17 @@ func inferHTTPStatus(status any, message string) int {
 	}
 
 	// Fall back to message-based inference.
+	// gh cli may report only a human-readable suffix such as "(HTTP 403)"
+	// instead of a symbolic label like "(Forbidden)", so handle both forms.
 	switch {
+	case strings.Contains(message, "HTTP 404"):
+		return 404
+	case strings.Contains(message, "HTTP 401"):
+		return 401
+	case strings.Contains(message, "HTTP 403"):
+		return 403
+	case strings.Contains(message, "HTTP 422"):
+		return 422
 	case strings.Contains(message, "Not Found"):
 		return 404
 	case strings.Contains(message, "Unauthorized"):

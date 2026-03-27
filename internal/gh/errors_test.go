@@ -144,6 +144,11 @@ func TestTryParseAPIError_GHMessageFormat(t *testing.T) {
 			wantStatus: 404,
 		},
 		{
+			name:       "HTTP 403 from gh cli",
+			stderr:     "gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)",
+			wantStatus: 403,
+		},
+		{
 			name:    "unrecognized label",
 			stderr:  "gh: something happened (Unknown Error)",
 			wantNil: true,

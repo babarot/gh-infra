@@ -112,7 +112,15 @@ func (r *GHRunner) exec(args []string, cmdStr string) ([]byte, error) {
 		return nil, retry.Unrecoverable(ErrNotAuthed)
 	}
 
+	// `gh api` can split error details across streams on failure:
+	// machine-readable JSON may be emitted to stdout while the human-oriented
+	// summary stays on stderr. Parse stderr first because plain gh commands
+	// usually report failures there, then fall back to stdout so API errors
+	// still map to typed sentinel errors such as ErrForbidden.
 	apiErr := tryParseAPIError(stderr)
+	if apiErr == nil {
+		apiErr = tryParseAPIError(strings.TrimSpace(outBuf.String()))
+	}
 
 	exitErr := &ExitError{
 		Cmd:      cmdStr,
