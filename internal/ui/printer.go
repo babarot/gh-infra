@@ -34,6 +34,7 @@ type Printer interface {
 	SubItemDelete(field string, value any)
 	FileCreate(path string, lines int)
 	FileUpdate(path string, added, removed int)
+	FileUpdateNote(path, note string, added, removed int)
 	FileDelete(path string, lines int)
 	FileWarning(path, detail string)
 	Success(name, detail string)
@@ -240,6 +241,13 @@ func (p *StandardPrinter) FileUpdate(path string, added, removed int) {
 		Yellow.Render(IconChange), p.subItemWidth(), path, desc, stat)
 }
 
+func (p *StandardPrinter) FileUpdateNote(path, note string, added, removed int) {
+	desc := Yellow.Render(formatFileUpdateNote(note))
+	stat := formatDiffStat(added, removed)
+	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
+		Yellow.Render(IconChange), p.subItemWidth(), path, desc, stat)
+}
+
 func (p *StandardPrinter) FileDelete(path string, lines int) {
 	desc := Red.Render(fmt.Sprintf("%-*s", fileDescWidth, fileDescs["delete"]))
 	stat := formatDiffStat(0, lines)
@@ -265,6 +273,14 @@ func formatDiffStat(added, removed int) string {
 		parts = append(parts, Red.Render(fmt.Sprintf("-%d", removed)))
 	}
 	return " " + strings.Join(parts, " ")
+}
+
+func formatFileUpdateNote(note string) string {
+	base := fileDescs["update"]
+	if len(base) >= 2 && base[0] == '(' && base[len(base)-1] == ')' {
+		base = base[1 : len(base)-1]
+	}
+	return "(" + base + ", " + note + ")"
 }
 
 func renderIcon(icon string) string {

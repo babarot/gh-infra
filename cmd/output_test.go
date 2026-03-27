@@ -145,7 +145,7 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 			Current:   "old\n",
 			Desired:   "new\n",
 			WriteMode: fileset.ImportWriteSource,
-			Warnings:  []string{"uses templates - pulled content is repo-specific"},
+			Warnings:  []string{"rendered template will overwrite source"},
 		},
 	}
 
@@ -160,7 +160,7 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 	if !strings.Contains(out, "VERSION") || !strings.Contains(out, "create_only") {
 		t.Fatalf("expected skipped file in output:\n%s", out)
 	}
-	if !strings.Contains(out, ".github/workflows/build.yaml") || !strings.Contains(out, "uses templates - pulled content is repo-specific") {
-		t.Fatalf("expected inline warning in output:\n%s", out)
+	if !strings.Contains(out, ".github/workflows/build.yaml") || !strings.Contains(out, "content changed, rendered template will overwrite source") {
+		t.Fatalf("expected update line with inline warning in output:\n%s", out)
 	}
 }

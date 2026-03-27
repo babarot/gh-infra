@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/repository"
@@ -367,12 +368,18 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 				case fileset.FileCreate:
 					p.FileCreate(c.Path, added)
 				case fileset.FileUpdate:
-					p.FileUpdate(c.Path, added, removed)
+					if len(c.Warnings) > 0 {
+						p.FileUpdateNote(c.Path, strings.Join(c.Warnings, "; "), added, removed)
+					} else {
+						p.FileUpdate(c.Path, added, removed)
+					}
 				case fileset.FileDelete:
 					p.FileDelete(c.Path, removed)
 				}
-				for _, w := range c.Warnings {
-					p.FileWarning(c.Path, w)
+				if c.Type == fileset.FileNoOp {
+					for _, w := range c.Warnings {
+						p.FileWarning(c.Path, w)
+					}
 				}
 			}
 		}
