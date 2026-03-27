@@ -24,14 +24,14 @@ type FileState struct {
 	Exists  bool
 }
 
-// FileChange represents a planned file change for the apply direction (push to GitHub).
-type FileChange struct {
+// Change represents a planned file change for the apply direction (push to GitHub).
+type Change struct {
 	Target  string // owner/repo
 	Path    string
 	Type    ChangeType
 	Current string // current content (if exists)
 	Desired string // desired content
-	FileSet string // FileSet owner
+	Owner   string // FileSet owner
 	SHA     string // current SHA (for updates via Contents API)
 	Via     string // "push" or "pull_request" (from FileSet spec)
 }
@@ -39,10 +39,10 @@ type FileChange struct {
 type ChangeType string
 
 const (
-	FileCreate ChangeType = "create"
-	FileUpdate ChangeType = "update"
-	FileDelete ChangeType = "delete"
-	FileNoOp   ChangeType = "noop"
+	Create ChangeType = "create"
+	Update ChangeType = "update"
+	Delete ChangeType = "delete"
+	NoOp   ChangeType = "noop"
 )
 
 // Processor handles FileSet plan and apply operations.
@@ -96,7 +96,7 @@ func planTaskKey(fullName string) string {
 
 // Plan computes changes for all FileSets concurrently.
 // If filterRepo is non-empty, only targets matching that repo are processed.
-func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string, tracker *ui.RefreshTracker) ([]FileChange, error) {
+func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string, tracker *ui.RefreshTracker) ([]Change, error) {
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {
@@ -118,13 +118,13 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 
 	// Process each unit concurrently; collect results in order.
 	type unitResult struct {
-		changes []FileChange
+		changes []Change
 		err     error
 	}
 	results := parallel.Map(units, 0, func(i int, u planUnit) unitResult {
 		fullName := u.fullName()
 		displayName := planTaskKey(fullName)
-		var out []FileChange
+		var out []Change
 		for _, file := range u.files {
 			// Template rendering (deep copy vars to avoid data races)
 			needsTemplate := HasTemplate(file.Content, file.Vars) || HasTemplate(file.Path, nil)
@@ -184,11 +184,11 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 			}
 			for _, repoFile := range repoFiles {
 				if !allPlannedPaths[repoFile] {
-					out = append(out, FileChange{
-						Type:    FileDelete,
+					out = append(out, Change{
+						Type:    Delete,
 						Target:  fullName,
 						Path:    repoFile,
-						FileSet: u.fileSetName,
+						Owner: u.fileSetName,
 					})
 				}
 			}
@@ -204,7 +204,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 	})
 
 	// Flatten in original order; return first error.
-	var changes []FileChange
+	var changes []Change
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -215,26 +215,26 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 }
 
 // planCreateOnly handles sync_mode: create_only — create if missing, NoOp if exists.
-func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileEntry) FileChange {
+func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileEntry) Change {
 	current, err := p.FetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
-		return FileChange{
-			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
-			FileSet: fileSetName,
+		return Change{
+			Target: repo, Path: file.Path, Type: Create, Desired: file.Content,
+			Owner: fileSetName,
 		}
 	}
-	return FileChange{
-		Target: repo, Path: file.Path, Type: FileNoOp,
-		FileSet: fileSetName,
+	return Change{
+		Target: repo, Path: file.Path, Type: NoOp,
+		Owner: fileSetName,
 	}
 }
 
-func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) FileChange {
+func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) Change {
 	current, err := p.FetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
-		return FileChange{
-			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
-			FileSet: fileSetName,
+		return Change{
+			Target: repo, Path: file.Path, Type: Create, Desired: file.Content,
+			Owner: fileSetName,
 		}
 	}
 
@@ -243,16 +243,16 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) 
 	desiredContent := strings.TrimRight(file.Content, "\n")
 
 	if currentContent == desiredContent {
-		return FileChange{
-			Target: repo, Path: file.Path, Type: FileNoOp,
-			FileSet: fileSetName,
+		return Change{
+			Target: repo, Path: file.Path, Type: NoOp,
+			Owner: fileSetName,
 		}
 	}
 
 	// Content differs — update
-	return FileChange{
-		Target: repo, Path: file.Path, Type: FileUpdate, Current: current.Content, Desired: file.Content,
-		FileSet: fileSetName, SHA: current.SHA,
+	return Change{
+		Target: repo, Path: file.Path, Type: Update, Current: current.Content, Desired: file.Content,
+		Owner: fileSetName, SHA: current.SHA,
 	}
 }
 
@@ -323,7 +323,7 @@ type ApplyOptions struct {
 	CommitMessage string
 	Via           string // "push" or "pull_request"
 	Branch        string
-	FileSetName   string
+	Owner   string
 	PRTitle       string // custom PR title (pull_request only)
 	PRBody        string // custom PR body (pull_request only)
 }
@@ -332,13 +332,13 @@ const defaultApplyParallel = 5
 
 // Apply executes the planned file changes using Git Data API.
 // Changes are grouped by target repo and applied in parallel across repos.
-func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.ProgressReporter) []FileApplyResult {
+func (p *Processor) Apply(changes []Change, opts ApplyOptions, reporter ui.ProgressReporter) []ApplyResult {
 	grouped := groupChangesByTarget(changes)
 
 	// Build ordered repo list for deterministic output
 	type repoEntry struct {
 		name    string
-		changes []FileChange
+		changes []Change
 	}
 	var repoList []repoEntry
 	for repo, repoChanges := range grouped {
@@ -352,14 +352,14 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 	// Progress reporting is handled by the caller-provided reporter
 
 	// Apply repos in parallel
-	allResults := parallel.Map(repoList, defaultApplyParallel, func(_ int, entry repoEntry) []FileApplyResult {
-		var results []FileApplyResult
-		var filesToApply []FileChange
+	allResults := parallel.Map(repoList, defaultApplyParallel, func(_ int, entry repoEntry) []ApplyResult {
+		var results []ApplyResult
+		var filesToApply []Change
 		for _, c := range entry.changes {
 			switch c.Type {
-			case FileCreate, FileUpdate, FileDelete:
+			case Create, Update, Delete:
 				filesToApply = append(filesToApply, c)
-			case FileNoOp:
+			case NoOp:
 				// do nothing
 			}
 		}
@@ -380,7 +380,7 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 		elapsed := time.Since(start)
 
 		for _, c := range filesToApply {
-			results = append(results, FileApplyResult{
+			results = append(results, ApplyResult{
 				Change: c,
 				Err:    err,
 				Via:    opts.Via,
@@ -398,22 +398,22 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 	reporter.Wait()
 
 	// Flatten in order
-	var results []FileApplyResult
+	var results []ApplyResult
 	for _, r := range allResults {
 		results = append(results, r...)
 	}
 	return results
 }
 
-type FileApplyResult struct {
-	Change FileChange
+type ApplyResult struct {
+	Change Change
 	Err    error
 	Via    string // "push" or "pull_request"
 	PRURL  string // non-empty when via is pull_request
 }
 
-func groupChangesByTarget(changes []FileChange) map[string][]FileChange {
-	grouped := make(map[string][]FileChange)
+func groupChangesByTarget(changes []Change) map[string][]Change {
+	grouped := make(map[string][]Change)
 	for _, c := range changes {
 		grouped[c.Target] = append(grouped[c.Target], c)
 	}
@@ -432,7 +432,7 @@ type treeEntry struct {
 // applyToRepo creates a single commit with all file changes using Git Data API.
 // Falls back to Contents API for empty repositories (no commits yet).
 // applyToRepo returns (prURL, error). prURL is non-empty only for pull_request strategy.
-func (p *Processor) applyToRepo(repo string, changes []FileChange, opts ApplyOptions) (string, error) {
+func (p *Processor) applyToRepo(repo string, changes []Change, opts ApplyOptions) (string, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(repo)
 	if err != nil {
 		if strings.Contains(err.Error(), "repository is empty") {
@@ -450,13 +450,13 @@ func resolveCommitMessage(opts ApplyOptions) string {
 	if opts.CommitMessage != "" {
 		return opts.CommitMessage
 	}
-	return fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetName)
+	return fmt.Sprintf("chore: sync %s files via gh-infra", opts.Owner)
 }
 
 // applyViaGitDataAPI creates blobs, a tree, a commit, and updates the ref
 // (or creates a PR) in a single atomic operation. All files are included in
 // one commit regardless of count.
-func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []FileChange, message string, opts ApplyOptions) (string, error) {
+func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []Change, message string, opts ApplyOptions) (string, error) {
 	// 1. Create blobs
 	entries, err := p.createBlobs(repo, changes)
 	if err != nil {
@@ -483,11 +483,11 @@ func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []F
 }
 
 // createBlobs creates a Git blob for each file change and returns tree entries.
-// FileDelete entries get a nil SHA which tells the Git Data API to remove the file.
-func (p *Processor) createBlobs(repo string, changes []FileChange) ([]treeEntry, error) {
+// Delete entries get a nil SHA which tells the Git Data API to remove the file.
+func (p *Processor) createBlobs(repo string, changes []Change) ([]treeEntry, error) {
 	var entries []treeEntry
 	for _, c := range changes {
-		if c.Type == FileDelete {
+		if c.Type == Delete {
 			entries = append(entries, treeEntry{
 				Path: c.Path,
 				Mode: "100644",
@@ -512,11 +512,11 @@ func (p *Processor) createBlobs(repo string, changes []FileChange) ([]treeEntry,
 }
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
-func (p *Processor) applyToEmptyRepo(repo string, changes []FileChange, opts ApplyOptions) error {
+func (p *Processor) applyToEmptyRepo(repo string, changes []Change, opts ApplyOptions) error {
 	p.printer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
 	message := opts.CommitMessage
 	if message == "" {
-		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetName)
+		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.Owner)
 	}
 	for _, c := range changes {
 		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
@@ -680,7 +680,7 @@ func (p *Processor) updateRef(repo, branch, commitSHA string) error {
 func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts ApplyOptions) (string, error) {
 	branchName := opts.Branch
 	if branchName == "" {
-		branchName = fmt.Sprintf("gh-infra/sync-%s", opts.FileSetName)
+		branchName = fmt.Sprintf("gh-infra/sync-%s", opts.Owner)
 	}
 
 	// Create branch pointing to the new commit; if it already exists, force-update it.
@@ -709,7 +709,7 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 	}
 	prBody := opts.PRBody
 	if prBody == "" {
-		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetName)
+		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.Owner)
 	}
 	out, err := p.runner.Run("pr", "create",
 		"--repo", repo,
@@ -737,14 +737,14 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 }
 
 // PrintPlan prints FileSet changes.
-func PrintPlan(p ui.Printer, changes []FileChange) {
+func PrintPlan(p ui.Printer, changes []Change) {
 	if len(changes) == 0 {
 		return
 	}
 
 	hasChanges := false
 	for _, c := range changes {
-		if c.Type != FileNoOp {
+		if c.Type != NoOp {
 			hasChanges = true
 			break
 		}
@@ -757,16 +757,16 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 	type groupKey struct{ fileSet, target string }
 	type group struct {
 		key     groupKey
-		changes []FileChange
+		changes []Change
 	}
 	seen := make(map[groupKey]int)
 	var groups []group
 
 	for _, c := range changes {
-		if c.Type == FileNoOp {
+		if c.Type == NoOp {
 			continue
 		}
-		k := groupKey{c.FileSet, c.Target}
+		k := groupKey{c.Owner, c.Target}
 		idx, ok := seen[k]
 		if !ok {
 			idx = len(groups)
@@ -792,11 +792,11 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 		for _, c := range g.changes {
 			added, removed := DiffStat(c.Current, c.Desired)
 			switch c.Type {
-			case FileCreate:
+			case Create:
 				p.FileCreate(c.Path, added)
-			case FileUpdate:
+			case Update:
 				p.FileUpdate(c.Path, added, removed)
-			case FileDelete:
+			case Delete:
 				p.FileDelete(c.Path, removed)
 			}
 		}
@@ -806,7 +806,7 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 }
 
 // PrintApplyResults prints the results of FileSet apply.
-func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
+func PrintApplyResults(p ui.Printer, results []ApplyResult) {
 	for _, r := range results {
 		if r.Err != nil {
 			p.Error(r.Change.Target, fmt.Sprintf("%s: %s", r.Change.Path, r.Err.Error()))
@@ -817,9 +817,9 @@ func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 }
 
 // HasChanges returns true if any apply file changes are non-noop.
-func HasChanges(changes []FileChange) bool {
+func HasChanges(changes []Change) bool {
 	for _, c := range changes {
-		if c.Type != FileNoOp {
+		if c.Type != NoOp {
 			return true
 		}
 	}
@@ -827,14 +827,14 @@ func HasChanges(changes []FileChange) bool {
 }
 
 // CountChanges returns create, update, delete counts.
-func CountChanges(changes []FileChange) (creates, updates, deletes int) {
+func CountChanges(changes []Change) (creates, updates, deletes int) {
 	for _, c := range changes {
 		switch c.Type {
-		case FileCreate:
+		case Create:
 			creates++
-		case FileUpdate:
+		case Update:
 			updates++
-		case FileDelete:
+		case Delete:
 			deletes++
 		}
 	}
@@ -860,7 +860,7 @@ func DiffStat(current, desired string) (added, removed int) {
 	return
 }
 
-func PrintSummary(p ui.Printer, results []FileApplyResult) {
+func PrintSummary(p ui.Printer, results []ApplyResult) {
 	succeeded := 0
 	failed := 0
 	for _, r := range results {

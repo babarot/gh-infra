@@ -104,7 +104,7 @@ func planImportEntry(fetchFile FileContentFetcher, file fileset.ResolvedFile, re
 		yamlPath, ok := importYAMLPath(file.Origin)
 		if !ok {
 			change.WriteMode = WriteSkip
-			change.Type = fileset.FileNoOp
+			change.Type = fileset.NoOp
 			change.Reason = "inline source mapping unavailable"
 			return change
 		}
@@ -114,7 +114,7 @@ func planImportEntry(fetchFile FileContentFetcher, file fileset.ResolvedFile, re
 	} else {
 		// github:// or other remote source — can't write back locally
 		change.WriteMode = WriteSkip
-		change.Type = fileset.FileNoOp
+		change.Type = fileset.NoOp
 		change.Reason = "remote source"
 		return change
 	}
@@ -122,7 +122,7 @@ func planImportEntry(fetchFile FileContentFetcher, file fileset.ResolvedFile, re
 	// Skip create_only files
 	if file.Reconcile == "create_only" {
 		change.WriteMode = WriteSkip
-		change.Type = fileset.FileNoOp
+		change.Type = fileset.NoOp
 		change.Reason = "create_only"
 		return change
 	}
@@ -131,7 +131,7 @@ func planImportEntry(fetchFile FileContentFetcher, file fileset.ResolvedFile, re
 	state, err := fetchFile(repo, file.Path)
 	if err != nil || !state.Exists {
 		change.WriteMode = WriteSkip
-		change.Type = fileset.FileNoOp
+		change.Type = fileset.NoOp
 		change.Reason = "not on GitHub"
 		return change
 	}
@@ -150,14 +150,14 @@ func planImportEntry(fetchFile FileContentFetcher, file fileset.ResolvedFile, re
 	change.Desired = state.Content
 
 	if strings.TrimRight(state.Content, "\n") == strings.TrimRight(currentLocal, "\n") {
-		change.Type = fileset.FileNoOp
+		change.Type = fileset.NoOp
 		return change
 	}
 
 	if currentLocal == "" {
-		change.Type = fileset.FileCreate
+		change.Type = fileset.Create
 	} else {
-		change.Type = fileset.FileUpdate
+		change.Type = fileset.Update
 	}
 
 	return change
@@ -220,7 +220,7 @@ func FileSummary(changes []Change) (written, unchanged, skipped int) {
 	for _, c := range changes {
 		switch c.WriteMode {
 		case WriteSource, WriteInline:
-			if c.Type == fileset.FileNoOp {
+			if c.Type == fileset.NoOp {
 				unchanged++
 			} else {
 				written++
@@ -235,7 +235,7 @@ func FileSummary(changes []Change) (written, unchanged, skipped int) {
 // HasFileChanges returns true if any import changes are non-noop and non-skip.
 func HasFileChanges(changes []Change) bool {
 	for _, c := range changes {
-		if c.Type != fileset.FileNoOp && c.WriteMode != WriteSkip {
+		if c.Type != fileset.NoOp && c.WriteMode != WriteSkip {
 			return true
 		}
 	}

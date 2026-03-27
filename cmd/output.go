@@ -15,7 +15,7 @@ const maxImportDisplayPathWidth = 44
 
 // printUnifiedPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
-func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileChange) {
+func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -29,7 +29,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 		}
 	}
 	for _, c := range fileChanges {
-		if c.Type == fileset.FileNoOp {
+		if c.Type == fileset.NoOp {
 			continue
 		}
 		if !seen[c.Target] {
@@ -39,9 +39,9 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 	}
 
 	// Index changes by repo name
-	fileByTarget := make(map[string][]fileset.FileChange)
+	fileByTarget := make(map[string][]fileset.Change)
 	for _, c := range fileChanges {
-		if c.Type == fileset.FileNoOp {
+		if c.Type == fileset.NoOp {
 			continue
 		}
 		fileByTarget[c.Target] = append(fileByTarget[c.Target], c)
@@ -104,11 +104,11 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			for _, c := range fChanges {
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				switch c.Type {
-				case fileset.FileCreate:
+				case fileset.Create:
 					p.FileCreate(c.Path, added)
-				case fileset.FileUpdate:
+				case fileset.Update:
 					p.FileUpdate(c.Path, added, removed)
-				case fileset.FileDelete:
+				case fileset.Delete:
 					p.FileDelete(c.Path, removed)
 				}
 			}
@@ -123,7 +123,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 
 // printUnifiedApplyResults prints apply results grouped by repo name,
 // mirroring the hierarchical structure of printUnifiedPlan.
-func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.FileApplyResult) {
+func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.ApplyResult) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -147,7 +147,7 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 	for _, r := range repoResults {
 		repoByName[r.Change.Name] = append(repoByName[r.Change.Name], r)
 	}
-	fileByTarget := make(map[string][]fileset.FileApplyResult)
+	fileByTarget := make(map[string][]fileset.ApplyResult)
 	for _, r := range fileResults {
 		fileByTarget[r.Change.Target] = append(fileByTarget[r.Change.Target], r)
 	}
@@ -223,7 +223,7 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 }
 
 // computeColumnWidth returns the max field/path width across both repo and file changes.
-func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileChange) int {
+func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.Change) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
@@ -370,14 +370,14 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				switch c.Type {
-				case fileset.FileCreate:
+				case fileset.Create:
 					p.FileCreate(displayPath, added)
-				case fileset.FileUpdate:
+				case fileset.Update:
 					p.FileUpdate(displayPath, added, removed)
-				case fileset.FileDelete:
+				case fileset.Delete:
 					p.FileDelete(displayPath, removed)
 				}
-				if c.Type == fileset.FileNoOp {
+				if c.Type == fileset.NoOp {
 					for _, w := range c.Warnings {
 						p.FileWarning(displayPath, w)
 					}
@@ -395,7 +395,7 @@ func shouldDisplayImportChange(c importer.Change) bool {
 	if c.WriteMode == importer.WriteSkip {
 		return true
 	}
-	if c.Type != fileset.FileNoOp {
+	if c.Type != fileset.NoOp {
 		return true
 	}
 	return len(c.Warnings) > 0

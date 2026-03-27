@@ -95,7 +95,7 @@ func TestPrintUnifiedImportPlan_PrintsNestedRepoChanges(t *testing.T) {
 		{
 			Target:    "org/repo",
 			Path:      ".github/workflows/ci.yml",
-			Type:      fileset.FileUpdate,
+			Type:      fileset.Update,
 			Current:   "old\n",
 			Desired:   "new\n",
 			WriteMode: importer.WriteSource,
@@ -135,14 +135,14 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 		{
 			Target:    "org/repo",
 			Path:      "VERSION",
-			Type:      fileset.FileNoOp,
+			Type:      fileset.NoOp,
 			WriteMode: importer.WriteSkip,
 			Reason:    "create_only",
 		},
 		{
 			Target:      "org/repo",
 			Path:        ".github/workflows/build.yaml",
-			Type:        fileset.FileUpdate,
+			Type:        fileset.Update,
 			Current:     "old\n",
 			Desired:     "new\n",
 			WriteMode:   importer.WriteSource,

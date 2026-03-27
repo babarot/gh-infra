@@ -81,7 +81,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	// Compute all changes in parallel
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
-	var fileChanges []fileset.FileChange
+	var fileChanges []fileset.Change
 
 	// Collect all target names and start a single spinner display
 	var allTasks []ui.RefreshTask
@@ -163,7 +163,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	stream := ui.OutputMode() == "stream"
 
 	var allRepoResults []repository.ApplyResult
-	var allFileResults []fileset.FileApplyResult
+	var allFileResults []fileset.ApplyResult
 
 	// Apply repo changes
 	if hasRepo {
@@ -190,9 +190,9 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	if hasFile {
 		processor := fileset.NewProcessor(runner, p)
 		for _, fs := range parsed.FileSetDocs {
-			var fsChanges []fileset.FileChange
+			var fsChanges []fileset.Change
 			for _, c := range fileChanges {
-				if c.FileSet == fs.Resource.Metadata.Owner {
+				if c.Owner == fs.Resource.Metadata.Owner {
 					fsChanges = append(fsChanges, c)
 				}
 			}
@@ -203,7 +203,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 				CommitMessage: fs.Resource.Spec.CommitMessage,
 				Via:           fs.Resource.Spec.Via,
 				Branch:        fs.Resource.Spec.Branch,
-				FileSetName:   fs.Resource.Metadata.Owner,
+				Owner:         fs.Resource.Metadata.Owner,
 				PRTitle:       fs.Resource.Spec.PRTitle,
 				PRBody:        fs.Resource.Spec.PRBody,
 			}
@@ -252,7 +252,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 // applySkipSelections writes skip selections from the diff viewer back
 // to fileChanges, setting skipped entries to FileNoOp so they are not applied.
-func applySkipSelections(changes []fileset.FileChange, entries []ui.DiffEntry) {
+func applySkipSelections(changes []fileset.Change, entries []ui.DiffEntry) {
 	// Build a set of target+path keys that were marked as skipped
 	type key struct{ target, path string }
 	skipped := make(map[key]bool, len(entries))
@@ -263,21 +263,21 @@ func applySkipSelections(changes []fileset.FileChange, entries []ui.DiffEntry) {
 	}
 	for i := range changes {
 		if skipped[key{changes[i].Target, changes[i].Path}] {
-			changes[i].Type = fileset.FileNoOp
+			changes[i].Type = fileset.NoOp
 		}
 	}
 }
 
-func buildDiffEntries(changes []fileset.FileChange) []ui.DiffEntry {
+func buildDiffEntries(changes []fileset.Change) []ui.DiffEntry {
 	var entries []ui.DiffEntry
 	for _, c := range changes {
 		var icon string
 		switch c.Type {
-		case fileset.FileCreate:
+		case fileset.Create:
 			icon = ui.IconAdd
-		case fileset.FileUpdate:
+		case fileset.Update:
 			icon = ui.IconChange
-		case fileset.FileDelete:
+		case fileset.Delete:
 			icon = ui.IconRemove
 		default:
 			continue

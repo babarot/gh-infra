@@ -74,8 +74,8 @@ func TestPlan_NewFile(t *testing.T) {
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
 	}
-	if changes[0].Type != FileCreate {
-		t.Errorf("expected FileCreate, got %s", changes[0].Type)
+	if changes[0].Type != Create {
+		t.Errorf("expected Create, got %s", changes[0].Type)
 	}
 	if changes[0].Desired != "name: CI" {
 		t.Errorf("unexpected desired content: %q", changes[0].Desired)
@@ -99,8 +99,8 @@ func TestPlan_NoChange(t *testing.T) {
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
 	}
-	if changes[0].Type != FileNoOp {
-		t.Errorf("expected FileNoOp, got %s", changes[0].Type)
+	if changes[0].Type != NoOp {
+		t.Errorf("expected NoOp, got %s", changes[0].Type)
 	}
 }
 
@@ -122,8 +122,8 @@ func TestPlan_ContentDiffers(t *testing.T) {
 		t.Fatalf("expected 1 change, got %d", len(changes))
 	}
 	c := changes[0]
-	if c.Type != FileUpdate {
-		t.Errorf("expected FileUpdate, got %s", c.Type)
+	if c.Type != Update {
+		t.Errorf("expected Update, got %s", c.Type)
 	}
 	if c.SHA != "sha1" {
 		t.Errorf("expected SHA=sha1, got %s", c.SHA)
@@ -147,8 +147,8 @@ func TestPlan_CreateOnly_FileNotExists(t *testing.T) {
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
 	}
-	if changes[0].Type != FileCreate {
-		t.Errorf("expected FileCreate, got %s", changes[0].Type)
+	if changes[0].Type != Create {
+		t.Errorf("expected Create, got %s", changes[0].Type)
 	}
 }
 
@@ -169,8 +169,8 @@ func TestPlan_CreateOnly_FileExists(t *testing.T) {
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
 	}
-	if changes[0].Type != FileNoOp {
-		t.Errorf("expected FileNoOp (file exists, create_only ignores), got %s", changes[0].Type)
+	if changes[0].Type != NoOp {
+		t.Errorf("expected NoOp (file exists, create_only ignores), got %s", changes[0].Type)
 	}
 }
 
@@ -197,12 +197,12 @@ func TestPlan_MultipleFilesDiffer(t *testing.T) {
 		t.Fatalf("expected 2 changes, got %d", len(changes))
 	}
 
-	// Both files differ → FileUpdate
-	if changes[0].Type != FileUpdate {
-		t.Errorf("a.txt: expected FileUpdate, got %s", changes[0].Type)
+	// Both files differ → Update
+	if changes[0].Type != Update {
+		t.Errorf("a.txt: expected Update, got %s", changes[0].Type)
 	}
-	if changes[1].Type != FileUpdate {
-		t.Errorf("b.txt: expected FileUpdate, got %s", changes[1].Type)
+	if changes[1].Type != Update {
+		t.Errorf("b.txt: expected Update, got %s", changes[1].Type)
 	}
 }
 
@@ -251,14 +251,14 @@ func TestApply_CreateFile(t *testing.T) {
 	mock := setupGitDataAPIMock("owner/repo")
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-	changes := []FileChange{
+	changes := []Change{
 		{
-			Target: "owner/repo", Path: ".github/ci.yml", Type: FileCreate, Desired: "name: CI",
-			FileSet: "ci-files",
+			Target: "owner/repo", Path: ".github/ci.yml", Type: Create, Desired: "name: CI",
+			Owner: "ci-files",
 		},
 	}
 
-	results := p.Apply(changes, ApplyOptions{FileSetName: "test"}, ui.NoopReporter{})
+	results := p.Apply(changes, ApplyOptions{Owner: "test"}, ui.NoopReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -280,14 +280,14 @@ func TestApply_UpdateFile(t *testing.T) {
 	mock := setupGitDataAPIMock("owner/repo")
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-	changes := []FileChange{
+	changes := []Change{
 		{
-			Target: "owner/repo", Path: ".github/ci.yml", Type: FileUpdate, Desired: "name: CI v2",
-			FileSet: "ci-files", SHA: "old123",
+			Target: "owner/repo", Path: ".github/ci.yml", Type: Update, Desired: "name: CI v2",
+			Owner: "ci-files", SHA: "old123",
 		},
 	}
 
-	results := p.Apply(changes, ApplyOptions{FileSetName: "test"}, ui.NoopReporter{})
+	results := p.Apply(changes, ApplyOptions{Owner: "test"}, ui.NoopReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -312,12 +312,12 @@ func TestApply_NoOpNotApplied(t *testing.T) {
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-	changes := []FileChange{
-		{Type: FileNoOp, Target: "owner/repo", Path: "a.txt"},
-		{Type: FileNoOp, Target: "owner/repo", Path: "b.txt"},
+	changes := []Change{
+		{Type: NoOp, Target: "owner/repo", Path: "a.txt"},
+		{Type: NoOp, Target: "owner/repo", Path: "b.txt"},
 	}
 
-	results := p.Apply(changes, ApplyOptions{FileSetName: "test"}, ui.NoopReporter{})
+	results := p.Apply(changes, ApplyOptions{Owner: "test"}, ui.NoopReporter{})
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for noop, got %d", len(results))
@@ -332,10 +332,10 @@ func TestApply_NoOpNotApplied(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHasChanges_AllNoOp(t *testing.T) {
-	changes := []FileChange{
-		{Type: FileNoOp},
-		{Type: FileNoOp},
-		{Type: FileNoOp},
+	changes := []Change{
+		{Type: NoOp},
+		{Type: NoOp},
+		{Type: NoOp},
 	}
 	if HasChanges(changes) {
 		t.Error("expected HasChanges=false for all noop")
@@ -345,22 +345,22 @@ func TestHasChanges_AllNoOp(t *testing.T) {
 func TestHasChanges_WithCreateOrUpdate(t *testing.T) {
 	tests := []struct {
 		name    string
-		changes []FileChange
+		changes []Change
 		want    bool
 	}{
 		{
 			name:    "with create",
-			changes: []FileChange{{Type: FileNoOp}, {Type: FileCreate}},
+			changes: []Change{{Type: NoOp}, {Type: Create}},
 			want:    true,
 		},
 		{
 			name:    "with update",
-			changes: []FileChange{{Type: FileUpdate}},
+			changes: []Change{{Type: Update}},
 			want:    true,
 		},
 		{
 			name:    "empty",
-			changes: []FileChange{},
+			changes: []Change{},
 			want:    false,
 		},
 	}
@@ -379,11 +379,11 @@ func TestHasChanges_WithCreateOrUpdate(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCountChanges(t *testing.T) {
-	changes := []FileChange{
-		{Type: FileCreate},
-		{Type: FileCreate},
-		{Type: FileUpdate},
-		{Type: FileNoOp},
+	changes := []Change{
+		{Type: Create},
+		{Type: Create},
+		{Type: Update},
+		{Type: NoOp},
 	}
 
 	creates, updates, deletes := CountChanges(changes)
@@ -407,11 +407,11 @@ func TestPrintPlan(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	changes := []FileChange{
-		{Target: "org/repo-a", Path: ".github/ci.yml", Type: FileCreate, FileSet: "ci"},
-		{Target: "org/repo-a", Path: ".github/lint.yml", Type: FileUpdate, FileSet: "ci"},
-		{Target: "org/repo-b", Path: ".github/ci.yml", Type: FileDelete, FileSet: "ci"},
-		{Target: "org/repo-c", Path: ".github/ci.yml", Type: FileNoOp, FileSet: "ci"},
+	changes := []Change{
+		{Target: "org/repo-a", Path: ".github/ci.yml", Type: Create, Owner: "ci"},
+		{Target: "org/repo-a", Path: ".github/lint.yml", Type: Update, Owner: "ci"},
+		{Target: "org/repo-b", Path: ".github/ci.yml", Type: Delete, Owner: "ci"},
+		{Target: "org/repo-c", Path: ".github/ci.yml", Type: NoOp, Owner: "ci"},
 	}
 
 	PrintPlan(p, changes)
@@ -444,8 +444,8 @@ func TestPrintPlan_AllNoOp(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	changes := []FileChange{
-		{Target: "org/repo", Path: "a.txt", Type: FileNoOp, FileSet: "ci"},
+	changes := []Change{
+		{Target: "org/repo", Path: "a.txt", Type: NoOp, Owner: "ci"},
 	}
 
 	PrintPlan(p, changes)
@@ -458,7 +458,7 @@ func TestPrintPlan_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintPlan(p, []FileChange{})
+	PrintPlan(p, []Change{})
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output for empty changes, got:\n%s", buf.String())
 	}
@@ -472,13 +472,13 @@ func TestPrintApplyResults(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	results := []FileApplyResult{
+	results := []ApplyResult{
 		{
-			Change: FileChange{Target: "org/repo", Path: "a.txt", Type: FileCreate},
+			Change: Change{Target: "org/repo", Path: "a.txt", Type: Create},
 			Err:    nil,
 		},
 		{
-			Change: FileChange{Target: "org/repo", Path: "b.txt", Type: FileUpdate},
+			Change: Change{Target: "org/repo", Path: "b.txt", Type: Update},
 			Err:    fmt.Errorf("permission denied"),
 		},
 	}
@@ -502,10 +502,10 @@ func TestPrintSummary(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	results := []FileApplyResult{
-		{Change: FileChange{}, Err: nil},
-		{Change: FileChange{}, Err: nil},
-		{Change: FileChange{}, Err: fmt.Errorf("error")},
+	results := []ApplyResult{
+		{Change: Change{}, Err: nil},
+		{Change: Change{}, Err: nil},
+		{Change: Change{}, Err: fmt.Errorf("error")},
 	}
 
 	PrintSummary(p, results)
@@ -523,9 +523,9 @@ func TestPrintSummary_AllSuccess(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	results := []FileApplyResult{
-		{Change: FileChange{}, Err: nil},
-		{Change: FileChange{}, Err: nil},
+	results := []ApplyResult{
+		{Change: Change{}, Err: nil},
+		{Change: Change{}, Err: nil},
 	}
 
 	PrintSummary(p, results)
@@ -562,7 +562,7 @@ func dirContentsJSON(files []struct{ Path, Type string }) []byte {
 }
 
 func TestPlan_MirrorDetectsOrphans(t *testing.T) {
-	// file1.yml is declared in YAML, file2.yml is NOT → file2.yml should be FileDelete
+	// file1.yml is declared in YAML, file2.yml is NOT → file2.yml should be Delete
 	dirFiles := []struct{ Path, Type string }{
 		{Path: "config/file1.yml", Type: "file"},
 		{Path: "config/file2.yml", Type: "file"},
@@ -618,12 +618,12 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 
 	var foundDelete bool
 	for _, c := range changes {
-		if c.Path == "config/file2.yml" && c.Type == FileDelete {
+		if c.Path == "config/file2.yml" && c.Type == Delete {
 			foundDelete = true
 		}
 	}
 	if !foundDelete {
-		t.Errorf("expected FileDelete for config/file2.yml, changes: %+v", changes)
+		t.Errorf("expected Delete for config/file2.yml, changes: %+v", changes)
 	}
 }
 
@@ -677,19 +677,19 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 	}
 
 	for _, c := range changes {
-		if c.Type == FileDelete {
-			t.Errorf("patch mode should not generate FileDelete, got delete for %s", c.Path)
+		if c.Type == Delete {
+			t.Errorf("patch mode should not generate Delete, got delete for %s", c.Path)
 		}
 	}
 }
 
 func TestCountChanges_WithDeletes(t *testing.T) {
-	changes := []FileChange{
-		{Type: FileCreate},
-		{Type: FileUpdate},
-		{Type: FileDelete},
-		{Type: FileDelete},
-		{Type: FileNoOp},
+	changes := []Change{
+		{Type: Create},
+		{Type: Update},
+		{Type: Delete},
+		{Type: Delete},
+		{Type: NoOp},
 	}
 
 	creates, updates, deletes := CountChanges(changes)
@@ -705,21 +705,21 @@ func TestCountChanges_WithDeletes(t *testing.T) {
 	}
 }
 
-func TestHasChanges_FileDelete(t *testing.T) {
-	changes := []FileChange{
-		{Type: FileNoOp},
-		{Type: FileDelete},
+func TestHasChanges_Delete(t *testing.T) {
+	changes := []Change{
+		{Type: NoOp},
+		{Type: Delete},
 	}
 	if !HasChanges(changes) {
-		t.Error("expected HasChanges=true when FileDelete is present")
+		t.Error("expected HasChanges=true when Delete is present")
 	}
 }
 
 func TestHasChanges_OnlyDeletes(t *testing.T) {
-	changes := []FileChange{
-		{Type: FileDelete},
+	changes := []Change{
+		{Type: Delete},
 	}
 	if !HasChanges(changes) {
-		t.Error("expected HasChanges=true when only FileDelete changes exist")
+		t.Error("expected HasChanges=true when only Delete changes exist")
 	}
 }
