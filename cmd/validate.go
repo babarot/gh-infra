@@ -43,11 +43,14 @@ func runValidate(path string, failOnUnknown bool) error {
 		p.Warning("deprecation", w)
 	}
 
-	p.Success("Valid", fmt.Sprintf("%d repositories, %d filesets defined", len(parsed.Repositories), len(parsed.FileSets)))
-	for _, r := range parsed.Repositories {
+	repositories := parsed.Repositories()
+	fileSets := parsed.FileSets()
+
+	p.Success("Valid", fmt.Sprintf("%d repositories, %d filesets defined", len(repositories), len(fileSets)))
+	for _, r := range repositories {
 		p.Message("  - Repository: " + r.Metadata.FullName())
 	}
-	for _, fs := range parsed.FileSets {
+	for _, fs := range fileSets {
 		p.Message(fmt.Sprintf("  - FileSet: %s (%d files → %d repositories)", fs.Metadata.Owner, len(fs.Spec.Files), len(fs.Spec.Repositories)))
 	}
 	return nil

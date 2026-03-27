@@ -203,7 +203,7 @@ metadata:
 	if err != nil {
 		t.Fatalf("expected no error with default options, got: %v", err)
 	}
-	if len(result.Repositories) != 0 || len(result.FileSets) != 0 {
+	if len(result.Repositories()) != 0 || len(result.FileSets()) != 0 {
 		t.Fatal("expected empty result for unknown kind")
 	}
 
@@ -528,11 +528,12 @@ spec:
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
-	if len(result.FileSets) != 1 {
-		t.Fatalf("expected 1 fileset, got %d", len(result.FileSets))
+	fileSets := result.FileSets()
+	if len(fileSets) != 1 {
+		t.Fatalf("expected 1 fileset, got %d", len(fileSets))
 	}
 
-	fs := result.FileSets[0]
+	fs := fileSets[0]
 	if fs.Metadata.Owner != "org" {
 		t.Errorf("owner = %q, want %q", fs.Metadata.Owner, "org")
 	}
@@ -588,7 +589,7 @@ spec:
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
 
-	fs := result.FileSets[0]
+	fs := result.FileSets()[0]
 	if fs.Spec.Files[0].Source != "template.txt" {
 		t.Errorf("raw spec source = %q, want %q", fs.Spec.Files[0].Source, "template.txt")
 	}
@@ -748,17 +749,19 @@ spec:
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
-	if len(result.Repositories) != 1 {
-		t.Errorf("expected 1 repository, got %d", len(result.Repositories))
+	repositories := result.Repositories()
+	fileSets := result.FileSets()
+	if len(repositories) != 1 {
+		t.Errorf("expected 1 repository, got %d", len(repositories))
 	}
-	if len(result.FileSets) != 1 {
-		t.Errorf("expected 1 fileset, got %d", len(result.FileSets))
+	if len(fileSets) != 1 {
+		t.Errorf("expected 1 fileset, got %d", len(fileSets))
 	}
-	if result.Repositories[0].Metadata.Name != "my-repo" {
-		t.Errorf("repo name = %q, want %q", result.Repositories[0].Metadata.Name, "my-repo")
+	if repositories[0].Metadata.Name != "my-repo" {
+		t.Errorf("repo name = %q, want %q", repositories[0].Metadata.Name, "my-repo")
 	}
-	if result.FileSets[0].Metadata.Owner != "org" {
-		t.Errorf("fileset owner = %q, want %q", result.FileSets[0].Metadata.Owner, "org")
+	if fileSets[0].Metadata.Owner != "org" {
+		t.Errorf("fileset owner = %q, want %q", fileSets[0].Metadata.Owner, "org")
 	}
 }
 
@@ -788,11 +791,12 @@ spec:
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
-	if len(result.FileSets) != 1 {
-		t.Fatalf("expected 1 fileset (expanded from File), got %d", len(result.FileSets))
+	fileSets := result.FileSets()
+	if len(fileSets) != 1 {
+		t.Fatalf("expected 1 fileset (expanded from File), got %d", len(fileSets))
 	}
 
-	fs := result.FileSets[0]
+	fs := fileSets[0]
 	if fs.Metadata.Owner != "org" {
 		t.Errorf("owner = %q, want %q", fs.Metadata.Owner, "org")
 	}
@@ -892,7 +896,7 @@ spec:
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
 
-	fs := result.FileSets[0]
+	fs := result.FileSets()[0]
 	if fs.Spec.Files[0].Source != "tmpl.txt" {
 		t.Errorf("raw spec source = %q, want %q", fs.Spec.Files[0].Source, "tmpl.txt")
 	}
@@ -1069,14 +1073,15 @@ spec:
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
-	if len(result.Repositories) != 2 {
-		t.Fatalf("expected 2 repos, got %d", len(result.Repositories))
+	repositories := result.Repositories()
+	if len(repositories) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repositories))
 	}
-	if result.Repositories[0].Metadata.Name != "repo-a" {
-		t.Errorf("first repo name = %q, want %q", result.Repositories[0].Metadata.Name, "repo-a")
+	if repositories[0].Metadata.Name != "repo-a" {
+		t.Errorf("first repo name = %q, want %q", repositories[0].Metadata.Name, "repo-a")
 	}
-	if result.Repositories[1].Metadata.Name != "repo-b" {
-		t.Errorf("second repo name = %q, want %q", result.Repositories[1].Metadata.Name, "repo-b")
+	if repositories[1].Metadata.Name != "repo-b" {
+		t.Errorf("second repo name = %q, want %q", repositories[1].Metadata.Name, "repo-b")
 	}
 }
 
@@ -1112,14 +1117,16 @@ spec:
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
-	if len(result.Repositories) != 1 {
-		t.Fatalf("expected 1 repo, got %d", len(result.Repositories))
+	repositories := result.Repositories()
+	fileSets := result.FileSets()
+	if len(repositories) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repositories))
 	}
-	if len(result.FileSets) != 1 {
-		t.Fatalf("expected 1 fileset, got %d", len(result.FileSets))
+	if len(fileSets) != 1 {
+		t.Fatalf("expected 1 fileset, got %d", len(fileSets))
 	}
-	if result.Repositories[0].Metadata.Name != "my-repo" {
-		t.Errorf("repo name = %q, want %q", result.Repositories[0].Metadata.Name, "my-repo")
+	if repositories[0].Metadata.Name != "my-repo" {
+		t.Errorf("repo name = %q, want %q", repositories[0].Metadata.Name, "my-repo")
 	}
 }
 
@@ -1142,11 +1149,12 @@ spec:
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
-	if len(result.Repositories) != 1 {
-		t.Fatalf("expected 1 repo, got %d", len(result.Repositories))
+	repositories := result.Repositories()
+	if len(repositories) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repositories))
 	}
-	if result.Repositories[0].Metadata.Name != "solo" {
-		t.Errorf("repo name = %q, want %q", result.Repositories[0].Metadata.Name, "solo")
+	if repositories[0].Metadata.Name != "solo" {
+		t.Errorf("repo name = %q, want %q", repositories[0].Metadata.Name, "solo")
 	}
 }
 
@@ -1179,8 +1187,8 @@ spec:
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
-	if len(result.Repositories) != 2 {
-		t.Fatalf("expected 2 repos, got %d", len(result.Repositories))
+	if len(result.Repositories()) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(result.Repositories()))
 	}
 }
 

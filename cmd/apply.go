@@ -56,19 +56,21 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		p.Warning("deprecation", w)
 	}
 
-	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
+	repositories := parsed.Repositories()
+
+	if parsed.IsEmpty() {
 		p.Message("No resources found in " + path)
 		return nil
 	}
 
-	manifest.ResolveSecrets(parsed.Repositories)
+	manifest.ResolveSecrets(repositories)
 
 	runner := gh.NewRunner(false)
 
 	// Determine owner for resolver (use first repo's owner)
 	var resolverOwner string
-	if len(parsed.Repositories) > 0 {
-		resolverOwner = parsed.Repositories[0].Metadata.Owner
+	if len(repositories) > 0 {
+		resolverOwner = repositories[0].Metadata.Owner
 	}
 	resolver := manifest.NewResolver(runner, resolverOwner)
 
@@ -83,18 +85,18 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 	// Collect all target names and start a single spinner display
 	var allTasks []ui.RefreshTask
-	allTasks = append(allTasks, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
+	allTasks = append(allTasks, repository.FetchTargetNames(repositories, filterRepo)...)
 	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSetDocs, filterRepo)...)
 	tracker := ui.RunRefresh(allTasks)
 
 	g := new(errgroup.Group)
 
-	if len(parsed.Repositories) > 0 {
+	if len(repositories) > 0 {
 		fetcher := repository.NewFetcher(runner)
 		diffOpts := repository.DiffOptions{ForceSecrets: forceSecrets, Resolver: resolver}
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, tracker, diffOpts)
+			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(repositories, filterRepo, fetcher, p, tracker, diffOpts)
 			return fetchErr
 		})
 	}

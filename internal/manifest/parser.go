@@ -18,7 +18,7 @@ func ParsePath(path string) ([]*Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result.Repositories, nil
+	return result.Repositories(), nil
 }
 
 // ParseOptions controls parsing behavior.
@@ -59,8 +59,6 @@ func ParseAll(path string, opts ...ParseOptions) (*ParseResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		result.Repositories = append(result.Repositories, parsed.Repositories...)
-		result.FileSets = append(result.FileSets, parsed.FileSets...)
 		result.RepositoryDocs = append(result.RepositoryDocs, parsed.RepositoryDocs...)
 		result.FileSetDocs = append(result.FileSetDocs, parsed.FileSetDocs...)
 		result.Warnings = append(result.Warnings, parsed.Warnings...)
@@ -88,8 +86,6 @@ func parseFileAll(path string, opt ParseOptions) (*ParseResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		result.Repositories = append(result.Repositories, parsed.Repositories...)
-		result.FileSets = append(result.FileSets, parsed.FileSets...)
 		result.RepositoryDocs = append(result.RepositoryDocs, parsed.RepositoryDocs...)
 		result.FileSetDocs = append(result.FileSetDocs, parsed.FileSetDocs...)
 		result.Warnings = append(result.Warnings, parsed.Warnings...)
@@ -134,7 +130,6 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
-		result.Repositories = repos
 		for _, r := range repos {
 			result.RepositoryDocs = append(result.RepositoryDocs, &RepositoryDocument{
 				Resource:   r,
@@ -147,21 +142,16 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
-		result.Repositories = repos
 		for _, r := range repos {
-			result.RepositoryDocs = append(result.RepositoryDocs, &RepositoryDocument{
-				Resource:   r,
-				SourcePath: path,
-				DocIndex:   docNum - 1,
-				FromSet:    true,
-			})
+			r.SourcePath = path
+			r.DocIndex = docNum - 1
+			result.RepositoryDocs = append(result.RepositoryDocs, r)
 		}
 	case KindFile:
 		fs, resolved, warnings, err := parseFile(data, path)
 		if err != nil {
 			return nil, err
 		}
-		result.FileSets = []*FileSet{fs}
 		result.FileSetDocs = []*FileSetDocument{{
 			Resource:      fs,
 			SourcePath:    path,
@@ -174,7 +164,6 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
-		result.FileSets = []*FileSet{fs}
 		result.FileSetDocs = []*FileSetDocument{{
 			Resource:      fs,
 			SourcePath:    path,
@@ -202,14 +191,14 @@ func parseRepository(data []byte, path string) ([]*Repository, error) {
 	return []*Repository{&repo}, nil
 }
 
-func parseRepositorySet(data []byte, path string) ([]*Repository, error) {
+func parseRepositorySet(data []byte, path string) ([]*RepositoryDocument, error) {
 	var set RepositorySet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&set); err != nil {
 		return nil, fmt.Errorf("parse RepositorySet in %s: %w", path, err)
 	}
 
-	var repos []*Repository
-	for _, entry := range set.Repositories {
+	var docs []*RepositoryDocument
+	for i, entry := range set.Repositories {
 		repo := &Repository{
 			APIVersion: set.APIVersion,
 			Kind:       KindRepository,
@@ -222,9 +211,13 @@ func parseRepositorySet(data []byte, path string) ([]*Repository, error) {
 		if err := repo.Validate(); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		repos = append(repos, repo)
+		docs = append(docs, &RepositoryDocument{
+			Resource:      repo,
+			FromSet:       true,
+			SetEntryIndex: i,
+		})
 	}
-	return repos, nil
+	return docs, nil
 }
 
 func parseFile(data []byte, path string) (*FileSet, []ResolvedFile, []string, error) {

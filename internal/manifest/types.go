@@ -457,8 +457,6 @@ func (fe *FileEntry) UnmarshalYAML(unmarshal func(any) error) error {
 
 // ParseResult holds all parsed resources from a path.
 type ParseResult struct {
-	Repositories   []*Repository
-	FileSets       []*FileSet
 	RepositoryDocs []*RepositoryDocument
 	FileSetDocs    []*FileSetDocument
 	Warnings       []string // deprecation warnings collected during parse
@@ -469,6 +467,7 @@ type RepositoryDocument struct {
 	SourcePath string
 	DocIndex   int
 	FromSet    bool
+	SetEntryIndex int
 }
 
 type FileSetDocument struct {
@@ -476,6 +475,32 @@ type FileSetDocument struct {
 	SourcePath string
 	DocIndex   int
 	ResolvedFiles []ResolvedFile
+}
+
+func (r *ParseResult) Repositories() []*Repository {
+	if r == nil {
+		return nil
+	}
+	repos := make([]*Repository, 0, len(r.RepositoryDocs))
+	for _, doc := range r.RepositoryDocs {
+		repos = append(repos, doc.Resource)
+	}
+	return repos
+}
+
+func (r *ParseResult) FileSets() []*FileSet {
+	if r == nil {
+		return nil
+	}
+	fileSets := make([]*FileSet, 0, len(r.FileSetDocs))
+	for _, doc := range r.FileSetDocs {
+		fileSets = append(fileSets, doc.Resource)
+	}
+	return fileSets
+}
+
+func (r *ParseResult) IsEmpty() bool {
+	return len(r.RepositoryDocs) == 0 && len(r.FileSetDocs) == 0
 }
 
 // Ptr returns a pointer to the given value.
