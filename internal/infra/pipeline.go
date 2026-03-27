@@ -1,4 +1,4 @@
-package plan
+package infra
 
 import (
 	"fmt"
@@ -13,17 +13,17 @@ import (
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// Options configures the shared plan pipeline.
-type Options struct {
+// PlanOptions configures the plan phase.
+type PlanOptions struct {
 	Path          string
 	FilterRepo    string
 	FailOnUnknown bool
-	ForceSecrets  bool // only meaningful for apply
+	ForceSecrets  bool // only meaningful when followed by Apply
 	DryRun        bool // true = plan only (skip secret resolution)
 }
 
-// Result holds the outcome of the plan phase.
-type Result struct {
+// PlanResult holds the outcome of the plan phase.
+type PlanResult struct {
 	RepoChanges []repository.Change
 	FileChanges []fileset.FileChange
 	TargetRepos []*manifest.Repository
@@ -39,9 +39,8 @@ type Result struct {
 	HasChanges bool
 }
 
-// Run executes the shared plan phase used by both plan and apply commands.
-// It parses manifests, fetches current state, computes diffs, and prints the plan.
-func Run(opts Options) (*Result, error) {
+// Plan executes the plan phase: parse manifests, fetch current state, compute diffs, and print the plan.
+func Plan(opts PlanOptions) (*PlanResult, error) {
 	p := ui.NewStandardPrinter()
 
 	parsed, err := manifest.ParseAll(opts.Path, manifest.ParseOptions{FailOnUnknown: opts.FailOnUnknown})
@@ -56,7 +55,7 @@ func Run(opts Options) (*Result, error) {
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
 		p.Message("No resources found in " + opts.Path)
-		return &Result{Printer: p}, nil
+		return &PlanResult{Printer: p}, nil
 	}
 
 	if !opts.DryRun {
@@ -115,7 +114,7 @@ func Run(opts Options) (*Result, error) {
 	hasRepo := repository.HasChanges(repoChanges)
 	hasFile := fileset.HasChanges(fileChanges)
 
-	result := &Result{
+	result := &PlanResult{
 		RepoChanges: repoChanges,
 		FileChanges: fileChanges,
 		TargetRepos: targetRepos,

@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/babarot/gh-infra/internal/fileset"
-	"github.com/babarot/gh-infra/internal/plan"
-	"github.com/babarot/gh-infra/internal/repository"
+	"github.com/babarot/gh-infra/internal/infra"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -41,7 +38,7 @@ func newApplyCmd() *cobra.Command {
 }
 
 func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown bool) error {
-	result, err := plan.Run(plan.Options{
+	result, err := infra.Plan(infra.PlanOptions{
 		Path:          path,
 		FilterRepo:    filterRepo,
 		FailOnUnknown: failOnUnknown,
@@ -72,100 +69,9 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		applySkipSelections(result.FileChanges, diffEntries)
 	}
 
-	runner := result.Runner
-	resolver := result.Resolver
-
-	totalSucceeded := 0
-	totalFailed := 0
-
-	stream := ui.OutputMode() == "stream"
-
-	var allRepoResults []repository.ApplyResult
-	var allFileResults []fileset.FileApplyResult
-
-	// Apply repo changes
-	if repository.HasChanges(result.RepoChanges) {
-		executor := repository.NewExecutor(runner, resolver)
-		var reporter ui.ProgressReporter
-		if stream {
-			reporter = ui.NewStreamReporter(p, "Applying", "Applied")
-		} else {
-			names := make([]string, 0)
-			for _, c := range result.RepoChanges {
-				if c.Type != repository.ChangeNoOp {
-					names = append(names, c.Name)
-				}
-			}
-			reporter = ui.NewSpinnerReporter(uniqueStrings(names), "Applying", "Applied", "(repo)")
-		}
-		allRepoResults = executor.Apply(result.RepoChanges, result.TargetRepos, reporter)
-		s, f := repository.CountApplyResults(allRepoResults)
-		totalSucceeded += s
-		totalFailed += f
-	}
-
-	// Apply file changes (per FileSet for correct options)
-	if fileset.HasChanges(result.FileChanges) {
-		processor := fileset.NewProcessor(runner, p)
-		for _, fs := range result.Parsed.FileSets {
-			var fsChanges []fileset.FileChange
-			for _, c := range result.FileChanges {
-				if c.FileSetOwner == fs.Metadata.Owner {
-					fsChanges = append(fsChanges, c)
-				}
-			}
-			if !fileset.HasChanges(fsChanges) {
-				continue
-			}
-			opts := fileset.ApplyOptions{
-				CommitMessage: fs.Spec.CommitMessage,
-				Via:           fs.Spec.Via,
-				Branch:        fs.Spec.Branch,
-				FileSetName:   fs.Metadata.Owner,
-				PRTitle:       fs.Spec.PRTitle,
-				PRBody:        fs.Spec.PRBody,
-			}
-			var fileReporter ui.ProgressReporter
-			if stream {
-				fileReporter = ui.NewStreamReporter(p, "Applying", "Applied")
-			} else {
-				var targets []string
-				for _, c := range fsChanges {
-					targets = append(targets, c.Target)
-				}
-				fileReporter = ui.NewSpinnerReporter(uniqueStrings(targets), "Applying", "Applied", "(files)")
-			}
-			results := processor.Apply(fsChanges, opts, fileReporter)
-			allFileResults = append(allFileResults, results...)
-			for _, r := range results {
-				if r.Err != nil {
-					totalFailed++
-				} else {
-					totalSucceeded++
-				}
-			}
-		}
-	}
-
-	// Print unified apply results (skip in stream mode — stream output is the result)
-	if !stream {
-		p.Separator()
-		plan.PrintApplyResults(p, allRepoResults, allFileResults)
-	}
-
-	// Unified summary
-	summaryMsg := fmt.Sprintf("Apply complete! %d changes applied", totalSucceeded)
-	if totalFailed > 0 {
-		summaryMsg += fmt.Sprintf(", %d failed", totalFailed)
-	}
-	summaryMsg += "."
-	p.Summary(summaryMsg)
-
-	if totalFailed > 0 {
-		return fmt.Errorf("apply had errors")
-	}
-
-	return nil
+	return infra.Apply(result, infra.ApplyOptions{
+		Stream: ui.OutputMode() == "stream",
+	})
 }
 
 // applySkipSelections writes skip selections from the diff viewer back
@@ -208,16 +114,4 @@ func buildDiffEntries(changes []fileset.FileChange) []ui.DiffEntry {
 		})
 	}
 	return entries
-}
-
-func uniqueStrings(s []string) []string {
-	seen := make(map[string]bool)
-	var out []string
-	for _, v := range s {
-		if !seen[v] {
-			seen[v] = true
-			out = append(out, v)
-		}
-	}
-	return out
 }

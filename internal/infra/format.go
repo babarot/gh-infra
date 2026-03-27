@@ -1,4 +1,4 @@
-package plan
+package infra
 
 import (
 	"fmt"

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/babarot/gh-infra/internal/plan"
+	"github.com/babarot/gh-infra/internal/infra"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -37,7 +37,7 @@ func newPlanCmd() *cobra.Command {
 }
 
 func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
-	result, err := plan.Run(plan.Options{
+	result, err := infra.Plan(infra.PlanOptions{
 		Path:          path,
 		FilterRepo:    filterRepo,
 		FailOnUnknown: failOnUnknown,
