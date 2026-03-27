@@ -201,6 +201,57 @@ func TestExtractJSON(t *testing.T) {
 	}
 }
 
+func TestInferHTTPStatus(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  any
+		message string
+		want    int
+	}{
+		{"float64 status", float64(404), "", 404},
+		{"string status", "422", "", 422},
+		{"zero float64 falls back to message", float64(0), "HTTP 403", 403},
+		{"nil status falls back to message", nil, "Not Found", 404},
+		{"message HTTP 404", nil, "something (HTTP 404)", 404},
+		{"message HTTP 401", nil, "something (HTTP 401)", 401},
+		{"message HTTP 422", nil, "something (HTTP 422)", 422},
+		{"message Unauthorized", nil, "Unauthorized access", 401},
+		{"message Forbidden", nil, "Forbidden", 403},
+		{"message Validation Failed", nil, "Validation Failed", 422},
+		{"unknown", nil, "unknown error", 0},
+		{"empty", nil, "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := inferHTTPStatus(tt.status, tt.message)
+			if got != tt.want {
+				t.Errorf("inferHTTPStatus(%v, %q) = %d, want %d", tt.status, tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseStatusString(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"404", 404},
+		{"422", 422},
+		{"0", 0},
+		{"abc", 0},
+		{"", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := parseStatusString(tt.input)
+			if got != tt.want {
+				t.Errorf("parseStatusString(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExitError_Error(t *testing.T) {
 	tests := []struct {
 		name string
