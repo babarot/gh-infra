@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
-	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/importer"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -102,24 +100,12 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 
 	matches := importer.FindMatches(parsed, fullName)
-	if len(matches.Repositories) == 0 && len(matches.RepositorySets) == 0 && len(matches.FileSets) == 0 {
+	if matches.IsEmpty() {
 		return fmt.Errorf("no manifests found for %s in %s", fullName, searchPath)
 	}
 
 	runner := gh.NewRunner(false)
-	manifestBytes := make(map[string][]byte)
-	readManifestBytes := func(sourcePath string) error {
-		if _, ok := manifestBytes[sourcePath]; !ok {
-			data, err := os.ReadFile(sourcePath)
-			if err != nil {
-				return fmt.Errorf("read manifest %s: %w", sourcePath, err)
-			}
-			manifestBytes[sourcePath] = data
-		}
-		return nil
-	}
-
-	tasks := importer.BuildTasks(fullName, len(matches.Repositories) > 0 || len(matches.RepositorySets) > 0, len(matches.FileSets) > 0)
+	tasks := importer.BuildTasks(fullName, matches.HasRepo(), matches.HasFiles())
 
 	p.Phase(fmt.Sprintf("Importing from %s ...", fullName))
 	p.BlankLine()
@@ -133,65 +119,25 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 		tracker.Wait()
 	}
 
-	var repoPlan importer.RepoPlan
-	if len(matches.Repositories) > 0 || len(matches.RepositorySets) > 0 {
-		key := "Importing " + fullName + " (repo)"
-		if len(matches.Repositories) > 0 {
-			repoPlan, err = importer.PlanRepository(importer.Target{Owner: target.owner, Name: target.name}, matches.Repositories, runner, readManifestBytes, manifestBytes)
-			if err != nil {
-				failAll()
-				return err
-			}
-		}
-		if len(matches.RepositorySets) > 0 {
-			setPlan, planErr := importer.PlanRepositorySet(importer.Target{Owner: target.owner, Name: target.name}, matches.RepositorySets, runner, readManifestBytes, manifestBytes)
-			if planErr != nil {
-				failAll()
-				return planErr
-			}
-			repoPlan.Changes = append(repoPlan.Changes, setPlan.Changes...)
-			if repoPlan.ManifestEdits == nil {
-				repoPlan.ManifestEdits = make(map[string][]byte)
-			}
-			for path, data := range setPlan.ManifestEdits {
-				repoPlan.ManifestEdits[path] = data
-			}
-			repoPlan.UpdatedDocs += setPlan.UpdatedDocs
-		}
-		tracker.Done(key)
-	}
-
-	var importChanges []fileset.FileImportChange
-	if len(matches.FileSets) > 0 {
-		key := "Importing " + fullName + " (files)"
-		processor := fileset.NewProcessor(runner, p)
-
-		importChanges, err = fileset.PlanImport(processor, matches.FileSets, fullName)
-		if err != nil {
-			failAll()
-			return err
-		}
-		tracker.Done(key)
+	plan, err := importer.PlanInto(matches, importer.Target{Owner: target.owner, Name: target.name}, runner, p, tracker)
+	if err != nil {
+		failAll()
+		return err
 	}
 	tracker.Wait()
 
-	hasChanges := repository.HasRealChanges(repoPlan.Changes) || fileset.HasImportChanges(importChanges)
-
-	if !hasChanges {
+	if !plan.HasChanges() {
 		p.Message("\nNothing to import. Local state is up-to-date.")
 		return nil
 	}
 
 	p.Separator()
 
-	if hasChanges {
-		printUnifiedImportPlan(p, repoPlan.Changes, importChanges)
-	}
+	printUnifiedImportPlan(p, plan.RepoChanges, plan.FileChanges)
 
-	written, unchanged, skipped := fileset.ImportSummary(importChanges)
-	totalWritten := repoPlan.UpdatedDocs + written
+	written, unchanged, skipped := plan.Summary()
 
-	if totalWritten == 0 {
+	if written == 0 {
 		p.Summary("Nothing to import. Local state is up-to-date.")
 		return nil
 	}
@@ -205,25 +151,12 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 		return nil
 	}
 
-	// Read manifest bytes for file inline edits
-	for _, fs := range matches.FileSets {
-		if err := readManifestBytes(fs.SourcePath); err != nil {
-			return err
-		}
-	}
-
-	// Apply file changes (source writes + inline edits)
-	if err := fileset.ApplyImport(importChanges, manifestBytes); err != nil {
-		return err
-	}
-
-	// Write back repo spec changes
-	if err := importer.WriteManifestEdits(repoPlan.ManifestEdits); err != nil {
+	if err := plan.Apply(); err != nil {
 		return err
 	}
 
 	p.Summary(fmt.Sprintf("Import complete! %s written, %s unchanged, %s skipped.",
-		ui.Bold.Render(fmt.Sprintf("%d", totalWritten)),
+		ui.Bold.Render(fmt.Sprintf("%d", written)),
 		ui.Bold.Render(fmt.Sprintf("%d", unchanged)),
 		ui.Bold.Render(fmt.Sprintf("%d", skipped)),
 	))

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/fileset"
+	"github.com/babarot/gh-infra/internal/importer"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
@@ -245,7 +246,7 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileApp
 	return w
 }
 
-func computeImportColumnWidth(rChanges []repository.Change, fChanges []fileset.FileImportChange) int {
+func computeImportColumnWidth(rChanges []repository.Change, fChanges []importer.FileImportChange) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
@@ -309,7 +310,7 @@ func printRepoChanges(p ui.Printer, changes []repository.Change) {
 
 // printUnifiedImportPlan prints import changes grouped by repo, similar to printUnifiedPlan.
 // It shows file diffs with +N -M stats to indicate what will be written locally.
-func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []fileset.FileImportChange) {
+func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []importer.FileImportChange) {
 	// Collect repo names from changes
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -330,7 +331,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	}
 
 	// Index changes by target
-	fileByTarget := make(map[string][]fileset.FileImportChange)
+	fileByTarget := make(map[string][]importer.FileImportChange)
 	for _, c := range importChanges {
 		if !shouldDisplayImportChange(c) {
 			continue
@@ -390,8 +391,8 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	p.SetColumnWidth(0)
 }
 
-func shouldDisplayImportChange(c fileset.FileImportChange) bool {
-	if c.WriteMode == fileset.ImportSkip {
+func shouldDisplayImportChange(c importer.FileImportChange) bool {
+	if c.WriteMode == importer.ImportSkip {
 		return true
 	}
 	if c.Type != fileset.FileNoOp {
@@ -400,7 +401,7 @@ func shouldDisplayImportChange(c fileset.FileImportChange) bool {
 	return len(c.Warnings) > 0
 }
 
-func importDisplayPath(c fileset.FileImportChange) string {
+func importDisplayPath(c importer.FileImportChange) string {
 	path := c.Path
 	if c.LocalTarget != "" {
 		path = relativizePath(c.LocalTarget)

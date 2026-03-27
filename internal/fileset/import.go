@@ -202,7 +202,7 @@ func ApplyImport(changes []FileImportChange, manifestBytes map[string][]byte) er
 
 		var err error
 		for _, c := range inlineChanges {
-			data, err = ReplaceLiteralContent(data, c.DocIndex, c.YAMLPath, c.Desired)
+			data, err = manifest.ReplaceLiteralContent(data, c.DocIndex, c.YAMLPath, c.Desired)
 			if err != nil {
 				return fmt.Errorf("replace inline content for %s at %s in %s: %w", c.Path, c.YAMLPath, path, err)
 			}

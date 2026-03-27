@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/fileset"
+	"github.com/babarot/gh-infra/internal/importer"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
@@ -90,7 +91,7 @@ func TestPrintUnifiedImportPlan_PrintsNestedRepoChanges(t *testing.T) {
 			NewValue: "public",
 		},
 	}
-	importChanges := []fileset.FileImportChange{
+	importChanges := []importer.FileImportChange{
 		{
 			Target:    "org/repo",
 			Path:      ".github/workflows/ci.yml",
@@ -130,7 +131,7 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 			NewValue: "public",
 		},
 	}
-	importChanges := []fileset.FileImportChange{
+	importChanges := []importer.FileImportChange{
 		{
 			Target:    "org/repo",
 			Path:      "VERSION",
@@ -139,12 +140,12 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 			Reason:    "create_only",
 		},
 		{
-			Target:    "org/repo",
-			Path:      ".github/workflows/build.yaml",
-			Type:      fileset.FileUpdate,
-			Current:   "old\n",
-			Desired:   "new\n",
-			WriteMode: fileset.ImportWriteSource,
+			Target:      "org/repo",
+			Path:        ".github/workflows/build.yaml",
+			Type:        fileset.FileUpdate,
+			Current:     "old\n",
+			Desired:     "new\n",
+			WriteMode:   fileset.ImportWriteSource,
 			LocalTarget: "templates/build.yaml",
 		},
 	}
@@ -166,8 +167,8 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 }
 
 func TestImportDisplayPath_ShortensLongLocalTarget(t *testing.T) {
-	change := fileset.FileImportChange{
-		WriteMode:   fileset.ImportWriteSource,
+	change := importer.FileImportChange{
+		WriteMode:   importer.ImportWriteSource,
 		LocalTarget: "templates/common/.github/PULL_REQUEST_TEMPLATE.md",
 	}
 

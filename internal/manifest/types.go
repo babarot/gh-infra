@@ -392,13 +392,13 @@ func (fs *FileSet) RepoFullName(repoName string) string {
 }
 
 type FileEntry struct {
-	Path           string            `yaml:"path"                validate:"required"`
-	Content        string            `yaml:"content,omitempty" validate:"exclusive=source"`
-	Source         string            `yaml:"source,omitempty"`
-	Patches        []string          `yaml:"patches,omitempty"`
-	Vars           map[string]string `yaml:"vars,omitempty"`
-	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
-	DirScope       string            `yaml:"-"`
+	Path      string            `yaml:"path"                validate:"required"`
+	Content   string            `yaml:"content,omitempty" validate:"exclusive=source"`
+	Source    string            `yaml:"source,omitempty"`
+	Patches   []string          `yaml:"patches,omitempty"`
+	Vars      map[string]string `yaml:"vars,omitempty"`
+	Reconcile string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
+	DirScope  string            `yaml:"-"`
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`
@@ -463,17 +463,17 @@ type ParseResult struct {
 }
 
 type RepositoryDocument struct {
-	Resource   *Repository
-	SourcePath string
-	DocIndex   int
-	FromSet    bool
+	Resource      *Repository
+	SourcePath    string
+	DocIndex      int
+	FromSet       bool
 	SetEntryIndex int
 }
 
 type FileSetDocument struct {
-	Resource   *FileSet
-	SourcePath string
-	DocIndex   int
+	Resource      *FileSet
+	SourcePath    string
+	DocIndex      int
 	ResolvedFiles []ResolvedFile
 }
 

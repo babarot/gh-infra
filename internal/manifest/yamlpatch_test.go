@@ -1,4 +1,4 @@
-package fileset
+package manifest
 
 import (
 	"strings"
