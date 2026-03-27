@@ -7,13 +7,13 @@ import (
 	"github.com/babarot/gh-infra/internal/gh"
 )
 
-func TestNewFetcher(t *testing.T) {
+func TestNewProcessor(t *testing.T) {
 	mock := &gh.MockRunner{}
-	f := NewFetcher(mock)
-	if f == nil {
-		t.Fatal("expected non-nil Fetcher")
+	p := NewProcessor(mock, nil, nil)
+	if p == nil {
+		t.Fatal("expected non-nil Processor")
 	}
-	if f.runner != mock {
+	if p.runner != mock {
 		t.Error("expected runner to be the mock")
 	}
 }
@@ -49,8 +49,8 @@ func TestFetchRepository(t *testing.T) {
 		},
 	}
 
-	f := NewFetcher(mock)
-	state, err := f.FetchRepository("myorg", "myrepo")
+	p := NewProcessor(mock, nil, nil)
+	state, err := p.FetchRepository("myorg", "myrepo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,8 +148,8 @@ func TestFetchRepository_RepoSettingsError(t *testing.T) {
 		},
 	}
 
-	f := NewFetcher(mock)
-	_, err := f.FetchRepository("myorg", "myrepo")
+	p := NewProcessor(mock, nil, nil)
+	_, err := p.FetchRepository("myorg", "myrepo")
 	if err == nil {
 		t.Fatal("expected error from fetchRepoSettings")
 	}
@@ -165,8 +165,8 @@ func TestFetchSecrets(t *testing.T) {
 				"secret list --repo myorg/myrepo --json name --jq .[].name": []byte("SECRET1\nSECRET2\nSECRET3"),
 			},
 		}
-		f := NewFetcher(mock)
-		secrets, err := f.fetchSecrets("myorg", "myrepo")
+		p := NewProcessor(mock, nil, nil)
+		secrets, err := p.fetchSecrets("myorg", "myrepo")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -184,8 +184,8 @@ func TestFetchSecrets(t *testing.T) {
 				"secret list --repo myorg/myrepo --json name --jq .[].name": []byte(""),
 			},
 		}
-		f := NewFetcher(mock)
-		secrets, err := f.fetchSecrets("myorg", "myrepo")
+		p := NewProcessor(mock, nil, nil)
+		secrets, err := p.fetchSecrets("myorg", "myrepo")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -200,8 +200,8 @@ func TestFetchSecrets(t *testing.T) {
 				"secret list --repo myorg/myrepo --json name --jq .[].name": fmt.Errorf("forbidden"),
 			},
 		}
-		f := NewFetcher(mock)
-		secrets, err := f.fetchSecrets("myorg", "myrepo")
+		p := NewProcessor(mock, nil, nil)
+		secrets, err := p.fetchSecrets("myorg", "myrepo")
 		if err != nil {
 			t.Fatalf("expected nil error, got %v", err)
 		}
@@ -218,8 +218,8 @@ func TestFetchVariables(t *testing.T) {
 				"variable list --repo myorg/myrepo --json name,value": []byte(`[{"name":"VAR1","value":"val1"},{"name":"VAR2","value":"val2"}]`),
 			},
 		}
-		f := NewFetcher(mock)
-		vars, err := f.fetchVariables("myorg", "myrepo")
+		p := NewProcessor(mock, nil, nil)
+		vars, err := p.fetchVariables("myorg", "myrepo")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -240,8 +240,8 @@ func TestFetchVariables(t *testing.T) {
 				"variable list --repo myorg/myrepo --json name,value": []byte(`[]`),
 			},
 		}
-		f := NewFetcher(mock)
-		vars, err := f.fetchVariables("myorg", "myrepo")
+		p := NewProcessor(mock, nil, nil)
+		vars, err := p.fetchVariables("myorg", "myrepo")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -256,8 +256,8 @@ func TestFetchVariables(t *testing.T) {
 				"variable list --repo myorg/myrepo --json name,value": fmt.Errorf("forbidden"),
 			},
 		}
-		f := NewFetcher(mock)
-		vars, err := f.fetchVariables("myorg", "myrepo")
+		p := NewProcessor(mock, nil, nil)
+		vars, err := p.fetchVariables("myorg", "myrepo")
 		if err != nil {
 			t.Fatalf("expected nil error, got %v", err)
 		}
@@ -285,8 +285,8 @@ func TestFetchActionsSettings(t *testing.T) {
 		},
 	}
 
-	f := NewFetcher(mock)
-	actions, err := f.fetchActionsSettings("myorg", "myrepo")
+	p := NewProcessor(mock, nil, nil)
+	actions, err := p.fetchActionsSettings("myorg", "myrepo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

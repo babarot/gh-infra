@@ -28,7 +28,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 
 	// Apply repo changes
 	if repository.HasChanges(result.RepoChanges) {
-		executor := repository.NewExecutor(runner, resolver)
+		processor := repository.NewProcessor(runner, resolver, p)
 		var reporter ui.ProgressReporter
 		if opts.Stream {
 			reporter = ui.NewStreamReporter(p, "Applying", "Applied")
@@ -41,7 +41,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 			}
 			reporter = ui.NewSpinnerReporter(uniqueStrings(names), "Applying", "Applied", "(repo)")
 		}
-		allRepoResults = executor.Apply(result.RepoChanges, result.TargetRepos, reporter)
+		allRepoResults = processor.Apply(result.RepoChanges, result.TargetRepos, reporter)
 		s, f := repository.CountApplyResults(allRepoResults)
 		totalSucceeded += s
 		totalFailed += f

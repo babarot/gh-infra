@@ -22,7 +22,7 @@ func newTestRepo(owner, name string) *manifest.Repository {
 
 func TestApplyRepoDescription(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -36,7 +36,7 @@ func TestApplyRepoDescription(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -55,7 +55,7 @@ func TestApplyRepoDescription(t *testing.T) {
 
 func TestApplyHomepage(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -68,7 +68,7 @@ func TestApplyHomepage(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -81,7 +81,7 @@ func TestApplyHomepage(t *testing.T) {
 
 func TestApplyVisibility(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -94,7 +94,7 @@ func TestApplyVisibility(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -111,7 +111,7 @@ func TestApplyTopics(t *testing.T) {
 			"repo view myorg/myrepo --json repositoryTopics --jq .repositoryTopics[].name": []byte("old-topic\nkeep-topic\n"),
 		},
 	}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Topics = []string{"keep-topic", "new-topic"}
@@ -125,7 +125,7 @@ func TestApplyTopics(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -160,7 +160,7 @@ func TestApplyTopics(t *testing.T) {
 
 func TestApplyFeatureToggle(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -173,7 +173,7 @@ func TestApplyFeatureToggle(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -195,7 +195,7 @@ func TestApplyWithErrNotFound(t *testing.T) {
 			"repo edit myorg/myrepo --description new desc": notFoundErr,
 		},
 	}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -208,7 +208,7 @@ func TestApplyWithErrNotFound(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -229,7 +229,7 @@ func TestApplyWithErrForbidden(t *testing.T) {
 			"repo edit myorg/myrepo --description new desc": forbiddenErr,
 		},
 	}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -242,7 +242,7 @@ func TestApplyWithErrForbidden(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -263,7 +263,7 @@ func TestApplyWithErrValidation(t *testing.T) {
 			"repo edit myorg/myrepo --description new desc": validationErr,
 		},
 	}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -276,7 +276,7 @@ func TestApplyWithErrValidation(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -288,7 +288,7 @@ func TestApplyWithErrValidation(t *testing.T) {
 
 func TestApplyVariableSet(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Variables = []manifest.Variable{
@@ -305,7 +305,7 @@ func TestApplyVariableSet(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -318,7 +318,7 @@ func TestApplyVariableSet(t *testing.T) {
 
 func TestApplySecretSet(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Secrets = []manifest.Secret{
@@ -335,7 +335,7 @@ func TestApplySecretSet(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -348,7 +348,7 @@ func TestApplySecretSet(t *testing.T) {
 
 func TestApplySkipsNoOp(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	changes := []Change{
@@ -360,7 +360,7 @@ func TestApplySkipsNoOp(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results for noop, got %d", len(results))
 	}
@@ -371,7 +371,7 @@ func TestApplySkipsNoOp(t *testing.T) {
 
 func TestApplyBranchProtection(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	reviews := 2
 	enforceAdmins := true
@@ -397,7 +397,7 @@ func TestApplyBranchProtection(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -502,9 +502,9 @@ func TestBuildBranchProtectionPayload_NilReviews(t *testing.T) {
 
 func TestUpdateRepoField(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
-	err := exec.updateRepoField("myorg/myrepo", "merge_commit_title", "PR_TITLE")
+	err := proc.updateRepoField("myorg/myrepo", "merge_commit_title", "PR_TITLE")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -540,7 +540,7 @@ func TestDerefBool(t *testing.T) {
 
 func TestApplyRuleset_Create(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Rulesets = []manifest.Ruleset{
@@ -570,7 +570,7 @@ func TestApplyRuleset_Create(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -600,7 +600,7 @@ func TestApplyRuleset_Update(t *testing.T) {
 			"api repos/myorg/myrepo/rulesets": []byte(listResp),
 		},
 	}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Rulesets = []manifest.Ruleset{
@@ -623,7 +623,7 @@ func TestApplyRuleset_Update(t *testing.T) {
 		},
 	}
 
-	results := exec.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(changes, []*manifest.Repository{repo}, ui.NoopReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -724,9 +724,9 @@ func TestResolveRulesetID_Ambiguous(t *testing.T) {
 			"api repos/o/r/rulesets": []byte(listResp),
 		},
 	}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
-	_, err := exec.resolveRulesetID("o", "r", "dup", "branch")
+	_, err := proc.resolveRulesetID("o", "r", "dup", "branch")
 	if err == nil {
 		t.Fatal("expected error for ambiguous rulesets")
 	}
@@ -742,9 +742,9 @@ func TestResolveRulesetID_NotFound(t *testing.T) {
 			"api repos/o/r/rulesets": []byte(listResp),
 		},
 	}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
-	_, err := exec.resolveRulesetID("o", "r", "missing", "branch")
+	_, err := proc.resolveRulesetID("o", "r", "missing", "branch")
 	if err == nil {
 		t.Fatal("expected error for missing ruleset")
 	}
@@ -841,13 +841,13 @@ func TestBuildRulesetPayload_WithResolver(t *testing.T) {
 func TestApplyAllSettings_EmptyActions(t *testing.T) {
 	// actions: {} should not panic during new repo creation.
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Actions = &manifest.Actions{} // empty — Enabled is nil
 
 	// applyAllSettings is called after createRepo for new repos.
-	err := exec.applyAllSettings(repo)
+	err := proc.applyAllSettings(repo)
 	if err != nil {
 		t.Fatalf("unexpected error for empty actions block: %v", err)
 	}
@@ -855,9 +855,9 @@ func TestApplyAllSettings_EmptyActions(t *testing.T) {
 
 func TestApplyActionsPermissions_WithSHAPinningRequired(t *testing.T) {
 	mock := &gh.MockRunner{}
-	exec := NewExecutor(mock, nil)
+	proc := NewProcessor(mock, nil, nil)
 
-	err := exec.applyActionsPermissions("myorg", "myrepo", &manifest.Actions{
+	err := proc.applyActionsPermissions("myorg", "myrepo", &manifest.Actions{
 		Enabled:            manifest.Ptr(true),
 		AllowedActions:     manifest.Ptr("all"),
 		SHAPinningRequired: manifest.Ptr(true),

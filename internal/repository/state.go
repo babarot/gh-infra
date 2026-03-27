@@ -9,21 +9,25 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// Fetcher retrieves current repository state from GitHub.
-type Fetcher struct {
-	runner gh.Runner
+// Processor handles repository plan and apply operations.
+type Processor struct {
+	runner   gh.Runner
+	resolver *manifest.Resolver
+	printer  ui.Printer
 }
 
-func NewFetcher(runner gh.Runner) *Fetcher {
-	return &Fetcher{runner: runner}
+func NewProcessor(runner gh.Runner, resolver *manifest.Resolver, printer ui.Printer) *Processor {
+	return &Processor{runner: runner, resolver: resolver, printer: printer}
 }
 
 // FetchRepository fetches the current state of a single repository.
 // If the repository does not exist (404), it returns an empty CurrentState with IsNew=true.
 // Sub-fetches (branch protection, secrets, variables) run in parallel.
-func (f *Fetcher) FetchRepository(owner, name string) (*CurrentState, error) {
+func (f *Processor) FetchRepository(owner, name string) (*CurrentState, error) {
 	repo, err := f.fetchRepoSettings(owner, name)
 	if err != nil {
 		if errors.Is(err, gh.ErrNotFound) {
@@ -85,7 +89,7 @@ func (f *Fetcher) FetchRepository(owner, name string) (*CurrentState, error) {
 	return repo, nil
 }
 
-func (f *Fetcher) fetchRepoSettings(owner, name string) (*CurrentState, error) {
+func (f *Processor) fetchRepoSettings(owner, name string) (*CurrentState, error) {
 	out, err := f.runner.Run(
 		"repo", "view", owner+"/"+name,
 		"--json", "description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef",
@@ -164,7 +168,7 @@ type commitMessageSettings struct {
 	SquashMergeCommitMessage string
 }
 
-func (f *Fetcher) fetchCommitMessageSettings(owner, name string) (commitMessageSettings, error) {
+func (f *Processor) fetchCommitMessageSettings(owner, name string) (commitMessageSettings, error) {
 	out, err := f.runner.Run(
 		"api", fmt.Sprintf("repos/%s/%s", owner, name),
 		"--jq", "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}",
@@ -191,7 +195,7 @@ func (f *Fetcher) fetchCommitMessageSettings(owner, name string) (commitMessageS
 	}, nil
 }
 
-func (f *Fetcher) fetchBranchProtection(owner, name string) (map[string]*CurrentBranchProtection, error) {
+func (f *Processor) fetchBranchProtection(owner, name string) (map[string]*CurrentBranchProtection, error) {
 	// First get the default branch to check protection
 	out, err := f.runner.Run(
 		"api", fmt.Sprintf("repos/%s/%s/branches", owner, name),
@@ -219,7 +223,7 @@ func (f *Fetcher) fetchBranchProtection(owner, name string) (map[string]*Current
 	return result, nil
 }
 
-func (f *Fetcher) fetchBranchProtectionRule(owner, name, branch string) (*CurrentBranchProtection, error) {
+func (f *Processor) fetchBranchProtectionRule(owner, name, branch string) (*CurrentBranchProtection, error) {
 	out, err := f.runner.Run(
 		"api", fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, branch),
 	)
@@ -279,7 +283,7 @@ func (f *Fetcher) fetchBranchProtectionRule(owner, name, branch string) (*Curren
 	return bp, nil
 }
 
-func (f *Fetcher) fetchRulesets(owner, name string) (map[string]*CurrentRuleset, error) {
+func (f *Processor) fetchRulesets(owner, name string) (map[string]*CurrentRuleset, error) {
 	out, err := f.runner.Run(
 		"api", fmt.Sprintf("repos/%s/%s/rulesets", owner, name),
 		"--paginate",
@@ -317,7 +321,7 @@ func (f *Fetcher) fetchRulesets(owner, name string) (map[string]*CurrentRuleset,
 	return result, nil
 }
 
-func (f *Fetcher) fetchRuleset(owner, name string, id int) (*CurrentRuleset, error) {
+func (f *Processor) fetchRuleset(owner, name string, id int) (*CurrentRuleset, error) {
 	out, err := f.runner.Run(
 		"api", fmt.Sprintf("repos/%s/%s/rulesets/%d", owner, name, id),
 	)
@@ -435,7 +439,7 @@ func (f *Fetcher) fetchRuleset(owner, name string, id int) (*CurrentRuleset, err
 	return rs, nil
 }
 
-func (f *Fetcher) fetchSecrets(owner, name string) ([]string, error) {
+func (f *Processor) fetchSecrets(owner, name string) ([]string, error) {
 	out, err := f.runner.Run(
 		"secret", "list",
 		"--repo", owner+"/"+name,
@@ -453,7 +457,7 @@ func (f *Fetcher) fetchSecrets(owner, name string) ([]string, error) {
 	return strings.Split(raw, "\n"), nil
 }
 
-func (f *Fetcher) fetchVariables(owner, name string) (map[string]string, error) {
+func (f *Processor) fetchVariables(owner, name string) (map[string]string, error) {
 	out, err := f.runner.Run(
 		"variable", "list",
 		"--repo", owner+"/"+name,
@@ -478,7 +482,7 @@ func (f *Fetcher) fetchVariables(owner, name string) (map[string]string, error) 
 	return result, nil
 }
 
-func (f *Fetcher) fetchActionsSettings(owner, name string) (CurrentActions, error) {
+func (f *Processor) fetchActionsSettings(owner, name string) (CurrentActions, error) {
 	var result CurrentActions
 	fullName := fmt.Sprintf("repos/%s/%s", owner, name)
 

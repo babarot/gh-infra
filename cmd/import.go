@@ -53,15 +53,15 @@ func runImport(args []string) error {
 	}
 
 	runner := gh.NewRunner(false)
-	fetcher := repository.NewFetcher(runner)
 	resolver := manifest.NewResolver(runner, targets[0].owner)
+	proc := repository.NewProcessor(runner, resolver, p)
 
-	return importRepos(p, targets, fetcher, resolver)
+	return importRepos(p, targets, proc, resolver)
 }
 
 const defaultImportParallel = 5
 
-func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetcher, resolver *manifest.Resolver) error {
+func importRepos(p ui.Printer, targets []importTarget, proc *repository.Processor, resolver *manifest.Resolver) error {
 	label := "repository"
 	if len(targets) != 1 {
 		label = "repositories"
@@ -91,7 +91,7 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 	results := parallel.Map(targets, defaultImportParallel, func(_ int, t importTarget) importResult {
 		fullName := t.owner + "/" + t.name
 		key := "Importing " + fullName
-		current, err := fetcher.FetchRepository(t.owner, t.name)
+		current, err := proc.FetchRepository(t.owner, t.name)
 		if err != nil {
 			tracker.Fail(key)
 			return importResult{err: err}

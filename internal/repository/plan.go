@@ -11,6 +11,12 @@ import (
 
 const defaultParallel = 5
 
+// PlanOptions configures the plan phase for repositories.
+type PlanOptions struct {
+	FilterRepo   string
+	ForceSecrets bool
+}
+
 type repoResult struct {
 	index   int
 	repo    *manifest.Repository
@@ -18,8 +24,8 @@ type repoResult struct {
 	err     error
 }
 
-// FetchTargetNames returns display tasks for repos that would be fetched (after filtering).
-func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []ui.RefreshTask {
+// PlanTargetNames returns display tasks for repos that would be fetched (after filtering).
+func PlanTargetNames(repos []*manifest.Repository, filterRepo string) []ui.RefreshTask {
 	var names []string
 	for _, repo := range repos {
 		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
@@ -30,16 +36,16 @@ func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []ui.Refr
 	return ui.BuildRefreshTasks(names, "repo")
 }
 
-// fetchTaskKey returns the tracker key for a given repo full name.
-// This must match the Name used in FetchTargetNames.
-func fetchTaskKey(fullName string) string {
+// planTaskKey returns the tracker key for a given repo full name.
+func planTaskKey(fullName string) string {
 	return "Fetching " + fullName + " (repo)"
 }
 
-func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *Fetcher, printer ui.Printer, tracker *ui.RefreshTracker, diffOpts ...DiffOptions) ([]Change, []*manifest.Repository, error) {
+// Plan fetches current state for all repositories, computes diffs, and returns changes.
+func (p *Processor) Plan(repos []*manifest.Repository, opts PlanOptions, tracker *ui.RefreshTracker) ([]Change, []*manifest.Repository, error) {
 	var targets []*manifest.Repository
 	for _, repo := range repos {
-		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
+		if opts.FilterRepo != "" && repo.Metadata.FullName() != opts.FilterRepo {
 			logger.Debug("skip repo (filter)", "repo", repo.Metadata.FullName())
 			continue
 		}
@@ -52,18 +58,20 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 		return nil, nil, nil
 	}
 
+	diffOpts := DiffOptions{ForceSecrets: opts.ForceSecrets, Resolver: p.resolver}
+
 	results := parallel.Map(targets, defaultParallel, func(idx int, r *manifest.Repository) repoResult {
 		logger.Debug("fetch start", "repo", r.Metadata.FullName())
-		current, err := fetcher.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
+		current, err := p.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
 		if err != nil {
 			logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
-			tracker.Error(fetchTaskKey(r.Metadata.FullName()), err)
+			tracker.Error(planTaskKey(r.Metadata.FullName()), err)
 			return repoResult{index: idx, repo: r, err: err}
 		}
 
-		changes := Diff(r, current, diffOpts...)
+		changes := Diff(r, current, diffOpts)
 		logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
-		tracker.Done(fetchTaskKey(r.Metadata.FullName()))
+		tracker.Done(planTaskKey(r.Metadata.FullName()))
 		return repoResult{index: idx, repo: r, changes: changes}
 	})
 
@@ -72,7 +80,7 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 	var errors int
 	for _, res := range results {
 		if res.err != nil {
-			printer.Error(res.repo.Metadata.FullName(), res.err.Error())
+			p.printer.Error(res.repo.Metadata.FullName(), res.err.Error())
 			errors++
 			continue
 		}
@@ -85,7 +93,7 @@ func FetchAllChanges(repos []*manifest.Repository, filterRepo string, fetcher *F
 		if errors > 1 {
 			label = "errors"
 		}
-		printer.Warning("", fmt.Sprintf("%d %s occurred during refresh. Affected repositories were skipped.", errors, label))
+		p.printer.Warning("", fmt.Sprintf("%d %s occurred during refresh. Affected repositories were skipped.", errors, label))
 	}
 
 	logger.Info("plan complete", "total_changes", len(allChanges), "errors", errors)

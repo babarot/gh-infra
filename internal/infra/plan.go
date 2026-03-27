@@ -76,7 +76,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 
 	// Collect all target names and start a single spinner display
 	var allTasks []ui.RefreshTask
-	allTasks = append(allTasks, repository.FetchTargetNames(parsed.Repositories, opts.FilterRepo)...)
+	allTasks = append(allTasks, repository.PlanTargetNames(parsed.Repositories, opts.FilterRepo)...)
 	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSets, opts.FilterRepo)...)
 	tracker := ui.RunRefresh(allTasks)
 
@@ -87,11 +87,13 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	g := new(errgroup.Group)
 
 	if len(parsed.Repositories) > 0 {
-		fetcher := repository.NewFetcher(runner)
-		diffOpts := repository.DiffOptions{ForceSecrets: opts.ForceSecrets, Resolver: resolver}
+		processor := repository.NewProcessor(runner, resolver, p)
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, targetRepos, fetchErr = repository.FetchAllChanges(parsed.Repositories, opts.FilterRepo, fetcher, p, tracker, diffOpts)
+			repoChanges, targetRepos, fetchErr = processor.Plan(parsed.Repositories, repository.PlanOptions{
+				FilterRepo:   opts.FilterRepo,
+				ForceSecrets: opts.ForceSecrets,
+			}, tracker)
 			return fetchErr
 		})
 	}
