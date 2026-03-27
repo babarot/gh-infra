@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildDiffEntries(t *testing.T) {
-	changes := []fileset.FileApplyChange{
+	changes := []fileset.FileChange{
 		{Path: "a.txt", Target: "org/repo", Type: fileset.FileCreate, Desired: "new\n"},
 		{Path: "b.txt", Target: "org/repo", Type: fileset.FileUpdate, Current: "old\n", Desired: "new\n"},
 		{Path: "c.txt", Target: "org/repo", Type: fileset.FileNoOp},
@@ -45,7 +45,7 @@ func TestBuildDiffEntries(t *testing.T) {
 }
 
 func TestApplySkipSelections_NoSkip(t *testing.T) {
-	changes := []fileset.FileApplyChange{
+	changes := []fileset.FileChange{
 		{Path: "a.txt", Target: "org/repo", Type: fileset.FileUpdate},
 	}
 	entries := []ui.DiffEntry{
@@ -60,7 +60,7 @@ func TestApplySkipSelections_NoSkip(t *testing.T) {
 }
 
 func TestApplySkipSelections_SkipMarked(t *testing.T) {
-	changes := []fileset.FileApplyChange{
+	changes := []fileset.FileChange{
 		{Path: "a.txt", Target: "org/repo", Type: fileset.FileUpdate},
 		{Path: "b.txt", Target: "org/repo", Type: fileset.FileCreate},
 	}
@@ -80,7 +80,7 @@ func TestApplySkipSelections_SkipMarked(t *testing.T) {
 }
 
 func TestApplySkipSelections_DifferentTargets(t *testing.T) {
-	changes := []fileset.FileApplyChange{
+	changes := []fileset.FileChange{
 		{Path: "a.txt", Target: "org/repo-a", Type: fileset.FileUpdate},
 		{Path: "a.txt", Target: "org/repo-b", Type: fileset.FileUpdate},
 	}

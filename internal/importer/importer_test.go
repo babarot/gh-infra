@@ -19,7 +19,7 @@ func TestMatchesHelpers(t *testing.T) {
 func TestIntoPlanSummary(t *testing.T) {
 	plan := IntoPlan{
 		UpdatedDocs: 2,
-		FileChanges: []FileImportChange{
+		FileChanges: []FileChange{
 			{Type: "update", WriteMode: ImportWriteSource},
 			{Type: "noop", WriteMode: ImportWriteSource},
 			{Type: "noop", WriteMode: ImportSkip},

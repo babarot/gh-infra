@@ -15,7 +15,7 @@ const maxImportDisplayPathWidth = 44
 
 // printUnifiedPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
-func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileApplyChange) {
+func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileChange) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -39,7 +39,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 	}
 
 	// Index changes by repo name
-	fileByTarget := make(map[string][]fileset.FileApplyChange)
+	fileByTarget := make(map[string][]fileset.FileChange)
 	for _, c := range fileChanges {
 		if c.Type == fileset.FileNoOp {
 			continue
@@ -223,7 +223,7 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 }
 
 // computeColumnWidth returns the max field/path width across both repo and file changes.
-func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileApplyChange) int {
+func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileChange) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
@@ -246,7 +246,7 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileApp
 	return w
 }
 
-func computeImportColumnWidth(rChanges []repository.Change, fChanges []importer.FileImportChange) int {
+func computeImportColumnWidth(rChanges []repository.Change, fChanges []importer.FileChange) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
@@ -310,7 +310,7 @@ func printRepoChanges(p ui.Printer, changes []repository.Change) {
 
 // printUnifiedImportPlan prints import changes grouped by repo, similar to printUnifiedPlan.
 // It shows file diffs with +N -M stats to indicate what will be written locally.
-func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []importer.FileImportChange) {
+func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []importer.FileChange) {
 	// Collect repo names from changes
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -331,7 +331,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	}
 
 	// Index changes by target
-	fileByTarget := make(map[string][]importer.FileImportChange)
+	fileByTarget := make(map[string][]importer.FileChange)
 	for _, c := range importChanges {
 		if !shouldDisplayImportChange(c) {
 			continue
@@ -391,7 +391,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	p.SetColumnWidth(0)
 }
 
-func shouldDisplayImportChange(c importer.FileImportChange) bool {
+func shouldDisplayImportChange(c importer.FileChange) bool {
 	if c.WriteMode == importer.ImportSkip {
 		return true
 	}
@@ -401,7 +401,7 @@ func shouldDisplayImportChange(c importer.FileImportChange) bool {
 	return len(c.Warnings) > 0
 }
 
-func importDisplayPath(c importer.FileImportChange) string {
+func importDisplayPath(c importer.FileChange) string {
 	path := c.Path
 	if c.LocalTarget != "" {
 		path = relativizePath(c.LocalTarget)

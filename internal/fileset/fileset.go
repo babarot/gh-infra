@@ -24,8 +24,8 @@ type FileState struct {
 	Exists  bool
 }
 
-// FileApplyChange represents a planned file change for the apply direction (push to GitHub).
-type FileApplyChange struct {
+// FileChange represents a planned file change for the apply direction (push to GitHub).
+type FileChange struct {
 	Target  string // owner/repo
 	Path    string
 	Type    ChangeType
@@ -96,7 +96,7 @@ func planTaskKey(fullName string) string {
 
 // Plan computes changes for all FileSets concurrently.
 // If filterRepo is non-empty, only targets matching that repo are processed.
-func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string, tracker *ui.RefreshTracker) ([]FileApplyChange, error) {
+func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string, tracker *ui.RefreshTracker) ([]FileChange, error) {
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {
@@ -118,13 +118,13 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 
 	// Process each unit concurrently; collect results in order.
 	type unitResult struct {
-		changes []FileApplyChange
+		changes []FileChange
 		err     error
 	}
 	results := parallel.Map(units, 0, func(i int, u planUnit) unitResult {
 		fullName := u.fullName()
 		displayName := planTaskKey(fullName)
-		var out []FileApplyChange
+		var out []FileChange
 		for _, file := range u.files {
 			// Template rendering (deep copy vars to avoid data races)
 			needsTemplate := HasTemplate(file.Content, file.Vars) || HasTemplate(file.Path, nil)
@@ -184,7 +184,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 			}
 			for _, repoFile := range repoFiles {
 				if !allPlannedPaths[repoFile] {
-					out = append(out, FileApplyChange{
+					out = append(out, FileChange{
 						Type:    FileDelete,
 						Target:  fullName,
 						Path:    repoFile,
@@ -204,7 +204,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 	})
 
 	// Flatten in original order; return first error.
-	var changes []FileApplyChange
+	var changes []FileChange
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -215,24 +215,24 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 }
 
 // planCreateOnly handles sync_mode: create_only — create if missing, NoOp if exists.
-func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.ResolvedFile) FileApplyChange {
+func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.ResolvedFile) FileChange {
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
-		return FileApplyChange{
+		return FileChange{
 			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
 			FileSet: fileSetName,
 		}
 	}
-	return FileApplyChange{
+	return FileChange{
 		Target: repo, Path: file.Path, Type: FileNoOp,
 		FileSet: fileSetName,
 	}
 }
 
-func (p *Processor) planFile(fileSetName, repo string, file manifest.ResolvedFile) FileApplyChange {
+func (p *Processor) planFile(fileSetName, repo string, file manifest.ResolvedFile) FileChange {
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
-		return FileApplyChange{
+		return FileChange{
 			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
 			FileSet: fileSetName,
 		}
@@ -243,14 +243,14 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.ResolvedFil
 	desiredContent := strings.TrimRight(file.Content, "\n")
 
 	if currentContent == desiredContent {
-		return FileApplyChange{
+		return FileChange{
 			Target: repo, Path: file.Path, Type: FileNoOp,
 			FileSet: fileSetName,
 		}
 	}
 
 	// Content differs — update
-	return FileApplyChange{
+	return FileChange{
 		Target: repo, Path: file.Path, Type: FileUpdate, Current: current.Content, Desired: file.Content,
 		FileSet: fileSetName, SHA: current.SHA,
 	}
@@ -332,13 +332,13 @@ const defaultApplyParallel = 5
 
 // Apply executes the planned file changes using Git Data API.
 // Changes are grouped by target repo and applied in parallel across repos.
-func (p *Processor) Apply(changes []FileApplyChange, opts ApplyOptions, reporter ui.ProgressReporter) []FileApplyResult {
+func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.ProgressReporter) []FileApplyResult {
 	grouped := groupChangesByTarget(changes)
 
 	// Build ordered repo list for deterministic output
 	type repoEntry struct {
 		name    string
-		changes []FileApplyChange
+		changes []FileChange
 	}
 	var repoList []repoEntry
 	for repo, repoChanges := range grouped {
@@ -354,7 +354,7 @@ func (p *Processor) Apply(changes []FileApplyChange, opts ApplyOptions, reporter
 	// Apply repos in parallel
 	allResults := parallel.Map(repoList, defaultApplyParallel, func(_ int, entry repoEntry) []FileApplyResult {
 		var results []FileApplyResult
-		var filesToApply []FileApplyChange
+		var filesToApply []FileChange
 		for _, c := range entry.changes {
 			switch c.Type {
 			case FileCreate, FileUpdate, FileDelete:
@@ -406,14 +406,14 @@ func (p *Processor) Apply(changes []FileApplyChange, opts ApplyOptions, reporter
 }
 
 type FileApplyResult struct {
-	Change FileApplyChange
+	Change FileChange
 	Err    error
 	Via    string // "push" or "pull_request"
 	PRURL  string // non-empty when via is pull_request
 }
 
-func groupChangesByTarget(changes []FileApplyChange) map[string][]FileApplyChange {
-	grouped := make(map[string][]FileApplyChange)
+func groupChangesByTarget(changes []FileChange) map[string][]FileChange {
+	grouped := make(map[string][]FileChange)
 	for _, c := range changes {
 		grouped[c.Target] = append(grouped[c.Target], c)
 	}
@@ -432,7 +432,7 @@ type treeEntry struct {
 // applyToRepo creates a single commit with all file changes using Git Data API.
 // Falls back to Contents API for empty repositories (no commits yet).
 // applyToRepo returns (prURL, error). prURL is non-empty only for pull_request strategy.
-func (p *Processor) applyToRepo(repo string, changes []FileApplyChange, opts ApplyOptions) (string, error) {
+func (p *Processor) applyToRepo(repo string, changes []FileChange, opts ApplyOptions) (string, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(repo)
 	if err != nil {
 		if strings.Contains(err.Error(), "repository is empty") {
@@ -456,7 +456,7 @@ func resolveCommitMessage(opts ApplyOptions) string {
 // applyViaGitDataAPI creates blobs, a tree, a commit, and updates the ref
 // (or creates a PR) in a single atomic operation. All files are included in
 // one commit regardless of count.
-func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []FileApplyChange, message string, opts ApplyOptions) (string, error) {
+func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []FileChange, message string, opts ApplyOptions) (string, error) {
 	// 1. Create blobs
 	entries, err := p.createBlobs(repo, changes)
 	if err != nil {
@@ -484,7 +484,7 @@ func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []F
 
 // createBlobs creates a Git blob for each file change and returns tree entries.
 // FileDelete entries get a nil SHA which tells the Git Data API to remove the file.
-func (p *Processor) createBlobs(repo string, changes []FileApplyChange) ([]treeEntry, error) {
+func (p *Processor) createBlobs(repo string, changes []FileChange) ([]treeEntry, error) {
 	var entries []treeEntry
 	for _, c := range changes {
 		if c.Type == FileDelete {
@@ -512,7 +512,7 @@ func (p *Processor) createBlobs(repo string, changes []FileApplyChange) ([]treeE
 }
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
-func (p *Processor) applyToEmptyRepo(repo string, changes []FileApplyChange, opts ApplyOptions) error {
+func (p *Processor) applyToEmptyRepo(repo string, changes []FileChange, opts ApplyOptions) error {
 	p.printer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
 	message := opts.CommitMessage
 	if message == "" {
@@ -737,7 +737,7 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 }
 
 // PrintPlan prints FileSet changes.
-func PrintPlan(p ui.Printer, changes []FileApplyChange) {
+func PrintPlan(p ui.Printer, changes []FileChange) {
 	if len(changes) == 0 {
 		return
 	}
@@ -757,7 +757,7 @@ func PrintPlan(p ui.Printer, changes []FileApplyChange) {
 	type groupKey struct{ fileSet, target string }
 	type group struct {
 		key     groupKey
-		changes []FileApplyChange
+		changes []FileChange
 	}
 	seen := make(map[groupKey]int)
 	var groups []group
@@ -817,7 +817,7 @@ func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 }
 
 // HasChanges returns true if any apply file changes are non-noop.
-func HasChanges(changes []FileApplyChange) bool {
+func HasChanges(changes []FileChange) bool {
 	for _, c := range changes {
 		if c.Type != FileNoOp {
 			return true
@@ -827,7 +827,7 @@ func HasChanges(changes []FileApplyChange) bool {
 }
 
 // CountChanges returns create, update, delete counts.
-func CountChanges(changes []FileApplyChange) (creates, updates, deletes int) {
+func CountChanges(changes []FileChange) (creates, updates, deletes int) {
 	for _, c := range changes {
 		switch c.Type {
 		case FileCreate:

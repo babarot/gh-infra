@@ -31,7 +31,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	changes := []FileImportChange{
+	changes := []ImportChange{
 		{
 			Path:         "config.yml",
 			WriteMode:    ImportWriteInline,

@@ -17,8 +17,8 @@ const (
 	ImportSkip        ImportWriteMode = "skip"   // skipped (create_only, not on GitHub, etc.)
 )
 
-// FileImportChange represents a planned file change for the import direction (GitHub → local).
-type FileImportChange struct {
+// ImportChange represents a planned file change for the import direction (GitHub → local).
+type ImportChange struct {
 	Target       string // owner/repo
 	Path         string
 	Type         ChangeType
@@ -35,8 +35,8 @@ type FileImportChange struct {
 
 // PlanImport computes import changes for all FileSets.
 // filterRepo must be "owner/repo" format; required if a FileSet targets multiple repos.
-func PlanImport(proc *Processor, fileSets []*manifest.FileSetDocument, filterRepo string) ([]FileImportChange, error) {
-	var changes []FileImportChange
+func PlanImport(proc *Processor, fileSets []*manifest.FileSetDocument, filterRepo string) ([]ImportChange, error) {
+	var changes []ImportChange
 
 	for _, fsDoc := range fileSets {
 		fs := fsDoc.Resource
@@ -82,8 +82,8 @@ func PlanImport(proc *Processor, fileSets []*manifest.FileSetDocument, filterRep
 	return changes, nil
 }
 
-func planImportEntry(proc *Processor, file manifest.ResolvedFile, repo string, fs *manifest.FileSetDocument) FileImportChange {
-	change := FileImportChange{
+func planImportEntry(proc *Processor, file manifest.ResolvedFile, repo string, fs *manifest.FileSetDocument) ImportChange {
+	change := ImportChange{
 		Target:       repo,
 		Path:         file.Path,
 		ManifestPath: fs.SourcePath,
@@ -177,10 +177,10 @@ func importYAMLPath(origin manifest.FileOrigin) (string, bool) {
 
 // ApplyImport executes the planned import changes.
 // manifestBytes maps manifest file paths to their raw content (for inline edits).
-func ApplyImport(changes []FileImportChange, manifestBytes map[string][]byte) error {
+func ApplyImport(changes []ImportChange, manifestBytes map[string][]byte) error {
 	// Group inline changes by manifest file and process in reverse index order
 	// to avoid position shifts when modifying the same file.
-	inlineByFile := make(map[string][]FileImportChange)
+	inlineByFile := make(map[string][]ImportChange)
 
 	for _, c := range changes {
 		switch c.WriteMode {
@@ -217,7 +217,7 @@ func ApplyImport(changes []FileImportChange, manifestBytes map[string][]byte) er
 }
 
 // ImportSummary returns counts by write mode.
-func ImportSummary(changes []FileImportChange) (written, unchanged, skipped int) {
+func ImportSummary(changes []ImportChange) (written, unchanged, skipped int) {
 	for _, c := range changes {
 		switch c.WriteMode {
 		case ImportWriteSource, ImportWriteInline:
@@ -234,7 +234,7 @@ func ImportSummary(changes []FileImportChange) (written, unchanged, skipped int)
 }
 
 // HasImportChanges returns true if any import changes are non-noop and non-skip.
-func HasImportChanges(changes []FileImportChange) bool {
+func HasImportChanges(changes []ImportChange) bool {
 	for _, c := range changes {
 		if c.Type != FileNoOp && c.WriteMode != ImportSkip {
 			return true

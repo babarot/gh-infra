@@ -40,7 +40,7 @@ type RepoPlan struct {
 
 type IntoPlan struct {
 	RepoChanges   []repository.Change
-	FileChanges   []FileImportChange
+	FileChanges   []FileChange
 	ManifestEdits map[string][]byte
 	UpdatedDocs   int
 

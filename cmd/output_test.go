@@ -91,7 +91,7 @@ func TestPrintUnifiedImportPlan_PrintsNestedRepoChanges(t *testing.T) {
 			NewValue: "public",
 		},
 	}
-	importChanges := []importer.FileImportChange{
+	importChanges := []importer.FileChange{
 		{
 			Target:    "org/repo",
 			Path:      ".github/workflows/ci.yml",
@@ -131,7 +131,7 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 			NewValue: "public",
 		},
 	}
-	importChanges := []importer.FileImportChange{
+	importChanges := []importer.FileChange{
 		{
 			Target:    "org/repo",
 			Path:      "VERSION",
@@ -167,7 +167,7 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 }
 
 func TestImportDisplayPath_ShortensLongLocalTarget(t *testing.T) {
-	change := importer.FileImportChange{
+	change := importer.FileChange{
 		WriteMode:   importer.ImportWriteSource,
 		LocalTarget: "templates/common/.github/PULL_REQUEST_TEMPLATE.md",
 	}

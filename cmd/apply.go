@@ -81,7 +81,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	// Compute all changes in parallel
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
-	var fileChanges []fileset.FileApplyChange
+	var fileChanges []fileset.FileChange
 
 	// Collect all target names and start a single spinner display
 	var allTasks []ui.RefreshTask
@@ -190,7 +190,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	if hasFile {
 		processor := fileset.NewProcessor(runner, p)
 		for _, fs := range parsed.FileSetDocs {
-			var fsChanges []fileset.FileApplyChange
+			var fsChanges []fileset.FileChange
 			for _, c := range fileChanges {
 				if c.FileSet == fs.Resource.Metadata.Owner {
 					fsChanges = append(fsChanges, c)
@@ -252,7 +252,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 // applySkipSelections writes skip selections from the diff viewer back
 // to fileChanges, setting skipped entries to FileNoOp so they are not applied.
-func applySkipSelections(changes []fileset.FileApplyChange, entries []ui.DiffEntry) {
+func applySkipSelections(changes []fileset.FileChange, entries []ui.DiffEntry) {
 	// Build a set of target+path keys that were marked as skipped
 	type key struct{ target, path string }
 	skipped := make(map[key]bool, len(entries))
@@ -268,7 +268,7 @@ func applySkipSelections(changes []fileset.FileApplyChange, entries []ui.DiffEnt
 	}
 }
 
-func buildDiffEntries(changes []fileset.FileApplyChange) []ui.DiffEntry {
+func buildDiffEntries(changes []fileset.FileChange) []ui.DiffEntry {
 	var entries []ui.DiffEntry
 	for _, c := range changes {
 		var icon string
