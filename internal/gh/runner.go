@@ -101,26 +101,24 @@ func (r *GHRunner) exec(args []string, cmdStr string) ([]byte, error) {
 		return nil, retry.Unrecoverable(ErrNotInstalled)
 	}
 
+	stdout := strings.TrimSpace(outBuf.String())
 	stderr := strings.TrimSpace(errBuf.String())
 	exitCode := cmd.ProcessState.ExitCode()
 
 	logger.Warn("command failed", "cmd", cmdStr, "exit", exitCode, "stderr", truncate(stderr, 500))
 
-	// Non-retryable: auth issue
+	return nil, buildCommandError(cmdStr, exitCode, stdout, stderr)
+}
+
+func buildCommandError(cmdStr string, exitCode int, stdout, stderr string) error {
+	// Auth failures are emitted as plain stderr text, so detect them before
+	// attempting API error normalization.
 	if strings.Contains(stderr, "not logged in") ||
 		strings.Contains(stderr, "gh auth login") {
-		return nil, retry.Unrecoverable(ErrNotAuthed)
+		return retry.Unrecoverable(ErrNotAuthed)
 	}
 
-	// `gh api` can split error details across streams on failure:
-	// machine-readable JSON may be emitted to stdout while the human-oriented
-	// summary stays on stderr. Parse stderr first because plain gh commands
-	// usually report failures there, then fall back to stdout so API errors
-	// still map to typed sentinel errors such as ErrForbidden.
-	apiErr := tryParseAPIError(stderr)
-	if apiErr == nil {
-		apiErr = tryParseAPIError(strings.TrimSpace(outBuf.String()))
-	}
+	apiErr := parseAPIErrorFromStreams(stdout, stderr)
 
 	exitErr := &ExitError{
 		Cmd:      cmdStr,
@@ -129,27 +127,41 @@ func (r *GHRunner) exec(args []string, cmdStr string) ([]byte, error) {
 		APIError: apiErr,
 	}
 
-	if apiErr != nil {
-		logger.Debug("api error", "status", apiErr.Status, "message", apiErr.Message)
-		switch apiErr.Status {
-		case 404:
-			return nil, retry.Unrecoverable(fmt.Errorf("%w: %w", ErrNotFound, exitErr))
-		case 401:
-			return nil, retry.Unrecoverable(fmt.Errorf("%w: %w", ErrUnauthorized, exitErr))
-		case 403:
-			// Rate limit is retryable; other 403s are not
-			if strings.Contains(apiErr.Message, "rate limit") ||
-				strings.Contains(apiErr.Message, "abuse detection") {
-				return nil, exitErr // retryable
-			}
-			return nil, retry.Unrecoverable(fmt.Errorf("%w: %w", ErrForbidden, exitErr))
-		case 422:
-			return nil, retry.Unrecoverable(fmt.Errorf("%w: %w", ErrValidation, exitErr))
-		}
+	if apiErr == nil {
+		// Other errors (network timeout, TLS handshake, etc.) remain retryable.
+		return exitErr
 	}
 
-	// Other errors (network timeout, TLS handshake, etc.) are retryable
-	return nil, exitErr
+	logger.Debug("api error", "status", apiErr.Status, "message", apiErr.Message)
+	switch apiErr.Status {
+	case 404:
+		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrNotFound, exitErr))
+	case 401:
+		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrUnauthorized, exitErr))
+	case 403:
+		// Rate limit is retryable; other 403s are not.
+		if strings.Contains(apiErr.Message, "rate limit") ||
+			strings.Contains(apiErr.Message, "abuse detection") {
+			return exitErr
+		}
+		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrForbidden, exitErr))
+	case 422:
+		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrValidation, exitErr))
+	default:
+		return exitErr
+	}
+}
+
+func parseAPIErrorFromStreams(stdout, stderr string) *APIError {
+	// `gh api` can split error details across streams on failure:
+	// machine-readable JSON may be emitted to stdout while the human-oriented
+	// summary stays on stderr. Parse stderr first because plain gh commands
+	// usually report failures there, then fall back to stdout so API errors
+	// still map to typed sentinel errors such as ErrForbidden.
+	if apiErr := tryParseAPIError(stderr); apiErr != nil {
+		return apiErr
+	}
+	return tryParseAPIError(stdout)
 }
 
 // isRetryable determines whether an error should trigger a retry.

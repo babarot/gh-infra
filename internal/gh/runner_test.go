@@ -1,6 +1,7 @@
 package gh
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -158,4 +159,66 @@ func TestTruncate(t *testing.T) {
 func TestMockRunner_Implements_Runner(t *testing.T) {
 	var _ Runner = &MockRunner{}
 	var _ Runner = &GHRunner{}
+}
+
+func TestParseAPIErrorFromStreams(t *testing.T) {
+	t.Run("prefers stderr when available", func(t *testing.T) {
+		got := parseAPIErrorFromStreams(
+			`{"message":"Upgrade required","status":"403"}`,
+			"gh: Resource not accessible (Not Found)",
+		)
+		if got == nil {
+			t.Fatal("expected non-nil APIError")
+		}
+		if got.Status != 404 {
+			t.Fatalf("status: got %d, want 404", got.Status)
+		}
+	})
+
+	t.Run("parses HTTP status from stderr message", func(t *testing.T) {
+		got := parseAPIErrorFromStreams(
+			`{"message":"Upgrade required","status":"403"}`,
+			"gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)",
+		)
+		if got == nil {
+			t.Fatal("expected non-nil APIError")
+		}
+		if got.Status != 403 {
+			t.Fatalf("status: got %d, want 403", got.Status)
+		}
+	})
+
+	t.Run("falls back to stdout when stderr is not parseable", func(t *testing.T) {
+		got := parseAPIErrorFromStreams(
+			`{"message":"Upgrade required","status":"403"}`,
+			"request failed",
+		)
+		if got == nil {
+			t.Fatal("expected non-nil APIError")
+		}
+		if got.Status != 403 {
+			t.Fatalf("status: got %d, want 403", got.Status)
+		}
+	})
+}
+
+func TestBuildCommandError(t *testing.T) {
+	t.Run("auth error is unrecoverable", func(t *testing.T) {
+		err := buildCommandError("gh api repos/o/r", 1, "", "gh: not logged in. Run `gh auth login`.")
+		if !errors.Is(err, ErrNotAuthed) {
+			t.Fatalf("expected ErrNotAuthed, got %v", err)
+		}
+	})
+
+	t.Run("forbidden API error becomes unrecoverable forbidden", func(t *testing.T) {
+		err := buildCommandError(
+			"gh api repos/o/r/rulesets --paginate",
+			1,
+			`{"message":"Upgrade required","status":"403"}`,
+			"gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)",
+		)
+		if !errors.Is(err, ErrForbidden) {
+			t.Fatalf("expected ErrForbidden, got %v", err)
+		}
+	})
 }
