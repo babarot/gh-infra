@@ -91,7 +91,17 @@ type Repository struct {
 	Kind       string             `yaml:"kind"`
 	Metadata   RepositoryMetadata `yaml:"metadata"`
 	Spec       RepositorySpec     `yaml:"spec"`
+
+	sourcePath string // manifest file path; set by parser, not serialized
+	docIndex   int    // document index within the manifest file; set by parser
+	fromSet    bool   // true if expanded from a RepositorySet
 }
+
+func (r *Repository) SetSource(path string, docIndex int) { r.sourcePath = path; r.docIndex = docIndex }
+func (r *Repository) SourcePath() string                  { return r.sourcePath }
+func (r *Repository) DocIndex() int                       { return r.docIndex }
+func (r *Repository) SetFromSet(v bool)                   { r.fromSet = v }
+func (r *Repository) FromSet() bool                       { return r.fromSet }
 
 type RepositoryMetadata struct {
 	Name  string `yaml:"name"  validate:"required"`
@@ -402,14 +412,14 @@ func (fs *FileSet) RepoFullName(repoName string) string {
 }
 
 type FileEntry struct {
-	Path      string            `yaml:"path"                validate:"required"`
-	Content   string            `yaml:"content,omitempty" validate:"exclusive=source"`
-	Source    string            `yaml:"source,omitempty"`
-	Patches   []string          `yaml:"patches,omitempty"`
-	Vars      map[string]string `yaml:"vars,omitempty"`
-	Reconcile string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
-	DirScope       string `yaml:"-"`
-	OriginalSource string `yaml:"-"` // absolute path of local source file; preserved by ResolveFiles for pull
+	Path           string            `yaml:"path"                validate:"required"`
+	Content        string            `yaml:"content,omitempty" validate:"exclusive=source"`
+	Source         string            `yaml:"source,omitempty"`
+	Patches        []string          `yaml:"patches,omitempty"`
+	Vars           map[string]string `yaml:"vars,omitempty"`
+	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
+	DirScope       string            `yaml:"-"`
+	OriginalSource string            `yaml:"-"` // absolute path of local source file; preserved by ResolveFiles for pull
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`

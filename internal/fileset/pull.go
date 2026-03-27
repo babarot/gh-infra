@@ -20,8 +20,8 @@ const (
 
 // PullChange represents a planned pull-back operation for a single file.
 type PullChange struct {
-	Path           string   // file path in the GitHub repository
-	LocalTarget    string   // write-back destination (source file path or manifest path for inline)
+	Path           string // file path in the GitHub repository
+	LocalTarget    string // write-back destination (source file path or manifest path for inline)
 	Type           PullType
 	FetchedContent string
 	CurrentLocal   string

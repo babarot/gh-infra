@@ -130,11 +130,18 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
+		for _, r := range repos {
+			r.SetSource(path, docNum-1) // convert 1-based docNum to 0-based index
+		}
 		result.Repositories = repos
 	case KindRepositorySet:
 		repos, err := parseRepositorySet(data, path)
 		if err != nil {
 			return nil, err
+		}
+		for _, r := range repos {
+			r.SetSource(path, docNum-1)
+			r.SetFromSet(true)
 		}
 		result.Repositories = repos
 	case KindFile:
@@ -142,7 +149,7 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
-		fs.SetSource(path, docNum)
+		fs.SetSource(path, docNum-1)
 		result.FileSets = []*FileSet{fs}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
@@ -150,7 +157,7 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
-		fs.SetSource(path, docNum)
+		fs.SetSource(path, docNum-1)
 		result.FileSets = []*FileSet{fs}
 		result.Warnings = append(result.Warnings, warnings...)
 	default:

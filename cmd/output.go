@@ -10,7 +10,7 @@ import (
 
 // printUnifiedPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
-func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileChange) {
+func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileApplyChange) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -34,7 +34,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 	}
 
 	// Index changes by repo name
-	fileByTarget := make(map[string][]fileset.FileChange)
+	fileByTarget := make(map[string][]fileset.FileApplyChange)
 	for _, c := range fileChanges {
 		if c.Type == fileset.FileNoOp {
 			continue
@@ -255,7 +255,7 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 }
 
 // computeColumnWidth returns the max field/path width across both repo and file changes.
-func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileChange) int {
+func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileApplyChange) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {

@@ -74,7 +74,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 
 	// Phase 1: Refresh all resources in parallel
 	var repoChanges []repository.Change
-	var fileChanges []fileset.FileChange
+	var fileChanges []fileset.FileApplyChange
 
 	// Collect all target names and start a single spinner display
 	var allTasks []ui.RefreshTask

@@ -34,7 +34,7 @@ Specify a path to a File/FileSet manifest or a directory containing manifests.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if into != "" {
-				return runImportFiles(args, into, dryRun)
+				return runImportInto(args, into, dryRun)
 			}
 			return runImport(args)
 		},
@@ -78,7 +78,7 @@ func runImport(args []string) error {
 	return importRepos(p, targets, fetcher, resolver)
 }
 
-func runImportFiles(args []string, searchPath string, dryRun bool) error {
+func runImportInto(args []string, searchPath string, dryRun bool) error {
 	p := ui.NewStandardPrinter()
 
 	targets, err := parseImportTargets(args)
@@ -86,10 +86,9 @@ func runImportFiles(args []string, searchPath string, dryRun bool) error {
 		return err
 	}
 
-	// For file import, process one repo at a time
 	for _, target := range targets {
 		fullName := target.owner + "/" + target.name
-		if err := importFilesForRepo(p, fullName, searchPath, dryRun); err != nil {
+		if err := importIntoForRepo(p, target, fullName, searchPath, dryRun); err != nil {
 			return err
 		}
 	}
@@ -97,65 +96,153 @@ func runImportFiles(args []string, searchPath string, dryRun bool) error {
 	return nil
 }
 
-func importFilesForRepo(p ui.Printer, filterRepo, searchPath string, dryRun bool) error {
-	// Discover FileSet manifests from the given path
+func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath string, dryRun bool) error {
 	parsed, err := manifest.ParseAll(searchPath)
 	if err != nil {
 		return err
 	}
 
-	// Filter to FileSets that reference this repo
+	// Find matching Repository manifests (skip RepositorySet — reverse merge not yet supported)
+	var matchedRepos []*manifest.Repository
+	var skippedRepoSet bool
+	for _, repo := range parsed.Repositories {
+		if repo.Metadata.FullName() == fullName {
+			if repo.FromSet() {
+				skippedRepoSet = true
+				continue
+			}
+			matchedRepos = append(matchedRepos, repo)
+		}
+	}
+
+	// Find matching FileSet manifests
 	var matchedFileSets []*manifest.FileSet
 	for _, fs := range parsed.FileSets {
 		for _, r := range fs.Spec.Repositories {
-			if fs.RepoFullName(r.Name) == filterRepo {
+			if fs.RepoFullName(r.Name) == fullName {
 				matchedFileSets = append(matchedFileSets, fs)
 				break
 			}
 		}
 	}
 
-	if len(matchedFileSets) == 0 {
-		return fmt.Errorf("no File or FileSet found for %s in the current directory", filterRepo)
+	if len(matchedRepos) == 0 && len(matchedFileSets) == 0 {
+		return fmt.Errorf("no manifests found for %s in %s", fullName, searchPath)
 	}
 
 	runner := gh.NewRunner(false)
-	processor := fileset.NewProcessor(runner, p)
 
-	// Count total files for spinner
-	var fetchTasks []ui.RefreshTask
-	fetchTasks = append(fetchTasks, ui.RefreshTask{
-		Name:      "Importing " + filterRepo + " (files)",
-		DoneLabel: "Imported " + filterRepo + " (files)",
-		FailLabel: "Failed " + filterRepo + " (files)",
-	})
-	tracker := ui.RunRefresh(fetchTasks)
-
-	p.Phase(fmt.Sprintf("Importing file content from %s ...", filterRepo))
-	p.BlankLine()
-
-	changes, err := fileset.PlanPull(processor, matchedFileSets, filterRepo)
-	if err != nil {
-		tracker.Fail(fetchTasks[0].Name)
-		tracker.Wait()
-		return err
+	// Build spinner tasks
+	var tasks []ui.RefreshTask
+	if len(matchedRepos) > 0 {
+		tasks = append(tasks, ui.RefreshTask{
+			Name:      "Importing " + fullName + " (repo)",
+			DoneLabel: "Imported " + fullName + " (repo)",
+			FailLabel: "Failed " + fullName + " (repo)",
+		})
 	}
-	tracker.Done(fetchTasks[0].Name)
+	if len(matchedFileSets) > 0 {
+		tasks = append(tasks, ui.RefreshTask{
+			Name:      "Importing " + fullName + " (files)",
+			DoneLabel: "Imported " + fullName + " (files)",
+			FailLabel: "Failed " + fullName + " (files)",
+		})
+	}
+
+	p.Phase(fmt.Sprintf("Importing from %s ...", fullName))
+	p.BlankLine()
+	tracker := ui.RunRefresh(tasks)
+
+	// failAll marks all remaining spinner tasks as failed and waits.
+	failAll := func() {
+		for _, t := range tasks {
+			tracker.Fail(t.Name)
+		}
+		tracker.Wait()
+	}
+
+	// Collect manifest bytes for in-place edits (repo spec + inline content)
+	manifestBytes := make(map[string][]byte)
+	readManifestBytes := func(sourcePath string) error {
+		if _, ok := manifestBytes[sourcePath]; !ok {
+			data, err := os.ReadFile(sourcePath)
+			if err != nil {
+				return fmt.Errorf("read manifest %s: %w", sourcePath, err)
+			}
+			manifestBytes[sourcePath] = data
+		}
+		return nil
+	}
+
+	// --- Repository import ---
+	var repoUpdated int
+	if len(matchedRepos) > 0 {
+		key := "Importing " + fullName + " (repo)"
+		fetcher := repository.NewFetcher(runner)
+		resolver := manifest.NewResolver(runner, target.owner)
+
+		current, err := fetcher.FetchRepository(target.owner, target.name)
+		if err != nil {
+			failAll()
+			return err
+		}
+
+		imported := repository.ToManifest(current, resolver)
+
+		for _, repo := range matchedRepos {
+			if err := readManifestBytes(repo.SourcePath()); err != nil {
+				failAll()
+				return err
+			}
+
+			data := manifestBytes[repo.SourcePath()]
+			data, err = fileset.ReplaceYAMLNode(data, repo.DocIndex(), "$.spec", imported.Spec)
+			if err != nil {
+				failAll()
+				return fmt.Errorf("update spec in %s: %w", repo.SourcePath(), err)
+			}
+			manifestBytes[repo.SourcePath()] = data
+			repoUpdated++
+		}
+		tracker.Done(key)
+	}
+
+	// --- FileSet import ---
+	var fileChanges []fileset.PullChange
+	if len(matchedFileSets) > 0 {
+		key := "Importing " + fullName + " (files)"
+		processor := fileset.NewProcessor(runner, p)
+
+		fileChanges, err = fileset.PlanPull(processor, matchedFileSets, fullName)
+		if err != nil {
+			failAll()
+			return err
+		}
+		tracker.Done(key)
+	}
 	tracker.Wait()
 
-	written, unchanged, skipped := fileset.PullSummary(changes)
-
-	// Display results using existing printer patterns
+	// --- Display results ---
 	p.Separator()
 
-	for _, c := range changes {
+	if skippedRepoSet {
+		p.ResultWarning(fullName+" (repo)", "RepositorySet import not yet supported, use `gh infra import "+fullName+"`")
+	}
+
+	if repoUpdated > 0 {
+		for _, repo := range matchedRepos {
+			p.ResultSuccess(fullName+" (repo)", fmt.Sprintf("→ %s", relativePath(repo.SourcePath())))
+		}
+	}
+
+	written, unchanged, skipped := fileset.PullSummary(fileChanges)
+
+	for _, c := range fileChanges {
 		switch c.Type {
 		case fileset.PullWriteSource:
-			relTarget := relativePath(c.LocalTarget)
-			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s", relTarget))
+			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s", relativePath(c.LocalTarget)))
 		case fileset.PullWriteInline:
-			relManifest := relativePath(c.ManifestPath)
-			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s (inline)", relManifest))
+			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s (inline)", relativePath(c.ManifestPath)))
 		case fileset.PullNoOp:
 			p.Detail(fmt.Sprintf("  %s  unchanged", c.Path))
 		case fileset.PullSkip:
@@ -163,46 +250,52 @@ func importFilesForRepo(p ui.Printer, filterRepo, searchPath string, dryRun bool
 		}
 	}
 
-	// Print warnings
-	for _, c := range changes {
+	for _, c := range fileChanges {
 		for _, w := range c.Warnings {
 			p.Warning(c.Path, w)
 		}
 	}
 
+	totalWritten := repoUpdated + written
+
 	if dryRun {
 		p.Summary(fmt.Sprintf("Dry run: %s to write, %s unchanged, %s to skip.",
-			ui.Bold.Render(fmt.Sprintf("%d", written)),
+			ui.Bold.Render(fmt.Sprintf("%d", totalWritten)),
 			ui.Bold.Render(fmt.Sprintf("%d", unchanged)),
 			ui.Bold.Render(fmt.Sprintf("%d", skipped)),
 		))
 		return nil
 	}
 
-	if written == 0 {
-		p.Summary("Nothing to import. Local files are up-to-date.")
+	if totalWritten == 0 {
+		p.Summary("Nothing to import. Local state is up-to-date.")
 		return nil
 	}
 
-	// Read manifest bytes for inline edits
-	manifestBytes := make(map[string][]byte)
+	// Read manifest bytes for file inline edits
 	for _, fs := range matchedFileSets {
-		sp := fs.SourcePath()
-		if _, ok := manifestBytes[sp]; !ok {
-			data, err := os.ReadFile(sp)
-			if err != nil {
-				return fmt.Errorf("read manifest %s: %w", sp, err)
-			}
-			manifestBytes[sp] = data
+		if err := readManifestBytes(fs.SourcePath()); err != nil {
+			return err
 		}
 	}
 
-	if err := fileset.ApplyPull(changes, manifestBytes); err != nil {
+	// Apply file changes (source writes + inline edits)
+	if err := fileset.ApplyPull(fileChanges, manifestBytes); err != nil {
 		return err
 	}
 
+	// Write back repo spec changes (manifestBytes may have been updated by both repo and file edits)
+	if repoUpdated > 0 {
+		for _, repo := range matchedRepos {
+			data := manifestBytes[repo.SourcePath()]
+			if err := os.WriteFile(repo.SourcePath(), data, 0644); err != nil {
+				return fmt.Errorf("write %s: %w", repo.SourcePath(), err)
+			}
+		}
+	}
+
 	p.Summary(fmt.Sprintf("Import complete! %s written, %s unchanged, %s skipped.",
-		ui.Bold.Render(fmt.Sprintf("%d", written)),
+		ui.Bold.Render(fmt.Sprintf("%d", totalWritten)),
 		ui.Bold.Render(fmt.Sprintf("%d", unchanged)),
 		ui.Bold.Render(fmt.Sprintf("%d", skipped)),
 	))
