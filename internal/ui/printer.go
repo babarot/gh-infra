@@ -11,6 +11,31 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+// ChangeItem represents a single field-level change for PrintChange.
+type ChangeItem struct {
+	Icon  string // IconAdd, IconChange, IconRemove
+	Field string
+	Value any    // for create/delete: the value; for update: ignored
+	Old   string // for update only
+	New   string // for update only
+	Sub   bool   // true = sub-level indent (10), false = top-level (6)
+}
+
+// FileItem represents a file-level change for PrintFileChange.
+type FileItem struct {
+	Icon    string // IconAdd, IconChange, IconRemove
+	Path    string
+	Added   int
+	Removed int
+}
+
+// ResultItem represents an apply result for PrintResult.
+type ResultItem struct {
+	Icon   string // IconSuccess, IconError, IconWarning
+	Field  string
+	Detail string
+}
+
 // Printer is the interface for all user-facing output.
 type Printer interface {
 	// stderr: progress/status
@@ -24,23 +49,14 @@ type Printer interface {
 	ActionHeader(name, action string) // e.g. "# babarot/repo will be created"
 	GroupHeader(icon, name string)
 	GroupEnd()
-	SetColumnWidth(w int) // set field/path column width for Item/SubItem
-	ItemCreate(field string, value any)
-	ItemUpdate(field, old, new string)
-	ItemDelete(field string, value any)
+	SetColumnWidth(w int) // set field/path column width for alignment
 	SubGroupHeader(icon, name string)
-	SubItemCreate(field string, value any)
-	SubItemUpdate(field, old, new string)
-	SubItemDelete(field string, value any)
-	FileCreate(path string, lines int)
-	FileUpdate(path string, added, removed int)
-	FileDelete(path string, lines int)
+	PrintChange(item ChangeItem)
+	PrintFileChange(item FileItem)
+	PrintResult(item ResultItem)
 	Success(name, detail string)
 	Error(name, detail string)
 	Warning(name, detail string) // stderr
-	ResultSuccess(field, detail string)
-	ResultError(field, detail string)
-	ResultWarning(field, detail string)
 	Detail(msg string)
 	StreamStart(name, detail string)
 	StreamDone(name, detail string)
@@ -173,45 +189,38 @@ func (p *StandardPrinter) subItemWidth() int {
 	return 26
 }
 
-func (p *StandardPrinter) ItemCreate(field string, value any) {
-	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Green.Render(IconAdd), p.itemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
-}
-
-func (p *StandardPrinter) ItemUpdate(field, oldVal, newVal string) {
-	fmt.Fprintf(p.out, "      %s %-*s  %s %s %s\n",
-		Yellow.Render(IconChange), p.itemWidth(), field, Dim.Render(oldVal), Dim.Render(IconArrow), Bold.Render(newVal))
-}
-
-func (p *StandardPrinter) ItemDelete(field string, value any) {
-	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Red.Render(IconRemove), p.itemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
-}
-
 func (p *StandardPrinter) SubGroupHeader(icon, name string) {
 	fmt.Fprintf(p.out, "      %s %s\n", renderIcon(icon), Bold.Render(name))
 }
 
-func (p *StandardPrinter) SubItemCreate(field string, value any) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Green.Render(IconAdd), p.subItemWidth(), field, Green.Render(fmt.Sprintf("%v", value)))
-}
-
-func (p *StandardPrinter) SubItemUpdate(field, oldVal, newVal string) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s %s %s\n",
-		Yellow.Render(IconChange), p.subItemWidth(), field, Dim.Render(oldVal), Dim.Render(IconArrow), Bold.Render(newVal))
-}
-
-func (p *StandardPrinter) SubItemDelete(field string, value any) {
-	fmt.Fprintf(p.out, "          %s %-*s  %s\n",
-		Red.Render(IconRemove), p.subItemWidth(), field, Red.Render(fmt.Sprintf("%v", value)))
+// PrintChange prints a single field-level change (create, update, or delete).
+// The Sub field controls indentation: false = top-level (6 spaces), true = sub-level (10 spaces).
+func (p *StandardPrinter) PrintChange(item ChangeItem) {
+	indent := "      " // 6 spaces
+	width := p.itemWidth()
+	if item.Sub {
+		indent = "          " // 10 spaces
+		width = p.subItemWidth()
+	}
+	icon := renderIcon(item.Icon)
+	switch item.Icon {
+	case IconAdd:
+		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
+			indent, icon, width, item.Field, Green.Render(fmt.Sprintf("%v", item.Value)))
+	case IconChange:
+		fmt.Fprintf(p.out, "%s%s %-*s  %s %s %s\n",
+			indent, icon, width, item.Field, Dim.Render(item.Old), Dim.Render(IconArrow), Bold.Render(item.New))
+	case IconRemove:
+		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
+			indent, icon, width, item.Field, Red.Render(fmt.Sprintf("%v", item.Value)))
+	}
 }
 
 // File change descriptions used in plan output.
 var fileDescs = map[string]string{
-	"create": "(new file)",
-	"update": "(content changed)",
-	"delete": "(deleted)",
+	IconAdd:    "(new file)",
+	IconChange: "(content changed)",
+	IconRemove: "(deleted)",
 }
 
 // fileDescWidth is computed from the longest description + 1 padding.
@@ -225,25 +234,36 @@ var fileDescWidth = func() int {
 	return max + 1
 }()
 
-func (p *StandardPrinter) FileCreate(path string, lines int) {
-	desc := Green.Render(fmt.Sprintf("%-*s", fileDescWidth, fileDescs["create"]))
-	stat := formatDiffStat(lines, 0)
+// PrintFileChange prints a file-level change with diff stat.
+func (p *StandardPrinter) PrintFileChange(item FileItem) {
+	icon := renderIcon(item.Icon)
+	desc := fileDescs[item.Icon]
+	styledDesc := renderFileDesc(item.Icon, fmt.Sprintf("%-*s", fileDescWidth, desc))
+	stat := formatDiffStat(item.Added, item.Removed)
 	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
-		Green.Render(IconAdd), p.subItemWidth(), path, desc, stat)
+		icon, p.subItemWidth(), item.Path, styledDesc, stat)
 }
 
-func (p *StandardPrinter) FileUpdate(path string, added, removed int) {
-	desc := Yellow.Render(fmt.Sprintf("%-*s", fileDescWidth, fileDescs["update"]))
-	stat := formatDiffStat(added, removed)
-	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
-		Yellow.Render(IconChange), p.subItemWidth(), path, desc, stat)
+func renderFileDesc(icon, desc string) string {
+	switch icon {
+	case IconAdd:
+		return Green.Render(desc)
+	case IconRemove:
+		return Red.Render(desc)
+	default:
+		return Yellow.Render(desc)
+	}
 }
 
-func (p *StandardPrinter) FileDelete(path string, lines int) {
-	desc := Red.Render(fmt.Sprintf("%-*s", fileDescWidth, fileDescs["delete"]))
-	stat := formatDiffStat(0, lines)
-	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
-		Red.Render(IconRemove), p.subItemWidth(), path, desc, stat)
+// PrintResult prints an apply result line.
+func (p *StandardPrinter) PrintResult(item ResultItem) {
+	icon := renderIcon(item.Icon)
+	detail := item.Detail
+	if item.Icon == IconError {
+		detail = strings.ReplaceAll(detail, "\n", "\n          ")
+	}
+	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
+		icon, p.itemWidth(), item.Field, detail)
 }
 
 // formatDiffStat formats added/removed line counts like git diff --stat.
@@ -283,22 +303,6 @@ func (p *StandardPrinter) Error(name, detail string) {
 
 func (p *StandardPrinter) Warning(name, detail string) {
 	fmt.Fprintf(p.err, "  %s %s  %s\n", Yellow.Render(IconWarning), Bold.Render(name), detail)
-}
-
-func (p *StandardPrinter) ResultSuccess(field, detail string) {
-	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Green.Render(IconSuccess), p.itemWidth(), field, detail)
-}
-
-func (p *StandardPrinter) ResultError(field, detail string) {
-	detail = strings.ReplaceAll(detail, "\n", "\n          ")
-	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Red.Render(IconError), p.itemWidth(), field, detail)
-}
-
-func (p *StandardPrinter) ResultWarning(field, detail string) {
-	fmt.Fprintf(p.out, "      %s %-*s  %s\n",
-		Yellow.Render(IconWarning), p.itemWidth(), field, detail)
 }
 
 func (p *StandardPrinter) Detail(msg string) {

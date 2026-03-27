@@ -803,14 +803,16 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 		p.GroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s → %s", ui.Bold.Render(label), ui.Bold.Render(g.key.target)))
 		for _, c := range g.changes {
 			added, removed := DiffStat(c.Current, c.Desired)
+			var icon string
 			switch c.Type {
 			case ChangeCreate:
-				p.FileCreate(c.Path, added)
+				icon = ui.IconAdd
 			case ChangeUpdate:
-				p.FileUpdate(c.Path, added, removed)
+				icon = ui.IconChange
 			case ChangeDelete:
-				p.FileDelete(c.Path, removed)
+				icon = ui.IconRemove
 			}
+			p.PrintFileChange(ui.FileItem{Icon: icon, Path: c.Path, Added: added, Removed: removed})
 		}
 		p.GroupEnd()
 	}
