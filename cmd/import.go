@@ -18,10 +18,7 @@ import (
 )
 
 func newImportCmd() *cobra.Command {
-	var (
-		into   string
-		dryRun bool
-	)
+	var into string
 
 	cmd := &cobra.Command{
 		Use:   "import <owner/repo> [owner/repo ...]",
@@ -34,14 +31,13 @@ Specify a path to a File/FileSet manifest or a directory containing manifests.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if into != "" {
-				return runImportInto(args, into, dryRun)
+				return runImportInto(args, into)
 			}
 			return runImport(args)
 		},
 	}
 
 	cmd.Flags().StringVar(&into, "into", "", "Import file content into local sources via the given manifest or directory")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be written without making changes (requires --into)")
 
 	return cmd
 }
@@ -78,17 +74,20 @@ func runImport(args []string) error {
 	return importRepos(p, targets, fetcher, resolver)
 }
 
-func runImportInto(args []string, searchPath string, dryRun bool) error {
+func runImportInto(args []string, searchPath string) error {
 	p := ui.NewStandardPrinter()
 
 	targets, err := parseImportTargets(args)
 	if err != nil {
 		return err
 	}
+	if !ui.IsInteractive() {
+		return fmt.Errorf("import --into requires an interactive terminal")
+	}
 
 	for _, target := range targets {
 		fullName := target.owner + "/" + target.name
-		if err := importIntoForRepo(p, target, fullName, searchPath, dryRun); err != nil {
+		if err := importIntoForRepo(p, target, fullName, searchPath); err != nil {
 			return err
 		}
 	}
@@ -96,7 +95,7 @@ func runImportInto(args []string, searchPath string, dryRun bool) error {
 	return nil
 }
 
-func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath string, dryRun bool) error {
+func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath string) error {
 	parsed, err := manifest.ParseAll(searchPath)
 	if err != nil {
 		return err
@@ -192,17 +191,17 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	written, unchanged, skipped := fileset.ImportSummary(importChanges)
 	totalWritten := repoPlan.UpdatedDocs + written
 
-	if dryRun {
-		p.Summary(fmt.Sprintf("Dry run: %s to write, %s unchanged, %s to skip.",
-			ui.Bold.Render(fmt.Sprintf("%d", totalWritten)),
-			ui.Bold.Render(fmt.Sprintf("%d", unchanged)),
-			ui.Bold.Render(fmt.Sprintf("%d", skipped)),
-		))
+	if totalWritten == 0 {
+		p.Summary("Nothing to import. Local state is up-to-date.")
 		return nil
 	}
 
-	if totalWritten == 0 {
-		p.Summary("Nothing to import. Local state is up-to-date.")
+	confirmed, err := p.Confirm("Do you want to import these changes?")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		p.Message("Import canceled.")
 		return nil
 	}
 

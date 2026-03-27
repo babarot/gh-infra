@@ -15,9 +15,6 @@ gh infra import <owner/repo>
 | Flag | Description |
 |------|-------------|
 | `--into <path>` | Import GitHub state back into an existing manifest file or manifest directory |
-| `--dry-run` | Preview what `--into` would write without modifying local files |
-
-`--dry-run` is only meaningful together with `--into`.
 
 ## Export Repository Settings
 
@@ -63,18 +60,7 @@ This is the reverse direction of `apply`:
 - `apply` pushes desired local state to GitHub
 - `import --into` pulls current GitHub state back into local manifests and source files
 
-### Dry Run
-
-Use `--dry-run` to preview what would be written without modifying local files.
-
-```bash
-gh infra import <owner/repo> --into=./repos --dry-run
-```
-
-Conceptually:
-
-- `import --into` is the reverse of `apply`
-- `import --into --dry-run` is the reverse of `plan`
+Before writing anything, gh-infra shows the planned changes and asks for confirmation.
 
 ## What Gets Updated
 
@@ -119,12 +105,6 @@ In these cases, gh-infra still imports the GitHub content, but warns that the pu
 gh infra import babarot/gomi --into=./repos/gomi.yaml
 ```
 
-### Preview what would be written
-
-```bash
-gh infra import babarot/gomi --into=./repos/gomi.yaml --dry-run
-```
-
 ### Import into all manifests under a directory
 
 ```bash
@@ -143,9 +123,11 @@ Use `import --into` when:
 - you already manage a repo with gh-infra
 - local manifests or templates have drifted from the real GitHub state
 - you want to pull current file contents or repo settings back into your local source of truth
+- you want to review the planned local write-back and confirm it interactively
 
 ## Limitations
 
 - `RepositorySet` import updates `repositories[i].spec` only
 - automatic reverse-merge into `defaults.spec` is not supported
 - `github://` sources are read-only from the perspective of local write-back
+- `import --into` requires an interactive terminal for confirmation
