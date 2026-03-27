@@ -35,10 +35,11 @@ type FileImportChange struct {
 
 // PlanPull computes import changes for all FileSets.
 // filterRepo must be "owner/repo" format; required if a FileSet targets multiple repos.
-func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) ([]FileImportChange, error) {
+func PlanPull(proc *Processor, fileSets []*manifest.FileSetDocument, filterRepo string) ([]FileImportChange, error) {
 	var changes []FileImportChange
 
-	for _, fs := range fileSets {
+	for _, fsDoc := range fileSets {
+		fs := fsDoc.Resource
 		repos := fs.Spec.Repositories
 		if filterRepo != "" {
 			var filtered []manifest.FileSetRepository
@@ -73,7 +74,7 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) 
 		files := ResolveFilesForTarget(fs, target, repoIndex)
 
 		for _, file := range files {
-			change := planImportEntry(proc, file, fullName, fs)
+			change := planImportEntry(proc, file, fullName, fsDoc)
 			changes = append(changes, change)
 		}
 	}
@@ -81,12 +82,12 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) 
 	return changes, nil
 }
 
-func planImportEntry(proc *Processor, file manifest.FileEntry, repo string, fs *manifest.FileSet) FileImportChange {
+func planImportEntry(proc *Processor, file manifest.FileEntry, repo string, fs *manifest.FileSetDocument) FileImportChange {
 	change := FileImportChange{
 		Target:       repo,
 		Path:         file.Path,
-		ManifestPath: fs.SourcePath(),
-		DocIndex:     fs.DocIndex(),
+		ManifestPath: fs.SourcePath,
+		DocIndex:     fs.DocIndex,
 	}
 
 	// Determine write target
@@ -103,7 +104,7 @@ func planImportEntry(proc *Processor, file manifest.FileEntry, repo string, fs *
 			return change
 		}
 		change.WriteMode = ImportWriteInline
-		change.LocalTarget = fs.SourcePath() + " (inline)"
+		change.LocalTarget = fs.SourcePath + " (inline)"
 		change.YAMLPath = yamlPath
 	} else {
 		// github:// or other remote source — can't write back locally

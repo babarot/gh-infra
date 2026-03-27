@@ -61,6 +61,8 @@ func ParseAll(path string, opts ...ParseOptions) (*ParseResult, error) {
 		}
 		result.Repositories = append(result.Repositories, parsed.Repositories...)
 		result.FileSets = append(result.FileSets, parsed.FileSets...)
+		result.RepositoryDocs = append(result.RepositoryDocs, parsed.RepositoryDocs...)
+		result.FileSetDocs = append(result.FileSetDocs, parsed.FileSetDocs...)
 		result.Warnings = append(result.Warnings, parsed.Warnings...)
 	}
 	return result, nil
@@ -88,6 +90,8 @@ func parseFileAll(path string, opt ParseOptions) (*ParseResult, error) {
 		}
 		result.Repositories = append(result.Repositories, parsed.Repositories...)
 		result.FileSets = append(result.FileSets, parsed.FileSets...)
+		result.RepositoryDocs = append(result.RepositoryDocs, parsed.RepositoryDocs...)
+		result.FileSetDocs = append(result.FileSetDocs, parsed.FileSetDocs...)
 		result.Warnings = append(result.Warnings, parsed.Warnings...)
 	}
 
@@ -130,35 +134,51 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
-		for _, r := range repos {
-			r.SetSource(path, docNum-1) // convert 1-based docNum to 0-based index
-		}
 		result.Repositories = repos
+		for _, r := range repos {
+			result.RepositoryDocs = append(result.RepositoryDocs, &RepositoryDocument{
+				Resource:   r,
+				SourcePath: path,
+				DocIndex:   docNum - 1,
+			})
+		}
 	case KindRepositorySet:
 		repos, err := parseRepositorySet(data, path)
 		if err != nil {
 			return nil, err
 		}
-		for _, r := range repos {
-			r.SetSource(path, docNum-1)
-			r.SetFromSet(true)
-		}
 		result.Repositories = repos
+		for _, r := range repos {
+			result.RepositoryDocs = append(result.RepositoryDocs, &RepositoryDocument{
+				Resource:   r,
+				SourcePath: path,
+				DocIndex:   docNum - 1,
+				FromSet:    true,
+			})
+		}
 	case KindFile:
 		fs, warnings, err := parseFile(data, path)
 		if err != nil {
 			return nil, err
 		}
-		fs.SetSource(path, docNum-1)
 		result.FileSets = []*FileSet{fs}
+		result.FileSetDocs = []*FileSetDocument{{
+			Resource:   fs,
+			SourcePath: path,
+			DocIndex:   docNum - 1,
+		}}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
 		fs, warnings, err := parseFileSet(data, path)
 		if err != nil {
 			return nil, err
 		}
-		fs.SetSource(path, docNum-1)
 		result.FileSets = []*FileSet{fs}
+		result.FileSetDocs = []*FileSetDocument{{
+			Resource:   fs,
+			SourcePath: path,
+			DocIndex:   docNum - 1,
+		}}
 		result.Warnings = append(result.Warnings, warnings...)
 	default:
 		if opt.FailOnUnknown {

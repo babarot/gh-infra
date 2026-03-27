@@ -97,8 +97,8 @@ func runImportInto(args []string, searchPath string, dryRun bool) error {
 }
 
 type importMatches struct {
-	repositories   []*manifest.Repository
-	fileSets       []*manifest.FileSet
+	repositories   []*manifest.RepositoryDocument
+	fileSets       []*manifest.FileSetDocument
 	skippedRepoSet bool
 }
 
@@ -207,7 +207,7 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 
 	// Read manifest bytes for file inline edits
 	for _, fs := range matches.fileSets {
-		if err := readManifestBytes(fs.SourcePath()); err != nil {
+		if err := readManifestBytes(fs.SourcePath); err != nil {
 			return err
 		}
 	}
@@ -236,20 +236,20 @@ const defaultImportParallel = 5
 func findImportMatches(parsed *manifest.ParseResult, fullName string) importMatches {
 	var matches importMatches
 
-	for _, repo := range parsed.Repositories {
-		if repo.Metadata.FullName() != fullName {
+	for _, repo := range parsed.RepositoryDocs {
+		if repo.Resource.Metadata.FullName() != fullName {
 			continue
 		}
-		if repo.FromSet() {
+		if repo.FromSet {
 			matches.skippedRepoSet = true
 			continue
 		}
 		matches.repositories = append(matches.repositories, repo)
 	}
 
-	for _, fs := range parsed.FileSets {
-		for _, r := range fs.Spec.Repositories {
-			if fs.RepoFullName(r.Name) == fullName {
+	for _, fs := range parsed.FileSetDocs {
+		for _, r := range fs.Resource.Spec.Repositories {
+			if fs.Resource.RepoFullName(r.Name) == fullName {
 				matches.fileSets = append(matches.fileSets, fs)
 				break
 			}
@@ -278,7 +278,7 @@ func buildImportTasks(fullName string, includeRepo, includeFiles bool) []ui.Refr
 	return tasks
 }
 
-func planRepositoryImport(target importTarget, repos []*manifest.Repository, runner gh.Runner, readManifestBytes func(string) error, manifestBytes map[string][]byte) (repoImportPlan, error) {
+func planRepositoryImport(target importTarget, repos []*manifest.RepositoryDocument, runner gh.Runner, readManifestBytes func(string) error, manifestBytes map[string][]byte) (repoImportPlan, error) {
 	fetcher := repository.NewFetcher(runner)
 	resolver := manifest.NewResolver(runner, target.owner)
 
@@ -292,22 +292,22 @@ func planRepositoryImport(target importTarget, repos []*manifest.Repository, run
 
 	for _, repo := range repos {
 		diffOpts := repository.DiffOptions{Resolver: resolver}
-		changes := repository.Diff(repo, githubState, diffOpts)
+		changes := repository.Diff(repo.Resource, githubState, diffOpts)
 		plan.changes = append(plan.changes, repository.ReverseChanges(changes)...)
 		if !repository.HasRealChanges(changes) {
 			continue
 		}
 
-		if err := readManifestBytes(repo.SourcePath()); err != nil {
+		if err := readManifestBytes(repo.SourcePath); err != nil {
 			return repoImportPlan{}, err
 		}
-		data := manifestBytes[repo.SourcePath()]
-		data, err = fileset.ReplaceYAMLNode(data, repo.DocIndex(), "$.spec", imported.Spec)
+		data := manifestBytes[repo.SourcePath]
+		data, err = fileset.ReplaceYAMLNode(data, repo.DocIndex, "$.spec", imported.Spec)
 		if err != nil {
-			return repoImportPlan{}, fmt.Errorf("update spec in %s: %w", repo.SourcePath(), err)
+			return repoImportPlan{}, fmt.Errorf("update spec in %s: %w", repo.SourcePath, err)
 		}
-		manifestBytes[repo.SourcePath()] = data
-		plan.manifestEdits[repo.SourcePath()] = data
+		manifestBytes[repo.SourcePath] = data
+		plan.manifestEdits[repo.SourcePath] = data
 		plan.updatedDocs++
 	}
 

@@ -91,17 +91,7 @@ type Repository struct {
 	Kind       string             `yaml:"kind"`
 	Metadata   RepositoryMetadata `yaml:"metadata"`
 	Spec       RepositorySpec     `yaml:"spec"`
-
-	sourcePath string // manifest file path; set by parser, not serialized
-	docIndex   int    // document index within the manifest file; set by parser
-	fromSet    bool   // true if expanded from a RepositorySet
 }
-
-func (r *Repository) SetSource(path string, docIndex int) { r.sourcePath = path; r.docIndex = docIndex }
-func (r *Repository) SourcePath() string                  { return r.sourcePath }
-func (r *Repository) DocIndex() int                       { return r.docIndex }
-func (r *Repository) SetFromSet(v bool)                   { r.fromSet = v }
-func (r *Repository) FromSet() bool                       { return r.fromSet }
 
 type RepositoryMetadata struct {
 	Name  string `yaml:"name"  validate:"required"`
@@ -330,21 +320,11 @@ type FileSet struct {
 	Kind       string          `yaml:"kind"`
 	Metadata   FileSetMetadata `yaml:"metadata"`
 	Spec       FileSetSpec     `yaml:"spec"`
-
-	sourcePath string // manifest file path; set by parser, not serialized
-	docIndex   int    // document index within the manifest file; set by parser
 }
 
 type FileSetMetadata struct {
 	Owner string `yaml:"owner" validate:"required"`
 }
-
-// SourcePath is the path to the manifest file that defined this FileSet.
-// DocIndex is the 0-based document index within that file.
-// Both are set by the parser and not serialized to YAML.
-func (fs *FileSet) SetSource(path string, docIndex int) { fs.sourcePath = path; fs.docIndex = docIndex }
-func (fs *FileSet) SourcePath() string                  { return fs.sourcePath }
-func (fs *FileSet) DocIndex() int                       { return fs.docIndex }
 
 type FileSetSpec struct {
 	Repositories  []FileSetRepository `yaml:"repositories" validate:"required,unique=Name"`
@@ -470,9 +450,24 @@ func (fe *FileEntry) UnmarshalYAML(unmarshal func(any) error) error {
 
 // ParseResult holds all parsed resources from a path.
 type ParseResult struct {
-	Repositories []*Repository
-	FileSets     []*FileSet
-	Warnings     []string // deprecation warnings collected during parse
+	Repositories   []*Repository
+	FileSets       []*FileSet
+	RepositoryDocs []*RepositoryDocument
+	FileSetDocs    []*FileSetDocument
+	Warnings       []string // deprecation warnings collected during parse
+}
+
+type RepositoryDocument struct {
+	Resource   *Repository
+	SourcePath string
+	DocIndex   int
+	FromSet    bool
+}
+
+type FileSetDocument struct {
+	Resource   *FileSet
+	SourcePath string
+	DocIndex   int
 }
 
 // Ptr returns a pointer to the given value.
