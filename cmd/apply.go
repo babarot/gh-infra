@@ -38,7 +38,7 @@ func newApplyCmd() *cobra.Command {
 }
 
 func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown bool) error {
-	result, err := infra.Plan(infra.PlanOptions{
+	engine, result, err := infra.Plan(infra.PlanOptions{
 		Path:          path,
 		FilterRepo:    filterRepo,
 		FailOnUnknown: failOnUnknown,
@@ -53,7 +53,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		return nil
 	}
 
-	p := result.Printer
+	p := engine.Printer()
 
 	// Confirm
 	if !autoApprove {
@@ -69,7 +69,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		applySkipSelections(result.FileChanges, diffEntries)
 	}
 
-	return infra.Apply(result, infra.ApplyOptions{
+	return engine.Apply(result, infra.ApplyOptions{
 		Stream: ui.OutputMode() == "stream",
 	})
 }

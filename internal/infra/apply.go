@@ -14,11 +14,8 @@ type ApplyOptions struct {
 }
 
 // Apply executes planned changes against GitHub.
-// It applies repository changes and file changes, then prints results.
-func Apply(result *PlanResult, opts ApplyOptions) error {
-	p := result.Printer
-	runner := result.Runner
-	resolver := result.Resolver
+func (e *Engine) Apply(result *PlanResult, opts ApplyOptions) error {
+	p := e.printer
 
 	totalSucceeded := 0
 	totalFailed := 0
@@ -28,7 +25,6 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 
 	// Apply repo changes
 	if repository.HasChanges(result.RepoChanges) {
-		processor := repository.NewProcessor(runner, resolver, p)
 		var reporter ui.ProgressReporter
 		if opts.Stream {
 			reporter = ui.NewStreamReporter(p, "Applying", "Applied")
@@ -41,7 +37,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 			}
 			reporter = ui.NewSpinnerReporter(uniqueStrings(names), "Applying", "Applied", "(repo)")
 		}
-		allRepoResults = processor.Apply(result.RepoChanges, result.TargetRepos, reporter)
+		allRepoResults = e.repo.Apply(result.RepoChanges, result.TargetRepos, reporter)
 		s, f := repository.CountApplyResults(allRepoResults)
 		totalSucceeded += s
 		totalFailed += f
@@ -49,7 +45,6 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 
 	// Apply file changes (per FileSet for correct options)
 	if fileset.HasChanges(result.FileChanges) {
-		processor := fileset.NewProcessor(runner, p)
 		for _, fs := range result.Parsed.FileSets {
 			var fsChanges []fileset.Change
 			for _, c := range result.FileChanges {
@@ -78,7 +73,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 				}
 				fileReporter = ui.NewSpinnerReporter(uniqueStrings(targets), "Applying", "Applied", "(files)")
 			}
-			results := processor.Apply(fsChanges, applyOpts, fileReporter)
+			results := e.file.Apply(fsChanges, applyOpts, fileReporter)
 			allFileResults = append(allFileResults, results...)
 			for _, r := range results {
 				if r.Err != nil {
