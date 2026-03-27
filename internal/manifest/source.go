@@ -108,7 +108,7 @@ func resolveLocal(source, destPath, yamlDir string) ([]FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []FileEntry{{Path: destPath, Content: string(content)}}, nil
+	return []FileEntry{{Path: destPath, Content: string(content), OriginalSource: srcPath}}, nil
 }
 
 // parseGitHubSource parses "github://owner/repo/path@ref" into components.

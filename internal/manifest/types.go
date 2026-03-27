@@ -320,11 +320,21 @@ type FileSet struct {
 	Kind       string          `yaml:"kind"`
 	Metadata   FileSetMetadata `yaml:"metadata"`
 	Spec       FileSetSpec     `yaml:"spec"`
+
+	sourcePath string // manifest file path; set by parser, not serialized
+	docIndex   int    // document index within the manifest file; set by parser
 }
 
 type FileSetMetadata struct {
 	Owner string `yaml:"owner" validate:"required"`
 }
+
+// SourcePath is the path to the manifest file that defined this FileSet.
+// DocIndex is the 0-based document index within that file.
+// Both are set by the parser and not serialized to YAML.
+func (fs *FileSet) SetSource(path string, docIndex int) { fs.sourcePath = path; fs.docIndex = docIndex }
+func (fs *FileSet) SourcePath() string                  { return fs.sourcePath }
+func (fs *FileSet) DocIndex() int                       { return fs.docIndex }
 
 type FileSetSpec struct {
 	Repositories  []FileSetRepository `yaml:"repositories" validate:"required,unique=Name"`
@@ -398,7 +408,8 @@ type FileEntry struct {
 	Patches   []string          `yaml:"patches,omitempty"`
 	Vars      map[string]string `yaml:"vars,omitempty"`
 	Reconcile string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
-	DirScope  string            `yaml:"-"`
+	DirScope       string `yaml:"-"`
+	OriginalSource string `yaml:"-"` // absolute path of local source file; preserved by ResolveFiles for pull
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`

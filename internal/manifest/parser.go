@@ -142,6 +142,7 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
+		fs.SetSource(path, docNum)
 		result.FileSets = []*FileSet{fs}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
@@ -149,6 +150,7 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if err != nil {
 			return nil, err
 		}
+		fs.SetSource(path, docNum)
 		result.FileSets = []*FileSet{fs}
 		result.Warnings = append(result.Warnings, warnings...)
 	default:
@@ -304,8 +306,9 @@ func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
 		// Normalize to forward slashes for GitHub paths
 		destPath = filepath.ToSlash(destPath)
 		entries = append(entries, FileEntry{
-			Path:    destPath,
-			Content: string(content),
+			Path:           destPath,
+			Content:        string(content),
+			OriginalSource: p,
 		})
 		return nil
 	})

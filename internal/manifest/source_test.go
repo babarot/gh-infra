@@ -591,6 +591,65 @@ func TestResolveFiles_PatchesPropagated(t *testing.T) {
 	}
 }
 
+func TestResolveFiles_OriginalSource_Preserved(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "src.txt"), []byte("content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &SourceResolver{}
+
+	t.Run("local source preserves OriginalSource", func(t *testing.T) {
+		files := []FileEntry{
+			{Path: "dest.txt", Source: "src.txt"},
+		}
+		result, err := r.ResolveFiles(files, dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := filepath.Join(dir, "src.txt")
+		if result[0].OriginalSource != expected {
+			t.Errorf("OriginalSource: got %q, want %q", result[0].OriginalSource, expected)
+		}
+	})
+
+	t.Run("inline content has no OriginalSource", func(t *testing.T) {
+		files := []FileEntry{
+			{Path: "dest.txt", Content: "inline"},
+		}
+		result, err := r.ResolveFiles(files, dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result[0].OriginalSource != "" {
+			t.Errorf("OriginalSource should be empty for inline, got %q", result[0].OriginalSource)
+		}
+	})
+
+	t.Run("directory source preserves OriginalSource per file", func(t *testing.T) {
+		sub := filepath.Join(dir, "tmpl")
+		os.MkdirAll(sub, 0755)
+		os.WriteFile(filepath.Join(sub, "a.txt"), []byte("aaa"), 0644)
+		os.WriteFile(filepath.Join(sub, "b.txt"), []byte("bbb"), 0644)
+
+		files := []FileEntry{
+			{Path: ".github", Source: "tmpl"},
+		}
+		result, err := r.ResolveFiles(files, dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, entry := range result {
+			if entry.OriginalSource == "" {
+				t.Errorf("OriginalSource should be set for dir-expanded entry %q", entry.Path)
+			}
+			if !strings.HasPrefix(entry.OriginalSource, sub) {
+				t.Errorf("OriginalSource %q should start with %q", entry.OriginalSource, sub)
+			}
+		}
+	})
+}
+
 func TestResolveFiles_DuplicatePathError(t *testing.T) {
 	dir := t.TempDir()
 
