@@ -162,7 +162,7 @@ func TestMockRunner_Implements_Runner(t *testing.T) {
 }
 
 func TestParseAPIErrorFromStreams(t *testing.T) {
-	t.Run("prefers stderr when available", func(t *testing.T) {
+	t.Run("prefers stdout JSON when available", func(t *testing.T) {
 		got := parseAPIErrorFromStreams(
 			`{"message":"Upgrade required","status":"403"}`,
 			"gh: Resource not accessible (Not Found)",
@@ -170,14 +170,14 @@ func TestParseAPIErrorFromStreams(t *testing.T) {
 		if got == nil {
 			t.Fatal("expected non-nil APIError")
 		}
-		if got.Status != 404 {
-			t.Fatalf("status: got %d, want 404", got.Status)
+		if got.Status != 403 {
+			t.Fatalf("status: got %d, want 403", got.Status)
 		}
 	})
 
-	t.Run("parses HTTP status from stderr message", func(t *testing.T) {
+	t.Run("falls back to stderr when stdout is not parseable", func(t *testing.T) {
 		got := parseAPIErrorFromStreams(
-			`{"message":"Upgrade required","status":"403"}`,
+			"",
 			"gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)",
 		)
 		if got == nil {
@@ -188,16 +188,10 @@ func TestParseAPIErrorFromStreams(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to stdout when stderr is not parseable", func(t *testing.T) {
-		got := parseAPIErrorFromStreams(
-			`{"message":"Upgrade required","status":"403"}`,
-			"request failed",
-		)
-		if got == nil {
-			t.Fatal("expected non-nil APIError")
-		}
-		if got.Status != 403 {
-			t.Fatalf("status: got %d, want 403", got.Status)
+	t.Run("returns nil when neither stream is parseable", func(t *testing.T) {
+		got := parseAPIErrorFromStreams("", "request failed")
+		if got != nil {
+			t.Fatalf("expected nil, got %+v", got)
 		}
 	})
 }

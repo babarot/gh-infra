@@ -153,15 +153,15 @@ func buildCommandError(cmdStr string, exitCode int, stdout, stderr string) error
 }
 
 func parseAPIErrorFromStreams(stdout, stderr string) *APIError {
-	// `gh api` can split error details across streams on failure:
-	// machine-readable JSON may be emitted to stdout while the human-oriented
-	// summary stays on stderr. Parse stderr first because plain gh commands
-	// usually report failures there, then fall back to stdout so API errors
-	// still map to typed sentinel errors such as ErrForbidden.
-	if apiErr := tryParseAPIError(stderr); apiErr != nil {
+	// `gh api` emits the raw JSON response body on stdout and a derived
+	// human-readable summary on stderr.  Prefer stdout because it carries
+	// structured fields (message, status, errors) that can be parsed
+	// without heuristics, then fall back to stderr for plain `gh` commands
+	// that only report errors there.
+	if apiErr := tryParseAPIError(stdout); apiErr != nil {
 		return apiErr
 	}
-	return tryParseAPIError(stdout)
+	return tryParseAPIError(stderr)
 }
 
 // isRetryable determines whether an error should trigger a retry.
