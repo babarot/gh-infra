@@ -399,8 +399,6 @@ type FileEntry struct {
 	Vars           map[string]string `yaml:"vars,omitempty"`
 	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
 	DirScope       string            `yaml:"-"`
-	OriginalSource string            `yaml:"-"` // absolute path of local source file; preserved by ResolveFiles for pull
-	Origin         FileOrigin        `yaml:"-"` // manifest location of this resolved file entry
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`
@@ -421,6 +419,15 @@ type FileOrigin struct {
 	Kind      FileOriginKind `yaml:"-"`
 	RepoIndex int            `yaml:"-"`
 	FileIndex int            `yaml:"-"`
+}
+
+// ResolvedFile is the execution-time representation of a FileEntry after source
+// expansion and override resolution. It carries provenance and local-source data
+// needed by apply/import flows without polluting the declarative manifest model.
+type ResolvedFile struct {
+	FileEntry
+	OriginalSource string
+	Origin         FileOrigin
 }
 
 // UnmarshalYAML handles migration from deprecated fields.
@@ -468,6 +475,7 @@ type FileSetDocument struct {
 	Resource   *FileSet
 	SourcePath string
 	DocIndex   int
+	ResolvedFiles []ResolvedFile
 }
 
 // Ptr returns a pointer to the given value.

@@ -157,27 +157,29 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 			})
 		}
 	case KindFile:
-		fs, warnings, err := parseFile(data, path)
+		fs, resolved, warnings, err := parseFile(data, path)
 		if err != nil {
 			return nil, err
 		}
 		result.FileSets = []*FileSet{fs}
 		result.FileSetDocs = []*FileSetDocument{{
-			Resource:   fs,
-			SourcePath: path,
-			DocIndex:   docNum - 1,
+			Resource:      fs,
+			SourcePath:    path,
+			DocIndex:      docNum - 1,
+			ResolvedFiles: resolved,
 		}}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
-		fs, warnings, err := parseFileSet(data, path)
+		fs, resolved, warnings, err := parseFileSet(data, path)
 		if err != nil {
 			return nil, err
 		}
 		result.FileSets = []*FileSet{fs}
 		result.FileSetDocs = []*FileSetDocument{{
-			Resource:   fs,
-			SourcePath: path,
-			DocIndex:   docNum - 1,
+			Resource:      fs,
+			SourcePath:    path,
+			DocIndex:      docNum - 1,
+			ResolvedFiles: resolved,
 		}}
 		result.Warnings = append(result.Warnings, warnings...)
 	default:
@@ -225,14 +227,14 @@ func parseRepositorySet(data []byte, path string) ([]*Repository, error) {
 	return repos, nil
 }
 
-func parseFile(data []byte, path string) (*FileSet, []string, error) {
+func parseFile(data []byte, path string) (*FileSet, []ResolvedFile, []string, error) {
 	var f File
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&f); err != nil {
-		return nil, nil, fmt.Errorf("parse File in %s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("parse File in %s: %w", path, err)
 	}
 
 	if err := f.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
 
 	// Expand File into a FileSet with a single repository entry.
@@ -252,16 +254,15 @@ func parseFile(data []byte, path string) (*FileSet, []string, error) {
 	}
 
 	if err := fs.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
 
 	// Resolve source references (local files, directories, GitHub URLs)
 	resolver := DefaultResolver
 	resolved, err := resolver.ResolveFiles(fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	fs.Spec.Files = resolved
 
 	// Collect deprecation warnings
 	var warnings []string
@@ -269,33 +270,32 @@ func parseFile(data []byte, path string) (*FileSet, []string, error) {
 	warnings = append(warnings, fs.Spec.DeprecationWarnings...)
 	warnings = append(warnings, collectFileEntryWarnings(fs.Spec.Files)...)
 
-	return fs, warnings, nil
+	return fs, resolved, warnings, nil
 }
 
-func parseFileSet(data []byte, path string) (*FileSet, []string, error) {
+func parseFileSet(data []byte, path string) (*FileSet, []ResolvedFile, []string, error) {
 	var fs FileSet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&fs); err != nil {
-		return nil, nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
 	}
 
 	if err := fs.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
 
 	// Resolve source references (local files, directories, GitHub URLs)
 	resolver := DefaultResolver
 	resolved, err := resolver.ResolveFiles(fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	fs.Spec.Files = resolved
 
 	// Collect deprecation warnings
 	var warnings []string
 	warnings = append(warnings, fs.Spec.DeprecationWarnings...)
 	warnings = append(warnings, collectFileEntryWarnings(fs.Spec.Files)...)
 
-	return &fs, warnings, nil
+	return &fs, resolved, warnings, nil
 }
 
 // collectFileEntryWarnings drains deprecation warnings from all FileEntry instances.
@@ -307,10 +307,10 @@ func collectFileEntryWarnings(files []FileEntry) []string {
 	return warnings
 }
 
-// expandDir walks a directory and returns a FileEntry for each file,
+// expandDir walks a directory and returns a ResolvedFile for each file,
 // with path relative to destPrefix.
-func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
-	var entries []FileEntry
+func expandDir(srcDir, destPrefix string) ([]ResolvedFile, error) {
+	var entries []ResolvedFile
 	err := filepath.WalkDir(srcDir, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -332,9 +332,11 @@ func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
 		}
 		// Normalize to forward slashes for GitHub paths
 		destPath = filepath.ToSlash(destPath)
-		entries = append(entries, FileEntry{
-			Path:           destPath,
-			Content:        string(content),
+		entries = append(entries, ResolvedFile{
+			FileEntry: FileEntry{
+				Path:    destPath,
+				Content: string(content),
+			},
 			OriginalSource: p,
 		})
 		return nil

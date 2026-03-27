@@ -3,29 +3,31 @@ package fileset
 import "github.com/babarot/gh-infra/internal/manifest"
 
 // ResolveFiles returns the effective files for a target, applying overrides.
-func ResolveFiles(fs *manifest.FileSet, target manifest.FileSetRepository) []manifest.FileEntry {
+func ResolveFiles(fs *manifest.FileSetDocument, target manifest.FileSetRepository) []manifest.ResolvedFile {
 	return ResolveFilesForTarget(fs, target, -1)
 }
 
 // ResolveFilesForTarget returns the effective files for a target, applying overrides
 // and preserving manifest origin metadata for import write-back.
-func ResolveFilesForTarget(fs *manifest.FileSet, target manifest.FileSetRepository, repoIndex int) []manifest.FileEntry {
+func ResolveFilesForTarget(fs *manifest.FileSetDocument, target manifest.FileSetRepository, repoIndex int) []manifest.ResolvedFile {
 	if len(target.Overrides) == 0 {
-		return fs.Spec.Files
+		return fs.ResolvedFiles
 	}
 
-	overrideMap := make(map[string]manifest.FileEntry)
+	overrideMap := make(map[string]manifest.ResolvedFile)
 	for i, o := range target.Overrides {
-		o.Origin = manifest.FileOrigin{
-			Kind:      manifest.FileOriginRepositoryOverride,
-			RepoIndex: repoIndex,
-			FileIndex: i,
+		overrideMap[o.Path] = manifest.ResolvedFile{
+			FileEntry: o,
+			Origin: manifest.FileOrigin{
+				Kind:      manifest.FileOriginRepositoryOverride,
+				RepoIndex: repoIndex,
+				FileIndex: i,
+			},
 		}
-		overrideMap[o.Path] = o
 	}
 
-	result := make([]manifest.FileEntry, 0, len(fs.Spec.Files))
-	for _, f := range fs.Spec.Files {
+	result := make([]manifest.ResolvedFile, 0, len(fs.ResolvedFiles))
+	for _, f := range fs.ResolvedFiles {
 		if override, ok := overrideMap[f.Path]; ok {
 			// Inherit metadata from original if override doesn't define its own
 			if override.Vars == nil && f.Vars != nil {

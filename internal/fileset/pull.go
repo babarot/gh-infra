@@ -71,7 +71,7 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSetDocument, filterRepo 
 			}
 		}
 		fullName := fs.RepoFullName(target.Name)
-		files := ResolveFilesForTarget(fs, target, repoIndex)
+		files := ResolveFilesForTarget(fsDoc, target, repoIndex)
 
 		for _, file := range files {
 			change := planImportEntry(proc, file, fullName, fsDoc)
@@ -82,7 +82,7 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSetDocument, filterRepo 
 	return changes, nil
 }
 
-func planImportEntry(proc *Processor, file manifest.FileEntry, repo string, fs *manifest.FileSetDocument) FileImportChange {
+func planImportEntry(proc *Processor, file manifest.ResolvedFile, repo string, fs *manifest.FileSetDocument) FileImportChange {
 	change := FileImportChange{
 		Target:       repo,
 		Path:         file.Path,

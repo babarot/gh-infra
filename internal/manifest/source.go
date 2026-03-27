@@ -23,13 +23,12 @@ type SourceResolver struct {
 }
 
 // ResolveFiles expands source references in FileSet entries.
-func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]FileEntry, error) {
-	var resolved []FileEntry
+func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]ResolvedFile, error) {
+	var resolved []ResolvedFile
 	for i, entry := range files {
 		origin := FileOrigin{Kind: FileOriginSpecFiles, FileIndex: i}
 		if entry.Source == "" || entry.Content != "" {
-			entry.Origin = origin
-			resolved = append(resolved, entry)
+			resolved = append(resolved, ResolvedFile{FileEntry: entry, Origin: origin})
 			continue
 		}
 
@@ -39,23 +38,23 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 			return nil, fmt.Errorf("resolve patches for %s: %w", entry.Path, err)
 		}
 
-			if strings.HasPrefix(entry.Source, githubScheme) {
-				entries, err := r.resolveGitHub(entry.Source, entry.Path)
-				if err != nil {
-					return nil, fmt.Errorf("resolve %s: %w", entry.Source, err)
-				}
+		if strings.HasPrefix(entry.Source, githubScheme) {
+			entries, err := r.resolveGitHub(entry.Source, entry.Path)
+			if err != nil {
+				return nil, fmt.Errorf("resolve %s: %w", entry.Source, err)
+			}
 			// Preserve metadata from the original entry
 			isDir := len(entries) > 1 || strings.HasSuffix(entry.Source, "/")
-				for i := range entries {
-					entries[i].Vars = entry.Vars
-					entries[i].Patches = patches
-					entries[i].Reconcile = entry.Reconcile
-					entries[i].Origin = origin
-					if isDir {
-						entries[i].DirScope = entry.Path
-					}
+			for i := range entries {
+				entries[i].Vars = entry.Vars
+				entries[i].Patches = patches
+				entries[i].Reconcile = entry.Reconcile
+				entries[i].Origin = origin
+				if isDir {
+					entries[i].DirScope = entry.Path
 				}
-				resolved = append(resolved, entries...)
+			}
+			resolved = append(resolved, entries...)
 		} else {
 			entries, err := resolveLocal(entry.Source, entry.Path, yamlDir)
 			if err != nil {
@@ -63,15 +62,15 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 			}
 			// Preserve metadata from the original entry
 			isDir := len(entries) > 1 || strings.HasSuffix(entry.Source, "/")
-				for i := range entries {
-					entries[i].Vars = entry.Vars
-					entries[i].Patches = patches
-					entries[i].Reconcile = entry.Reconcile
-					entries[i].Origin = origin
-					if isDir {
-						entries[i].DirScope = entry.Path
-					}
+			for i := range entries {
+				entries[i].Vars = entry.Vars
+				entries[i].Patches = patches
+				entries[i].Reconcile = entry.Reconcile
+				entries[i].Origin = origin
+				if isDir {
+					entries[i].DirScope = entry.Path
 				}
+			}
 			resolved = append(resolved, entries...)
 		}
 	}
@@ -84,7 +83,7 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 
 // checkDuplicatePaths returns an error if any file path appears more than once.
 // This catches overlapping source directories (e.g. ".github" and ".github/workflows/").
-func checkDuplicatePaths(files []FileEntry) error {
+func checkDuplicatePaths(files []ResolvedFile) error {
 	seen := make(map[string]bool, len(files))
 	for _, f := range files {
 		if seen[f.Path] {
@@ -96,7 +95,7 @@ func checkDuplicatePaths(files []FileEntry) error {
 }
 
 // resolveLocal handles local file and directory sources.
-func resolveLocal(source, destPath, yamlDir string) ([]FileEntry, error) {
+func resolveLocal(source, destPath, yamlDir string) ([]ResolvedFile, error) {
 	srcPath := source
 	if !filepath.IsAbs(srcPath) {
 		srcPath = filepath.Join(yamlDir, srcPath)
@@ -112,7 +111,7 @@ func resolveLocal(source, destPath, yamlDir string) ([]FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []FileEntry{{Path: destPath, Content: string(content), OriginalSource: srcPath}}, nil
+	return []ResolvedFile{{FileEntry: FileEntry{Path: destPath, Content: string(content)}, OriginalSource: srcPath}}, nil
 }
 
 // parseGitHubSource parses "github://owner/repo/path@ref" into components.
@@ -139,7 +138,7 @@ func parseGitHubSource(source string) (owner, repo, path, ref string, err error)
 }
 
 // resolveGitHub fetches file(s) from a GitHub repository via Contents API.
-func (r *SourceResolver) resolveGitHub(source, destPath string) ([]FileEntry, error) {
+func (r *SourceResolver) resolveGitHub(source, destPath string) ([]ResolvedFile, error) {
 	if r.RunGH == nil {
 		return nil, fmt.Errorf("GitHub source %q requires gh CLI", source)
 	}
@@ -169,7 +168,7 @@ func (r *SourceResolver) resolveGitHub(source, destPath string) ([]FileEntry, er
 }
 
 // resolveGitHubFile parses a single file response from Contents API.
-func (r *SourceResolver) resolveGitHubFile(data []byte, destPath string) ([]FileEntry, error) {
+func (r *SourceResolver) resolveGitHubFile(data []byte, destPath string) ([]ResolvedFile, error) {
 	var file struct {
 		Content  string `json:"content"`
 		Encoding string `json:"encoding"`
@@ -185,11 +184,11 @@ func (r *SourceResolver) resolveGitHubFile(data []byte, destPath string) ([]File
 		}
 		content = string(decoded)
 	}
-	return []FileEntry{{Path: destPath, Content: content}}, nil
+	return []ResolvedFile{{FileEntry: FileEntry{Path: destPath, Content: content}}}, nil
 }
 
 // resolveGitHubDir lists a directory and fetches each file.
-func (r *SourceResolver) resolveGitHubDir(data []byte, owner, repo, dirPath, ref, destPrefix string) ([]FileEntry, error) {
+func (r *SourceResolver) resolveGitHubDir(data []byte, owner, repo, dirPath, ref, destPrefix string) ([]ResolvedFile, error) {
 	var items []struct {
 		Name string `json:"name"`
 		Path string `json:"path"`
@@ -199,7 +198,7 @@ func (r *SourceResolver) resolveGitHubDir(data []byte, owner, repo, dirPath, ref
 		return nil, fmt.Errorf("parse directory response: %w", err)
 	}
 
-	var entries []FileEntry
+	var entries []ResolvedFile
 	for _, item := range items {
 		rel, _ := filepath.Rel(dirPath, item.Path)
 		destPath := filepath.ToSlash(filepath.Join(destPrefix, rel))

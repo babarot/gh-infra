@@ -84,7 +84,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	// Collect all target names and start a single spinner display
 	var allTasks []ui.RefreshTask
 	allTasks = append(allTasks, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
-	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSets, filterRepo)...)
+	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSetDocs, filterRepo)...)
 	tracker := ui.RunRefresh(allTasks)
 
 	g := new(errgroup.Group)
@@ -99,11 +99,11 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		})
 	}
 
-	if len(parsed.FileSets) > 0 {
+	if len(parsed.FileSetDocs) > 0 {
 		processor := fileset.NewProcessor(runner, p)
 		g.Go(func() error {
 			var planErr error
-			fileChanges, planErr = processor.Plan(parsed.FileSets, filterRepo, tracker)
+			fileChanges, planErr = processor.Plan(parsed.FileSetDocs, filterRepo, tracker)
 			return planErr
 		})
 	}
@@ -187,10 +187,10 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 	// Apply file changes (per FileSet for correct options)
 	if hasFile {
 		processor := fileset.NewProcessor(runner, p)
-		for _, fs := range parsed.FileSets {
+		for _, fs := range parsed.FileSetDocs {
 			var fsChanges []fileset.FileApplyChange
 			for _, c := range fileChanges {
-				if c.FileSet == fs.Metadata.Owner {
+				if c.FileSet == fs.Resource.Metadata.Owner {
 					fsChanges = append(fsChanges, c)
 				}
 			}
@@ -198,12 +198,12 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 				continue
 			}
 			opts := fileset.ApplyOptions{
-				CommitMessage: fs.Spec.CommitMessage,
-				Via:           fs.Spec.Via,
-				Branch:        fs.Spec.Branch,
-				FileSetName:   fs.Metadata.Owner,
-				PRTitle:       fs.Spec.PRTitle,
-				PRBody:        fs.Spec.PRBody,
+				CommitMessage: fs.Resource.Spec.CommitMessage,
+				Via:           fs.Resource.Spec.Via,
+				Branch:        fs.Resource.Spec.Branch,
+				FileSetName:   fs.Resource.Metadata.Owner,
+				PRTitle:       fs.Resource.Spec.PRTitle,
+				PRBody:        fs.Resource.Spec.PRBody,
 			}
 			var fileReporter ui.ProgressReporter
 			if stream {

@@ -38,14 +38,27 @@ func contentsKey(repo, path string) string {
 	return fmt.Sprintf("api repos/%s/contents/%s", repo, path)
 }
 
-func makeFileSet(owner, repo string, files []manifest.FileEntry) []*manifest.FileSet {
-	return []*manifest.FileSet{
-		{
-			Metadata: manifest.FileSetMetadata{Owner: owner},
-			Spec: manifest.FileSetSpec{
-				Repositories: []manifest.FileSetRepository{{Name: repo}},
-				Files:        files,
+func makeFileSet(owner, repo string, files []manifest.FileEntry) []*manifest.FileSetDocument {
+	resolved := make([]manifest.ResolvedFile, len(files))
+	for i, file := range files {
+		resolved[i] = manifest.ResolvedFile{
+			FileEntry: file,
+			Origin: manifest.FileOrigin{
+				Kind:      manifest.FileOriginSpecFiles,
+				FileIndex: i,
 			},
+		}
+	}
+	return []*manifest.FileSetDocument{
+		{
+			Resource: &manifest.FileSet{
+				Metadata: manifest.FileSetMetadata{Owner: owner},
+				Spec: manifest.FileSetSpec{
+					Repositories: []manifest.FileSetRepository{{Name: repo}},
+					Files:        files,
+				},
+			},
+			ResolvedFiles: resolved,
 		},
 	}
 }
@@ -576,19 +589,29 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-	fileSets := []*manifest.FileSet{
+	fileSets := []*manifest.FileSetDocument{
 		{
-			Metadata: manifest.FileSetMetadata{Owner: "owner"},
-			Spec: manifest.FileSetSpec{
-				Repositories: []manifest.FileSetRepository{{Name: "repo"}},
-				Files: []manifest.FileEntry{
-					{
-						Path:      "config/file1.yml",
-						Content:   "content1",
-						Reconcile: manifest.ReconcileMirror,
-						DirScope:  "config",
+			Resource: &manifest.FileSet{
+				Metadata: manifest.FileSetMetadata{Owner: "owner"},
+				Spec: manifest.FileSetSpec{
+					Repositories: []manifest.FileSetRepository{{Name: "repo"}},
+					Files: []manifest.FileEntry{
+						{
+							Path:      "config/file1.yml",
+							Content:   "content1",
+							Reconcile: manifest.ReconcileMirror,
+							DirScope:  "config",
+						},
 					},
 				},
+			},
+			ResolvedFiles: []manifest.ResolvedFile{
+				{FileEntry: manifest.FileEntry{
+					Path:      "config/file1.yml",
+					Content:   "content1",
+					Reconcile: manifest.ReconcileMirror,
+					DirScope:  "config",
+				}},
 			},
 		},
 	}
@@ -631,19 +654,29 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 	}
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-	fileSets := []*manifest.FileSet{
+	fileSets := []*manifest.FileSetDocument{
 		{
-			Metadata: manifest.FileSetMetadata{Owner: "owner"},
-			Spec: manifest.FileSetSpec{
-				Repositories: []manifest.FileSetRepository{{Name: "repo"}},
-				Files: []manifest.FileEntry{
-					{
-						Path:      "config/file1.yml",
-						Content:   "content1",
-						Reconcile: manifest.ReconcilePatch,
-						DirScope:  "config",
+			Resource: &manifest.FileSet{
+				Metadata: manifest.FileSetMetadata{Owner: "owner"},
+				Spec: manifest.FileSetSpec{
+					Repositories: []manifest.FileSetRepository{{Name: "repo"}},
+					Files: []manifest.FileEntry{
+						{
+							Path:      "config/file1.yml",
+							Content:   "content1",
+							Reconcile: manifest.ReconcilePatch,
+							DirScope:  "config",
+						},
 					},
 				},
+			},
+			ResolvedFiles: []manifest.ResolvedFile{
+				{FileEntry: manifest.FileEntry{
+					Path:      "config/file1.yml",
+					Content:   "content1",
+					Reconcile: manifest.ReconcilePatch,
+					DirScope:  "config",
+				}},
 			},
 		},
 	}

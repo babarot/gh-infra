@@ -7,12 +7,18 @@ import (
 )
 
 func TestResolveFiles_NoOverrides(t *testing.T) {
-	fs := &manifest.FileSet{
-		Spec: manifest.FileSetSpec{
-			Files: []manifest.FileEntry{
-				{Path: "a.txt", Content: "aaa"},
-				{Path: "b.txt", Content: "bbb"},
+	fs := &manifest.FileSetDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{
+					{Path: "a.txt", Content: "aaa"},
+					{Path: "b.txt", Content: "bbb"},
+				},
 			},
+		},
+		ResolvedFiles: []manifest.ResolvedFile{
+			{FileEntry: manifest.FileEntry{Path: "a.txt", Content: "aaa"}},
+			{FileEntry: manifest.FileEntry{Path: "b.txt", Content: "bbb"}},
 		},
 	}
 	target := manifest.FileSetRepository{Name: "repo"}
@@ -31,13 +37,20 @@ func TestResolveFiles_NoOverrides(t *testing.T) {
 }
 
 func TestResolveFiles_WithOverrides(t *testing.T) {
-	fs := &manifest.FileSet{
-		Spec: manifest.FileSetSpec{
-			Files: []manifest.FileEntry{
-				{Path: "a.txt", Content: "original-a"},
-				{Path: "b.txt", Content: "original-b"},
-				{Path: "c.txt", Content: "original-c"},
+	fs := &manifest.FileSetDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{
+					{Path: "a.txt", Content: "original-a"},
+					{Path: "b.txt", Content: "original-b"},
+					{Path: "c.txt", Content: "original-c"},
+				},
 			},
+		},
+		ResolvedFiles: []manifest.ResolvedFile{
+			{FileEntry: manifest.FileEntry{Path: "a.txt", Content: "original-a"}},
+			{FileEntry: manifest.FileEntry{Path: "b.txt", Content: "original-b"}},
+			{FileEntry: manifest.FileEntry{Path: "c.txt", Content: "original-c"}},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -64,23 +77,29 @@ func TestResolveFiles_WithOverrides(t *testing.T) {
 }
 
 func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
-	fs := &manifest.FileSet{
-		Spec: manifest.FileSetSpec{
-			Files: []manifest.FileEntry{
-				{
-					Path:      "config/a.yml",
-					Content:   "original-a",
-					DirScope:  "config",
-					Reconcile: manifest.ReconcileMirror,
-					Vars:      map[string]string{"env": "prod"},
-				},
-				{
-					Path:      "config/b.yml",
-					Content:   "original-b",
-					DirScope:  "config",
-					Reconcile: manifest.ReconcileMirror,
+	fs := &manifest.FileSetDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{
+					{
+						Path:      "config/a.yml",
+						Content:   "original-a",
+						DirScope:  "config",
+						Reconcile: manifest.ReconcileMirror,
+						Vars:      map[string]string{"env": "prod"},
+					},
+					{
+						Path:      "config/b.yml",
+						Content:   "original-b",
+						DirScope:  "config",
+						Reconcile: manifest.ReconcileMirror,
+					},
 				},
 			},
+		},
+		ResolvedFiles: []manifest.ResolvedFile{
+			{FileEntry: manifest.FileEntry{Path: "config/a.yml", Content: "original-a", DirScope: "config", Reconcile: manifest.ReconcileMirror, Vars: map[string]string{"env": "prod"}}},
+			{FileEntry: manifest.FileEntry{Path: "config/b.yml", Content: "original-b", DirScope: "config", Reconcile: manifest.ReconcileMirror}},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -123,15 +142,20 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 
 func TestResolveFiles_InheritsPatches(t *testing.T) {
 	patches := []string{"--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n"}
-	fs := &manifest.FileSet{
-		Spec: manifest.FileSetSpec{
-			Files: []manifest.FileEntry{
-				{
-					Path:    ".tagpr",
-					Content: "original",
-					Patches: patches,
+	fs := &manifest.FileSetDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{
+					{
+						Path:    ".tagpr",
+						Content: "original",
+						Patches: patches,
+					},
 				},
 			},
+		},
+		ResolvedFiles: []manifest.ResolvedFile{
+			{FileEntry: manifest.FileEntry{Path: ".tagpr", Content: "original", Patches: patches}},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -159,15 +183,20 @@ func TestResolveFiles_InheritsPatches(t *testing.T) {
 }
 
 func TestResolveFiles_OverridePatchesReplacesOriginal(t *testing.T) {
-	fs := &manifest.FileSet{
-		Spec: manifest.FileSetSpec{
-			Files: []manifest.FileEntry{
-				{
-					Path:    ".tagpr",
-					Content: "original",
-					Patches: []string{"original-patch"},
+	fs := &manifest.FileSetDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{
+					{
+						Path:    ".tagpr",
+						Content: "original",
+						Patches: []string{"original-patch"},
+					},
 				},
 			},
+		},
+		ResolvedFiles: []manifest.ResolvedFile{
+			{FileEntry: manifest.FileEntry{Path: ".tagpr", Content: "original", Patches: []string{"original-patch"}}},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -189,31 +218,38 @@ func TestResolveFiles_OverridePatchesReplacesOriginal(t *testing.T) {
 }
 
 func TestResolveFilesForTarget_PreservesOverrideOrigin(t *testing.T) {
-	fs := &manifest.FileSet{
-		Spec: manifest.FileSetSpec{
-			Files: []manifest.FileEntry{
-				{
-					Path:    "a.txt",
-					Content: "original-a",
-					Origin: manifest.FileOrigin{
-						Kind:      manifest.FileOriginSpecFiles,
-						FileIndex: 0,
+	fs := &manifest.FileSetDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{
+					{
+						Path:    "a.txt",
+						Content: "original-a",
+					},
+				},
+				Repositories: []manifest.FileSetRepository{
+					{Name: "repo-a"},
+					{
+						Name: "repo-b",
+						Overrides: []manifest.FileEntry{
+							{Path: "a.txt", Content: "override-a"},
+						},
 					},
 				},
 			},
-			Repositories: []manifest.FileSetRepository{
-				{Name: "repo-a"},
-				{
-					Name: "repo-b",
-					Overrides: []manifest.FileEntry{
-						{Path: "a.txt", Content: "override-a"},
-					},
+		},
+		ResolvedFiles: []manifest.ResolvedFile{
+			{
+				FileEntry: manifest.FileEntry{Path: "a.txt", Content: "original-a"},
+				Origin: manifest.FileOrigin{
+					Kind:      manifest.FileOriginSpecFiles,
+					FileIndex: 0,
 				},
 			},
 		},
 	}
 
-	result := ResolveFilesForTarget(fs, fs.Spec.Repositories[1], 1)
+	result := ResolveFilesForTarget(fs, fs.Resource.Spec.Repositories[1], 1)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(result))
 	}

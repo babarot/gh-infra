@@ -59,7 +59,7 @@ func NewProcessor(runner gh.Runner, printer ui.Printer) *Processor {
 type planUnit struct {
 	fileSetName string
 	target      manifest.FileSetRepository
-	files       []manifest.FileEntry
+	files       []manifest.ResolvedFile
 	owner       string
 	via         string
 }
@@ -71,11 +71,11 @@ func (u planUnit) fullName() string {
 
 // PlanTargetNames returns display tasks for all FileSet targets.
 // If filterRepo is non-empty, only targets matching that repo are included.
-func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.RefreshTask {
+func PlanTargetNames(fileSets []*manifest.FileSetDocument, filterRepo string) []ui.RefreshTask {
 	var tasks []ui.RefreshTask
 	for _, fs := range fileSets {
-		for _, target := range fs.Spec.Repositories {
-			fullName := fs.Metadata.Owner + "/" + target.Name
+		for _, target := range fs.Resource.Spec.Repositories {
+			fullName := fs.Resource.Metadata.Owner + "/" + target.Name
 			if filterRepo != "" && fullName != filterRepo {
 				continue
 			}
@@ -96,22 +96,22 @@ func planTaskKey(fullName string) string {
 
 // Plan computes changes for all FileSets concurrently.
 // If filterRepo is non-empty, only targets matching that repo are processed.
-func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracker *ui.RefreshTracker) ([]FileApplyChange, error) {
+func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string, tracker *ui.RefreshTracker) ([]FileApplyChange, error) {
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {
-		for repoIndex, target := range fs.Spec.Repositories {
-			fullName := fs.Metadata.Owner + "/" + target.Name
+		for repoIndex, target := range fs.Resource.Spec.Repositories {
+			fullName := fs.Resource.Metadata.Owner + "/" + target.Name
 			if filterRepo != "" && fullName != filterRepo {
 				continue
 			}
 			files := ResolveFilesForTarget(fs, target, repoIndex)
 			units = append(units, planUnit{
-				fileSetName: fs.Metadata.Owner,
+				fileSetName: fs.Resource.Metadata.Owner,
 				target:      target,
 				files:       files,
-				owner:       fs.Metadata.Owner,
-				via:         fs.Spec.Via,
+				owner:       fs.Resource.Metadata.Owner,
+				via:         fs.Resource.Spec.Via,
 			})
 		}
 	}
@@ -215,7 +215,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 }
 
 // planCreateOnly handles sync_mode: create_only — create if missing, NoOp if exists.
-func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileEntry) FileApplyChange {
+func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.ResolvedFile) FileApplyChange {
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileApplyChange{
@@ -229,7 +229,7 @@ func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileE
 	}
 }
 
-func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) FileApplyChange {
+func (p *Processor) planFile(fileSetName, repo string, file manifest.ResolvedFile) FileApplyChange {
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileApplyChange{

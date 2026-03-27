@@ -79,7 +79,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 	// Collect all target names and start a single spinner display
 	var allTasks []ui.RefreshTask
 	allTasks = append(allTasks, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
-	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSets, filterRepo)...)
+	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSetDocs, filterRepo)...)
 	tracker := ui.RunRefresh(allTasks)
 
 	g := new(errgroup.Group)
@@ -94,11 +94,11 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 		})
 	}
 
-	if len(parsed.FileSets) > 0 {
+	if len(parsed.FileSetDocs) > 0 {
 		processor := fileset.NewProcessor(runner, p)
 		g.Go(func() error {
 			var planErr error
-			fileChanges, planErr = processor.Plan(parsed.FileSets, filterRepo, tracker)
+			fileChanges, planErr = processor.Plan(parsed.FileSetDocs, filterRepo, tracker)
 			return planErr
 		})
 	}

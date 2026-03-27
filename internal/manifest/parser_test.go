@@ -589,11 +589,21 @@ spec:
 	}
 
 	fs := result.FileSets[0]
-	if fs.Spec.Files[0].Content != sourceContent {
-		t.Errorf("content = %q, want %q", fs.Spec.Files[0].Content, sourceContent)
+	if fs.Spec.Files[0].Source != "template.txt" {
+		t.Errorf("raw spec source = %q, want %q", fs.Spec.Files[0].Source, "template.txt")
 	}
-	if fs.Spec.Files[0].Source != "" {
-		t.Errorf("source should be cleared after resolution, got %q", fs.Spec.Files[0].Source)
+	if len(result.FileSetDocs) != 1 {
+		t.Fatalf("FileSetDocs = %d, want 1", len(result.FileSetDocs))
+	}
+	resolved := result.FileSetDocs[0].ResolvedFiles
+	if len(resolved) != 1 {
+		t.Fatalf("resolved files = %d, want 1", len(resolved))
+	}
+	if resolved[0].Content != sourceContent {
+		t.Errorf("resolved content = %q, want %q", resolved[0].Content, sourceContent)
+	}
+	if resolved[0].Source != "" {
+		t.Errorf("resolved source should be cleared after resolution, got %q", resolved[0].Source)
 	}
 }
 
@@ -883,11 +893,21 @@ spec:
 	}
 
 	fs := result.FileSets[0]
-	if fs.Spec.Files[0].Content != sourceContent {
-		t.Errorf("content = %q, want %q", fs.Spec.Files[0].Content, sourceContent)
+	if fs.Spec.Files[0].Source != "tmpl.txt" {
+		t.Errorf("raw spec source = %q, want %q", fs.Spec.Files[0].Source, "tmpl.txt")
 	}
-	if fs.Spec.Files[0].Source != "" {
-		t.Errorf("source should be cleared after resolution, got %q", fs.Spec.Files[0].Source)
+	if len(result.FileSetDocs) != 1 {
+		t.Fatalf("FileSetDocs = %d, want 1", len(result.FileSetDocs))
+	}
+	resolved := result.FileSetDocs[0].ResolvedFiles
+	if len(resolved) != 1 {
+		t.Fatalf("resolved files = %d, want 1", len(resolved))
+	}
+	if resolved[0].Content != sourceContent {
+		t.Errorf("resolved content = %q, want %q", resolved[0].Content, sourceContent)
+	}
+	if resolved[0].Source != "" {
+		t.Errorf("resolved source should be cleared after resolution, got %q", resolved[0].Source)
 	}
 }
 
