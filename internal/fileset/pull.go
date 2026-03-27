@@ -158,16 +158,6 @@ func planImportEntry(proc *Processor, file manifest.ResolvedFile, repo string, f
 		change.Type = FileUpdate
 	}
 
-	// Warn about patches
-	if len(file.Patches) > 0 {
-		change.Warnings = append(change.Warnings, "content with applied patches will overwrite source")
-	}
-
-	// Warn about templates
-	if HasTemplate(currentLocal, file.Vars) {
-		change.Warnings = append(change.Warnings, "rendered template will overwrite source")
-	}
-
 	return change
 }
 

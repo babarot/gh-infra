@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
+
+const maxImportDisplayPathWidth = 44
 
 // printUnifiedPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
@@ -256,8 +259,8 @@ func computeImportColumnWidth(rChanges []repository.Change, fChanges []fileset.F
 		}
 	}
 	for _, c := range fChanges {
-		if len(c.Path) > w {
-			w = len(c.Path)
+		if displayPath := importDisplayPath(c); len(displayPath) > w {
+			w = len(displayPath)
 		}
 	}
 	return w
@@ -358,27 +361,24 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 			}
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
+				displayPath := importDisplayPath(c)
 				if c.WriteMode == fileset.ImportSkip {
-					p.FileWarning(c.Path, c.Reason)
+					p.FileWarning(displayPath, c.Reason)
 					continue
 				}
 
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				switch c.Type {
 				case fileset.FileCreate:
-					p.FileCreate(c.Path, added)
+					p.FileCreate(displayPath, added)
 				case fileset.FileUpdate:
-					if len(c.Warnings) > 0 {
-						p.FileUpdateNote(c.Path, strings.Join(c.Warnings, "; "), added, removed)
-					} else {
-						p.FileUpdate(c.Path, added, removed)
-					}
+					p.FileUpdate(displayPath, added, removed)
 				case fileset.FileDelete:
-					p.FileDelete(c.Path, removed)
+					p.FileDelete(displayPath, removed)
 				}
 				if c.Type == fileset.FileNoOp {
 					for _, w := range c.Warnings {
-						p.FileWarning(c.Path, w)
+						p.FileWarning(displayPath, w)
 					}
 				}
 			}
@@ -398,4 +398,56 @@ func shouldDisplayImportChange(c fileset.FileImportChange) bool {
 		return true
 	}
 	return len(c.Warnings) > 0
+}
+
+func importDisplayPath(c fileset.FileImportChange) string {
+	path := c.Path
+	if c.LocalTarget != "" {
+		path = relativizePath(c.LocalTarget)
+	}
+	return shortenPath(path, maxImportDisplayPathWidth)
+}
+
+func relativizePath(path string) string {
+	if path == "" || !filepath.IsAbs(path) {
+		return path
+	}
+	if rel, err := filepath.Rel(".", path); err == nil {
+		return rel
+	}
+	return path
+}
+
+func shortenPath(path string, max int) string {
+	if max <= 0 || len(path) <= max {
+		return path
+	}
+
+	clean := filepath.ToSlash(path)
+	parts := strings.Split(clean, "/")
+	if len(parts) <= 2 {
+		if max <= 3 {
+			return clean[:max]
+		}
+		return clean[:max-3] + "..."
+	}
+
+	first := parts[0]
+	last := parts[len(parts)-1]
+	candidate := first + "/.../" + last
+	if len(candidate) <= max {
+		return candidate
+	}
+
+	if max <= 3 {
+		return "..."
+	}
+	tailWidth := max - len(".../")
+	if tailWidth <= 0 {
+		return "..."
+	}
+	if len(last) <= tailWidth {
+		return ".../" + last
+	}
+	return ".../" + last[len(last)-tailWidth:]
 }

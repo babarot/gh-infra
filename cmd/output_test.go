@@ -145,7 +145,7 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 			Current:   "old\n",
 			Desired:   "new\n",
 			WriteMode: fileset.ImportWriteSource,
-			Warnings:  []string{"rendered template will overwrite source"},
+			LocalTarget: "templates/build.yaml",
 		},
 	}
 
@@ -160,7 +160,20 @@ func TestPrintUnifiedImportPlan_ShowsSkippedAndWarningsInsideFileSet(t *testing.
 	if !strings.Contains(out, "VERSION") || !strings.Contains(out, "create_only") {
 		t.Fatalf("expected skipped file in output:\n%s", out)
 	}
-	if !strings.Contains(out, ".github/workflows/build.yaml") || !strings.Contains(out, "content changed, rendered template will overwrite source") {
-		t.Fatalf("expected update line with inline warning in output:\n%s", out)
+	if !strings.Contains(out, "templates/build.yaml") || !strings.Contains(out, "(content changed)") {
+		t.Fatalf("expected update line in output:\n%s", out)
+	}
+}
+
+func TestImportDisplayPath_ShortensLongLocalTarget(t *testing.T) {
+	change := fileset.FileImportChange{
+		WriteMode:   fileset.ImportWriteSource,
+		LocalTarget: "templates/common/.github/PULL_REQUEST_TEMPLATE.md",
+	}
+
+	got := importDisplayPath(change)
+	want := "templates/.../PULL_REQUEST_TEMPLATE.md"
+	if got != want {
+		t.Fatalf("importDisplayPath() = %q, want %q", got, want)
 	}
 }
