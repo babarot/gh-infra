@@ -6,8 +6,8 @@ import (
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// HasRealChanges returns true if there are any non-noop changes.
-func HasRealChanges(changes []Change) bool {
+// HasChanges returns true if there are any non-noop changes.
+func HasChanges(changes []Change) bool {
 	for _, c := range changes {
 		if c.Type != ChangeNoOp {
 			return true

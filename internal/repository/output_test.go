@@ -14,34 +14,34 @@ func init() {
 }
 
 // ---------------------------------------------------------------------------
-// HasRealChanges
+// HasChanges
 // ---------------------------------------------------------------------------
 
-func TestHasRealChanges_WithChanges(t *testing.T) {
+func TestHasChanges_WithChanges(t *testing.T) {
 	changes := []Change{
 		{Type: ChangeNoOp},
 		{Type: ChangeUpdate, Field: "description"},
 	}
-	if !HasRealChanges(changes) {
+	if !HasChanges(changes) {
 		t.Error("expected true when non-noop changes exist")
 	}
 }
 
-func TestHasRealChanges_WithoutChanges(t *testing.T) {
+func TestHasChanges_WithoutChanges(t *testing.T) {
 	changes := []Change{
 		{Type: ChangeNoOp},
 		{Type: ChangeNoOp},
 	}
-	if HasRealChanges(changes) {
+	if HasChanges(changes) {
 		t.Error("expected false when only noop changes")
 	}
 }
 
-func TestHasRealChanges_Empty(t *testing.T) {
-	if HasRealChanges(nil) {
+func TestHasChanges_Empty(t *testing.T) {
+	if HasChanges(nil) {
 		t.Error("expected false for nil slice")
 	}
-	if HasRealChanges([]Change{}) {
+	if HasChanges([]Change{}) {
 		t.Error("expected false for empty slice")
 	}
 }

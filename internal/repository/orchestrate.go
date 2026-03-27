@@ -20,17 +20,14 @@ type repoResult struct {
 
 // FetchTargetNames returns display tasks for repos that would be fetched (after filtering).
 func FetchTargetNames(repos []*manifest.Repository, filterRepo string) []ui.RefreshTask {
-	var tasks []ui.RefreshTask
+	var names []string
 	for _, repo := range repos {
 		if filterRepo != "" && repo.Metadata.FullName() != filterRepo {
 			continue
 		}
-		tasks = append(tasks, ui.RefreshTask{
-			Name:      "Fetching " + repo.Metadata.FullName() + " (repo)",
-			DoneLabel: "Fetched " + repo.Metadata.FullName() + " (repo)",
-		})
+		names = append(names, repo.Metadata.FullName())
 	}
-	return tasks
+	return ui.BuildRefreshTasks(names, "repo")
 }
 
 // fetchTaskKey returns the tracker key for a given repo full name.

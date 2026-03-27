@@ -1,4 +1,4 @@
-package cmd
+package plan
 
 import (
 	"fmt"
@@ -8,9 +8,9 @@ import (
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// printUnifiedPlan prints repository and fileset changes grouped by repo name.
+// PrintPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
-func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileChange) {
+func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileChange) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -24,7 +24,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 		}
 	}
 	for _, c := range fileChanges {
-		if c.Type == fileset.FileNoOp {
+		if c.Type == fileset.ChangeNoOp {
 			continue
 		}
 		if !seen[c.Target] {
@@ -36,7 +36,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 	// Index changes by repo name
 	fileByTarget := make(map[string][]fileset.FileChange)
 	for _, c := range fileChanges {
-		if c.Type == fileset.FileNoOp {
+		if c.Type == fileset.ChangeNoOp {
 			continue
 		}
 		fileByTarget[c.Target] = append(fileByTarget[c.Target], c)
@@ -54,7 +54,7 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 		fChanges := fileByTarget[name]
 
 		// Set unified column width for this repo group
-		p.SetColumnWidth(computeColumnWidth(rChanges, fChanges))
+		p.SetColumnWidth(ComputeColumnWidth(rChanges, fChanges))
 
 		// Determine action type for this repo group
 		isNew := false
@@ -136,11 +136,11 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 			for _, c := range fChanges {
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				switch c.Type {
-				case fileset.FileCreate:
+				case fileset.ChangeCreate:
 					p.FileCreate(c.Path, added)
-				case fileset.FileUpdate:
+				case fileset.ChangeUpdate:
 					p.FileUpdate(c.Path, added, removed)
-				case fileset.FileDelete:
+				case fileset.ChangeDelete:
 					p.FileDelete(c.Path, removed)
 				}
 			}
@@ -153,9 +153,9 @@ func printUnifiedPlan(p ui.Printer, repoChanges []repository.Change, fileChanges
 	p.SetColumnWidth(0)
 }
 
-// printUnifiedApplyResults prints apply results grouped by repo name,
-// mirroring the hierarchical structure of printUnifiedPlan.
-func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.FileApplyResult) {
+// PrintApplyResults prints apply results grouped by repo name,
+// mirroring the hierarchical structure of PrintPlan.
+func PrintApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.FileApplyResult) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -254,8 +254,8 @@ func printUnifiedApplyResults(p ui.Printer, repoResults []repository.ApplyResult
 	p.SetColumnWidth(0)
 }
 
-// computeColumnWidth returns the max field/path width across both repo and file changes.
-func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileChange) int {
+// ComputeColumnWidth returns the max field/path width across both repo and file changes.
+func ComputeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileChange) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {

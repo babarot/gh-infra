@@ -9,10 +9,10 @@ import (
 
 func TestBuildDiffEntries(t *testing.T) {
 	changes := []fileset.FileChange{
-		{Path: "a.txt", Target: "org/repo", Type: fileset.FileCreate, Desired: "new\n"},
-		{Path: "b.txt", Target: "org/repo", Type: fileset.FileUpdate, Current: "old\n", Desired: "new\n"},
-		{Path: "c.txt", Target: "org/repo", Type: fileset.FileNoOp},
-		{Path: "e.txt", Target: "org/repo", Type: fileset.FileDelete, Current: "bye\n"},
+		{Path: "a.txt", Target: "org/repo", Type: fileset.ChangeCreate, Desired: "new\n"},
+		{Path: "b.txt", Target: "org/repo", Type: fileset.ChangeUpdate, Current: "old\n", Desired: "new\n"},
+		{Path: "c.txt", Target: "org/repo", Type: fileset.ChangeNoOp},
+		{Path: "e.txt", Target: "org/repo", Type: fileset.ChangeDelete, Current: "bye\n"},
 	}
 
 	entries := buildDiffEntries(changes)
@@ -46,7 +46,7 @@ func TestBuildDiffEntries(t *testing.T) {
 
 func TestApplySkipSelections_NoSkip(t *testing.T) {
 	changes := []fileset.FileChange{
-		{Path: "a.txt", Target: "org/repo", Type: fileset.FileUpdate},
+		{Path: "a.txt", Target: "org/repo", Type: fileset.ChangeUpdate},
 	}
 	entries := []ui.DiffEntry{
 		{Path: "a.txt", Target: "org/repo", Skip: false},
@@ -54,15 +54,15 @@ func TestApplySkipSelections_NoSkip(t *testing.T) {
 
 	applySkipSelections(changes, entries)
 
-	if changes[0].Type != fileset.FileUpdate {
+	if changes[0].Type != fileset.ChangeUpdate {
 		t.Errorf("expected FileUpdate (unchanged), got %s", changes[0].Type)
 	}
 }
 
 func TestApplySkipSelections_SkipMarked(t *testing.T) {
 	changes := []fileset.FileChange{
-		{Path: "a.txt", Target: "org/repo", Type: fileset.FileUpdate},
-		{Path: "b.txt", Target: "org/repo", Type: fileset.FileCreate},
+		{Path: "a.txt", Target: "org/repo", Type: fileset.ChangeUpdate},
+		{Path: "b.txt", Target: "org/repo", Type: fileset.ChangeCreate},
 	}
 	entries := []ui.DiffEntry{
 		{Path: "a.txt", Target: "org/repo", Skip: true},
@@ -71,18 +71,18 @@ func TestApplySkipSelections_SkipMarked(t *testing.T) {
 
 	applySkipSelections(changes, entries)
 
-	if changes[0].Type != fileset.FileNoOp {
+	if changes[0].Type != fileset.ChangeNoOp {
 		t.Errorf("a.txt: expected FileNoOp (skipped), got %s", changes[0].Type)
 	}
-	if changes[1].Type != fileset.FileCreate {
+	if changes[1].Type != fileset.ChangeCreate {
 		t.Errorf("b.txt: expected FileCreate (not skipped), got %s", changes[1].Type)
 	}
 }
 
 func TestApplySkipSelections_DifferentTargets(t *testing.T) {
 	changes := []fileset.FileChange{
-		{Path: "a.txt", Target: "org/repo-a", Type: fileset.FileUpdate},
-		{Path: "a.txt", Target: "org/repo-b", Type: fileset.FileUpdate},
+		{Path: "a.txt", Target: "org/repo-a", Type: fileset.ChangeUpdate},
+		{Path: "a.txt", Target: "org/repo-b", Type: fileset.ChangeUpdate},
 	}
 	entries := []ui.DiffEntry{
 		{Path: "a.txt", Target: "org/repo-a", Skip: true},
@@ -91,10 +91,10 @@ func TestApplySkipSelections_DifferentTargets(t *testing.T) {
 
 	applySkipSelections(changes, entries)
 
-	if changes[0].Type != fileset.FileNoOp {
+	if changes[0].Type != fileset.ChangeNoOp {
 		t.Errorf("repo-a: expected FileNoOp (skipped), got %s", changes[0].Type)
 	}
-	if changes[1].Type != fileset.FileUpdate {
+	if changes[1].Type != fileset.ChangeUpdate {
 		t.Errorf("repo-b: expected FileUpdate (not skipped), got %s", changes[1].Type)
 	}
 }

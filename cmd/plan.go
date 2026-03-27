@@ -1,17 +1,10 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 
-	"github.com/babarot/gh-infra/internal/fileset"
-	"github.com/babarot/gh-infra/internal/gh"
-	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -43,103 +36,21 @@ func newPlanCmd() *cobra.Command {
 }
 
 func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
-	p := ui.NewStandardPrinter()
-
-	parsed, err := manifest.ParseAll(path, manifest.ParseOptions{FailOnUnknown: failOnUnknown})
+	result, err := runPipeline(PipelineOptions{
+		Path:          path,
+		FilterRepo:    filterRepo,
+		FailOnUnknown: failOnUnknown,
+		DryRun:        true,
+	})
 	if err != nil {
 		return err
 	}
 
-	// Print deprecation warnings
-	for _, w := range parsed.Warnings {
-		p.Warning("deprecation", w)
-	}
-
-	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
-		p.Message("No resources found in " + path)
-		return nil
-	}
-
-	runner := gh.NewRunner(false)
-
-	var resolverOwner string
-	if len(parsed.Repositories) > 0 {
-		resolverOwner = parsed.Repositories[0].Metadata.Owner
-	}
-	resolver := manifest.NewResolver(runner, resolverOwner)
-
-	p.Phase(fmt.Sprintf("Reading desired state from %s ...", path))
-	p.Phase("Fetching current state from GitHub API ...")
-	p.BlankLine()
-
-	// Phase 1: Refresh all resources in parallel
-	var repoChanges []repository.Change
-	var fileChanges []fileset.FileChange
-
-	// Collect all target names and start a single spinner display
-	var allTasks []ui.RefreshTask
-	allTasks = append(allTasks, repository.FetchTargetNames(parsed.Repositories, filterRepo)...)
-	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSets, filterRepo)...)
-	tracker := ui.RunRefresh(allTasks)
-
-	g := new(errgroup.Group)
-
-	if len(parsed.Repositories) > 0 {
-		fetcher := repository.NewFetcher(runner)
-		g.Go(func() error {
-			var fetchErr error
-			diffOpts := repository.DiffOptions{Resolver: resolver}
-			repoChanges, _, fetchErr = repository.FetchAllChanges(parsed.Repositories, filterRepo, fetcher, p, tracker, diffOpts)
-			return fetchErr
-		})
-	}
-
-	if len(parsed.FileSets) > 0 {
-		processor := fileset.NewProcessor(runner, p)
-		g.Go(func() error {
-			var planErr error
-			fileChanges, planErr = processor.Plan(parsed.FileSets, filterRepo, tracker)
-			return planErr
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		tracker.Wait()
-		return err
-	}
-	tracker.Wait()
-
-	// Phase 2: Print unified plan
-	hasRepo := repository.HasRealChanges(repoChanges)
-	hasFile := fileset.HasChanges(fileChanges)
-
-	if !hasRepo && !hasFile {
-		p.Message("\nNo changes. Infrastructure is up-to-date.")
+	if result.HasChanges {
+		result.Printer.Summary("To apply, run: " + ui.Bold.Render("gh infra apply"))
 		if ci {
-			return nil
+			os.Exit(1)
 		}
-		return nil
-	}
-
-	repoCreates, repoUpdates, repoDeletes := repository.CountChanges(repoChanges)
-	fileCreates, fileUpdates, fileDeletes := fileset.CountChanges(fileChanges)
-	creates := repoCreates + fileCreates
-	updates := repoUpdates + fileUpdates
-	deletes := repoDeletes + fileDeletes
-
-	p.Separator()
-	p.Legend(creates > 0, updates > 0, deletes > 0)
-
-	printUnifiedPlan(p, repoChanges, fileChanges)
-	parts := []string{
-		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", creates))),
-		fmt.Sprintf("%s to update", ui.Bold.Render(fmt.Sprintf("%d", updates))),
-		fmt.Sprintf("%s to destroy", ui.Bold.Render(fmt.Sprintf("%d", deletes))),
-	}
-	p.Summary(fmt.Sprintf("Plan: %s\nTo apply, run: %s", strings.Join(parts, ", "), ui.Bold.Render("gh infra apply")))
-
-	if ci {
-		os.Exit(1)
 	}
 
 	return nil

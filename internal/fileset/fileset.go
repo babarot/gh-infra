@@ -26,23 +26,23 @@ type FileState struct {
 
 // FileChange represents a planned change for a file.
 type FileChange struct {
-	FileSet string // FileSet owner
-	Target  string // owner/repo
-	Path    string
-	Type    ChangeType
-	Current string // current content (if exists)
-	Desired string // desired content
-	SHA     string // current SHA (for updates)
-	Via     string // "push" or "pull_request" (from FileSet spec)
+	FileSetOwner string // org/owner that owns this FileSet
+	Target       string // owner/repo
+	Path         string
+	Type         ChangeType
+	Current      string // current content (if exists)
+	Desired      string // desired content
+	SHA          string // current SHA (for updates)
+	Via          string // "push" or "pull_request" (from FileSet spec)
 }
 
 type ChangeType string
 
 const (
-	FileCreate ChangeType = "create"
-	FileUpdate ChangeType = "update"
-	FileDelete ChangeType = "delete"
-	FileNoOp   ChangeType = "noop"
+	ChangeCreate ChangeType = "create"
+	ChangeUpdate ChangeType = "update"
+	ChangeDelete ChangeType = "delete"
+	ChangeNoOp   ChangeType = "noop"
 )
 
 // Processor handles FileSet plan and apply operations.
@@ -72,20 +72,17 @@ func (u planUnit) fullName() string {
 // PlanTargetNames returns display tasks for all FileSet targets.
 // If filterRepo is non-empty, only targets matching that repo are included.
 func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.RefreshTask {
-	var tasks []ui.RefreshTask
+	var names []string
 	for _, fs := range fileSets {
 		for _, target := range fs.Spec.Repositories {
 			fullName := fs.Metadata.Owner + "/" + target.Name
 			if filterRepo != "" && fullName != filterRepo {
 				continue
 			}
-			tasks = append(tasks, ui.RefreshTask{
-				Name:      "Fetching " + fullName + " (files)",
-				DoneLabel: "Fetched " + fullName + " (files)",
-			})
+			names = append(names, fullName)
 		}
 	}
-	return tasks
+	return ui.BuildRefreshTasks(names, "files")
 }
 
 // planTaskKey returns the tracker key for a given fileset target.
@@ -185,10 +182,10 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 			for _, repoFile := range repoFiles {
 				if !allPlannedPaths[repoFile] {
 					out = append(out, FileChange{
-						Type:    FileDelete,
-						Target:  fullName,
-						Path:    repoFile,
-						FileSet: u.fileSetName,
+						Type:         ChangeDelete,
+						Target:       fullName,
+						Path:         repoFile,
+						FileSetOwner: u.fileSetName,
 					})
 				}
 			}
@@ -219,18 +216,18 @@ func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileE
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileChange{
-			FileSet: fileSetName,
-			Target:  repo,
-			Path:    file.Path,
-			Type:    FileCreate,
-			Desired: file.Content,
+			FileSetOwner: fileSetName,
+			Target:       repo,
+			Path:         file.Path,
+			Type:         ChangeCreate,
+			Desired:      file.Content,
 		}
 	}
 	return FileChange{
-		FileSet: fileSetName,
-		Target:  repo,
-		Path:    file.Path,
-		Type:    FileNoOp,
+		FileSetOwner: fileSetName,
+		Target:       repo,
+		Path:         file.Path,
+		Type:         ChangeNoOp,
 	}
 }
 
@@ -238,11 +235,11 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) 
 	current, err := p.fetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileChange{
-			FileSet: fileSetName,
-			Target:  repo,
-			Path:    file.Path,
-			Type:    FileCreate,
-			Desired: file.Content,
+			FileSetOwner: fileSetName,
+			Target:       repo,
+			Path:         file.Path,
+			Type:         ChangeCreate,
+			Desired:      file.Content,
 		}
 	}
 
@@ -252,22 +249,22 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) 
 
 	if currentContent == desiredContent {
 		return FileChange{
-			FileSet: fileSetName,
-			Target:  repo,
-			Path:    file.Path,
-			Type:    FileNoOp,
+			FileSetOwner: fileSetName,
+			Target:       repo,
+			Path:         file.Path,
+			Type:         ChangeNoOp,
 		}
 	}
 
 	// Content differs — update
 	return FileChange{
-		FileSet: fileSetName,
-		Target:  repo,
-		Path:    file.Path,
-		Type:    FileUpdate,
-		Current: current.Content,
-		Desired: file.Content,
-		SHA:     current.SHA,
+		FileSetOwner: fileSetName,
+		Target:       repo,
+		Path:         file.Path,
+		Type:         ChangeUpdate,
+		Current:      current.Content,
+		Desired:      file.Content,
+		SHA:          current.SHA,
 	}
 }
 
@@ -372,9 +369,9 @@ func (p *Processor) Apply(changes []FileChange, opts ApplyOptions, reporter ui.P
 		var filesToApply []FileChange
 		for _, c := range entry.changes {
 			switch c.Type {
-			case FileCreate, FileUpdate, FileDelete:
+			case ChangeCreate, ChangeUpdate, ChangeDelete:
 				filesToApply = append(filesToApply, c)
-			case FileNoOp:
+			case ChangeNoOp:
 				// do nothing
 			}
 		}
@@ -498,11 +495,11 @@ func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []F
 }
 
 // createBlobs creates a Git blob for each file change and returns tree entries.
-// FileDelete entries get a nil SHA which tells the Git Data API to remove the file.
+// ChangeDelete entries get a nil SHA which tells the Git Data API to remove the file.
 func (p *Processor) createBlobs(repo string, changes []FileChange) ([]treeEntry, error) {
 	var entries []treeEntry
 	for _, c := range changes {
-		if c.Type == FileDelete {
+		if c.Type == ChangeDelete {
 			entries = append(entries, treeEntry{
 				Path: c.Path,
 				Mode: "100644",
@@ -759,7 +756,7 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 
 	hasChanges := false
 	for _, c := range changes {
-		if c.Type != FileNoOp {
+		if c.Type != ChangeNoOp {
 			hasChanges = true
 			break
 		}
@@ -778,10 +775,10 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 	var groups []group
 
 	for _, c := range changes {
-		if c.Type == FileNoOp {
+		if c.Type == ChangeNoOp {
 			continue
 		}
-		k := groupKey{c.FileSet, c.Target}
+		k := groupKey{c.FileSetOwner, c.Target}
 		idx, ok := seen[k]
 		if !ok {
 			idx = len(groups)
@@ -807,11 +804,11 @@ func PrintPlan(p ui.Printer, changes []FileChange) {
 		for _, c := range g.changes {
 			added, removed := DiffStat(c.Current, c.Desired)
 			switch c.Type {
-			case FileCreate:
+			case ChangeCreate:
 				p.FileCreate(c.Path, added)
-			case FileUpdate:
+			case ChangeUpdate:
 				p.FileUpdate(c.Path, added, removed)
-			case FileDelete:
+			case ChangeDelete:
 				p.FileDelete(c.Path, removed)
 			}
 		}
@@ -834,7 +831,7 @@ func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 // HasChanges returns true if any file changes are non-noop.
 func HasChanges(changes []FileChange) bool {
 	for _, c := range changes {
-		if c.Type != FileNoOp {
+		if c.Type != ChangeNoOp {
 			return true
 		}
 	}
@@ -845,11 +842,11 @@ func HasChanges(changes []FileChange) bool {
 func CountChanges(changes []FileChange) (creates, updates, deletes int) {
 	for _, c := range changes {
 		switch c.Type {
-		case FileCreate:
+		case ChangeCreate:
 			creates++
-		case FileUpdate:
+		case ChangeUpdate:
 			updates++
-		case FileDelete:
+		case ChangeDelete:
 			deletes++
 		}
 	}
