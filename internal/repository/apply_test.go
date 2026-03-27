@@ -1005,7 +1005,7 @@ func TestApplyActions_RoutesCorrectly(t *testing.T) {
 			}
 
 			c := Change{Type: ChangeUpdate, Field: tt.field, Resource: manifest.ResourceActions}
-			proc.applyActions(c, repo)
+			_ = proc.applyActions(c, repo)
 
 			if len(mock.Called) == 0 {
 				t.Fatal("expected at least 1 gh call")

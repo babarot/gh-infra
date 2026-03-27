@@ -67,11 +67,11 @@ func TestFormatDuration(t *testing.T) {
 
 func TestFormatDiffStat(t *testing.T) {
 	tests := []struct {
-		name            string
-		added, removed  int
-		wantPlus        bool
-		wantMinus       bool
-		wantEmpty       bool
+		name           string
+		added, removed int
+		wantPlus       bool
+		wantMinus      bool
+		wantEmpty      bool
 	}{
 		{"both zero", 0, 0, false, false, true},
 		{"added only", 5, 0, true, false, false},
