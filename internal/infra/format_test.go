@@ -28,7 +28,7 @@ func TestPrintPlan_RepoChanges(t *testing.T) {
 		{Type: repository.ChangeCreate, Name: "org/repo", Field: "homepage", NewValue: "https://example.com"},
 	}
 
-	PrintPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil)
 	out := buf.String()
 
 	if !strings.Contains(out, "org/repo") {
@@ -51,7 +51,7 @@ func TestPrintPlan_FileChanges(t *testing.T) {
 		{Type: fileset.ChangeUpdate, Target: "org/repo", Path: ".github/lint.yml", Current: "old\n", Desired: "new\n", Via: "push"},
 	}
 
-	PrintPlan(p, nil, fileChanges)
+	printPlan(p, nil, fileChanges)
 	out := buf.String()
 
 	if !strings.Contains(out, "org/repo") {
@@ -76,7 +76,7 @@ func TestPrintPlan_Mixed(t *testing.T) {
 		{Type: fileset.ChangeCreate, Target: "org/repo", Path: "README.md"},
 	}
 
-	PrintPlan(p, repoChanges, fileChanges)
+	printPlan(p, repoChanges, fileChanges)
 	out := buf.String()
 
 	// Both repo and file changes should appear under same repo group
@@ -99,7 +99,7 @@ func TestPrintPlan_AllNoOp(t *testing.T) {
 		{Type: fileset.ChangeNoOp, Target: "org/repo"},
 	}
 
-	PrintPlan(p, repoChanges, fileChanges)
+	printPlan(p, repoChanges, fileChanges)
 
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output for all no-op, got:\n%s", buf.String())
@@ -110,7 +110,7 @@ func TestPrintPlan_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	PrintPlan(p, nil, nil)
+	printPlan(p, nil, nil)
 
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output for nil changes, got:\n%s", buf.String())
@@ -133,7 +133,7 @@ func TestPrintPlan_ChildChanges(t *testing.T) {
 		},
 	}
 
-	PrintPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil)
 	out := buf.String()
 
 	if !strings.Contains(out, "features") {
@@ -159,7 +159,7 @@ func TestPrintApplyResults_Success(t *testing.T) {
 		{Change: repository.Change{Type: repository.ChangeUpdate, Name: "org/repo", Field: "description"}, Err: nil},
 	}
 
-	PrintApplyResults(p, repoResults, nil)
+	printApplyResults(p, repoResults, nil)
 	out := buf.String()
 
 	if !strings.Contains(out, "✓") {
@@ -178,7 +178,7 @@ func TestPrintApplyResults_Error(t *testing.T) {
 		{Change: repository.Change{Type: repository.ChangeUpdate, Name: "org/repo", Field: "description"}, Err: fmt.Errorf("forbidden")},
 	}
 
-	PrintApplyResults(p, repoResults, nil)
+	printApplyResults(p, repoResults, nil)
 	out := buf.String()
 
 	if !strings.Contains(out, "✗") {
@@ -198,7 +198,7 @@ func TestPrintApplyResults_FileResults(t *testing.T) {
 		{Change: fileset.Change{Type: fileset.ChangeUpdate, Target: "org/repo", Path: "b.txt"}, Via: "push"},
 	}
 
-	PrintApplyResults(p, nil, fileResults)
+	printApplyResults(p, nil, fileResults)
 	out := buf.String()
 
 	if !strings.Contains(out, "a.txt") {
@@ -218,7 +218,7 @@ func TestComputeColumnWidth_RepoOnly(t *testing.T) {
 		{Field: "description"},
 		{Field: "homepage_url"},
 	}
-	w := ComputeColumnWidth(changes, nil)
+	w := computeColumnWidth(changes, nil)
 	if w != len("homepage_url") {
 		t.Errorf("expected %d, got %d", len("homepage_url"), w)
 	}
@@ -229,7 +229,7 @@ func TestComputeColumnWidth_FileOnly(t *testing.T) {
 		{Path: "a.txt"},
 		{Path: ".github/workflows/ci.yml"},
 	}
-	w := ComputeColumnWidth(nil, changes)
+	w := computeColumnWidth(nil, changes)
 	if w != len(".github/workflows/ci.yml") {
 		t.Errorf("expected %d, got %d", len(".github/workflows/ci.yml"), w)
 	}
@@ -238,7 +238,7 @@ func TestComputeColumnWidth_FileOnly(t *testing.T) {
 func TestComputeColumnWidth_Mixed(t *testing.T) {
 	repo := []repository.Change{{Field: "short"}}
 	file := []fileset.Change{{Path: "much-longer-file-path.txt"}}
-	w := ComputeColumnWidth(repo, file)
+	w := computeColumnWidth(repo, file)
 	if w != len("much-longer-file-path.txt") {
 		t.Errorf("expected %d, got %d", len("much-longer-file-path.txt"), w)
 	}
@@ -254,14 +254,14 @@ func TestComputeColumnWidth_Children(t *testing.T) {
 			},
 		},
 	}
-	w := ComputeColumnWidth(changes, nil)
+	w := computeColumnWidth(changes, nil)
 	if w != len("very_long_child_field_name") {
 		t.Errorf("expected %d, got %d", len("very_long_child_field_name"), w)
 	}
 }
 
 func TestComputeColumnWidth_Empty(t *testing.T) {
-	w := ComputeColumnWidth(nil, nil)
+	w := computeColumnWidth(nil, nil)
 	if w != 0 {
 		t.Errorf("expected 0, got %d", w)
 	}

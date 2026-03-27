@@ -89,7 +89,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 	// Print unified apply results (skip in stream mode — stream output is the result)
 	if !opts.Stream {
 		p.Separator()
-		PrintApplyResults(p, allRepoResults, allFileResults)
+		printApplyResults(p, allRepoResults, allFileResults)
 	}
 
 	// Unified summary

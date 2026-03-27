@@ -147,7 +147,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	p.Separator()
 	p.Legend(result.Creates > 0, result.Updates > 0, result.Deletes > 0)
 
-	PrintPlan(p, repoChanges, fileChanges)
+	printPlan(p, repoChanges, fileChanges)
 
 	parts := []string{
 		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", result.Creates))),

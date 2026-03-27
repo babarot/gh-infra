@@ -8,9 +8,9 @@ import (
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// PrintPlan prints repository and fileset changes grouped by repo name.
+// printPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
-func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change) {
+func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -54,7 +54,7 @@ func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 		fChanges := fileByTarget[name]
 
 		// Set unified column width for this repo group
-		p.SetColumnWidth(ComputeColumnWidth(rChanges, fChanges))
+		p.SetColumnWidth(computeColumnWidth(rChanges, fChanges))
 
 		// Determine action type for this repo group
 		isNew := false
@@ -132,9 +132,9 @@ func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 	p.SetColumnWidth(0)
 }
 
-// PrintApplyResults prints apply results grouped by repo name,
+// printApplyResults prints apply results grouped by repo name,
 // mirroring the hierarchical structure of PrintPlan.
-func PrintApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.ApplyResult) {
+func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.ApplyResult) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -233,8 +233,8 @@ func PrintApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 	p.SetColumnWidth(0)
 }
 
-// ComputeColumnWidth returns the max field/path width across both repo and file changes.
-func ComputeColumnWidth(rChanges []repository.Change, fChanges []fileset.Change) int {
+// computeColumnWidth returns the max field/path width across both repo and file changes.
+func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.Change) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
