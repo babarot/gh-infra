@@ -166,7 +166,7 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 		key := "Importing " + fullName + " (files)"
 		processor := fileset.NewProcessor(runner, p)
 
-		importChanges, err = fileset.PlanPull(processor, matches.FileSets, fullName)
+		importChanges, err = fileset.PlanImport(processor, matches.FileSets, fullName)
 		if err != nil {
 			failAll()
 			return err

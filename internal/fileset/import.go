@@ -33,9 +33,9 @@ type FileImportChange struct {
 	Warnings     []string // e.g. patches, templates
 }
 
-// PlanPull computes import changes for all FileSets.
+// PlanImport computes import changes for all FileSets.
 // filterRepo must be "owner/repo" format; required if a FileSet targets multiple repos.
-func PlanPull(proc *Processor, fileSets []*manifest.FileSetDocument, filterRepo string) ([]FileImportChange, error) {
+func PlanImport(proc *Processor, fileSets []*manifest.FileSetDocument, filterRepo string) ([]FileImportChange, error) {
 	var changes []FileImportChange
 
 	for _, fsDoc := range fileSets {
