@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.6.1](https://github.com/babarot/gh-infra/compare/v0.6.0...v0.6.1) - 2026-03-27
+### Improvements
+- Improve gh CLI error parsing with HTTP status codes and stdout fallback by @babarot in https://github.com/babarot/gh-infra/pull/52
+
 ## [v0.6.0](https://github.com/babarot/gh-infra/compare/v0.5.1...v0.6.0) - 2026-03-26
 ### New Features
 - Add `patches` support for applying unified diffs to file content by @babarot in https://github.com/babarot/gh-infra/pull/48
