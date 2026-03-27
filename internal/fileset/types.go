@@ -6,8 +6,8 @@ import "github.com/babarot/gh-infra/internal/manifest"
 type FileOriginKind string
 
 const (
-	FileOriginSpecFiles          FileOriginKind = "spec.files"
-	FileOriginRepositoryOverride FileOriginKind = "spec.repositories.overrides"
+	FileOriginSpecFiles          FileOriginKind = "specFiles"
+	FileOriginRepositoryOverride FileOriginKind = "repoOverride"
 )
 
 // FileOrigin tracks which manifest node produced a resolved file entry.

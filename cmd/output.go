@@ -246,7 +246,7 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileCha
 	return w
 }
 
-func computeImportColumnWidth(rChanges []repository.Change, fChanges []importer.ImportChange) int {
+func computeImportColumnWidth(rChanges []repository.Change, fChanges []importer.Change) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
@@ -310,7 +310,7 @@ func printRepoChanges(p ui.Printer, changes []repository.Change) {
 
 // printUnifiedImportPlan prints import changes grouped by repo, similar to printUnifiedPlan.
 // It shows file diffs with +N -M stats to indicate what will be written locally.
-func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []importer.ImportChange) {
+func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []importer.Change) {
 	// Collect repo names from changes
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -331,7 +331,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	}
 
 	// Index changes by target
-	fileByTarget := make(map[string][]importer.ImportChange)
+	fileByTarget := make(map[string][]importer.Change)
 	for _, c := range importChanges {
 		if !shouldDisplayImportChange(c) {
 			continue
@@ -363,7 +363,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
 				displayPath := importDisplayPath(c)
-				if c.WriteMode == importer.ImportSkip {
+				if c.WriteMode == importer.WriteSkip {
 					p.FileWarning(displayPath, c.Reason)
 					continue
 				}
@@ -391,8 +391,8 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	p.SetColumnWidth(0)
 }
 
-func shouldDisplayImportChange(c importer.ImportChange) bool {
-	if c.WriteMode == importer.ImportSkip {
+func shouldDisplayImportChange(c importer.Change) bool {
+	if c.WriteMode == importer.WriteSkip {
 		return true
 	}
 	if c.Type != fileset.FileNoOp {
@@ -401,7 +401,7 @@ func shouldDisplayImportChange(c importer.ImportChange) bool {
 	return len(c.Warnings) > 0
 }
 
-func importDisplayPath(c importer.ImportChange) string {
+func importDisplayPath(c importer.Change) string {
 	path := c.Path
 	if c.LocalTarget != "" {
 		path = relativizePath(c.LocalTarget)

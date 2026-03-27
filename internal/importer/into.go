@@ -65,14 +65,28 @@ func PlanInto(matches Matches, target Target, runner gh.Runner, printer ui.Print
 		imported := repository.ToManifest(githubState, resolver)
 
 		if len(matches.Repositories) > 0 {
-			repoPlan, err := PlanRepository(matches.Repositories, githubState, imported, resolver, readManifestBytes, manifestBytes)
+			repoPlan, err := PlanRepository(RepoPlanInput{
+				Repos:             matches.Repositories,
+				GitHubState:       githubState,
+				Imported:          imported,
+				Resolver:          resolver,
+				ReadManifestBytes: readManifestBytes,
+				ManifestBytes:     manifestBytes,
+			})
 			if err != nil {
 				return IntoPlan{}, err
 			}
 			plan.AddRepoPlan(repoPlan)
 		}
 		if len(matches.RepositorySets) > 0 {
-			repoPlan, err := PlanRepositorySet(matches.RepositorySets, githubState, imported, resolver, readManifestBytes, manifestBytes)
+			repoPlan, err := PlanRepositorySet(RepoPlanInput{
+				Repos:             matches.RepositorySets,
+				GitHubState:       githubState,
+				Imported:          imported,
+				Resolver:          resolver,
+				ReadManifestBytes: readManifestBytes,
+				ManifestBytes:     manifestBytes,
+			})
 			if err != nil {
 				return IntoPlan{}, err
 			}
@@ -86,7 +100,7 @@ func PlanInto(matches Matches, target Target, runner gh.Runner, printer ui.Print
 	if matches.HasFiles() {
 		key := "Importing " + target.FullName() + " (files)"
 		processor := fileset.NewProcessor(runner, printer)
-		changes, err := PlanImport(processor.FetchFileContent, matches.FileSets, target.FullName())
+		changes, err := PlanFiles(processor.FetchFileContent, matches.FileSets, target.FullName())
 		if err != nil {
 			return IntoPlan{}, err
 		}
@@ -105,7 +119,7 @@ func (p *IntoPlan) Apply() error {
 			return err
 		}
 	}
-	if err := ApplyImport(p.FileChanges, p.manifestBytes); err != nil {
+	if err := ApplyFiles(p.FileChanges, p.manifestBytes); err != nil {
 		return err
 	}
 	return WriteManifestEdits(p.ManifestEdits)

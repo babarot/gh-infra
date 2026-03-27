@@ -10,23 +10,23 @@ import (
 	"github.com/babarot/gh-infra/internal/yamlpatch"
 )
 
-// ImportWriteMode describes how the imported content will be written locally.
-type ImportWriteMode string
+// WriteMode describes how the imported content will be written locally.
+type WriteMode string
 
 const (
-	ImportWriteSource ImportWriteMode = "source" // overwrite a source file on disk
-	ImportWriteInline ImportWriteMode = "inline" // update inline content block in manifest YAML
-	ImportSkip        ImportWriteMode = "skip"   // skipped (create_only, not on GitHub, etc.)
+	WriteSource WriteMode = "source" // overwrite a source file on disk
+	WriteInline WriteMode = "inline" // update inline content block in manifest YAML
+	WriteSkip   WriteMode = "skip"   // skipped (create_only, not on GitHub, etc.)
 )
 
-// ImportChange represents a planned file change for the import direction (GitHub → local).
-type ImportChange struct {
+// Change represents a planned file change for the import direction (GitHub → local).
+type Change struct {
 	Target       string // owner/repo
 	Path         string
 	Type         fileset.ChangeType
 	Current      string // current local content
 	Desired      string // content from GitHub (what will be written)
-	WriteMode    ImportWriteMode
+	WriteMode    WriteMode
 	LocalTarget  string   // write-back destination path
 	ManifestPath string   // path to the manifest YAML file (for inline edits)
 	DocIndex     int      // document index within the manifest file
@@ -35,13 +35,13 @@ type ImportChange struct {
 	Warnings     []string // e.g. patches, templates
 }
 
-// FileFetcher fetches a file's current state from a repository.
-type FileFetcher func(repo, path string) (*fileset.FileState, error)
+// FileContentFetcher fetches a file's current state from a repository.
+type FileContentFetcher func(repo, path string) (*fileset.FileState, error)
 
-// PlanImport computes import changes for all FileSets.
+// PlanFiles computes import changes for all FileSets.
 // filterRepo must be "owner/repo" format; required if a FileSet targets multiple repos.
-func PlanImport(fetchFile FileFetcher, fileSets []*manifest.FileSetDocument, filterRepo string) ([]ImportChange, error) {
-	var changes []ImportChange
+func PlanFiles(fetchFile FileContentFetcher, fileSets []*manifest.FileSetDocument, filterRepo string) ([]Change, error) {
+	var changes []Change
 
 	for _, fsDoc := range fileSets {
 		fs := fsDoc.Resource
@@ -76,7 +76,7 @@ func PlanImport(fetchFile FileFetcher, fileSets []*manifest.FileSetDocument, fil
 			}
 		}
 		fullName := fs.RepoFullName(target.Name)
-		files := ResolveFilesForImport(fsDoc, target, repoIndex)
+		files := ResolveFiles(fsDoc, target, repoIndex)
 
 		for _, file := range files {
 			change := planImportEntry(fetchFile, file, fullName, fsDoc)
@@ -87,8 +87,8 @@ func PlanImport(fetchFile FileFetcher, fileSets []*manifest.FileSetDocument, fil
 	return changes, nil
 }
 
-func planImportEntry(fetchFile FileFetcher, file fileset.ResolvedFile, repo string, fs *manifest.FileSetDocument) ImportChange {
-	change := ImportChange{
+func planImportEntry(fetchFile FileContentFetcher, file fileset.ResolvedFile, repo string, fs *manifest.FileSetDocument) Change {
+	change := Change{
 		Target:       repo,
 		Path:         file.Path,
 		ManifestPath: fs.SourcePath,
@@ -97,23 +97,23 @@ func planImportEntry(fetchFile FileFetcher, file fileset.ResolvedFile, repo stri
 
 	// Determine write target
 	if file.OriginalSource != "" {
-		change.WriteMode = ImportWriteSource
+		change.WriteMode = WriteSource
 		change.LocalTarget = file.OriginalSource
 	} else if file.Source == "" {
 		// Inline content (no source field was set)
 		yamlPath, ok := importYAMLPath(file.Origin)
 		if !ok {
-			change.WriteMode = ImportSkip
+			change.WriteMode = WriteSkip
 			change.Type = fileset.FileNoOp
 			change.Reason = "inline source mapping unavailable"
 			return change
 		}
-		change.WriteMode = ImportWriteInline
+		change.WriteMode = WriteInline
 		change.LocalTarget = fs.SourcePath + " (inline)"
 		change.YAMLPath = yamlPath
 	} else {
 		// github:// or other remote source — can't write back locally
-		change.WriteMode = ImportSkip
+		change.WriteMode = WriteSkip
 		change.Type = fileset.FileNoOp
 		change.Reason = "remote source"
 		return change
@@ -121,7 +121,7 @@ func planImportEntry(fetchFile FileFetcher, file fileset.ResolvedFile, repo stri
 
 	// Skip create_only files
 	if file.Reconcile == "create_only" {
-		change.WriteMode = ImportSkip
+		change.WriteMode = WriteSkip
 		change.Type = fileset.FileNoOp
 		change.Reason = "create_only"
 		return change
@@ -130,7 +130,7 @@ func planImportEntry(fetchFile FileFetcher, file fileset.ResolvedFile, repo stri
 	// Fetch current content from GitHub
 	state, err := fetchFile(repo, file.Path)
 	if err != nil || !state.Exists {
-		change.WriteMode = ImportSkip
+		change.WriteMode = WriteSkip
 		change.Type = fileset.FileNoOp
 		change.Reason = "not on GitHub"
 		return change
@@ -177,18 +177,18 @@ func importYAMLPath(origin fileset.FileOrigin) (string, bool) {
 	}
 }
 
-// ApplyImport executes the planned import changes.
+// ApplyFiles executes the planned import changes.
 // manifestBytes maps manifest file paths to their raw content (for inline edits).
-func ApplyImport(changes []ImportChange, manifestBytes map[string][]byte) error {
-	inlineByFile := make(map[string][]ImportChange)
+func ApplyFiles(changes []Change, manifestBytes map[string][]byte) error {
+	inlineByFile := make(map[string][]Change)
 
 	for _, c := range changes {
 		switch c.WriteMode {
-		case ImportWriteSource:
+		case WriteSource:
 			if err := os.WriteFile(c.LocalTarget, []byte(c.Desired), 0644); err != nil {
 				return fmt.Errorf("write %s: %w", c.LocalTarget, err)
 			}
-		case ImportWriteInline:
+		case WriteInline:
 			inlineByFile[c.ManifestPath] = append(inlineByFile[c.ManifestPath], c)
 		}
 	}
@@ -215,36 +215,36 @@ func ApplyImport(changes []ImportChange, manifestBytes map[string][]byte) error 
 	return nil
 }
 
-// ImportSummary returns counts by write mode.
-func ImportSummary(changes []ImportChange) (written, unchanged, skipped int) {
+// FileSummary returns counts by write mode.
+func FileSummary(changes []Change) (written, unchanged, skipped int) {
 	for _, c := range changes {
 		switch c.WriteMode {
-		case ImportWriteSource, ImportWriteInline:
+		case WriteSource, WriteInline:
 			if c.Type == fileset.FileNoOp {
 				unchanged++
 			} else {
 				written++
 			}
-		case ImportSkip:
+		case WriteSkip:
 			skipped++
 		}
 	}
 	return
 }
 
-// HasImportChanges returns true if any import changes are non-noop and non-skip.
-func HasImportChanges(changes []ImportChange) bool {
+// HasFileChanges returns true if any import changes are non-noop and non-skip.
+func HasFileChanges(changes []Change) bool {
 	for _, c := range changes {
-		if c.Type != fileset.FileNoOp && c.WriteMode != ImportSkip {
+		if c.Type != fileset.FileNoOp && c.WriteMode != WriteSkip {
 			return true
 		}
 	}
 	return false
 }
 
-// ResolveFilesForImport returns files for a target with FileOrigin metadata
+// ResolveFiles returns files for a target with FileOrigin metadata
 // needed for import write-back. This is the import-direction resolver.
-func ResolveFilesForImport(fs *manifest.FileSetDocument, target manifest.FileSetRepository, repoIndex int) []fileset.ResolvedFile {
+func ResolveFiles(fs *manifest.FileSetDocument, target manifest.FileSetRepository, repoIndex int) []fileset.ResolvedFile {
 	if len(target.Overrides) == 0 {
 		result := make([]fileset.ResolvedFile, len(fs.Files))
 		for i, f := range fs.Files {

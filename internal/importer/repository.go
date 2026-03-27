@@ -8,27 +8,37 @@ import (
 	"github.com/babarot/gh-infra/internal/yamlpatch"
 )
 
-func PlanRepository(repos []*manifest.RepositoryDocument, githubState *repository.CurrentState, imported *manifest.Repository, resolver *manifest.Resolver, readManifestBytes func(string) error, manifestBytes map[string][]byte) (RepoPlan, error) {
+// RepoPlanInput holds all inputs needed for PlanRepository and PlanRepositorySet.
+type RepoPlanInput struct {
+	Repos             []*manifest.RepositoryDocument
+	GitHubState       *repository.CurrentState
+	Imported          *manifest.Repository
+	Resolver          *manifest.Resolver
+	ReadManifestBytes func(string) error
+	ManifestBytes     map[string][]byte
+}
+
+func PlanRepository(input RepoPlanInput) (RepoPlan, error) {
 	plan := RepoPlan{ManifestEdits: make(map[string][]byte)}
 
-	for _, repo := range repos {
-		diffOpts := repository.DiffOptions{Resolver: resolver}
-		changes := repository.Diff(repo.Resource, githubState, diffOpts)
+	for _, repo := range input.Repos {
+		diffOpts := repository.DiffOptions{Resolver: input.Resolver}
+		changes := repository.Diff(repo.Resource, input.GitHubState, diffOpts)
 		plan.Changes = append(plan.Changes, repository.ReverseChanges(changes)...)
 		if !repository.HasRealChanges(changes) {
 			continue
 		}
 
-		if err := readManifestBytes(repo.SourcePath); err != nil {
+		if err := input.ReadManifestBytes(repo.SourcePath); err != nil {
 			return RepoPlan{}, err
 		}
-		data := manifestBytes[repo.SourcePath]
+		data := input.ManifestBytes[repo.SourcePath]
 		var err error
-		data, err = yamlpatch.ReplaceYAMLNode(data, repo.DocIndex, "$.spec", imported.Spec)
+		data, err = yamlpatch.ReplaceYAMLNode(data, repo.DocIndex, "$.spec", input.Imported.Spec)
 		if err != nil {
 			return RepoPlan{}, fmt.Errorf("update spec in %s: %w", repo.SourcePath, err)
 		}
-		manifestBytes[repo.SourcePath] = data
+		input.ManifestBytes[repo.SourcePath] = data
 		plan.ManifestEdits[repo.SourcePath] = data
 		plan.UpdatedDocs++
 	}
@@ -36,12 +46,12 @@ func PlanRepository(repos []*manifest.RepositoryDocument, githubState *repositor
 	return plan, nil
 }
 
-func PlanRepositorySet(repos []*manifest.RepositoryDocument, githubState *repository.CurrentState, imported *manifest.Repository, resolver *manifest.Resolver, readManifestBytes func(string) error, manifestBytes map[string][]byte) (RepoPlan, error) {
+func PlanRepositorySet(input RepoPlanInput) (RepoPlan, error) {
 	plan := RepoPlan{ManifestEdits: make(map[string][]byte)}
 
-	for _, repo := range repos {
-		diffOpts := repository.DiffOptions{Resolver: resolver}
-		changes := repository.Diff(repo.Resource, githubState, diffOpts)
+	for _, repo := range input.Repos {
+		diffOpts := repository.DiffOptions{Resolver: input.Resolver}
+		changes := repository.Diff(repo.Resource, input.GitHubState, diffOpts)
 		plan.Changes = append(plan.Changes, repository.ReverseChanges(changes)...)
 		if !repository.HasRealChanges(changes) {
 			continue
@@ -50,16 +60,16 @@ func PlanRepositorySet(repos []*manifest.RepositoryDocument, githubState *reposi
 			return RepoPlan{}, fmt.Errorf("repository set entry index unavailable for %s", repo.Resource.Metadata.FullName())
 		}
 
-		if err := readManifestBytes(repo.SourcePath); err != nil {
+		if err := input.ReadManifestBytes(repo.SourcePath); err != nil {
 			return RepoPlan{}, err
 		}
-		data := manifestBytes[repo.SourcePath]
+		data := input.ManifestBytes[repo.SourcePath]
 		var err error
-		data, err = yamlpatch.ReplaceYAMLNode(data, repo.DocIndex, fmt.Sprintf("$.repositories[%d].spec", repo.SetEntryIndex), imported.Spec)
+		data, err = yamlpatch.ReplaceYAMLNode(data, repo.DocIndex, fmt.Sprintf("$.repositories[%d].spec", repo.SetEntryIndex), input.Imported.Spec)
 		if err != nil {
 			return RepoPlan{}, fmt.Errorf("update repository set entry in %s: %w", repo.SourcePath, err)
 		}
-		manifestBytes[repo.SourcePath] = data
+		input.ManifestBytes[repo.SourcePath] = data
 		plan.ManifestEdits[repo.SourcePath] = data
 		plan.UpdatedDocs++
 	}
