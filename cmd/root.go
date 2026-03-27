@@ -50,7 +50,6 @@ func NewRootCmd(version, revision string) *cobra.Command {
 		newPlanCmd(),
 		newApplyCmd(),
 		newImportCmd(),
-		newPullCmd(),
 		newValidateCmd(),
 	)
 

@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
+	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
@@ -15,15 +18,31 @@ import (
 )
 
 func newImportCmd() *cobra.Command {
+	var (
+		into   string
+		dryRun bool
+	)
+
 	cmd := &cobra.Command{
 		Use:   "import <owner/repo> [owner/repo ...]",
-		Short: "Export existing repository settings as YAML",
-		Long:  "Fetch current GitHub repository settings and output them as gh-infra YAML.\nMultiple repositories can be specified to import them in parallel.",
-		Args:  cobra.MinimumNArgs(1),
+		Short: "Import existing repository settings and files from GitHub",
+		Long: `Fetch current GitHub repository settings and output them as gh-infra YAML.
+Multiple repositories can be specified to import them in parallel.
+
+With --into, import file content from GitHub back to local template sources.
+Specify a path to a File/FileSet manifest or a directory containing manifests.`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if into != "" {
+				return runImportFiles(args, into, dryRun)
+			}
 			return runImport(args)
 		},
 	}
+
+	cmd.Flags().StringVar(&into, "into", "", "Import file content into local sources via the given manifest or directory")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be written without making changes (requires --into)")
+
 	return cmd
 }
 
@@ -57,6 +76,138 @@ func runImport(args []string) error {
 	resolver := manifest.NewResolver(runner, targets[0].owner)
 
 	return importRepos(p, targets, fetcher, resolver)
+}
+
+func runImportFiles(args []string, searchPath string, dryRun bool) error {
+	p := ui.NewStandardPrinter()
+
+	targets, err := parseImportTargets(args)
+	if err != nil {
+		return err
+	}
+
+	// For file import, process one repo at a time
+	for _, target := range targets {
+		fullName := target.owner + "/" + target.name
+		if err := importFilesForRepo(p, fullName, searchPath, dryRun); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func importFilesForRepo(p ui.Printer, filterRepo, searchPath string, dryRun bool) error {
+	// Discover FileSet manifests from the given path
+	parsed, err := manifest.ParseAll(searchPath)
+	if err != nil {
+		return err
+	}
+
+	// Filter to FileSets that reference this repo
+	var matchedFileSets []*manifest.FileSet
+	for _, fs := range parsed.FileSets {
+		for _, r := range fs.Spec.Repositories {
+			if fs.RepoFullName(r.Name) == filterRepo {
+				matchedFileSets = append(matchedFileSets, fs)
+				break
+			}
+		}
+	}
+
+	if len(matchedFileSets) == 0 {
+		return fmt.Errorf("no File or FileSet found for %s in the current directory", filterRepo)
+	}
+
+	runner := gh.NewRunner(false)
+	processor := fileset.NewProcessor(runner, p)
+
+	// Count total files for spinner
+	var fetchTasks []ui.RefreshTask
+	fetchTasks = append(fetchTasks, ui.RefreshTask{
+		Name:      "Importing " + filterRepo + " (files)",
+		DoneLabel: "Imported " + filterRepo + " (files)",
+		FailLabel: "Failed " + filterRepo + " (files)",
+	})
+	tracker := ui.RunRefresh(fetchTasks)
+
+	p.Phase(fmt.Sprintf("Importing file content from %s ...", filterRepo))
+	p.BlankLine()
+
+	changes, err := fileset.PlanPull(processor, matchedFileSets, filterRepo)
+	if err != nil {
+		tracker.Fail(fetchTasks[0].Name)
+		tracker.Wait()
+		return err
+	}
+	tracker.Done(fetchTasks[0].Name)
+	tracker.Wait()
+
+	written, unchanged, skipped := fileset.PullSummary(changes)
+
+	// Display results using existing printer patterns
+	p.Separator()
+
+	for _, c := range changes {
+		switch c.Type {
+		case fileset.PullWriteSource:
+			relTarget := relativePath(c.LocalTarget)
+			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s", relTarget))
+		case fileset.PullWriteInline:
+			relManifest := relativePath(c.ManifestPath)
+			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s (inline)", relManifest))
+		case fileset.PullNoOp:
+			p.Detail(fmt.Sprintf("  %s  unchanged", c.Path))
+		case fileset.PullSkip:
+			p.ResultWarning(c.Path, c.Reason)
+		}
+	}
+
+	// Print warnings
+	for _, c := range changes {
+		for _, w := range c.Warnings {
+			p.Warning(c.Path, w)
+		}
+	}
+
+	if dryRun {
+		p.Summary(fmt.Sprintf("Dry run: %s to write, %s unchanged, %s to skip.",
+			ui.Bold.Render(fmt.Sprintf("%d", written)),
+			ui.Bold.Render(fmt.Sprintf("%d", unchanged)),
+			ui.Bold.Render(fmt.Sprintf("%d", skipped)),
+		))
+		return nil
+	}
+
+	if written == 0 {
+		p.Summary("Nothing to import. Local files are up-to-date.")
+		return nil
+	}
+
+	// Read manifest bytes for inline edits
+	manifestBytes := make(map[string][]byte)
+	for _, fs := range matchedFileSets {
+		sp := fs.SourcePath()
+		if _, ok := manifestBytes[sp]; !ok {
+			data, err := os.ReadFile(sp)
+			if err != nil {
+				return fmt.Errorf("read manifest %s: %w", sp, err)
+			}
+			manifestBytes[sp] = data
+		}
+	}
+
+	if err := fileset.ApplyPull(changes, manifestBytes); err != nil {
+		return err
+	}
+
+	p.Summary(fmt.Sprintf("Import complete! %s written, %s unchanged, %s skipped.",
+		ui.Bold.Render(fmt.Sprintf("%d", written)),
+		ui.Bold.Render(fmt.Sprintf("%d", unchanged)),
+		ui.Bold.Render(fmt.Sprintf("%d", skipped)),
+	))
+
+	return nil
 }
 
 const defaultImportParallel = 5
@@ -155,4 +306,17 @@ func importRepos(p ui.Printer, targets []importTarget, fetcher *repository.Fetch
 	summaryMsg += "."
 	p.Summary(summaryMsg)
 	return nil
+}
+
+// relativePath attempts to make a path relative to the current working directory.
+func relativePath(absPath string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return absPath
+	}
+	rel, err := filepath.Rel(cwd, absPath)
+	if err != nil {
+		return absPath
+	}
+	return rel
 }
