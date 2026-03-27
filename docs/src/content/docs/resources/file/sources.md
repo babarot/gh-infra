@@ -6,6 +6,14 @@ sidebar:
 
 Each file entry specifies **where the content comes from** via `content` (inline) or `source` (external). There are four source types.
 
+:::note[`import --into` and file sources]
+`gh infra import <owner/repo> --into=...` writes GitHub content back to local declarations differently depending on the source type:
+
+- inline `content` updates the manifest YAML directly
+- local `source: ./file` or `source: ./dir/` updates files on disk
+- `github://...` sources are skipped because there is no local file to write back to
+:::
+
 ## Inline Content
 
 Write the file content directly in YAML. Best for short files like CODEOWNERS or security policies.

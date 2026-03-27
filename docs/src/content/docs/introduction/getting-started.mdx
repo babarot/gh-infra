@@ -106,6 +106,16 @@ gh infra --help
 
    gh-infra will show the plan again and ask for confirmation before making changes.
 
+5. **Pull GitHub state back into existing manifests (optional)**
+
+   If you already manage files or repo settings with gh-infra and want to update local manifests from the current GitHub state, use `import --into`:
+
+   ```bash
+   gh infra import babarot/my-project --into ./repos/my-project.yaml --dry-run
+   ```
+
+   This is useful when the real state on GitHub has changed and you want to sync those changes back into your local YAML or source files before editing further.
+
 </Steps>
 
 <DemoTerminal />
