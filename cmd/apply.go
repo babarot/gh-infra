@@ -76,7 +76,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 
 // applySkipSelections writes skip selections from the diff viewer back
 // to fileChanges, setting skipped entries to ChangeNoOp so they are not applied.
-func applySkipSelections(changes []fileset.FileChange, entries []ui.DiffEntry) {
+func applySkipSelections(changes []fileset.Change, entries []ui.DiffEntry) {
 	type key struct{ target, path string }
 	skipped := make(map[key]bool, len(entries))
 	for _, e := range entries {
@@ -91,7 +91,7 @@ func applySkipSelections(changes []fileset.FileChange, entries []ui.DiffEntry) {
 	}
 }
 
-func buildDiffEntries(changes []fileset.FileChange) []ui.DiffEntry {
+func buildDiffEntries(changes []fileset.Change) []ui.DiffEntry {
 	var entries []ui.DiffEntry
 	for _, c := range changes {
 		var icon string

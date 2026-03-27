@@ -25,7 +25,7 @@ type PlanOptions struct {
 // PlanResult holds the outcome of the plan phase.
 type PlanResult struct {
 	RepoChanges []repository.Change
-	FileChanges []fileset.FileChange
+	FileChanges []fileset.Change
 	TargetRepos []*manifest.Repository
 	Parsed      *manifest.ParseResult
 	Printer     ui.Printer
@@ -82,7 +82,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
-	var fileChanges []fileset.FileChange
+	var fileChanges []fileset.Change
 
 	g := new(errgroup.Group)
 

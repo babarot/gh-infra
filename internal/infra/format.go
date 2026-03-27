@@ -10,7 +10,7 @@ import (
 
 // PrintPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
-func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.FileChange) {
+func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -34,7 +34,7 @@ func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 	}
 
 	// Index changes by repo name
-	fileByTarget := make(map[string][]fileset.FileChange)
+	fileByTarget := make(map[string][]fileset.Change)
 	for _, c := range fileChanges {
 		if c.Type == fileset.ChangeNoOp {
 			continue
@@ -134,7 +134,7 @@ func PrintPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 
 // PrintApplyResults prints apply results grouped by repo name,
 // mirroring the hierarchical structure of PrintPlan.
-func PrintApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.FileApplyResult) {
+func PrintApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.ApplyResult) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -158,7 +158,7 @@ func PrintApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 	for _, r := range repoResults {
 		repoByName[r.Change.Name] = append(repoByName[r.Change.Name], r)
 	}
-	fileByTarget := make(map[string][]fileset.FileApplyResult)
+	fileByTarget := make(map[string][]fileset.ApplyResult)
 	for _, r := range fileResults {
 		fileByTarget[r.Change.Target] = append(fileByTarget[r.Change.Target], r)
 	}
@@ -234,7 +234,7 @@ func PrintApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 }
 
 // ComputeColumnWidth returns the max field/path width across both repo and file changes.
-func ComputeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileChange) int {
+func ComputeColumnWidth(rChanges []repository.Change, fChanges []fileset.Change) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
@@ -272,7 +272,7 @@ func changeToItem(c repository.Change, sub bool) ui.ChangeItem {
 }
 
 // fileChangeToItem converts a fileset.FileChange to a ui.FileItem.
-func fileChangeToItem(c fileset.FileChange, added, removed int) ui.FileItem {
+func fileChangeToItem(c fileset.Change, added, removed int) ui.FileItem {
 	switch c.Type {
 	case fileset.ChangeCreate:
 		return ui.FileItem{Icon: ui.IconAdd, Path: c.Path, Added: added}

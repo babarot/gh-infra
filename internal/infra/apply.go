@@ -24,7 +24,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 	totalFailed := 0
 
 	var allRepoResults []repository.ApplyResult
-	var allFileResults []fileset.FileApplyResult
+	var allFileResults []fileset.ApplyResult
 
 	// Apply repo changes
 	if repository.HasChanges(result.RepoChanges) {
@@ -51,7 +51,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 	if fileset.HasChanges(result.FileChanges) {
 		processor := fileset.NewProcessor(runner, p)
 		for _, fs := range result.Parsed.FileSets {
-			var fsChanges []fileset.FileChange
+			var fsChanges []fileset.Change
 			for _, c := range result.FileChanges {
 				if c.FileSetOwner == fs.Metadata.Owner {
 					fsChanges = append(fsChanges, c)
@@ -64,7 +64,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 				CommitMessage: fs.Spec.CommitMessage,
 				Via:           fs.Spec.Via,
 				Branch:        fs.Spec.Branch,
-				FileSetName:   fs.Metadata.Owner,
+				FileSetOwner:  fs.Metadata.Owner,
 				PRTitle:       fs.Spec.PRTitle,
 				PRBody:        fs.Spec.PRBody,
 			}
