@@ -7,6 +7,8 @@ import (
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -52,15 +54,25 @@ func PlanInto(matches Matches, target Target, runner gh.Runner, printer ui.Print
 
 	if matches.HasRepo() {
 		key := "Importing " + target.FullName() + " (repo)"
+
+		// Fetch GitHub state once for both Repository and RepositorySet planning
+		fetcher := repository.NewFetcher(runner)
+		resolver := manifest.NewResolver(runner, target.Owner)
+		githubState, err := fetcher.FetchRepository(target.Owner, target.Name)
+		if err != nil {
+			return IntoPlan{}, err
+		}
+		imported := repository.ToManifest(githubState, resolver)
+
 		if len(matches.Repositories) > 0 {
-			repoPlan, err := PlanRepository(target, matches.Repositories, runner, readManifestBytes, manifestBytes)
+			repoPlan, err := PlanRepository(matches.Repositories, githubState, imported, resolver, readManifestBytes, manifestBytes)
 			if err != nil {
 				return IntoPlan{}, err
 			}
 			plan.AddRepoPlan(repoPlan)
 		}
 		if len(matches.RepositorySets) > 0 {
-			repoPlan, err := PlanRepositorySet(target, matches.RepositorySets, runner, readManifestBytes, manifestBytes)
+			repoPlan, err := PlanRepositorySet(matches.RepositorySets, githubState, imported, resolver, readManifestBytes, manifestBytes)
 			if err != nil {
 				return IntoPlan{}, err
 			}
@@ -74,7 +86,7 @@ func PlanInto(matches Matches, target Target, runner gh.Runner, printer ui.Print
 	if matches.HasFiles() {
 		key := "Importing " + target.FullName() + " (files)"
 		processor := fileset.NewProcessor(runner, printer)
-		changes, err := PlanFiles(processor, matches.FileSets, target.FullName())
+		changes, err := PlanImport(processor.FetchFileContent, matches.FileSets, target.FullName())
 		if err != nil {
 			return IntoPlan{}, err
 		}
@@ -93,7 +105,7 @@ func (p *IntoPlan) Apply() error {
 			return err
 		}
 	}
-	if err := ApplyFiles(p.FileChanges, p.manifestBytes); err != nil {
+	if err := ApplyImport(p.FileChanges, p.manifestBytes); err != nil {
 		return err
 	}
 	return WriteManifestEdits(p.ManifestEdits)

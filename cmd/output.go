@@ -246,7 +246,7 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileCha
 	return w
 }
 
-func computeImportColumnWidth(rChanges []repository.Change, fChanges []importer.FileChange) int {
+func computeImportColumnWidth(rChanges []repository.Change, fChanges []importer.ImportChange) int {
 	w := 0
 	for _, c := range rChanges {
 		if len(c.Children) > 0 {
@@ -310,7 +310,7 @@ func printRepoChanges(p ui.Printer, changes []repository.Change) {
 
 // printUnifiedImportPlan prints import changes grouped by repo, similar to printUnifiedPlan.
 // It shows file diffs with +N -M stats to indicate what will be written locally.
-func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []importer.FileChange) {
+func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, importChanges []importer.ImportChange) {
 	// Collect repo names from changes
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -331,7 +331,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	}
 
 	// Index changes by target
-	fileByTarget := make(map[string][]importer.FileChange)
+	fileByTarget := make(map[string][]importer.ImportChange)
 	for _, c := range importChanges {
 		if !shouldDisplayImportChange(c) {
 			continue
@@ -363,7 +363,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
 			for _, c := range fChanges {
 				displayPath := importDisplayPath(c)
-				if c.WriteMode == fileset.ImportSkip {
+				if c.WriteMode == importer.ImportSkip {
 					p.FileWarning(displayPath, c.Reason)
 					continue
 				}
@@ -391,7 +391,7 @@ func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, impor
 	p.SetColumnWidth(0)
 }
 
-func shouldDisplayImportChange(c importer.FileChange) bool {
+func shouldDisplayImportChange(c importer.ImportChange) bool {
 	if c.WriteMode == importer.ImportSkip {
 		return true
 	}
@@ -401,7 +401,7 @@ func shouldDisplayImportChange(c importer.FileChange) bool {
 	return len(c.Warnings) > 0
 }
 
-func importDisplayPath(c importer.FileChange) string {
+func importDisplayPath(c importer.ImportChange) string {
 	path := c.Path
 	if c.LocalTarget != "" {
 		path = relativizePath(c.LocalTarget)

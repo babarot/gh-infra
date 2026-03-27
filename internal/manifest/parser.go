@@ -153,10 +153,10 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 			return nil, err
 		}
 		result.FileSetDocs = []*FileSetDocument{{
-			Resource:      fs,
-			SourcePath:    path,
-			DocIndex:      docNum - 1,
-			ResolvedFiles: resolved,
+			Resource:   fs,
+			SourcePath: path,
+			DocIndex:   docNum - 1,
+			Files:      resolved,
 		}}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
@@ -165,10 +165,10 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 			return nil, err
 		}
 		result.FileSetDocs = []*FileSetDocument{{
-			Resource:      fs,
-			SourcePath:    path,
-			DocIndex:      docNum - 1,
-			ResolvedFiles: resolved,
+			Resource:   fs,
+			SourcePath: path,
+			DocIndex:   docNum - 1,
+			Files:      resolved,
 		}}
 		result.Warnings = append(result.Warnings, warnings...)
 	default:
@@ -220,7 +220,7 @@ func parseRepositorySet(data []byte, path string) ([]*RepositoryDocument, error)
 	return docs, nil
 }
 
-func parseFile(data []byte, path string) (*FileSet, []ResolvedFile, []string, error) {
+func parseFile(data []byte, path string) (*FileSet, []FileEntry, []string, error) {
 	var f File
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&f); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse File in %s: %w", path, err)
@@ -266,7 +266,7 @@ func parseFile(data []byte, path string) (*FileSet, []ResolvedFile, []string, er
 	return fs, resolved, warnings, nil
 }
 
-func parseFileSet(data []byte, path string) (*FileSet, []ResolvedFile, []string, error) {
+func parseFileSet(data []byte, path string) (*FileSet, []FileEntry, []string, error) {
 	var fs FileSet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&fs); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
@@ -300,10 +300,10 @@ func collectFileEntryWarnings(files []FileEntry) []string {
 	return warnings
 }
 
-// expandDir walks a directory and returns a ResolvedFile for each file,
-// with path relative to destPrefix.
-func expandDir(srcDir, destPrefix string) ([]ResolvedFile, error) {
-	var entries []ResolvedFile
+// expandDir walks a directory and returns a FileEntry for each file,
+// with path relative to destPrefix. OriginalSource is set to the absolute file path.
+func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
+	var entries []FileEntry
 	err := filepath.WalkDir(srcDir, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -325,11 +325,9 @@ func expandDir(srcDir, destPrefix string) ([]ResolvedFile, error) {
 		}
 		// Normalize to forward slashes for GitHub paths
 		destPath = filepath.ToSlash(destPath)
-		entries = append(entries, ResolvedFile{
-			FileEntry: FileEntry{
-				Path:    destPath,
-				Content: string(content),
-			},
+		entries = append(entries, FileEntry{
+			Path:           destPath,
+			Content:        string(content),
 			OriginalSource: p,
 		})
 		return nil

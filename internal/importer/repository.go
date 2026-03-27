@@ -3,21 +3,12 @@ package importer
 import (
 	"fmt"
 
-	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
+	"github.com/babarot/gh-infra/internal/yamlpatch"
 )
 
-func PlanRepository(target Target, repos []*manifest.RepositoryDocument, runner gh.Runner, readManifestBytes func(string) error, manifestBytes map[string][]byte) (RepoPlan, error) {
-	fetcher := repository.NewFetcher(runner)
-	resolver := manifest.NewResolver(runner, target.Owner)
-
-	githubState, err := fetcher.FetchRepository(target.Owner, target.Name)
-	if err != nil {
-		return RepoPlan{}, err
-	}
-
-	imported := repository.ToManifest(githubState, resolver)
+func PlanRepository(repos []*manifest.RepositoryDocument, githubState *repository.CurrentState, imported *manifest.Repository, resolver *manifest.Resolver, readManifestBytes func(string) error, manifestBytes map[string][]byte) (RepoPlan, error) {
 	plan := RepoPlan{ManifestEdits: make(map[string][]byte)}
 
 	for _, repo := range repos {
@@ -32,7 +23,8 @@ func PlanRepository(target Target, repos []*manifest.RepositoryDocument, runner 
 			return RepoPlan{}, err
 		}
 		data := manifestBytes[repo.SourcePath]
-		data, err = manifest.ReplaceYAMLNode(data, repo.DocIndex, "$.spec", imported.Spec)
+		var err error
+		data, err = yamlpatch.ReplaceYAMLNode(data, repo.DocIndex, "$.spec", imported.Spec)
 		if err != nil {
 			return RepoPlan{}, fmt.Errorf("update spec in %s: %w", repo.SourcePath, err)
 		}
@@ -44,16 +36,7 @@ func PlanRepository(target Target, repos []*manifest.RepositoryDocument, runner 
 	return plan, nil
 }
 
-func PlanRepositorySet(target Target, repos []*manifest.RepositoryDocument, runner gh.Runner, readManifestBytes func(string) error, manifestBytes map[string][]byte) (RepoPlan, error) {
-	fetcher := repository.NewFetcher(runner)
-	resolver := manifest.NewResolver(runner, target.Owner)
-
-	githubState, err := fetcher.FetchRepository(target.Owner, target.Name)
-	if err != nil {
-		return RepoPlan{}, err
-	}
-
-	imported := repository.ToManifest(githubState, resolver)
+func PlanRepositorySet(repos []*manifest.RepositoryDocument, githubState *repository.CurrentState, imported *manifest.Repository, resolver *manifest.Resolver, readManifestBytes func(string) error, manifestBytes map[string][]byte) (RepoPlan, error) {
 	plan := RepoPlan{ManifestEdits: make(map[string][]byte)}
 
 	for _, repo := range repos {
@@ -71,7 +54,8 @@ func PlanRepositorySet(target Target, repos []*manifest.RepositoryDocument, runn
 			return RepoPlan{}, err
 		}
 		data := manifestBytes[repo.SourcePath]
-		data, err = manifest.ReplaceYAMLNode(data, repo.DocIndex, fmt.Sprintf("$.repositories[%d].spec", repo.SetEntryIndex), imported.Spec)
+		var err error
+		data, err = yamlpatch.ReplaceYAMLNode(data, repo.DocIndex, fmt.Sprintf("$.repositories[%d].spec", repo.SetEntryIndex), imported.Spec)
 		if err != nil {
 			return RepoPlan{}, fmt.Errorf("update repository set entry in %s: %w", repo.SourcePath, err)
 		}

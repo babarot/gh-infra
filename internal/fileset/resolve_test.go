@@ -16,9 +16,9 @@ func TestResolveFiles_NoOverrides(t *testing.T) {
 				},
 			},
 		},
-		ResolvedFiles: []manifest.ResolvedFile{
-			{FileEntry: manifest.FileEntry{Path: "a.txt", Content: "aaa"}},
-			{FileEntry: manifest.FileEntry{Path: "b.txt", Content: "bbb"}},
+		Files: []manifest.FileEntry{
+			{Path: "a.txt", Content: "aaa"},
+			{Path: "b.txt", Content: "bbb"},
 		},
 	}
 	target := manifest.FileSetRepository{Name: "repo"}
@@ -47,10 +47,10 @@ func TestResolveFiles_WithOverrides(t *testing.T) {
 				},
 			},
 		},
-		ResolvedFiles: []manifest.ResolvedFile{
-			{FileEntry: manifest.FileEntry{Path: "a.txt", Content: "original-a"}},
-			{FileEntry: manifest.FileEntry{Path: "b.txt", Content: "original-b"}},
-			{FileEntry: manifest.FileEntry{Path: "c.txt", Content: "original-c"}},
+		Files: []manifest.FileEntry{
+			{Path: "a.txt", Content: "original-a"},
+			{Path: "b.txt", Content: "original-b"},
+			{Path: "c.txt", Content: "original-c"},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -97,9 +97,9 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 				},
 			},
 		},
-		ResolvedFiles: []manifest.ResolvedFile{
-			{FileEntry: manifest.FileEntry{Path: "config/a.yml", Content: "original-a", DirScope: "config", Reconcile: manifest.ReconcileMirror, Vars: map[string]string{"env": "prod"}}},
-			{FileEntry: manifest.FileEntry{Path: "config/b.yml", Content: "original-b", DirScope: "config", Reconcile: manifest.ReconcileMirror}},
+		Files: []manifest.FileEntry{
+			{Path: "config/a.yml", Content: "original-a", DirScope: "config", Reconcile: manifest.ReconcileMirror, Vars: map[string]string{"env": "prod"}},
+			{Path: "config/b.yml", Content: "original-b", DirScope: "config", Reconcile: manifest.ReconcileMirror},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -154,8 +154,8 @@ func TestResolveFiles_InheritsPatches(t *testing.T) {
 				},
 			},
 		},
-		ResolvedFiles: []manifest.ResolvedFile{
-			{FileEntry: manifest.FileEntry{Path: ".tagpr", Content: "original", Patches: patches}},
+		Files: []manifest.FileEntry{
+			{Path: ".tagpr", Content: "original", Patches: patches},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -195,8 +195,8 @@ func TestResolveFiles_OverridePatchesReplacesOriginal(t *testing.T) {
 				},
 			},
 		},
-		ResolvedFiles: []manifest.ResolvedFile{
-			{FileEntry: manifest.FileEntry{Path: ".tagpr", Content: "original", Patches: []string{"original-patch"}}},
+		Files: []manifest.FileEntry{
+			{Path: ".tagpr", Content: "original", Patches: []string{"original-patch"}},
 		},
 	}
 	target := manifest.FileSetRepository{
@@ -217,7 +217,7 @@ func TestResolveFiles_OverridePatchesReplacesOriginal(t *testing.T) {
 	}
 }
 
-func TestResolveFilesForTarget_PreservesOverrideOrigin(t *testing.T) {
+func TestResolveFiles_OverrideAppliedForTarget(t *testing.T) {
 	fs := &manifest.FileSetDocument{
 		Resource: &manifest.FileSet{
 			Spec: manifest.FileSetSpec{
@@ -238,25 +238,16 @@ func TestResolveFilesForTarget_PreservesOverrideOrigin(t *testing.T) {
 				},
 			},
 		},
-		ResolvedFiles: []manifest.ResolvedFile{
-			{
-				FileEntry: manifest.FileEntry{Path: "a.txt", Content: "original-a"},
-				Origin: manifest.FileOrigin{
-					Kind:      manifest.FileOriginSpecFiles,
-					FileIndex: 0,
-				},
-			},
+		Files: []manifest.FileEntry{
+			{Path: "a.txt", Content: "original-a"},
 		},
 	}
 
-	result := ResolveFilesForTarget(fs, fs.Resource.Spec.Repositories[1], 1)
+	result := ResolveFiles(fs, fs.Resource.Spec.Repositories[1])
 	if len(result) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(result))
 	}
-	if result[0].Origin.Kind != manifest.FileOriginRepositoryOverride {
-		t.Fatalf("Origin.Kind = %q, want %q", result[0].Origin.Kind, manifest.FileOriginRepositoryOverride)
-	}
-	if result[0].Origin.RepoIndex != 1 || result[0].Origin.FileIndex != 0 {
-		t.Fatalf("Origin = %+v, want repoIndex=1 fileIndex=0", result[0].Origin)
+	if result[0].Content != "override-a" {
+		t.Errorf("Content = %q, want %q (override should be applied)", result[0].Content, "override-a")
 	}
 }

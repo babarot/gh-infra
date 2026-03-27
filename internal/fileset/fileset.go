@@ -59,7 +59,7 @@ func NewProcessor(runner gh.Runner, printer ui.Printer) *Processor {
 type planUnit struct {
 	fileSetName string
 	target      manifest.FileSetRepository
-	files       []manifest.ResolvedFile
+	files       []manifest.FileEntry
 	owner       string
 	via         string
 }
@@ -100,12 +100,12 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {
-		for repoIndex, target := range fs.Resource.Spec.Repositories {
+		for _, target := range fs.Resource.Spec.Repositories {
 			fullName := fs.Resource.Metadata.Owner + "/" + target.Name
 			if filterRepo != "" && fullName != filterRepo {
 				continue
 			}
-			files := ResolveFilesForTarget(fs, target, repoIndex)
+			files := ResolveFiles(fs, target)
 			units = append(units, planUnit{
 				fileSetName: fs.Resource.Metadata.Owner,
 				target:      target,
@@ -215,8 +215,8 @@ func (p *Processor) Plan(fileSets []*manifest.FileSetDocument, filterRepo string
 }
 
 // planCreateOnly handles sync_mode: create_only — create if missing, NoOp if exists.
-func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.ResolvedFile) FileChange {
-	current, err := p.fetchFileContent(repo, file.Path)
+func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileEntry) FileChange {
+	current, err := p.FetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileChange{
 			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
@@ -229,8 +229,8 @@ func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.Resol
 	}
 }
 
-func (p *Processor) planFile(fileSetName, repo string, file manifest.ResolvedFile) FileChange {
-	current, err := p.fetchFileContent(repo, file.Path)
+func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) FileChange {
+	current, err := p.FetchFileContent(repo, file.Path)
 	if err != nil || !current.Exists {
 		return FileChange{
 			Target: repo, Path: file.Path, Type: FileCreate, Desired: file.Content,
@@ -256,7 +256,7 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.ResolvedFil
 	}
 }
 
-func (p *Processor) fetchFileContent(repo, path string) (*FileState, error) {
+func (p *Processor) FetchFileContent(repo, path string) (*FileState, error) {
 	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/contents/%s", repo, path))
 	if err != nil {
 		return &FileState{Path: path, Exists: false}, err

@@ -596,7 +596,7 @@ spec:
 	if len(result.FileSetDocs) != 1 {
 		t.Fatalf("FileSetDocs = %d, want 1", len(result.FileSetDocs))
 	}
-	resolved := result.FileSetDocs[0].ResolvedFiles
+	resolved := result.FileSetDocs[0].Files
 	if len(resolved) != 1 {
 		t.Fatalf("resolved files = %d, want 1", len(resolved))
 	}
@@ -903,7 +903,7 @@ spec:
 	if len(result.FileSetDocs) != 1 {
 		t.Fatalf("FileSetDocs = %d, want 1", len(result.FileSetDocs))
 	}
-	resolved := result.FileSetDocs[0].ResolvedFiles
+	resolved := result.FileSetDocs[0].Files
 	if len(resolved) != 1 {
 		t.Fatalf("resolved files = %d, want 1", len(resolved))
 	}

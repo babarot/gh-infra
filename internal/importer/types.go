@@ -40,7 +40,7 @@ type RepoPlan struct {
 
 type IntoPlan struct {
 	RepoChanges   []repository.Change
-	FileChanges   []FileChange
+	FileChanges   []ImportChange
 	ManifestEdits map[string][]byte
 	UpdatedDocs   int
 
@@ -58,11 +58,11 @@ func (p *IntoPlan) AddRepoPlan(repoPlan RepoPlan) {
 }
 
 func (p IntoPlan) HasChanges() bool {
-	return repository.HasRealChanges(p.RepoChanges) || HasFileImportChanges(p.FileChanges)
+	return repository.HasRealChanges(p.RepoChanges) || HasImportChanges(p.FileChanges)
 }
 
 func (p IntoPlan) Summary() (written, unchanged, skipped int) {
-	written, unchanged, skipped = FileImportSummary(p.FileChanges)
+	written, unchanged, skipped = ImportSummary(p.FileChanges)
 	written += p.UpdatedDocs
 	return
 }

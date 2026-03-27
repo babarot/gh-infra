@@ -39,16 +39,6 @@ func contentsKey(repo, path string) string {
 }
 
 func makeFileSet(owner, repo string, files []manifest.FileEntry) []*manifest.FileSetDocument {
-	resolved := make([]manifest.ResolvedFile, len(files))
-	for i, file := range files {
-		resolved[i] = manifest.ResolvedFile{
-			FileEntry: file,
-			Origin: manifest.FileOrigin{
-				Kind:      manifest.FileOriginSpecFiles,
-				FileIndex: i,
-			},
-		}
-	}
 	return []*manifest.FileSetDocument{
 		{
 			Resource: &manifest.FileSet{
@@ -58,7 +48,7 @@ func makeFileSet(owner, repo string, files []manifest.FileEntry) []*manifest.Fil
 					Files:        files,
 				},
 			},
-			ResolvedFiles: resolved,
+			Files: files,
 		},
 	}
 }
@@ -605,13 +595,13 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 					},
 				},
 			},
-			ResolvedFiles: []manifest.ResolvedFile{
-				{FileEntry: manifest.FileEntry{
+			Files: []manifest.FileEntry{
+				{
 					Path:      "config/file1.yml",
 					Content:   "content1",
 					Reconcile: manifest.ReconcileMirror,
 					DirScope:  "config",
-				}},
+				},
 			},
 		},
 	}
@@ -670,13 +660,13 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 					},
 				},
 			},
-			ResolvedFiles: []manifest.ResolvedFile{
-				{FileEntry: manifest.FileEntry{
+			Files: []manifest.FileEntry{
+				{
 					Path:      "config/file1.yml",
 					Content:   "content1",
 					Reconcile: manifest.ReconcilePatch,
 					DirScope:  "config",
-				}},
+				},
 			},
 		},
 	}

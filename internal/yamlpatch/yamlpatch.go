@@ -1,4 +1,4 @@
-package manifest
+package yamlpatch
 
 import (
 	"fmt"
@@ -9,20 +9,6 @@ import (
 	"github.com/goccy/go-yaml/parser"
 	"github.com/goccy/go-yaml/token"
 )
-
-// ReplaceInlineContent replaces the content field of a specific FileEntry
-// in a YAML manifest file, preserving formatting and comments.
-//
-// docIndex is the 0-based index of the YAML document within the file.
-// fileIndex is the 0-based index of the file entry within spec.files[].
-// newContent is the new content string to set.
-func ReplaceInlineContent(yamlBytes []byte, docIndex int, fileIndex int, newContent string) ([]byte, error) {
-	path, err := yaml.PathString(fmt.Sprintf("$.spec.files[%d].content", fileIndex))
-	if err != nil {
-		return nil, fmt.Errorf("build YAML path: %w", err)
-	}
-	return replaceLiteralContent(yamlBytes, docIndex, path, newContent)
-}
 
 // ReplaceLiteralContent replaces a YAML node addressed by yamlPath with a literal
 // block scalar containing newContent, preserving comments and surrounding formatting.

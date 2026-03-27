@@ -400,34 +400,14 @@ type FileEntry struct {
 	Reconcile string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
 	DirScope  string            `yaml:"-"`
 
+	// OriginalSource is the local file path that provided the content.
+	// Set during source resolution for local files; empty for inline/remote content.
+	OriginalSource string `yaml:"-"`
+
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`
 	DeprecatedOnDrift   string   `yaml:"on_drift,omitempty"  deprecated:":and will be ignored"`
 	DeprecationWarnings []string `yaml:"-"`
-}
-
-type FileOriginKind string
-
-const (
-	FileOriginSpecFiles          FileOriginKind = "spec.files"
-	FileOriginRepositoryOverride FileOriginKind = "spec.repositories.overrides"
-)
-
-// FileOrigin tracks which manifest node produced a resolved file entry.
-// RepoIndex is only used for repository override entries.
-type FileOrigin struct {
-	Kind      FileOriginKind `yaml:"-"`
-	RepoIndex int            `yaml:"-"`
-	FileIndex int            `yaml:"-"`
-}
-
-// ResolvedFile is the execution-time representation of a FileEntry after source
-// expansion and override resolution. It carries provenance and local-source data
-// needed by apply/import flows without polluting the declarative manifest model.
-type ResolvedFile struct {
-	FileEntry
-	OriginalSource string
-	Origin         FileOrigin
 }
 
 // UnmarshalYAML handles migration from deprecated fields.
@@ -471,10 +451,10 @@ type RepositoryDocument struct {
 }
 
 type FileSetDocument struct {
-	Resource      *FileSet
-	SourcePath    string
-	DocIndex      int
-	ResolvedFiles []ResolvedFile
+	Resource   *FileSet
+	SourcePath string
+	DocIndex   int
+	Files      []FileEntry // files after source resolution (with OriginalSource set)
 }
 
 func (r *ParseResult) Repositories() []*Repository {
