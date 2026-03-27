@@ -100,12 +100,12 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {
-		for _, target := range fs.Spec.Repositories {
+		for repoIndex, target := range fs.Spec.Repositories {
 			fullName := fs.Metadata.Owner + "/" + target.Name
 			if filterRepo != "" && fullName != filterRepo {
 				continue
 			}
-			files := ResolveFiles(fs, target)
+			files := ResolveFilesForTarget(fs, target, repoIndex)
 			units = append(units, planUnit{
 				fileSetName: fs.Metadata.Owner,
 				target:      target,

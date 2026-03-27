@@ -420,11 +420,27 @@ type FileEntry struct {
 	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
 	DirScope       string            `yaml:"-"`
 	OriginalSource string            `yaml:"-"` // absolute path of local source file; preserved by ResolveFiles for pull
+	Origin         FileOrigin        `yaml:"-"` // manifest location of this resolved file entry
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`
 	DeprecatedOnDrift   string   `yaml:"on_drift,omitempty"  deprecated:":and will be ignored"`
 	DeprecationWarnings []string `yaml:"-"`
+}
+
+type FileOriginKind string
+
+const (
+	FileOriginSpecFiles          FileOriginKind = "spec.files"
+	FileOriginRepositoryOverride FileOriginKind = "spec.repositories.overrides"
+)
+
+// FileOrigin tracks which manifest node produced a resolved file entry.
+// RepoIndex is only used for repository override entries.
+type FileOrigin struct {
+	Kind      FileOriginKind `yaml:"-"`
+	RepoIndex int            `yaml:"-"`
+	FileIndex int            `yaml:"-"`
 }
 
 // UnmarshalYAML handles migration from deprecated fields.

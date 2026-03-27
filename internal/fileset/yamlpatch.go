@@ -17,6 +17,24 @@ import (
 // fileIndex is the 0-based index of the file entry within spec.files[].
 // newContent is the new content string to set.
 func ReplaceInlineContent(yamlBytes []byte, docIndex int, fileIndex int, newContent string) ([]byte, error) {
+	path, err := yaml.PathString(fmt.Sprintf("$.spec.files[%d].content", fileIndex))
+	if err != nil {
+		return nil, fmt.Errorf("build YAML path: %w", err)
+	}
+	return replaceLiteralContent(yamlBytes, docIndex, path, newContent)
+}
+
+// ReplaceLiteralContent replaces a YAML node addressed by yamlPath with a literal
+// block scalar containing newContent, preserving comments and surrounding formatting.
+func ReplaceLiteralContent(yamlBytes []byte, docIndex int, yamlPath, newContent string) ([]byte, error) {
+	path, err := yaml.PathString(yamlPath)
+	if err != nil {
+		return nil, fmt.Errorf("build YAML path: %w", err)
+	}
+	return replaceLiteralContent(yamlBytes, docIndex, path, newContent)
+}
+
+func replaceLiteralContent(yamlBytes []byte, docIndex int, path *yaml.Path, newContent string) ([]byte, error) {
 	file, err := parser.ParseBytes(yamlBytes, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("parse YAML: %w", err)
@@ -24,11 +42,6 @@ func ReplaceInlineContent(yamlBytes []byte, docIndex int, fileIndex int, newCont
 
 	if docIndex >= len(file.Docs) {
 		return nil, fmt.Errorf("document index %d out of range (have %d documents)", docIndex, len(file.Docs))
-	}
-
-	path, err := yaml.PathString(fmt.Sprintf("$.spec.files[%d].content", fileIndex))
-	if err != nil {
-		return nil, fmt.Errorf("build YAML path: %w", err)
 	}
 
 	// Create a single-document file for path operations

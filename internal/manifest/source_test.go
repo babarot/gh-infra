@@ -611,6 +611,9 @@ func TestResolveFiles_OriginalSource_Preserved(t *testing.T) {
 		if result[0].OriginalSource != expected {
 			t.Errorf("OriginalSource: got %q, want %q", result[0].OriginalSource, expected)
 		}
+		if result[0].Origin.Kind != FileOriginSpecFiles || result[0].Origin.FileIndex != 0 {
+			t.Errorf("Origin: got %+v, want spec.files[0]", result[0].Origin)
+		}
 	})
 
 	t.Run("inline content has no OriginalSource", func(t *testing.T) {
@@ -623,6 +626,9 @@ func TestResolveFiles_OriginalSource_Preserved(t *testing.T) {
 		}
 		if result[0].OriginalSource != "" {
 			t.Errorf("OriginalSource should be empty for inline, got %q", result[0].OriginalSource)
+		}
+		if result[0].Origin.Kind != FileOriginSpecFiles || result[0].Origin.FileIndex != 0 {
+			t.Errorf("Origin: got %+v, want spec.files[0]", result[0].Origin)
 		}
 	})
 
@@ -645,6 +651,9 @@ func TestResolveFiles_OriginalSource_Preserved(t *testing.T) {
 			}
 			if !strings.HasPrefix(entry.OriginalSource, sub) {
 				t.Errorf("OriginalSource %q should start with %q", entry.OriginalSource, sub)
+			}
+			if entry.Origin.Kind != FileOriginSpecFiles || entry.Origin.FileIndex != 0 {
+				t.Errorf("Origin: got %+v, want spec.files[0]", entry.Origin)
 			}
 		}
 	})

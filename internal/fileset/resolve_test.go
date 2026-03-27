@@ -187,3 +187,40 @@ func TestResolveFiles_OverridePatchesReplacesOriginal(t *testing.T) {
 		t.Errorf("Patches should use override's patches, got %v", result[0].Patches)
 	}
 }
+
+func TestResolveFilesForTarget_PreservesOverrideOrigin(t *testing.T) {
+	fs := &manifest.FileSet{
+		Spec: manifest.FileSetSpec{
+			Files: []manifest.FileEntry{
+				{
+					Path:    "a.txt",
+					Content: "original-a",
+					Origin: manifest.FileOrigin{
+						Kind:      manifest.FileOriginSpecFiles,
+						FileIndex: 0,
+					},
+				},
+			},
+			Repositories: []manifest.FileSetRepository{
+				{Name: "repo-a"},
+				{
+					Name: "repo-b",
+					Overrides: []manifest.FileEntry{
+						{Path: "a.txt", Content: "override-a"},
+					},
+				},
+			},
+		},
+	}
+
+	result := ResolveFilesForTarget(fs, fs.Spec.Repositories[1], 1)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(result))
+	}
+	if result[0].Origin.Kind != manifest.FileOriginRepositoryOverride {
+		t.Fatalf("Origin.Kind = %q, want %q", result[0].Origin.Kind, manifest.FileOriginRepositoryOverride)
+	}
+	if result[0].Origin.RepoIndex != 1 || result[0].Origin.FileIndex != 0 {
+		t.Fatalf("Origin = %+v, want repoIndex=1 fileIndex=0", result[0].Origin)
+	}
+}

@@ -28,7 +28,7 @@ type FileImportChange struct {
 	LocalTarget  string   // write-back destination path
 	ManifestPath string   // path to the manifest YAML file (for inline edits)
 	DocIndex     int      // document index within the manifest file
-	FileIndex    int      // index in spec.files[]
+	YAMLPath     string   // YAML path to the content field for inline edits
 	Reason       string   // reason for skip
 	Warnings     []string // e.g. patches, templates
 }
@@ -62,11 +62,18 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) 
 		}
 
 		target := repos[0]
+		repoIndex := 0
+		for i, r := range fs.Spec.Repositories {
+			if r.Name == target.Name {
+				repoIndex = i
+				break
+			}
+		}
 		fullName := fs.RepoFullName(target.Name)
-		files := ResolveFiles(fs, target)
+		files := ResolveFilesForTarget(fs, target, repoIndex)
 
-		for i, file := range files {
-			change := planImportEntry(proc, file, i, fullName, fs)
+		for _, file := range files {
+			change := planImportEntry(proc, file, fullName, fs)
 			changes = append(changes, change)
 		}
 	}
@@ -74,13 +81,12 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) 
 	return changes, nil
 }
 
-func planImportEntry(proc *Processor, file manifest.FileEntry, fileIndex int, repo string, fs *manifest.FileSet) FileImportChange {
+func planImportEntry(proc *Processor, file manifest.FileEntry, repo string, fs *manifest.FileSet) FileImportChange {
 	change := FileImportChange{
 		Target:       repo,
 		Path:         file.Path,
 		ManifestPath: fs.SourcePath(),
 		DocIndex:     fs.DocIndex(),
-		FileIndex:    fileIndex,
 	}
 
 	// Determine write target
@@ -89,8 +95,16 @@ func planImportEntry(proc *Processor, file manifest.FileEntry, fileIndex int, re
 		change.LocalTarget = file.OriginalSource
 	} else if file.Source == "" {
 		// Inline content (no source field was set)
+		yamlPath, ok := importYAMLPath(file.Origin)
+		if !ok {
+			change.WriteMode = ImportSkip
+			change.Type = FileNoOp
+			change.Reason = "inline source mapping unavailable"
+			return change
+		}
 		change.WriteMode = ImportWriteInline
 		change.LocalTarget = fs.SourcePath() + " (inline)"
+		change.YAMLPath = yamlPath
 	} else {
 		// github:// or other remote source — can't write back locally
 		change.WriteMode = ImportSkip
@@ -156,6 +170,20 @@ func planImportEntry(proc *Processor, file manifest.FileEntry, fileIndex int, re
 	return change
 }
 
+func importYAMLPath(origin manifest.FileOrigin) (string, bool) {
+	switch origin.Kind {
+	case manifest.FileOriginSpecFiles:
+		return fmt.Sprintf("$.spec.files[%d].content", origin.FileIndex), true
+	case manifest.FileOriginRepositoryOverride:
+		if origin.RepoIndex < 0 {
+			return "", false
+		}
+		return fmt.Sprintf("$.spec.repositories[%d].overrides[%d].content", origin.RepoIndex, origin.FileIndex), true
+	default:
+		return "", false
+	}
+}
+
 // ApplyImport executes the planned import changes.
 // manifestBytes maps manifest file paths to their raw content (for inline edits).
 func ApplyImport(changes []FileImportChange, manifestBytes map[string][]byte) error {
@@ -181,14 +209,11 @@ func ApplyImport(changes []FileImportChange, manifestBytes map[string][]byte) er
 			return fmt.Errorf("no raw bytes for manifest %s", path)
 		}
 
-		// Process in reverse file index order to avoid position shifts
-		sortImportReverse(inlineChanges)
-
 		var err error
 		for _, c := range inlineChanges {
-			data, err = ReplaceInlineContent(data, c.DocIndex, c.FileIndex, c.Desired)
+			data, err = ReplaceLiteralContent(data, c.DocIndex, c.YAMLPath, c.Desired)
 			if err != nil {
-				return fmt.Errorf("replace inline content for %s in %s: %w", c.Path, path, err)
+				return fmt.Errorf("replace inline content for %s at %s in %s: %w", c.Path, c.YAMLPath, path, err)
 			}
 		}
 
@@ -198,15 +223,6 @@ func ApplyImport(changes []FileImportChange, manifestBytes map[string][]byte) er
 	}
 
 	return nil
-}
-
-// sortImportReverse sorts import changes by FileIndex in descending order.
-func sortImportReverse(changes []FileImportChange) {
-	for i := 1; i < len(changes); i++ {
-		for j := i; j > 0 && changes[j].FileIndex > changes[j-1].FileIndex; j-- {
-			changes[j], changes[j-1] = changes[j-1], changes[j]
-		}
-	}
 }
 
 // ImportSummary returns counts by write mode.

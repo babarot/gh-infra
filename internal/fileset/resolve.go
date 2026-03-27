@@ -4,12 +4,23 @@ import "github.com/babarot/gh-infra/internal/manifest"
 
 // ResolveFiles returns the effective files for a target, applying overrides.
 func ResolveFiles(fs *manifest.FileSet, target manifest.FileSetRepository) []manifest.FileEntry {
+	return ResolveFilesForTarget(fs, target, -1)
+}
+
+// ResolveFilesForTarget returns the effective files for a target, applying overrides
+// and preserving manifest origin metadata for import write-back.
+func ResolveFilesForTarget(fs *manifest.FileSet, target manifest.FileSetRepository, repoIndex int) []manifest.FileEntry {
 	if len(target.Overrides) == 0 {
 		return fs.Spec.Files
 	}
 
 	overrideMap := make(map[string]manifest.FileEntry)
-	for _, o := range target.Overrides {
+	for i, o := range target.Overrides {
+		o.Origin = manifest.FileOrigin{
+			Kind:      manifest.FileOriginRepositoryOverride,
+			RepoIndex: repoIndex,
+			FileIndex: i,
+		}
 		overrideMap[o.Path] = o
 	}
 

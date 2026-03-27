@@ -62,3 +62,27 @@ func (r *Result) Summary() (creates, updates, deletes int) {
 	}
 	return
 }
+
+// ReverseChanges flips changes so they can be presented in the opposite direction.
+// This is used by import flows, where repository.Diff reports local -> GitHub and
+// the UI needs to show GitHub -> local.
+func ReverseChanges(changes []Change) []Change {
+	reversed := make([]Change, len(changes))
+	for i, c := range changes {
+		if len(c.Children) > 0 {
+			c.Children = ReverseChanges(c.Children)
+		} else {
+			c.OldValue, c.NewValue = c.NewValue, c.OldValue
+		}
+
+		switch c.Type {
+		case ChangeCreate:
+			c.Type = ChangeDelete
+		case ChangeDelete:
+			c.Type = ChangeCreate
+		}
+
+		reversed[i] = c
+	}
+	return reversed
+}

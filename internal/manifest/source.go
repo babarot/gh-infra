@@ -25,8 +25,10 @@ type SourceResolver struct {
 // ResolveFiles expands source references in FileSet entries.
 func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]FileEntry, error) {
 	var resolved []FileEntry
-	for _, entry := range files {
+	for i, entry := range files {
+		origin := FileOrigin{Kind: FileOriginSpecFiles, FileIndex: i}
 		if entry.Source == "" || entry.Content != "" {
+			entry.Origin = origin
 			resolved = append(resolved, entry)
 			continue
 		}
@@ -37,22 +39,23 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 			return nil, fmt.Errorf("resolve patches for %s: %w", entry.Path, err)
 		}
 
-		if strings.HasPrefix(entry.Source, githubScheme) {
-			entries, err := r.resolveGitHub(entry.Source, entry.Path)
-			if err != nil {
-				return nil, fmt.Errorf("resolve %s: %w", entry.Source, err)
-			}
+			if strings.HasPrefix(entry.Source, githubScheme) {
+				entries, err := r.resolveGitHub(entry.Source, entry.Path)
+				if err != nil {
+					return nil, fmt.Errorf("resolve %s: %w", entry.Source, err)
+				}
 			// Preserve metadata from the original entry
 			isDir := len(entries) > 1 || strings.HasSuffix(entry.Source, "/")
-			for i := range entries {
-				entries[i].Vars = entry.Vars
-				entries[i].Patches = patches
-				entries[i].Reconcile = entry.Reconcile
-				if isDir {
-					entries[i].DirScope = entry.Path
+				for i := range entries {
+					entries[i].Vars = entry.Vars
+					entries[i].Patches = patches
+					entries[i].Reconcile = entry.Reconcile
+					entries[i].Origin = origin
+					if isDir {
+						entries[i].DirScope = entry.Path
+					}
 				}
-			}
-			resolved = append(resolved, entries...)
+				resolved = append(resolved, entries...)
 		} else {
 			entries, err := resolveLocal(entry.Source, entry.Path, yamlDir)
 			if err != nil {
@@ -60,14 +63,15 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 			}
 			// Preserve metadata from the original entry
 			isDir := len(entries) > 1 || strings.HasSuffix(entry.Source, "/")
-			for i := range entries {
-				entries[i].Vars = entry.Vars
-				entries[i].Patches = patches
-				entries[i].Reconcile = entry.Reconcile
-				if isDir {
-					entries[i].DirScope = entry.Path
+				for i := range entries {
+					entries[i].Vars = entry.Vars
+					entries[i].Patches = patches
+					entries[i].Reconcile = entry.Reconcile
+					entries[i].Origin = origin
+					if isDir {
+						entries[i].DirScope = entry.Path
+					}
 				}
-			}
 			resolved = append(resolved, entries...)
 		}
 	}

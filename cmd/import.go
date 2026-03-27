@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	goyaml "github.com/goccy/go-yaml"
@@ -177,6 +178,7 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	// --- Repository import ---
 	var repoUpdated int
 	var repoChanges []repository.Change
+	repoChangedFiles := make(map[string]bool)
 	if len(matchedRepos) > 0 {
 		key := "Importing " + fullName + " (repo)"
 		fetcher := repository.NewFetcher(runner)
@@ -196,7 +198,11 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 		for _, repo := range matchedRepos {
 			diffOpts := repository.DiffOptions{Resolver: resolver}
 			changes := repository.Diff(repo, githubState, diffOpts)
-			repoChanges = append(repoChanges, swapChanges(changes)...)
+			swapped := swapChanges(changes)
+			repoChanges = append(repoChanges, swapped...)
+			if !repository.HasRealChanges(changes) {
+				continue
+			}
 
 			if err := readManifestBytes(repo.SourcePath()); err != nil {
 				failAll()
@@ -210,6 +216,7 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 				return fmt.Errorf("update spec in %s: %w", repo.SourcePath(), err)
 			}
 			manifestBytes[repo.SourcePath()] = data
+			repoChangedFiles[repo.SourcePath()] = true
 			repoUpdated++
 		}
 		tracker.Done(key)
@@ -279,10 +286,15 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 
 	// Write back repo spec changes
 	if repoUpdated > 0 {
-		for _, repo := range matchedRepos {
-			data := manifestBytes[repo.SourcePath()]
-			if err := os.WriteFile(repo.SourcePath(), data, 0644); err != nil {
-				return fmt.Errorf("write %s: %w", repo.SourcePath(), err)
+		paths := make([]string, 0, len(repoChangedFiles))
+		for path := range repoChangedFiles {
+			paths = append(paths, path)
+		}
+		sort.Strings(paths)
+		for _, path := range paths {
+			data := manifestBytes[path]
+			if err := os.WriteFile(path, data, 0644); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
 			}
 		}
 	}
