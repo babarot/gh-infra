@@ -37,7 +37,7 @@ func newPlanCmd() *cobra.Command {
 }
 
 func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
-	engine, result, err := infra.Plan(infra.PlanOptions{
+	result, err := infra.Plan(infra.PlanOptions{
 		Path:          path,
 		FilterRepo:    filterRepo,
 		FailOnUnknown: failOnUnknown,
@@ -46,8 +46,9 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 	if err != nil {
 		return err
 	}
-	if result.HasChanges && engine != nil {
-		engine.Printer().Summary("To apply, run: " + ui.Bold.Render("gh infra apply"))
+
+	if result.HasChanges {
+		result.Printer().Summary("To apply, run: " + ui.Bold.Render("gh infra apply"))
 		if ci {
 			os.Exit(1)
 		}

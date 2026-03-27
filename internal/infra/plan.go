@@ -22,7 +22,7 @@ type PlanOptions struct {
 	DryRun        bool // true = plan only (skip secret resolution)
 }
 
-// PlanResult holds the outcome of the plan phase (pure data, no dependencies).
+// PlanResult holds the outcome of the plan phase.
 type PlanResult struct {
 	RepoChanges []repository.Change
 	FileChanges []fileset.Change
@@ -34,16 +34,25 @@ type PlanResult struct {
 	Deletes int
 
 	HasChanges bool
+
+	engine *engine // unexported runtime context for Apply
+}
+
+// Printer returns the printer used during this plan session.
+func (r *PlanResult) Printer() ui.Printer {
+	if r.engine == nil {
+		return ui.NewStandardPrinter()
+	}
+	return r.engine.printer
 }
 
 // Plan parses manifests, fetches current state, computes diffs, and prints the plan.
-// It returns a PlanResult and an Engine that can be used for Apply.
-func Plan(opts PlanOptions) (*Engine, *PlanResult, error) {
+func Plan(opts PlanOptions) (*PlanResult, error) {
 	p := ui.NewStandardPrinter()
 
 	parsed, err := manifest.ParseAll(opts.Path, manifest.ParseOptions{FailOnUnknown: opts.FailOnUnknown})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Print deprecation warnings
@@ -53,7 +62,7 @@ func Plan(opts PlanOptions) (*Engine, *PlanResult, error) {
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
 		p.Message("No resources found in " + opts.Path)
-		return nil, &PlanResult{}, nil
+		return &PlanResult{}, nil
 	}
 
 	if !opts.DryRun {
@@ -68,7 +77,7 @@ func Plan(opts PlanOptions) (*Engine, *PlanResult, error) {
 	}
 	resolver := manifest.NewResolver(runner, resolverOwner)
 
-	engine := New(parsed, runner, resolver, p)
+	eng := newEngine(runner, resolver, p)
 
 	p.Phase(fmt.Sprintf("Reading desired state from %s ...", opts.Path))
 	p.Phase("Fetching current state from GitHub API ...")
@@ -89,7 +98,7 @@ func Plan(opts PlanOptions) (*Engine, *PlanResult, error) {
 	if len(parsed.Repositories) > 0 {
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, targetRepos, fetchErr = engine.repo.Plan(parsed.Repositories, repository.PlanOptions{
+			repoChanges, targetRepos, fetchErr = eng.repo.Plan(parsed.Repositories, repository.PlanOptions{
 				FilterRepo:   opts.FilterRepo,
 				ForceSecrets: opts.ForceSecrets,
 			}, tracker)
@@ -100,14 +109,14 @@ func Plan(opts PlanOptions) (*Engine, *PlanResult, error) {
 	if len(parsed.FileSets) > 0 {
 		g.Go(func() error {
 			var planErr error
-			fileChanges, planErr = engine.file.Plan(parsed.FileSets, opts.FilterRepo, tracker)
+			fileChanges, planErr = eng.file.Plan(parsed.FileSets, opts.FilterRepo, tracker)
 			return planErr
 		})
 	}
 
 	if err := g.Wait(); err != nil {
 		tracker.Wait()
-		return nil, nil, err
+		return nil, err
 	}
 	tracker.Wait()
 
@@ -120,11 +129,12 @@ func Plan(opts PlanOptions) (*Engine, *PlanResult, error) {
 		TargetRepos: targetRepos,
 		Parsed:      parsed,
 		HasChanges:  hasRepo || hasFile,
+		engine:      eng,
 	}
 
 	if !result.HasChanges {
 		p.Message("\nNo changes. Infrastructure is up-to-date.")
-		return engine, result, nil
+		return result, nil
 	}
 
 	// Count and print unified plan
@@ -146,5 +156,5 @@ func Plan(opts PlanOptions) (*Engine, *PlanResult, error) {
 	}
 	p.Summary(fmt.Sprintf("Plan: %s", strings.Join(parts, ", ")))
 
-	return engine, result, nil
+	return result, nil
 }

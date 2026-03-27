@@ -14,8 +14,9 @@ type ApplyOptions struct {
 }
 
 // Apply executes planned changes against GitHub.
-func (e *Engine) Apply(result *PlanResult, opts ApplyOptions) error {
-	p := e.printer
+func Apply(result *PlanResult, opts ApplyOptions) error {
+	eng := result.engine
+	p := eng.printer
 
 	totalSucceeded := 0
 	totalFailed := 0
@@ -37,7 +38,7 @@ func (e *Engine) Apply(result *PlanResult, opts ApplyOptions) error {
 			}
 			reporter = ui.NewSpinnerReporter(uniqueStrings(names), "Applying", "Applied", "(repo)")
 		}
-		allRepoResults = e.repo.Apply(result.RepoChanges, result.TargetRepos, reporter)
+		allRepoResults = eng.repo.Apply(result.RepoChanges, result.TargetRepos, reporter)
 		s, f := repository.CountApplyResults(allRepoResults)
 		totalSucceeded += s
 		totalFailed += f
@@ -73,7 +74,7 @@ func (e *Engine) Apply(result *PlanResult, opts ApplyOptions) error {
 				}
 				fileReporter = ui.NewSpinnerReporter(uniqueStrings(targets), "Applying", "Applied", "(files)")
 			}
-			results := e.file.Apply(fsChanges, applyOpts, fileReporter)
+			results := eng.file.Apply(fsChanges, applyOpts, fileReporter)
 			allFileResults = append(allFileResults, results...)
 			for _, r := range results {
 				if r.Err != nil {
