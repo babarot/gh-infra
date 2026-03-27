@@ -886,3 +886,134 @@ func TestApplyActionsPermissions_WithSHAPinningRequired(t *testing.T) {
 		t.Errorf("sha_pinning_required = %v, want true", payload["sha_pinning_required"])
 	}
 }
+
+func TestApplyActionsWorkflow(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	err := proc.applyActionsWorkflow("myorg", "myrepo", &manifest.Actions{
+		WorkflowPermissions:    manifest.Ptr("read"),
+		CanApprovePullRequests: manifest.Ptr(false),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	}
+	call := strings.Join(mock.Called[0], " ")
+	if !strings.Contains(call, "actions/permissions/workflow") {
+		t.Errorf("expected workflow endpoint, got: %s", call)
+	}
+}
+
+func TestApplyActionsSelectedActions(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	err := proc.applyActionsSelectedActions("myorg", "myrepo", &manifest.Actions{
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+			VerifiedAllowed:    manifest.Ptr(false),
+			PatternsAllowed:    []string{"actions/*"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	}
+	call := strings.Join(mock.Called[0], " ")
+	if !strings.Contains(call, "actions/permissions/selected-actions") {
+		t.Errorf("expected selected-actions endpoint, got: %s", call)
+	}
+}
+
+func TestApplyActionsSelectedActions_NilSelectedActions(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	err := proc.applyActionsSelectedActions("myorg", "myrepo", &manifest.Actions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected no calls for nil SelectedActions, got %d", len(mock.Called))
+	}
+}
+
+func TestApplyActionsForkPR(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	err := proc.applyActionsForkPR("myorg", "myrepo", &manifest.Actions{
+		ForkPRApproval: manifest.Ptr("first_time_contributors"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	}
+	call := strings.Join(mock.Called[0], " ")
+	if !strings.Contains(call, "fork-pr-contributor-approval") {
+		t.Errorf("expected fork-pr endpoint, got: %s", call)
+	}
+}
+
+func TestApplyActionsForkPR_Nil(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	err := proc.applyActionsForkPR("myorg", "myrepo", &manifest.Actions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected no calls for nil ForkPRApproval, got %d", len(mock.Called))
+	}
+}
+
+func TestApplyActions_RoutesCorrectly(t *testing.T) {
+	tests := []struct {
+		name     string
+		field    string
+		wantCall string
+	}{
+		{"enabled", "enabled", "actions/permissions"},
+		{"allowed_actions", "allowed_actions", "actions/permissions"},
+		{"workflow_permissions", "workflow_permissions", "actions/permissions/workflow"},
+		{"can_approve_pull_requests", "can_approve_pull_requests", "actions/permissions/workflow"},
+		{"fork_pr_approval", "fork_pr_approval", "fork-pr-contributor-approval"},
+		{"selected_actions", "selected_actions.github_owned_allowed", "actions/permissions/selected-actions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{}
+			proc := NewProcessor(mock, nil, nil)
+
+			repo := newTestRepo("myorg", "myrepo")
+			repo.Spec.Actions = &manifest.Actions{
+				Enabled:             manifest.Ptr(true),
+				AllowedActions:      manifest.Ptr("selected"),
+				WorkflowPermissions: manifest.Ptr("read"),
+				ForkPRApproval:      manifest.Ptr("first_time_contributors"),
+				SelectedActions: &manifest.SelectedActions{
+					GithubOwnedAllowed: manifest.Ptr(true),
+				},
+			}
+
+			c := Change{Type: ChangeUpdate, Field: tt.field, Resource: manifest.ResourceActions}
+			proc.applyActions(c, repo)
+
+			if len(mock.Called) == 0 {
+				t.Fatal("expected at least 1 gh call")
+			}
+			call := strings.Join(mock.Called[0], " ")
+			if !strings.Contains(call, tt.wantCall) {
+				t.Errorf("field %q: expected call containing %q, got: %s", tt.field, tt.wantCall, call)
+			}
+		})
+	}
+}
