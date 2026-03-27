@@ -49,7 +49,8 @@ type Printer interface {
 	ActionHeader(name, action string) // e.g. "# babarot/repo will be created"
 	GroupHeader(icon, name string)
 	GroupEnd()
-	SetColumnWidth(w int) // set field/path column width for alignment
+	SetColumnWidth(w int)      // set field/path column width for alignment
+	SetFileDescWidth(w int)    // set file description width for alignment (e.g., "(new file)")
 	SubGroupHeader(icon, name string)
 	PrintChange(item ChangeItem)
 	PrintFileChange(item FileItem)
@@ -78,9 +79,10 @@ type Printer interface {
 
 // StandardPrinter is the default terminal implementation of Printer.
 type StandardPrinter struct {
-	out      io.Writer
-	err      io.Writer
-	colWidth int // dynamic column width for Item/SubItem alignment
+	out           io.Writer
+	err           io.Writer
+	colWidth      int // dynamic column width for Item/SubItem alignment
+	fileDescWidth int // dynamic width for file description alignment
 }
 
 // NewStandardPrinter creates a StandardPrinter writing to stdout/stderr.
@@ -172,6 +174,12 @@ func (p *StandardPrinter) SetColumnWidth(w int) {
 	p.colWidth = w
 }
 
+// SetFileDescWidth sets the description column width for subsequent PrintFileChange calls.
+// Pass 0 to reset (no padding).
+func (p *StandardPrinter) SetFileDescWidth(w int) {
+	p.fileDescWidth = w
+}
+
 // itemWidth returns the column width for top-level items (indent 6).
 // Adds 4 to align with sub-items (indent 10) when using the same colWidth.
 func (p *StandardPrinter) itemWidth() int {
@@ -223,22 +231,20 @@ var fileDescs = map[string]string{
 	IconRemove: "(deleted)",
 }
 
-// fileDescWidth is computed from the longest description + 1 padding.
-var fileDescWidth = func() int {
-	max := 0
-	for _, d := range fileDescs {
-		if len(d) > max {
-			max = len(d)
-		}
-	}
-	return max + 1
-}()
+// FileDesc returns the description text for a file change icon.
+func FileDesc(icon string) string {
+	return fileDescs[icon]
+}
 
 // PrintFileChange prints a file-level change with diff stat.
 func (p *StandardPrinter) PrintFileChange(item FileItem) {
 	icon := renderIcon(item.Icon)
 	desc := fileDescs[item.Icon]
-	styledDesc := renderFileDesc(item.Icon, fmt.Sprintf("%-*s", fileDescWidth, desc))
+	w := p.fileDescWidth
+	if w < len(desc) {
+		w = len(desc)
+	}
+	styledDesc := renderFileDesc(item.Icon, fmt.Sprintf("%-*s", w, desc))
 	stat := formatDiffStat(item.Added, item.Removed)
 	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
 		icon, p.subItemWidth(), item.Path, styledDesc, stat)

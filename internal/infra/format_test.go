@@ -210,41 +210,21 @@ func TestPrintApplyResults_FileResults(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ComputeColumnWidth
+// repoFieldWidth / filePathWidth
 // ---------------------------------------------------------------------------
 
-func TestComputeColumnWidth_RepoOnly(t *testing.T) {
+func TestRepoFieldWidth(t *testing.T) {
 	changes := []repository.Change{
 		{Field: "description"},
 		{Field: "homepage_url"},
 	}
-	w := computeColumnWidth(changes, nil)
+	w := repoFieldWidth(changes)
 	if w != len("homepage_url") {
 		t.Errorf("expected %d, got %d", len("homepage_url"), w)
 	}
 }
 
-func TestComputeColumnWidth_FileOnly(t *testing.T) {
-	changes := []fileset.Change{
-		{Path: "a.txt"},
-		{Path: ".github/workflows/ci.yml"},
-	}
-	w := computeColumnWidth(nil, changes)
-	if w != len(".github/workflows/ci.yml") {
-		t.Errorf("expected %d, got %d", len(".github/workflows/ci.yml"), w)
-	}
-}
-
-func TestComputeColumnWidth_Mixed(t *testing.T) {
-	repo := []repository.Change{{Field: "short"}}
-	file := []fileset.Change{{Path: "much-longer-file-path.txt"}}
-	w := computeColumnWidth(repo, file)
-	if w != len("much-longer-file-path.txt") {
-		t.Errorf("expected %d, got %d", len("much-longer-file-path.txt"), w)
-	}
-}
-
-func TestComputeColumnWidth_Children(t *testing.T) {
+func TestRepoFieldWidth_Children(t *testing.T) {
 	changes := []repository.Change{
 		{
 			Field: "features",
@@ -254,14 +234,32 @@ func TestComputeColumnWidth_Children(t *testing.T) {
 			},
 		},
 	}
-	w := computeColumnWidth(changes, nil)
+	w := repoFieldWidth(changes)
 	if w != len("very_long_child_field_name") {
 		t.Errorf("expected %d, got %d", len("very_long_child_field_name"), w)
 	}
 }
 
-func TestComputeColumnWidth_Empty(t *testing.T) {
-	w := computeColumnWidth(nil, nil)
+func TestRepoFieldWidth_Empty(t *testing.T) {
+	w := repoFieldWidth(nil)
+	if w != 0 {
+		t.Errorf("expected 0, got %d", w)
+	}
+}
+
+func TestFilePathWidth(t *testing.T) {
+	changes := []fileset.Change{
+		{Path: "a.txt"},
+		{Path: ".github/workflows/ci.yml"},
+	}
+	w := filePathWidth(changes)
+	if w != len(".github/workflows/ci.yml") {
+		t.Errorf("expected %d, got %d", len(".github/workflows/ci.yml"), w)
+	}
+}
+
+func TestFilePathWidth_Empty(t *testing.T) {
+	w := filePathWidth(nil)
 	if w != 0 {
 		t.Errorf("expected 0, got %d", w)
 	}
