@@ -277,3 +277,90 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.FileApp
 	}
 	return w
 }
+
+// printUnifiedImportPlan prints import changes grouped by repo, similar to printUnifiedPlan.
+// It shows file diffs with +N -M stats to indicate what will be written locally.
+func printUnifiedImportPlan(p ui.Printer, repoChanges []repository.Change, fileBaseChanges []fileset.FileChange, importChanges []fileset.FileImportChange) {
+	// Collect repo names from changes
+	seen := make(map[string]bool)
+	var repoNames []string
+	for _, c := range repoChanges {
+		if !seen[c.Name] {
+			seen[c.Name] = true
+			repoNames = append(repoNames, c.Name)
+		}
+	}
+	for _, c := range fileBaseChanges {
+		if c.Type == fileset.FileNoOp {
+			continue
+		}
+		if !seen[c.Target] {
+			seen[c.Target] = true
+			repoNames = append(repoNames, c.Target)
+		}
+	}
+
+	// Index file changes by target
+	fileByTarget := make(map[string][]fileset.FileChange)
+	for _, c := range fileBaseChanges {
+		if c.Type == fileset.FileNoOp {
+			continue
+		}
+		fileByTarget[c.Target] = append(fileByTarget[c.Target], c)
+	}
+	repoByName := make(map[string][]repository.Change)
+	for _, c := range repoChanges {
+		repoByName[c.Name] = append(repoByName[c.Name], c)
+	}
+
+	for _, name := range repoNames {
+		rChanges := repoByName[name]
+		fChanges := fileByTarget[name]
+
+		// Compute column width
+		w := 0
+		for _, c := range rChanges {
+			if len(c.Field) > w {
+				w = len(c.Field)
+			}
+		}
+		for _, c := range fChanges {
+			if len(c.Path) > w {
+				w = len(c.Path)
+			}
+		}
+		p.SetColumnWidth(w)
+
+		p.ActionHeader(name, "will be imported")
+		p.GroupHeader(ui.IconChange, name)
+
+		// Print repo changes
+		for _, c := range rChanges {
+			p.ItemUpdate(c.Field, "", fmt.Sprintf("%v", c.NewValue))
+		}
+
+		// Print file changes with diff stats
+		if len(fChanges) > 0 {
+			label := fmt.Sprintf("%d file", len(fChanges))
+			if len(fChanges) != 1 {
+				label += "s"
+			}
+			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
+			for _, c := range fChanges {
+				added, removed := fileset.DiffStat(c.Current, c.Desired)
+				switch c.Type {
+				case fileset.FileCreate:
+					p.FileCreate(c.Path, added)
+				case fileset.FileUpdate:
+					p.FileUpdate(c.Path, added, removed)
+				case fileset.FileDelete:
+					p.FileDelete(c.Path, removed)
+				}
+			}
+		}
+
+		p.GroupEnd()
+	}
+
+	p.SetColumnWidth(0)
+}

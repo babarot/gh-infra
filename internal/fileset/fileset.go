@@ -820,7 +820,17 @@ func PrintApplyResults(p ui.Printer, results []FileApplyResult) {
 	}
 }
 
-// HasChanges returns true if any file changes are non-noop.
+// HasFileChanges returns true if any base file changes are non-noop.
+func HasFileChanges(changes []FileChange) bool {
+	for _, c := range changes {
+		if c.Type != FileNoOp {
+			return true
+		}
+	}
+	return false
+}
+
+// HasChanges returns true if any apply file changes are non-noop.
 func HasChanges(changes []FileApplyChange) bool {
 	for _, c := range changes {
 		if c.Type != FileNoOp {

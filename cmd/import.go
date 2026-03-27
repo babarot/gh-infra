@@ -208,12 +208,12 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 
 	// --- FileSet import ---
-	var fileChanges []fileset.PullChange
+	var importChanges []fileset.FileImportChange
 	if len(matchedFileSets) > 0 {
 		key := "Importing " + fullName + " (files)"
 		processor := fileset.NewProcessor(runner, p)
 
-		fileChanges, err = fileset.PlanPull(processor, matchedFileSets, fullName)
+		importChanges, err = fileset.PlanPull(processor, matchedFileSets, fullName)
 		if err != nil {
 			failAll()
 			return err
@@ -222,40 +222,53 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 	tracker.Wait()
 
-	// --- Display results ---
+	// --- Display using unified plan output ---
+	fileBaseChanges := fileset.ToFileChanges(importChanges)
+
+	// Build repo changes for display (repo spec update = single "update" change)
+	var repoChanges []repository.Change
+	if repoUpdated > 0 {
+		repoChanges = append(repoChanges, repository.Change{
+			Type:     repository.ChangeUpdate,
+			Resource: "Repository",
+			Name:     fullName,
+			Field:    "spec",
+			NewValue: fmt.Sprintf("imported into %s", relativePath(matchedRepos[0].SourcePath())),
+		})
+	}
+
+	hasChanges := len(repoChanges) > 0 || fileset.HasFileChanges(fileBaseChanges)
+
+	if !hasChanges && !skippedRepoSet {
+		p.Message("\nNothing to import. Local state is up-to-date.")
+		return nil
+	}
+
 	p.Separator()
 
 	if skippedRepoSet {
-		p.ResultWarning(fullName+" (repo)", "RepositorySet import not yet supported, use `gh infra import "+fullName+"`")
+		p.Warning(fullName, "RepositorySet import not yet supported, use `gh infra import "+fullName+"`")
 	}
 
-	if repoUpdated > 0 {
-		for _, repo := range matchedRepos {
-			p.ResultSuccess(fullName+" (repo)", fmt.Sprintf("→ %s", relativePath(repo.SourcePath())))
-		}
+	if hasChanges {
+		printUnifiedImportPlan(p, repoChanges, fileBaseChanges, importChanges)
 	}
 
-	written, unchanged, skipped := fileset.PullSummary(fileChanges)
-
-	for _, c := range fileChanges {
-		switch c.Type {
-		case fileset.PullWriteSource:
-			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s", relativePath(c.LocalTarget)))
-		case fileset.PullWriteInline:
-			p.ResultSuccess(c.Path, fmt.Sprintf("→ %s (inline)", relativePath(c.ManifestPath)))
-		case fileset.PullNoOp:
-			p.Detail(fmt.Sprintf("  %s  unchanged", c.Path))
-		case fileset.PullSkip:
+	// Skip warnings
+	for _, c := range importChanges {
+		if c.WriteMode == fileset.ImportSkip {
 			p.ResultWarning(c.Path, c.Reason)
 		}
 	}
 
-	for _, c := range fileChanges {
+	// Warnings (patches, templates)
+	for _, c := range importChanges {
 		for _, w := range c.Warnings {
 			p.Warning(c.Path, w)
 		}
 	}
 
+	written, unchanged, skipped := fileset.ImportSummary(importChanges)
 	totalWritten := repoUpdated + written
 
 	if dryRun {
@@ -280,11 +293,11 @@ func importIntoForRepo(p ui.Printer, target importTarget, fullName, searchPath s
 	}
 
 	// Apply file changes (source writes + inline edits)
-	if err := fileset.ApplyPull(fileChanges, manifestBytes); err != nil {
+	if err := fileset.ApplyImport(importChanges, manifestBytes); err != nil {
 		return err
 	}
 
-	// Write back repo spec changes (manifestBytes may have been updated by both repo and file edits)
+	// Write back repo spec changes
 	if repoUpdated > 0 {
 		for _, repo := range matchedRepos {
 			data := manifestBytes[repo.SourcePath()]

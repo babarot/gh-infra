@@ -8,36 +8,31 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
-// PullType describes what will happen for a file during pull.
-type PullType string
+// ImportWriteMode describes how the imported content will be written locally.
+type ImportWriteMode string
 
 const (
-	PullWriteSource PullType = "write_source"
-	PullWriteInline PullType = "write_inline"
-	PullSkip        PullType = "skip"
-	PullNoOp        PullType = "noop"
+	ImportWriteSource ImportWriteMode = "source" // overwrite a source file on disk
+	ImportWriteInline ImportWriteMode = "inline" // update inline content: block in manifest YAML
+	ImportSkip        ImportWriteMode = "skip"   // skipped (create_only, not on GitHub, etc.)
 )
 
-// PullChange represents a planned pull-back operation for a single file.
-type PullChange struct {
-	Path           string // file path in the GitHub repository
-	LocalTarget    string // write-back destination (source file path or manifest path for inline)
-	Type           PullType
-	FetchedContent string
-	CurrentLocal   string
-	Reason         string   // reason for skip
-	Warnings       []string // e.g. patches, templates
-
-	// For inline content replacement
-	ManifestPath string // path to the manifest YAML file
-	DocIndex     int    // document index within the manifest file
-	FileIndex    int    // index in spec.files[]
+// FileImportChange extends FileChange with import-specific (GitHub → local) metadata.
+type FileImportChange struct {
+	FileChange
+	WriteMode    ImportWriteMode
+	LocalTarget  string   // write-back destination path
+	ManifestPath string   // path to the manifest YAML file (for inline edits)
+	DocIndex     int      // document index within the manifest file
+	FileIndex    int      // index in spec.files[]
+	Reason       string   // reason for skip
+	Warnings     []string // e.g. patches, templates
 }
 
-// PlanPull computes pull changes for all FileSets.
+// PlanPull computes import changes for all FileSets.
 // filterRepo must be "owner/repo" format; required if a FileSet targets multiple repos.
-func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) ([]PullChange, error) {
-	var changes []PullChange
+func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) ([]FileImportChange, error) {
+	var changes []FileImportChange
 
 	for _, fs := range fileSets {
 		repos := fs.Spec.Repositories
@@ -67,7 +62,7 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) 
 		files := ResolveFiles(fs, target)
 
 		for i, file := range files {
-			change := planPullEntry(proc, file, i, fullName, fs)
+			change := planImportEntry(proc, file, i, fullName, fs)
 			changes = append(changes, change)
 		}
 	}
@@ -75,9 +70,9 @@ func PlanPull(proc *Processor, fileSets []*manifest.FileSet, filterRepo string) 
 	return changes, nil
 }
 
-func planPullEntry(proc *Processor, file manifest.FileEntry, fileIndex int, repo string, fs *manifest.FileSet) PullChange {
-	change := PullChange{
-		Path:         file.Path,
+func planImportEntry(proc *Processor, file manifest.FileEntry, fileIndex int, repo string, fs *manifest.FileSet) FileImportChange {
+	change := FileImportChange{
+		FileChange:   FileChange{Target: repo, Path: file.Path},
 		ManifestPath: fs.SourcePath(),
 		DocIndex:     fs.DocIndex(),
 		FileIndex:    fileIndex,
@@ -85,22 +80,24 @@ func planPullEntry(proc *Processor, file manifest.FileEntry, fileIndex int, repo
 
 	// Determine write target
 	if file.OriginalSource != "" {
-		change.Type = PullWriteSource
+		change.WriteMode = ImportWriteSource
 		change.LocalTarget = file.OriginalSource
 	} else if file.Source == "" {
 		// Inline content (no source field was set)
-		change.Type = PullWriteInline
+		change.WriteMode = ImportWriteInline
 		change.LocalTarget = fs.SourcePath() + " (inline)"
 	} else {
 		// github:// or other remote source — can't write back locally
-		change.Type = PullSkip
+		change.WriteMode = ImportSkip
+		change.Type = FileNoOp
 		change.Reason = "remote source"
 		return change
 	}
 
 	// Skip create_only files
 	if file.Reconcile == "create_only" {
-		change.Type = PullSkip
+		change.WriteMode = ImportSkip
+		change.Type = FileNoOp
 		change.Reason = "create_only"
 		return change
 	}
@@ -108,26 +105,37 @@ func planPullEntry(proc *Processor, file manifest.FileEntry, fileIndex int, repo
 	// Fetch current content from GitHub
 	state, err := proc.fetchFileContent(repo, file.Path)
 	if err != nil || !state.Exists {
-		change.Type = PullSkip
+		change.WriteMode = ImportSkip
+		change.Type = FileNoOp
 		change.Reason = "not on GitHub"
 		return change
 	}
 
-	change.FetchedContent = state.Content
-
 	// Read current local content for comparison
+	var currentLocal string
 	if file.OriginalSource != "" {
 		if data, err := os.ReadFile(file.OriginalSource); err == nil {
-			change.CurrentLocal = string(data)
+			currentLocal = string(data)
 		}
 	} else {
-		change.CurrentLocal = file.Content
+		currentLocal = file.Content
 	}
 
+	// Set FileChange fields: Current = local, Desired = GitHub (what will be written)
+	change.Current = currentLocal
+	change.Desired = state.Content
+
 	// Check if content is identical
-	if strings.TrimRight(change.FetchedContent, "\n") == strings.TrimRight(change.CurrentLocal, "\n") {
-		change.Type = PullNoOp
+	if strings.TrimRight(state.Content, "\n") == strings.TrimRight(currentLocal, "\n") {
+		change.Type = FileNoOp
 		return change
+	}
+
+	// Content differs
+	if currentLocal == "" {
+		change.Type = FileCreate
+	} else {
+		change.Type = FileUpdate
 	}
 
 	// Warn about patches
@@ -136,27 +144,27 @@ func planPullEntry(proc *Processor, file manifest.FileEntry, fileIndex int, repo
 	}
 
 	// Warn about templates
-	if HasTemplate(change.CurrentLocal, file.Vars) {
+	if HasTemplate(currentLocal, file.Vars) {
 		change.Warnings = append(change.Warnings, "uses templates — pulled content is repo-specific")
 	}
 
 	return change
 }
 
-// ApplyPull executes the planned pull changes.
+// ApplyImport executes the planned import changes.
 // manifestBytes maps manifest file paths to their raw content (for inline edits).
-func ApplyPull(changes []PullChange, manifestBytes map[string][]byte) error {
+func ApplyImport(changes []FileImportChange, manifestBytes map[string][]byte) error {
 	// Group inline changes by manifest file and process in reverse index order
 	// to avoid position shifts when modifying the same file.
-	inlineByFile := make(map[string][]PullChange)
+	inlineByFile := make(map[string][]FileImportChange)
 
 	for _, c := range changes {
-		switch c.Type {
-		case PullWriteSource:
-			if err := os.WriteFile(c.LocalTarget, []byte(c.FetchedContent), 0644); err != nil {
+		switch c.WriteMode {
+		case ImportWriteSource:
+			if err := os.WriteFile(c.LocalTarget, []byte(c.Desired), 0644); err != nil {
 				return fmt.Errorf("write %s: %w", c.LocalTarget, err)
 			}
-		case PullWriteInline:
+		case ImportWriteInline:
 			inlineByFile[c.ManifestPath] = append(inlineByFile[c.ManifestPath], c)
 		}
 	}
@@ -169,11 +177,11 @@ func ApplyPull(changes []PullChange, manifestBytes map[string][]byte) error {
 		}
 
 		// Process in reverse file index order to avoid position shifts
-		sortInlineReverse(inlineChanges)
+		sortImportReverse(inlineChanges)
 
 		var err error
 		for _, c := range inlineChanges {
-			data, err = ReplaceInlineContent(data, c.DocIndex, c.FileIndex, c.FetchedContent)
+			data, err = ReplaceInlineContent(data, c.DocIndex, c.FileIndex, c.Desired)
 			if err != nil {
 				return fmt.Errorf("replace inline content for %s in %s: %w", c.Path, path, err)
 			}
@@ -187,8 +195,8 @@ func ApplyPull(changes []PullChange, manifestBytes map[string][]byte) error {
 	return nil
 }
 
-// sortInlineReverse sorts inline changes by FileIndex in descending order.
-func sortInlineReverse(changes []PullChange) {
+// sortImportReverse sorts import changes by FileIndex in descending order.
+func sortImportReverse(changes []FileImportChange) {
 	for i := 1; i < len(changes); i++ {
 		for j := i; j > 0 && changes[j].FileIndex > changes[j-1].FileIndex; j-- {
 			changes[j], changes[j-1] = changes[j-1], changes[j]
@@ -196,17 +204,28 @@ func sortInlineReverse(changes []PullChange) {
 	}
 }
 
-// PullSummary returns counts of each pull type.
-func PullSummary(changes []PullChange) (written, unchanged, skipped int) {
+// ImportSummary returns counts by write mode.
+func ImportSummary(changes []FileImportChange) (written, unchanged, skipped int) {
 	for _, c := range changes {
-		switch c.Type {
-		case PullWriteSource, PullWriteInline:
-			written++
-		case PullNoOp:
-			unchanged++
-		case PullSkip:
+		switch c.WriteMode {
+		case ImportWriteSource, ImportWriteInline:
+			if c.Type == FileNoOp {
+				unchanged++
+			} else {
+				written++
+			}
+		case ImportSkip:
 			skipped++
 		}
 	}
 	return
+}
+
+// ToFileChanges extracts the base FileChange from each import change for unified plan display.
+func ToFileChanges(changes []FileImportChange) []FileChange {
+	out := make([]FileChange, len(changes))
+	for i := range changes {
+		out[i] = changes[i].FileChange
+	}
+	return out
 }
