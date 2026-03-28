@@ -68,7 +68,7 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 	for i, t := range targets {
 		names[i] = t.FullName()
 		tasks[i] = ui.RefreshTask{
-			Name:    names[i],
+			Name:      names[i],
 			FailLabel: names[i],
 		}
 	}
