@@ -98,7 +98,7 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 	results := parallel.Map(ctx, targets, defaultImportParallel, func(ctx context.Context, _ int, t ImportTarget) fetchResult {
 		fullName := t.FullName()
 		key := "Importing " + fullName
-		current, err := eng.repo.FetchRepository(ctx, t.Owner, t.Name)
+		current, err := eng.repo.FetchRepository(ctx, t.Owner, t.Name, nil)
 		if err != nil {
 			tracker.Fail(key)
 			return fetchResult{err: err}

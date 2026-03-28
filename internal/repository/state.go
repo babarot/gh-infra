@@ -28,7 +28,15 @@ func NewProcessor(runner gh.Runner, resolver *manifest.Resolver, printer ui.Prin
 // FetchRepository fetches the current state of a single repository.
 // If the repository does not exist (404), it returns an empty CurrentState with IsNew=true.
 // Sub-fetches (branch protection, secrets, variables) run in parallel.
-func (p *Processor) FetchRepository(ctx context.Context, owner, name string) (*CurrentState, error) {
+// The optional onStatus callback is invoked with a human-readable label before each sub-fetch.
+func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onStatus func(string)) (*CurrentState, error) {
+	status := func(s string) {
+		if onStatus != nil {
+			onStatus(s)
+		}
+	}
+
+	status("settings...")
 	repo, err := p.fetchRepoSettings(ctx, owner, name)
 	if err != nil {
 		if errors.Is(err, gh.ErrNotFound) {
@@ -47,24 +55,28 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string) (*C
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
+		status("branch protection...")
 		var err error
 		bp, err = p.fetchBranchProtection(ctx, owner, name)
 		return err
 	})
 
 	g.Go(func() error {
+		status("rulesets...")
 		var err error
 		rulesets, err = p.fetchRulesets(ctx, owner, name)
 		return err
 	})
 
 	g.Go(func() error {
+		status("secrets...")
 		var err error
 		secrets, err = p.fetchSecrets(ctx, owner, name)
 		return err
 	})
 
 	g.Go(func() error {
+		status("variables...")
 		var err error
 		vars, err = p.fetchVariables(ctx, owner, name)
 		return err
@@ -72,6 +84,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string) (*C
 
 	var actions CurrentActions
 	g.Go(func() error {
+		status("actions...")
 		var err error
 		actions, err = p.fetchActionsSettings(ctx, owner, name)
 		return err

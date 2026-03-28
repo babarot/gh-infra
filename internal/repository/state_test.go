@@ -52,7 +52,7 @@ func TestFetchRepository(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil, nil)
-	state, err := p.FetchRepository(context.Background(), "myorg", "myrepo")
+	state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestFetchRepository_RepoSettingsError(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil, nil)
-	_, err := p.FetchRepository(context.Background(), "myorg", "myrepo")
+	_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
 	if err == nil {
 		t.Fatal("expected error from fetchRepoSettings")
 	}

@@ -37,9 +37,9 @@ func (u planUnit) fullName() string {
 	return u.owner + "/" + u.target.Name
 }
 
-// PlanTargetNames returns display tasks for all FileSet targets.
+// PlanTargetRepoNames returns the list of repo full names for all FileSet targets.
 // If filterRepo is non-empty, only targets matching that repo are included.
-func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.RefreshTask {
+func PlanTargetRepoNames(fileSets []*manifest.FileSet, filterRepo string) []string {
 	var names []string
 	for _, fs := range fileSets {
 		for _, target := range fs.Spec.Repositories {
@@ -50,13 +50,12 @@ func PlanTargetNames(fileSets []*manifest.FileSet, filterRepo string) []ui.Refre
 			names = append(names, fullName)
 		}
 	}
-	return ui.BuildRefreshTasks(names, "files")
+	return names
 }
 
 // planTaskKey returns the tracker key for a given fileset target.
-// This must match the Name used in PlanTargetNames.
 func planTaskKey(fullName string) string {
-	return "Fetching " + fullName + " (files)"
+	return "Fetching " + fullName
 }
 
 // Plan computes changes for all FileSets concurrently.
@@ -89,8 +88,12 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 	results := parallel.Map(ctx, units, 0, func(ctx context.Context, i int, u planUnit) unitResult {
 		fullName := u.fullName()
 		displayName := planTaskKey(fullName)
+		updateStatus := func(s string) {
+			tracker.UpdateStatus(displayName, s)
+		}
 		var out []Change
 		for _, file := range u.files {
+			updateStatus(file.Path + "...")
 			// Template rendering (deep copy vars to avoid data races)
 			needsTemplate := HasTemplate(file.Content, file.Vars) || HasTemplate(file.Path, nil)
 			if needsTemplate {
@@ -142,6 +145,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			}
 		}
 		for dirScope := range mirrorDirs {
+			updateStatus("mirror: " + dirScope + "...")
 			repoFiles, err := p.fetchDirectoryContents(ctx, fullName, dirScope)
 			if err != nil {
 				// Directory doesn't exist in repo yet — nothing to delete

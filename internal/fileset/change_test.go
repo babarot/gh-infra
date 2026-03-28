@@ -51,32 +51,32 @@ func TestDiffStat_BothEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// PlanTargetNames
+// PlanTargetRepoNames
 // ---------------------------------------------------------------------------
 
-func TestPlanTargetNames_All(t *testing.T) {
+func TestPlanTargetRepoNames_All(t *testing.T) {
 	fileSets := makeFileSet("owner", "repo", nil)
-	tasks := PlanTargetNames(fileSets, "")
-	if len(tasks) != 1 {
-		t.Fatalf("expected 1 task, got %d", len(tasks))
+	names := PlanTargetRepoNames(fileSets, "")
+	if len(names) != 1 {
+		t.Fatalf("expected 1 name, got %d", len(names))
 	}
-	if tasks[0].Name != "Fetching owner/repo (files)" {
-		t.Errorf("task name = %q", tasks[0].Name)
-	}
-}
-
-func TestPlanTargetNames_Filtered(t *testing.T) {
-	fileSets := makeFileSet("owner", "repo", nil)
-	tasks := PlanTargetNames(fileSets, "owner/other")
-	if len(tasks) != 0 {
-		t.Errorf("expected 0 tasks for non-matching filter, got %d", len(tasks))
+	if names[0] != "owner/repo" {
+		t.Errorf("name = %q, want owner/repo", names[0])
 	}
 }
 
-func TestPlanTargetNames_FilterMatch(t *testing.T) {
+func TestPlanTargetRepoNames_Filtered(t *testing.T) {
 	fileSets := makeFileSet("owner", "repo", nil)
-	tasks := PlanTargetNames(fileSets, "owner/repo")
-	if len(tasks) != 1 {
-		t.Errorf("expected 1 task for matching filter, got %d", len(tasks))
+	names := PlanTargetRepoNames(fileSets, "owner/other")
+	if len(names) != 0 {
+		t.Errorf("expected 0 names for non-matching filter, got %d", len(names))
+	}
+}
+
+func TestPlanTargetRepoNames_FilterMatch(t *testing.T) {
+	fileSets := makeFileSet("owner", "repo", nil)
+	names := PlanTargetRepoNames(fileSets, "owner/repo")
+	if len(names) != 1 {
+		t.Errorf("expected 1 name for matching filter, got %d", len(names))
 	}
 }
