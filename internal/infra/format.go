@@ -53,9 +53,6 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 		rChanges := repoByName[name]
 		fChanges := fileByTarget[name]
 
-		// Set unified column width for this repo group
-		p.SetColumnWidth(computeColumnWidth(rChanges, fChanges))
-
 		// Determine action type for this repo group
 		isNew := false
 		isDestroy := false
@@ -82,7 +79,8 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 			p.GroupHeader(ui.IconChange, name)
 		}
 
-		// Print repository changes
+		// Print repository changes (aligned by repo field width)
+		p.SetColumnWidth(repoFieldWidth(rChanges))
 		for _, c := range rChanges {
 			if len(c.Children) > 0 {
 				var icon string
@@ -107,8 +105,9 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 			}
 		}
 
-		// Print fileset changes (inline under same repo group)
+		// Print fileset changes (aligned by file path width, independent of repo fields)
 		if len(fChanges) > 0 {
+			p.SetColumnWidth(filePathWidth(fChanges))
 			label := fmt.Sprintf("%d file", len(fChanges))
 			if len(fChanges) != 1 {
 				label += "s"
@@ -126,10 +125,8 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 		}
 
 		p.GroupEnd()
+		p.SetColumnWidth(0)
 	}
-
-	// Reset column width
-	p.SetColumnWidth(0)
 }
 
 // printApplyResults prints apply results grouped by repo name,
@@ -233,10 +230,10 @@ func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 	p.SetColumnWidth(0)
 }
 
-// computeColumnWidth returns the max field/path width across both repo and file changes.
-func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.Change) int {
+// repoFieldWidth returns the max field width across repo changes (for repo section alignment).
+func repoFieldWidth(changes []repository.Change) int {
 	w := 0
-	for _, c := range rChanges {
+	for _, c := range changes {
 		if len(c.Children) > 0 {
 			for _, child := range c.Children {
 				if len(child.Field) > w {
@@ -249,7 +246,13 @@ func computeColumnWidth(rChanges []repository.Change, fChanges []fileset.Change)
 			}
 		}
 	}
-	for _, c := range fChanges {
+	return w
+}
+
+// filePathWidth returns the max path width across file changes (for file section alignment).
+func filePathWidth(changes []fileset.Change) int {
+	w := 0
+	for _, c := range changes {
 		if len(c.Path) > w {
 			w = len(c.Path)
 		}

@@ -217,42 +217,12 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 }
 
 // File change descriptions used in plan output.
-var fileDescs = map[string]string{
-	IconAdd:    "(new file)",
-	IconChange: "(content changed)",
-	IconRemove: "(deleted)",
-}
-
-// fileDescWidth is computed from the longest description + 1 padding.
-var fileDescWidth = func() int {
-	max := 0
-	for _, d := range fileDescs {
-		if len(d) > max {
-			max = len(d)
-		}
-	}
-	return max + 1
-}()
-
 // PrintFileChange prints a file-level change with diff stat.
 func (p *StandardPrinter) PrintFileChange(item FileItem) {
 	icon := renderIcon(item.Icon)
-	desc := fileDescs[item.Icon]
-	styledDesc := renderFileDesc(item.Icon, fmt.Sprintf("%-*s", fileDescWidth, desc))
 	stat := formatDiffStat(item.Added, item.Removed)
-	fmt.Fprintf(p.out, "          %s %-*s  %s%s\n",
-		icon, p.subItemWidth(), item.Path, styledDesc, stat)
-}
-
-func renderFileDesc(icon, desc string) string {
-	switch icon {
-	case IconAdd:
-		return Green.Render(desc)
-	case IconRemove:
-		return Red.Render(desc)
-	default:
-		return Yellow.Render(desc)
-	}
+	fmt.Fprintf(p.out, "          %s %-*s %s\n",
+		icon, p.subItemWidth(), item.Path, stat)
 }
 
 // PrintResult prints an apply result line.
