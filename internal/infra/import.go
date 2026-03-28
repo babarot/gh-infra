@@ -59,7 +59,7 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 	if len(targets) != 1 {
 		label = "repositories"
 	}
-	p.Phase(fmt.Sprintf("Importing %d %s from GitHub API ...", len(targets), label))
+	p.Phase(fmt.Sprintf("Fetching current state of %d %s from GitHub API ...", len(targets), label))
 	p.BlankLine()
 
 	// Start spinner display

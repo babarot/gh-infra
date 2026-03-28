@@ -22,19 +22,6 @@ type RefreshTask struct {
 	Pending   int    // expected Done() calls before completion (default 1)
 }
 
-// BuildRefreshTasks creates RefreshTask entries for a list of target names.
-// Each task's Name is "Fetching {name} ({suffix})" and DoneLabel is "Fetched {name} ({suffix})".
-func BuildRefreshTasks(names []string, suffix string) []RefreshTask {
-	tasks := make([]RefreshTask, len(names))
-	for i, name := range names {
-		tasks[i] = RefreshTask{
-			Name:      "Fetching " + name + " (" + suffix + ")",
-			DoneLabel: "Fetched " + name + " (" + suffix + ")",
-		}
-	}
-	return tasks
-}
-
 type taskStatus int
 
 const (

@@ -110,33 +110,6 @@ func TestRenderIcon(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// BuildRefreshTasks
-// ---------------------------------------------------------------------------
-
-func TestBuildRefreshTasks(t *testing.T) {
-	tasks := BuildRefreshTasks([]string{"org/repo1", "org/repo2"}, "files")
-	if len(tasks) != 2 {
-		t.Fatalf("expected 2 tasks, got %d", len(tasks))
-	}
-	if tasks[0].Name != "Fetching org/repo1 (files)" {
-		t.Errorf("task[0].Name = %q", tasks[0].Name)
-	}
-	if tasks[0].DoneLabel != "Fetched org/repo1 (files)" {
-		t.Errorf("task[0].DoneLabel = %q", tasks[0].DoneLabel)
-	}
-	if tasks[1].Name != "Fetching org/repo2 (files)" {
-		t.Errorf("task[1].Name = %q", tasks[1].Name)
-	}
-}
-
-func TestBuildRefreshTasks_Empty(t *testing.T) {
-	tasks := BuildRefreshTasks(nil, "repo")
-	if len(tasks) != 0 {
-		t.Errorf("expected 0 tasks, got %d", len(tasks))
-	}
-}
-
-// ---------------------------------------------------------------------------
 // PrintChange
 // ---------------------------------------------------------------------------
 

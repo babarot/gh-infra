@@ -53,11 +53,6 @@ func PlanTargetRepoNames(fileSets []*manifest.FileSet, filterRepo string) []stri
 	return names
 }
 
-// planTaskKey returns the tracker key for a given fileset target.
-func planTaskKey(fullName string) string {
-	return fullName
-}
-
 // Plan computes changes for all FileSets concurrently.
 // If filterRepo is non-empty, only targets matching that repo are processed.
 func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filterRepo string, tracker *ui.RefreshTracker) ([]Change, error) {
@@ -87,9 +82,8 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 	}
 	results := parallel.Map(ctx, units, 0, func(ctx context.Context, i int, u planUnit) unitResult {
 		fullName := u.fullName()
-		displayName := planTaskKey(fullName)
 		updateStatus := func(s string) {
-			tracker.UpdateStatus(displayName, s)
+			tracker.UpdateStatus(fullName, s)
 		}
 		var out []Change
 		for _, file := range u.files {
@@ -102,7 +96,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 				if HasTemplate(file.Path, nil) {
 					renderedPath, err := RenderTemplate(file.Path, fullName, varsCopy)
 					if err != nil {
-						tracker.Error(displayName, err)
+						tracker.Error(fullName, err)
 						return unitResult{err: fmt.Errorf("template path %s for %s: %w", file.Path, fullName, err)}
 					}
 					file.Path = renderedPath
@@ -110,7 +104,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 				// Render content
 				rendered, err := RenderTemplate(file.Content, fullName, varsCopy)
 				if err != nil {
-					tracker.Error(displayName, err)
+					tracker.Error(fullName, err)
 					return unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
 				}
 				file.Content = rendered
@@ -119,7 +113,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			if len(file.Patches) > 0 {
 				patched, err := ApplyPatches(file.Content, file.Patches)
 				if err != nil {
-					tracker.Error(displayName, err)
+					tracker.Error(fullName, err)
 					return unitResult{err: fmt.Errorf("patch %s for %s: %w", file.Path, fullName, err)}
 				}
 				file.Content = patched
@@ -168,7 +162,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			out[i].Via = u.via
 		}
 
-		tracker.Done(displayName)
+		tracker.Done(fullName)
 		return unitResult{changes: out}
 	})
 

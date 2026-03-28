@@ -24,6 +24,9 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 
 	ctx := context.Background()
 
+	p.Phase("Applying changes to GitHub API ...")
+	p.BlankLine()
+
 	totalSucceeded := 0
 	totalFailed := 0
 

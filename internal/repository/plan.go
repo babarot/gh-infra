@@ -37,11 +37,6 @@ func PlanTargetRepoNames(repos []*manifest.Repository, filterRepo string) []stri
 	return names
 }
 
-// planTaskKey returns the tracker key for a given repo full name.
-func planTaskKey(fullName string) string {
-	return fullName
-}
-
 // Plan fetches current state for all repositories, computes diffs, and returns changes.
 func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts PlanOptions, tracker *ui.RefreshTracker) ([]Change, []*manifest.Repository, error) {
 	var targets []*manifest.Repository
@@ -63,20 +58,20 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 
 	results := parallel.Map(ctx, targets, defaultParallel, func(ctx context.Context, idx int, r *manifest.Repository) repoResult {
 		logger.Debug("fetch start", "repo", r.Metadata.FullName())
-		taskKey := planTaskKey(r.Metadata.FullName())
+		fullName := r.Metadata.FullName()
 		onStatus := func(status string) {
-			tracker.UpdateStatus(taskKey, status)
+			tracker.UpdateStatus(fullName, status)
 		}
 		current, err := p.FetchRepository(ctx, r.Metadata.Owner, r.Metadata.Name, onStatus)
 		if err != nil {
-			logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
-			tracker.Error(planTaskKey(r.Metadata.FullName()), err)
+			logger.Error("fetch failed", "repo", fullName, "err", err)
+			tracker.Error(fullName, err)
 			return repoResult{index: idx, repo: r, err: err}
 		}
 
 		changes := Diff(ctx, r, current, diffOpts)
-		logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
-		tracker.Done(planTaskKey(r.Metadata.FullName()))
+		logger.Debug("diff done", "repo", fullName, "changes", len(changes))
+		tracker.Done(fullName)
 		return repoResult{index: idx, repo: r, changes: changes}
 	})
 

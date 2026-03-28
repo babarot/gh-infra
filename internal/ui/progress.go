@@ -22,33 +22,8 @@ type SpinnerReporter struct {
 	shared  bool                   // true when tracker is shared (don't call Wait)
 }
 
-// NewSpinnerReporter creates a spinner-based reporter for the given task names.
-// Parts are joined with spaces to form labels: "verb name suffix" / "pastVerb name suffix".
-func NewSpinnerReporter(names []string, verb, pastVerb, suffix string) *SpinnerReporter {
-	tasks := make([]RefreshTask, len(names))
-	taskMap := make(map[string]RefreshTask, len(names))
-	for i, name := range names {
-		label := verb + " " + name
-		doneLabel := pastVerb + " " + name
-		if suffix != "" {
-			label += " " + suffix
-			doneLabel += " " + suffix
-		}
-		t := RefreshTask{
-			Name:      label,
-			DoneLabel: doneLabel,
-		}
-		tasks[i] = t
-		taskMap[name] = t
-	}
-	return &SpinnerReporter{
-		tracker: RunRefresh(tasks),
-		tasks:   taskMap,
-	}
-}
-
 // NewSpinnerReporterWith creates a reporter that delegates to an existing tracker.
-// Each name is mapped directly as a task key (no verb prefix).
+// Each name is mapped directly as a task key.
 func NewSpinnerReporterWith(tracker *RefreshTracker, names []string) *SpinnerReporter {
 	taskMap := make(map[string]RefreshTask, len(names))
 	for _, name := range names {
