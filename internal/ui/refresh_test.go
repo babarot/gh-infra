@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -226,4 +228,110 @@ func TestNewRefreshModel_ExplicitPending(t *testing.T) {
 	if m.items[0].pending != 3 {
 		t.Errorf("pending = %d, want 3", m.items[0].pending)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// View rendering
+// ---------------------------------------------------------------------------
+
+func TestView_ColumnAlignment(t *testing.T) {
+	m := makeModel(task("short", 1), task("much-longer-name", 1))
+
+	// Complete the first task
+	m = update(t, m, taskDoneMsg{name: "short"})
+
+	view := m.View().Content
+	// Both lines should exist
+	if !strings.Contains(view, "short") {
+		t.Error("view missing 'short'")
+	}
+	if !strings.Contains(view, "much-longer-name") {
+		t.Error("view missing 'much-longer-name'")
+	}
+}
+
+func TestView_StatusTextRendered(t *testing.T) {
+	m := makeModel(task("repo", 1))
+	m = update(t, m, taskStatusMsg{name: "repo", status: "fetching secrets..."})
+
+	view := m.View().Content
+	if !strings.Contains(view, "fetching secrets...") {
+		t.Errorf("view missing status text, got:\n%s", view)
+	}
+}
+
+func TestView_DoneHidesStatusText(t *testing.T) {
+	m := makeModel(task("repo", 1))
+	m = update(t, m, taskStatusMsg{name: "repo", status: "fetching..."})
+	m = update(t, m, taskDoneMsg{name: "repo"})
+
+	view := m.View().Content
+	if strings.Contains(view, "fetching...") {
+		t.Errorf("view should not contain status text after Done, got:\n%s", view)
+	}
+}
+
+func TestView_ErrorShowsMessage(t *testing.T) {
+	m := makeModel(task("repo", 1))
+	m = update(t, m, taskErrorMsg{name: "repo", err: fmt.Errorf("403 Forbidden")})
+
+	view := m.View().Content
+	if !strings.Contains(view, "403 Forbidden") {
+		t.Errorf("view missing error message, got:\n%s", view)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// StreamReporter
+// ---------------------------------------------------------------------------
+
+func TestStreamReporter_Start(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+	r := NewStreamReporter(p, "Applying", "Applied")
+
+	r.Start("org/repo", []string{"description", "visibility"})
+	out := buf.String()
+	if !strings.Contains(out, "Applying") {
+		t.Errorf("Start output missing verb, got:\n%s", out)
+	}
+	if !strings.Contains(out, "org/repo") {
+		t.Errorf("Start output missing name, got:\n%s", out)
+	}
+}
+
+func TestStreamReporter_Done(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+	r := NewStreamReporter(p, "Applying", "Applied")
+
+	r.Done("org/repo", 1500000000, 3) // 1.5s
+	out := buf.String()
+	if !strings.Contains(out, "Applied") {
+		t.Errorf("Done output missing past verb, got:\n%s", out)
+	}
+	if !strings.Contains(out, "3 changes") {
+		t.Errorf("Done output missing count, got:\n%s", out)
+	}
+}
+
+func TestStreamReporter_Error(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+	r := NewStreamReporter(p, "Applying", "Applied")
+
+	r.Error("org/repo", 0, fmt.Errorf("permission denied"))
+	out := buf.String()
+	if !strings.Contains(out, "permission denied") {
+		t.Errorf("Error output missing error message, got:\n%s", out)
+	}
+}
+
+func TestStreamReporter_Wait(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+	r := NewStreamReporter(p, "Applying", "Applied")
+
+	// Should not panic or block
+	r.Wait()
 }
