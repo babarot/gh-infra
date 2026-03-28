@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -51,7 +52,7 @@ func TestToManifest(t *testing.T) {
 		},
 	}
 
-	repo := ToManifest(state, nil)
+	repo := ToManifest(context.Background(), state, nil)
 
 	// APIVersion and Kind
 	if repo.APIVersion != manifest.APIVersion {
@@ -150,7 +151,7 @@ func TestToManifest_EmptyHomepage(t *testing.T) {
 		Features:   CurrentFeatures{},
 	}
 
-	repo := ToManifest(state, nil)
+	repo := ToManifest(context.Background(), state, nil)
 
 	if repo.Spec.Homepage != nil {
 		t.Errorf("expected nil Homepage for empty string, got %v", repo.Spec.Homepage)
@@ -165,7 +166,7 @@ func TestToManifest_NoBranchProtection(t *testing.T) {
 		Variables:        map[string]string{},
 	}
 
-	repo := ToManifest(state, nil)
+	repo := ToManifest(context.Background(), state, nil)
 
 	if len(repo.Spec.BranchProtection) != 0 {
 		t.Errorf("expected 0 branch protections, got %d", len(repo.Spec.BranchProtection))
@@ -186,7 +187,7 @@ func TestToManifest_Actions(t *testing.T) {
 		},
 	}
 
-	repo := ToManifest(state, nil)
+	repo := ToManifest(context.Background(), state, nil)
 
 	if repo.Spec.Actions == nil {
 		t.Fatal("expected actions to be exported")
@@ -208,7 +209,7 @@ func TestToManifest_NilStatusChecks(t *testing.T) {
 		},
 	}
 
-	repo := ToManifest(state, nil)
+	repo := ToManifest(context.Background(), state, nil)
 
 	if len(repo.Spec.BranchProtection) != 1 {
 		t.Fatalf("expected 1 branch protection, got %d", len(repo.Spec.BranchProtection))
@@ -255,7 +256,7 @@ func TestToManifest_Rulesets(t *testing.T) {
 		},
 	}
 
-	repo := ToManifest(state, nil)
+	repo := ToManifest(context.Background(), state, nil)
 
 	if len(repo.Spec.Rulesets) != 1 {
 		t.Fatalf("expected 1 ruleset, got %d", len(repo.Spec.Rulesets))

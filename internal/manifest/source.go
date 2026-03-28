@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -19,11 +20,11 @@ var DefaultResolver = &SourceResolver{}
 type SourceResolver struct {
 	// RunGH executes a gh CLI command and returns stdout.
 	// Set by the caller to avoid importing the gh package.
-	RunGH func(args ...string) ([]byte, error)
+	RunGH func(ctx context.Context, args ...string) ([]byte, error)
 }
 
 // ResolveFiles expands source references in FileSet entries.
-func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]FileEntry, error) {
+func (r *SourceResolver) ResolveFiles(ctx context.Context, files []FileEntry, yamlDir string) ([]FileEntry, error) {
 	var resolved []FileEntry
 	for _, entry := range files {
 		if entry.Source == "" || entry.Content != "" {
@@ -38,7 +39,7 @@ func (r *SourceResolver) ResolveFiles(files []FileEntry, yamlDir string) ([]File
 		}
 
 		if strings.HasPrefix(entry.Source, githubScheme) {
-			entries, err := r.resolveGitHub(entry.Source, entry.Path)
+			entries, err := r.resolveGitHub(ctx, entry.Source, entry.Path)
 			if err != nil {
 				return nil, fmt.Errorf("resolve %s: %w", entry.Source, err)
 			}
@@ -135,7 +136,7 @@ func parseGitHubSource(source string) (owner, repo, path, ref string, err error)
 }
 
 // resolveGitHub fetches file(s) from a GitHub repository via Contents API.
-func (r *SourceResolver) resolveGitHub(source, destPath string) ([]FileEntry, error) {
+func (r *SourceResolver) resolveGitHub(ctx context.Context, source, destPath string) ([]FileEntry, error) {
 	if r.RunGH == nil {
 		return nil, fmt.Errorf("GitHub source %q requires gh CLI", source)
 	}
@@ -153,13 +154,13 @@ func (r *SourceResolver) resolveGitHub(source, destPath string) ([]FileEntry, er
 		endpoint += "?ref=" + ref
 	}
 
-	out, err := r.RunGH("api", endpoint)
+	out, err := r.RunGH(ctx, "api", endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s/%s/%s: %w", owner, repo, path, err)
 	}
 
 	if isDir {
-		return r.resolveGitHubDir(out, owner, repo, path, ref, destPath)
+		return r.resolveGitHubDir(ctx, out, owner, repo, path, ref, destPath)
 	}
 	return r.resolveGitHubFile(out, destPath)
 }
@@ -185,7 +186,7 @@ func (r *SourceResolver) resolveGitHubFile(data []byte, destPath string) ([]File
 }
 
 // resolveGitHubDir lists a directory and fetches each file.
-func (r *SourceResolver) resolveGitHubDir(data []byte, owner, repo, dirPath, ref, destPrefix string) ([]FileEntry, error) {
+func (r *SourceResolver) resolveGitHubDir(ctx context.Context, data []byte, owner, repo, dirPath, ref, destPrefix string) ([]FileEntry, error) {
 	var items []struct {
 		Name string `json:"name"`
 		Path string `json:"path"`
@@ -206,7 +207,7 @@ func (r *SourceResolver) resolveGitHubDir(data []byte, owner, repo, dirPath, ref
 			if ref != "" {
 				subSource = fmt.Sprintf("%s%s/%s/%s/@%s", githubScheme, owner, repo, item.Path, ref)
 			}
-			subEntries, err := r.resolveGitHub(subSource, destPath)
+			subEntries, err := r.resolveGitHub(ctx, subSource, destPath)
 			if err != nil {
 				return nil, err
 			}
@@ -217,7 +218,7 @@ func (r *SourceResolver) resolveGitHubDir(data []byte, owner, repo, dirPath, ref
 			if ref != "" {
 				endpoint += "?ref=" + ref
 			}
-			out, err := r.RunGH("api", endpoint)
+			out, err := r.RunGH(ctx, "api", endpoint)
 			if err != nil {
 				return nil, fmt.Errorf("fetch %s: %w", item.Path, err)
 			}

@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -179,7 +180,7 @@ func TestResolveGitHubFile(t *testing.T) {
 
 func TestResolveGitHub_NilRunGH(t *testing.T) {
 	r := &SourceResolver{RunGH: nil}
-	_, err := r.resolveGitHub("github://owner/repo/file.txt", "dest.txt")
+	_, err := r.resolveGitHub(context.Background(), "github://owner/repo/file.txt", "dest.txt")
 	if err == nil {
 		t.Fatal("expected error when RunGH is nil")
 	}
@@ -197,12 +198,12 @@ func TestResolveGitHub_SingleFile(t *testing.T) {
 	})
 
 	r := &SourceResolver{
-		RunGH: func(args ...string) ([]byte, error) {
+		RunGH: func(_ context.Context, args ...string) ([]byte, error) {
 			return fileResp, nil
 		},
 	}
 
-	entries, err := r.resolveGitHub("github://owner/repo/path/file.go", "dest/file.go")
+	entries, err := r.resolveGitHub(context.Background(), "github://owner/repo/path/file.go", "dest/file.go")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -217,7 +218,7 @@ func TestResolveGitHub_SingleFile(t *testing.T) {
 func TestResolveGitHub_WithRef(t *testing.T) {
 	var calledEndpoint string
 	r := &SourceResolver{
-		RunGH: func(args ...string) ([]byte, error) {
+		RunGH: func(_ context.Context, args ...string) ([]byte, error) {
 			calledEndpoint = args[1]
 			resp, _ := json.Marshal(struct {
 				Content  string `json:"content"`
@@ -230,7 +231,7 @@ func TestResolveGitHub_WithRef(t *testing.T) {
 		},
 	}
 
-	_, err := r.resolveGitHub("github://owner/repo/file.go@v2.0", "dest.go")
+	_, err := r.resolveGitHub(context.Background(), "github://owner/repo/file.go@v2.0", "dest.go")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -241,12 +242,12 @@ func TestResolveGitHub_WithRef(t *testing.T) {
 
 func TestResolveGitHub_APIError(t *testing.T) {
 	r := &SourceResolver{
-		RunGH: func(args ...string) ([]byte, error) {
+		RunGH: func(_ context.Context, args ...string) ([]byte, error) {
 			return nil, fmt.Errorf("API error: not found")
 		},
 	}
 
-	_, err := r.resolveGitHub("github://owner/repo/missing.go", "dest.go")
+	_, err := r.resolveGitHub(context.Background(), "github://owner/repo/missing.go", "dest.go")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -274,12 +275,12 @@ func TestResolveGitHubDir(t *testing.T) {
 	})
 
 	r := &SourceResolver{
-		RunGH: func(args ...string) ([]byte, error) {
+		RunGH: func(_ context.Context, args ...string) ([]byte, error) {
 			return fileResp, nil
 		},
 	}
 
-	entries, err := r.resolveGitHubDir(dirResp, "owner", "repo", "src", "", "dest")
+	entries, err := r.resolveGitHubDir(context.Background(), dirResp, "owner", "repo", "src", "", "dest")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -299,7 +300,7 @@ func TestResolveGitHubDir(t *testing.T) {
 
 func TestResolveGitHubDir_InvalidJSON(t *testing.T) {
 	r := &SourceResolver{}
-	_, err := r.resolveGitHubDir([]byte("not json"), "o", "r", "p", "", "d")
+	_, err := r.resolveGitHubDir(context.Background(), []byte("not json"), "o", "r", "p", "", "d")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
@@ -385,7 +386,7 @@ func TestResolveFiles(t *testing.T) {
 		files := []FileEntry{
 			{Path: "dest.txt", Content: "inline content"},
 		}
-		result, err := r.ResolveFiles(files, dir)
+		result, err := r.ResolveFiles(context.Background(), files, dir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -401,7 +402,7 @@ func TestResolveFiles(t *testing.T) {
 		files := []FileEntry{
 			{Path: "dest.txt"},
 		}
-		result, err := r.ResolveFiles(files, dir)
+		result, err := r.ResolveFiles(context.Background(), files, dir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -414,7 +415,7 @@ func TestResolveFiles(t *testing.T) {
 		files := []FileEntry{
 			{Path: "dest.txt", Source: "local.txt"},
 		}
-		result, err := r.ResolveFiles(files, dir)
+		result, err := r.ResolveFiles(context.Background(), files, dir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -430,7 +431,7 @@ func TestResolveFiles(t *testing.T) {
 		files := []FileEntry{
 			{Path: "dest.txt", Source: "github://owner/repo/file.txt"},
 		}
-		_, err := r.ResolveFiles(files, dir)
+		_, err := r.ResolveFiles(context.Background(), files, dir)
 		if err == nil {
 			t.Fatal("expected error for github source without RunGH")
 		}
@@ -440,7 +441,7 @@ func TestResolveFiles(t *testing.T) {
 		files := []FileEntry{
 			{Path: "dest.txt", Source: "missing.txt"},
 		}
-		_, err := r.ResolveFiles(files, dir)
+		_, err := r.ResolveFiles(context.Background(), files, dir)
 		if err == nil {
 			t.Fatal("expected error for missing source")
 		}
@@ -469,7 +470,7 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 			Reconcile: ReconcileMirror,
 		},
 	}
-	result, err := r.ResolveFiles(files, dir)
+	result, err := r.ResolveFiles(context.Background(), files, dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -575,7 +576,7 @@ func TestResolveFiles_PatchesPropagated(t *testing.T) {
 			Patches: []string{"fix.patch"},
 		},
 	}
-	result, err := r.ResolveFiles(files, dir)
+	result, err := r.ResolveFiles(context.Background(), files, dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -601,7 +602,7 @@ func TestResolveFiles_DuplicatePathError(t *testing.T) {
 			{Path: "README.md", Content: "hello"},
 			{Path: "README.md", Content: "world"},
 		}
-		_, err := r.ResolveFiles(files, dir)
+		_, err := r.ResolveFiles(context.Background(), files, dir)
 		if err == nil {
 			t.Fatal("expected error for duplicate paths")
 		}
@@ -627,7 +628,7 @@ func TestResolveFiles_DuplicatePathError(t *testing.T) {
 			{Path: ".github", Source: "configs"},         // expands to .github/b.txt, .github/sub/a.txt
 			{Path: ".github/sub", Source: "configs/sub"}, // expands to .github/sub/a.txt (duplicate!)
 		}
-		_, err := r.ResolveFiles(files, dir)
+		_, err := r.ResolveFiles(context.Background(), files, dir)
 		if err == nil {
 			t.Fatal("expected error for overlapping source directories")
 		}

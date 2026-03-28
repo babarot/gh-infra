@@ -1,11 +1,15 @@
 package parallel
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 // Map processes items concurrently and returns results in input order.
 // concurrency controls the maximum number of goroutines running at once.
 // If concurrency <= 0, all items are processed without a limit.
-func Map[T, R any](items []T, concurrency int, fn func(int, T) R) []R {
+// When ctx is cancelled, remaining unstarted items are skipped.
+func Map[T, R any](ctx context.Context, items []T, concurrency int, fn func(context.Context, int, T) R) []R {
 	results := make([]R, len(items))
 	if len(items) == 0 {
 		return results
@@ -20,7 +24,10 @@ func Map[T, R any](items []T, concurrency int, fn func(int, T) R) []R {
 	for w := 0; w < concurrency; w++ {
 		wg.Go(func() {
 			for i := range ch {
-				results[i] = fn(i, items[i])
+				if ctx.Err() != nil {
+					continue // drain channel without processing
+				}
+				results[i] = fn(ctx, i, items[i])
 			}
 		})
 	}

@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -14,7 +15,7 @@ func TestResolveBypassActors_RoleAdmin(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Role: "admin", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -37,7 +38,7 @@ func TestResolveBypassActors_RoleWrite(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Role: "write", BypassMode: "pull_request"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -51,7 +52,7 @@ func TestResolveBypassActors_RoleMaintain(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Role: "maintain", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestResolveBypassActors_RoleInvalid(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Role: "invalid", BypassMode: "always"}}
-	_, err := r.ResolveBypassActors(actors)
+	_, err := r.ResolveBypassActors(context.Background(), actors)
 	if err == nil {
 		t.Fatal("expected error for invalid role")
 	}
@@ -80,7 +81,7 @@ func TestResolveBypassActors_Team(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Team: "backend", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestResolveBypassActors_TeamNotFound(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Team: "ghost", BypassMode: "always"}}
-	_, err := r.ResolveBypassActors(actors)
+	_, err := r.ResolveBypassActors(context.Background(), actors)
 	if err == nil {
 		t.Fatal("expected error for team not found")
 	}
@@ -116,7 +117,7 @@ func TestResolveBypassActors_App(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{App: "github-actions", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +138,7 @@ func TestResolveBypassActors_AppUnknown(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{App: "unknown-app", BypassMode: "always"}}
-	_, err := r.ResolveBypassActors(actors)
+	_, err := r.ResolveBypassActors(context.Background(), actors)
 	if err == nil {
 		t.Fatal("expected error for unknown app")
 	}
@@ -148,7 +149,7 @@ func TestResolveBypassActors_OrgAdmin(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{OrgAdmin: Ptr(true), BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -169,7 +170,7 @@ func TestResolveBypassActors_CustomRole(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{CustomRole: "security-reviewer", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,7 +191,7 @@ func TestResolveBypassActors_CustomRoleNotFound(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{CustomRole: "no-such-role", BypassMode: "always"}}
-	_, err := r.ResolveBypassActors(actors)
+	_, err := r.ResolveBypassActors(context.Background(), actors)
 	if err == nil {
 		t.Fatal("expected error for custom role not found")
 	}
@@ -201,7 +202,7 @@ func TestResolveBypassActors_NoTypeSpecified(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{BypassMode: "always"}}
-	_, err := r.ResolveBypassActors(actors)
+	_, err := r.ResolveBypassActors(context.Background(), actors)
 	if err == nil {
 		t.Fatal("expected error when no type is specified")
 	}
@@ -213,7 +214,7 @@ func TestResolveBypassActors_MultipleTypesFirstWins(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Role: "admin", Team: "backend", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestResolveStatusChecks_WithApp(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	checks := []RulesetStatusCheck{{Context: "ci/test", App: "github-actions"}}
-	got, err := r.ResolveStatusChecks(checks)
+	got, err := r.ResolveStatusChecks(context.Background(), checks)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -251,7 +252,7 @@ func TestResolveStatusChecks_WithoutApp(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	checks := []RulesetStatusCheck{{Context: "ci/test"}}
-	got, err := r.ResolveStatusChecks(checks)
+	got, err := r.ResolveStatusChecks(context.Background(), checks)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestResolveStatusChecks_InvalidApp(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	checks := []RulesetStatusCheck{{Context: "ci/test", App: "bad-app"}}
-	_, err := r.ResolveStatusChecks(checks)
+	_, err := r.ResolveStatusChecks(context.Background(), checks)
 	if err == nil {
 		t.Fatal("expected error for invalid app in status check")
 	}
@@ -285,11 +286,11 @@ func TestResolveAppID_Caching(t *testing.T) {
 	}
 	r := NewResolver(mock, "myorg")
 
-	id1, err := r.ResolveAppID("github-actions")
+	id1, err := r.ResolveAppID(context.Background(), "github-actions")
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	id2, err := r.ResolveAppID("github-actions")
+	id2, err := r.ResolveAppID(context.Background(), "github-actions")
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -330,7 +331,7 @@ func TestReverseBypassActor_RepositoryRoleKnown(t *testing.T) {
 	mock := &gh.MockRunner{}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseBypassActor(5, "RepositoryRole", "always", "myrepo")
+	got := r.ReverseBypassActor(context.Background(), 5, "RepositoryRole", "always", "myrepo")
 	if got.Role != "admin" {
 		t.Errorf("Role = %q, want admin", got.Role)
 	}
@@ -343,7 +344,7 @@ func TestReverseBypassActor_RepositoryRoleUnknown(t *testing.T) {
 	mock := &gh.MockRunner{}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseBypassActor(999, "RepositoryRole", "always", "myrepo")
+	got := r.ReverseBypassActor(context.Background(), 999, "RepositoryRole", "always", "myrepo")
 	if got.CustomRole != "id:999" {
 		t.Errorf("CustomRole = %q, want id:999", got.CustomRole)
 	}
@@ -357,7 +358,7 @@ func TestReverseBypassActor_Team(t *testing.T) {
 	}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseBypassActor(42, "Team", "always", "myrepo")
+	got := r.ReverseBypassActor(context.Background(), 42, "Team", "always", "myrepo")
 	if got.Team != "backend" {
 		t.Errorf("Team = %q, want backend", got.Team)
 	}
@@ -371,7 +372,7 @@ func TestReverseBypassActor_Integration(t *testing.T) {
 	}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseBypassActor(15368, "Integration", "always", "myrepo")
+	got := r.ReverseBypassActor(context.Background(), 15368, "Integration", "always", "myrepo")
 	if got.App != "github-actions" {
 		t.Errorf("App = %q, want github-actions", got.App)
 	}
@@ -381,7 +382,7 @@ func TestReverseBypassActor_OrganizationAdmin(t *testing.T) {
 	mock := &gh.MockRunner{}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseBypassActor(1, "OrganizationAdmin", "always", "myrepo")
+	got := r.ReverseBypassActor(context.Background(), 1, "OrganizationAdmin", "always", "myrepo")
 	if got.OrgAdmin == nil || !*got.OrgAdmin {
 		t.Errorf("OrgAdmin = %v, want true", got.OrgAdmin)
 	}
@@ -391,7 +392,7 @@ func TestReverseBypassActor_UnknownType(t *testing.T) {
 	mock := &gh.MockRunner{}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseBypassActor(1, "SomeNewType", "always", "myrepo")
+	got := r.ReverseBypassActor(context.Background(), 1, "SomeNewType", "always", "myrepo")
 	if got.Role != "unknown:SomeNewType:1" {
 		t.Errorf("Role = %q, want unknown:SomeNewType:1", got.Role)
 	}
@@ -403,7 +404,7 @@ func TestReverseStatusCheck_IntegrationIDZero(t *testing.T) {
 	mock := &gh.MockRunner{}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseStatusCheck("ci/test", 0, "myrepo")
+	got := r.ReverseStatusCheck(context.Background(), "ci/test", 0, "myrepo")
 	if got.Context != "ci/test" {
 		t.Errorf("Context = %q, want ci/test", got.Context)
 	}
@@ -420,7 +421,7 @@ func TestReverseStatusCheck_IntegrationIDNonZero(t *testing.T) {
 	}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseStatusCheck("ci/test", 15368, "myrepo")
+	got := r.ReverseStatusCheck(context.Background(), "ci/test", 15368, "myrepo")
 	if got.App != "github-actions" {
 		t.Errorf("App = %q, want github-actions", got.App)
 	}
@@ -434,7 +435,7 @@ func TestReverseStatusCheck_CheckRunsFails(t *testing.T) {
 	}
 	r := NewResolver(mock, "myorg")
 
-	got := r.ReverseStatusCheck("ci/test", 15368, "myrepo")
+	got := r.ReverseStatusCheck(context.Background(), "ci/test", 15368, "myrepo")
 	if got.App != "id:15368" {
 		t.Errorf("App = %q, want id:15368", got.App)
 	}
@@ -468,7 +469,7 @@ func TestResolveAppID_IDPrefix(t *testing.T) {
 	mock := &gh.MockRunner{}
 	r := NewResolver(mock, "myorg")
 
-	id, err := r.ResolveAppID("id:12345")
+	id, err := r.ResolveAppID(context.Background(), "id:12345")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -486,7 +487,7 @@ func TestResolveBypassActors_AppIDPrefix(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{App: "id:99999", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -506,7 +507,7 @@ func TestResolveBypassActors_TeamIDPrefix(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{Team: "id:42", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -526,7 +527,7 @@ func TestResolveBypassActors_CustomRoleIDPrefix(t *testing.T) {
 	r := NewResolver(mock, "myorg")
 
 	actors := []RulesetBypassActor{{CustomRole: "id:99", BypassMode: "always"}}
-	got, err := r.ResolveBypassActors(actors)
+	got, err := r.ResolveBypassActors(context.Background(), actors)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

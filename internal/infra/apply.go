@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/babarot/gh-infra/internal/fileset"
@@ -17,6 +18,8 @@ type ApplyOptions struct {
 func Apply(result *PlanResult, opts ApplyOptions) error {
 	eng := result.engine
 	p := eng.printer
+
+	ctx := context.Background()
 
 	totalSucceeded := 0
 	totalFailed := 0
@@ -38,7 +41,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 			}
 			reporter = ui.NewSpinnerReporter(uniqueStrings(names), "Applying", "Applied", "(repo)")
 		}
-		allRepoResults = eng.repo.Apply(result.RepoChanges, result.TargetRepos, reporter)
+		allRepoResults = eng.repo.Apply(ctx, result.RepoChanges, result.TargetRepos, reporter)
 		s, f := repository.CountApplyResults(allRepoResults)
 		totalSucceeded += s
 		totalFailed += f
@@ -74,7 +77,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 				}
 				fileReporter = ui.NewSpinnerReporter(uniqueStrings(targets), "Applying", "Applied", "(files)")
 			}
-			results := eng.file.Apply(fsChanges, applyOpts, fileReporter)
+			results := eng.file.Apply(ctx, fsChanges, applyOpts, fileReporter)
 			allFileResults = append(allFileResults, results...)
 			for _, r := range results {
 				if r.Err != nil {

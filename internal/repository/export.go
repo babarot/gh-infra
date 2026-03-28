@@ -1,12 +1,14 @@
 package repository
 
 import (
+	"context"
+
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
 // ToManifest converts current state to a manifest Repository for export (import command).
 // If resolver is provided, numeric IDs are reverse-resolved to human-readable names.
-func ToManifest(r *CurrentState, resolver *manifest.Resolver) *manifest.Repository {
+func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolver) *manifest.Repository {
 	repo := &manifest.Repository{
 		APIVersion: manifest.APIVersion,
 		Kind:       manifest.KindRepository,
@@ -76,7 +78,7 @@ func ToManifest(r *CurrentState, resolver *manifest.Resolver) *manifest.Reposito
 		}
 		for _, ba := range rs.BypassActors {
 			if resolver != nil {
-				mrs.BypassActors = append(mrs.BypassActors, resolver.ReverseBypassActor(ba.ActorID, ba.ActorType, ba.BypassMode, r.Name))
+				mrs.BypassActors = append(mrs.BypassActors, resolver.ReverseBypassActor(ctx, ba.ActorID, ba.ActorType, ba.BypassMode, r.Name))
 			} else {
 				// Fallback: use role name for known IDs, raw format otherwise
 				mrs.BypassActors = append(mrs.BypassActors, manifest.RulesetBypassActor{
@@ -108,7 +110,7 @@ func ToManifest(r *CurrentState, resolver *manifest.Resolver) *manifest.Reposito
 			}
 			for _, c := range rs.Rules.RequiredStatusChecks.Contexts {
 				if resolver != nil {
-					sc.Contexts = append(sc.Contexts, resolver.ReverseStatusCheck(c.Context, c.IntegrationID, r.Name))
+					sc.Contexts = append(sc.Contexts, resolver.ReverseStatusCheck(ctx, c.Context, c.IntegrationID, r.Name))
 				} else {
 					sc.Contexts = append(sc.Contexts, manifest.RulesetStatusCheck{Context: c.Context})
 				}

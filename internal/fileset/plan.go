@@ -1,6 +1,7 @@
 package fileset
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -60,7 +61,7 @@ func planTaskKey(fullName string) string {
 
 // Plan computes changes for all FileSets concurrently.
 // If filterRepo is non-empty, only targets matching that repo are processed.
-func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracker *ui.RefreshTracker) ([]Change, error) {
+func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filterRepo string, tracker *ui.RefreshTracker) ([]Change, error) {
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {
@@ -85,7 +86,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 		changes []Change
 		err     error
 	}
-	results := parallel.Map(units, 0, func(i int, u planUnit) unitResult {
+	results := parallel.Map(ctx, units, 0, func(ctx context.Context, i int, u planUnit) unitResult {
 		fullName := u.fullName()
 		displayName := planTaskKey(fullName)
 		var out []Change
@@ -122,11 +123,11 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 			}
 			// create_only: create if missing, skip entirely if exists
 			if file.Reconcile == manifest.ReconcileCreateOnly {
-				change := p.planCreateOnly(u.fileSetName, fullName, file)
+				change := p.planCreateOnly(ctx, u.fileSetName, fullName, file)
 				out = append(out, change)
 				continue
 			}
-			change := p.planFile(u.fileSetName, fullName, file)
+			change := p.planFile(ctx, u.fileSetName, fullName, file)
 			out = append(out, change)
 		}
 		// Mirror mode: detect orphaned files in target repo
@@ -141,7 +142,7 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 			}
 		}
 		for dirScope := range mirrorDirs {
-			repoFiles, err := p.fetchDirectoryContents(fullName, dirScope)
+			repoFiles, err := p.fetchDirectoryContents(ctx, fullName, dirScope)
 			if err != nil {
 				// Directory doesn't exist in repo yet — nothing to delete
 				continue
@@ -179,8 +180,8 @@ func (p *Processor) Plan(fileSets []*manifest.FileSet, filterRepo string, tracke
 }
 
 // planCreateOnly handles sync_mode: create_only — create if missing, NoOp if exists.
-func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileEntry) Change {
-	current, err := p.fetchFileContent(repo, file.Path)
+func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) Change {
+	current, err := p.fetchFileContent(ctx, repo, file.Path)
 	if err != nil || !current.Exists {
 		return Change{
 			FileSetOwner: fileSetName,
@@ -198,8 +199,8 @@ func (p *Processor) planCreateOnly(fileSetName, repo string, file manifest.FileE
 	}
 }
 
-func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) Change {
-	current, err := p.fetchFileContent(repo, file.Path)
+func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) Change {
+	current, err := p.fetchFileContent(ctx, repo, file.Path)
 	if err != nil || !current.Exists {
 		return Change{
 			FileSetOwner: fileSetName,
@@ -235,8 +236,8 @@ func (p *Processor) planFile(fileSetName, repo string, file manifest.FileEntry) 
 	}
 }
 
-func (p *Processor) fetchFileContent(repo, path string) (*State, error) {
-	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/contents/%s", repo, path))
+func (p *Processor) fetchFileContent(ctx context.Context, repo, path string) (*State, error) {
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/contents/%s", repo, path))
 	if err != nil {
 		return &State{Path: path, Exists: false}, err
 	}
@@ -268,8 +269,8 @@ func (p *Processor) fetchFileContent(repo, path string) (*State, error) {
 }
 
 // fetchDirectoryContents returns all file paths under a directory in a repo (recursively).
-func (p *Processor) fetchDirectoryContents(repo, dirPath string) ([]string, error) {
-	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/contents/%s", repo, dirPath))
+func (p *Processor) fetchDirectoryContents(ctx context.Context, repo, dirPath string) ([]string, error) {
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/contents/%s", repo, dirPath))
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +288,7 @@ func (p *Processor) fetchDirectoryContents(repo, dirPath string) ([]string, erro
 		if item.Type == "file" {
 			files = append(files, item.Path)
 		} else if item.Type == "dir" {
-			subFiles, err := p.fetchDirectoryContents(repo, item.Path)
+			subFiles, err := p.fetchDirectoryContents(ctx, repo, item.Path)
 			if err != nil {
 				continue
 			}

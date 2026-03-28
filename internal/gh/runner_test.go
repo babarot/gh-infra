@@ -1,6 +1,7 @@
 package gh
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestNewRunner(t *testing.T) {
 
 func TestGHRunner_DryRun(t *testing.T) {
 	r := NewRunner(true)
-	out, err := r.Run("repo", "list")
+	out, err := r.Run(context.Background(), "repo", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

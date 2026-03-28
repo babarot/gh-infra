@@ -2,6 +2,7 @@ package gh
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -20,7 +21,7 @@ const (
 
 // Runner abstracts gh command execution for testability.
 type Runner interface {
-	Run(args ...string) ([]byte, error)
+	Run(ctx context.Context, args ...string) ([]byte, error)
 }
 
 // GHRunner executes gh commands as subprocesses with automatic retry.
@@ -36,7 +37,7 @@ func NewRunner(dryRun bool) *GHRunner {
 	}
 }
 
-func (r *GHRunner) Run(args ...string) ([]byte, error) {
+func (r *GHRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
 	cmdStr := "gh " + strings.Join(args, " ")
 
 	if r.DryRun {
@@ -46,12 +47,13 @@ func (r *GHRunner) Run(args ...string) ([]byte, error) {
 
 	out, err := retry.DoWithData(
 		func() ([]byte, error) {
-			return r.exec(args, cmdStr)
+			return r.exec(ctx, args, cmdStr)
 		},
 		retry.Attempts(r.MaxRetries),
 		retry.Delay(defaultRetryDelay),
 		retry.DelayType(retry.BackOffDelay),
 		retry.RetryIf(isRetryable),
+		retry.Context(ctx),
 		retry.OnRetry(func(n uint, err error) {
 			logger.Warn("retrying", "attempt", n+1, "cmd", cmdStr, "err", err)
 		}),
@@ -68,10 +70,10 @@ func (r *GHRunner) Run(args ...string) ([]byte, error) {
 	return out, err
 }
 
-func (r *GHRunner) exec(args []string, cmdStr string) ([]byte, error) {
+func (r *GHRunner) exec(ctx context.Context, args []string, cmdStr string) ([]byte, error) {
 	logger.Debug("exec", "cmd", cmdStr)
 
-	cmd := exec.Command("gh", args...)
+	cmd := exec.CommandContext(ctx, "gh", args...)
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf

@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"context"
 	"fmt"
 
 	goyaml "github.com/goccy/go-yaml"
@@ -74,15 +75,30 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 	}
 	tracker := ui.RunRefresh(tasks)
 
+	// Create a cancellable context; cancel when the spinner is interrupted via Ctrl+C.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		ch := tracker.Cancelled()
+		if ch == nil {
+			return
+		}
+		select {
+		case <-ch:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
 	// Fetch all repos in parallel
 	type fetchResult struct {
 		data []byte
 		err  error
 	}
-	results := parallel.Map(targets, defaultImportParallel, func(_ int, t ImportTarget) fetchResult {
+	results := parallel.Map(ctx, targets, defaultImportParallel, func(ctx context.Context, _ int, t ImportTarget) fetchResult {
 		fullName := t.FullName()
 		key := "Importing " + fullName
-		current, err := eng.repo.FetchRepository(t.Owner, t.Name)
+		current, err := eng.repo.FetchRepository(ctx, t.Owner, t.Name)
 		if err != nil {
 			tracker.Fail(key)
 			return fetchResult{err: err}
@@ -91,7 +107,7 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 			tracker.Fail(key)
 			return fetchResult{err: fmt.Errorf("repository %s not found on GitHub", fullName)}
 		}
-		m := repository.ToManifest(current, resolver)
+		m := repository.ToManifest(ctx, current, resolver)
 		data, err := goyaml.Marshal(m)
 		if err != nil {
 			tracker.Fail(key)
@@ -101,6 +117,10 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 		return fetchResult{data: data, err: err}
 	})
 	tracker.Wait()
+
+	if ctx.Err() != nil {
+		return nil, context.Canceled
+	}
 
 	// Collect results
 	importResult := &ImportResult{

@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -89,6 +90,21 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	allTasks = append(allTasks, fileset.PlanTargetNames(parsed.FileSets, opts.FilterRepo)...)
 	tracker := ui.RunRefresh(allTasks)
 
+	// Create a cancellable context; cancel when the spinner is interrupted via Ctrl+C.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		ch := tracker.Cancelled()
+		if ch == nil {
+			return
+		}
+		select {
+		case <-ch:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
 	var fileChanges []fileset.Change
@@ -98,7 +114,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	if len(parsed.Repositories) > 0 {
 		g.Go(func() error {
 			var fetchErr error
-			repoChanges, targetRepos, fetchErr = eng.repo.Plan(parsed.Repositories, repository.PlanOptions{
+			repoChanges, targetRepos, fetchErr = eng.repo.Plan(ctx, parsed.Repositories, repository.PlanOptions{
 				FilterRepo:   opts.FilterRepo,
 				ForceSecrets: opts.ForceSecrets,
 			}, tracker)
@@ -109,16 +125,23 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	if len(parsed.FileSets) > 0 {
 		g.Go(func() error {
 			var planErr error
-			fileChanges, planErr = eng.file.Plan(parsed.FileSets, opts.FilterRepo, tracker)
+			fileChanges, planErr = eng.file.Plan(ctx, parsed.FileSets, opts.FilterRepo, tracker)
 			return planErr
 		})
 	}
 
 	if err := g.Wait(); err != nil {
 		tracker.Wait()
+		if ctx.Err() != nil {
+			return nil, context.Canceled
+		}
 		return nil, err
 	}
 	tracker.Wait()
+
+	if ctx.Err() != nil {
+		return nil, context.Canceled
+	}
 
 	hasRepo := repository.HasChanges(repoChanges)
 	hasFile := fileset.HasChanges(fileChanges)

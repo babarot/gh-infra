@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -39,7 +40,9 @@ func NewRootCmd(version, revision string) *cobra.Command {
 
 			// Wire up gh runner for GitHub source resolution
 			runner := gh.NewRunner(false)
-			manifest.DefaultResolver.RunGH = runner.Run
+			manifest.DefaultResolver.RunGH = func(ctx context.Context, args ...string) ([]byte, error) {
+				return runner.Run(ctx, args...)
+			}
 		},
 	}
 

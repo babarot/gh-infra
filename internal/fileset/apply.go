@@ -1,6 +1,7 @@
 package fileset
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -22,7 +23,7 @@ const defaultApplyParallel = 5
 
 // Apply executes the planned file changes using Git Data API.
 // Changes are grouped by target repo and applied in parallel across repos.
-func (p *Processor) Apply(changes []Change, opts ApplyOptions, reporter ui.ProgressReporter) []ApplyResult {
+func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptions, reporter ui.ProgressReporter) []ApplyResult {
 	grouped := groupChangesByTarget(changes)
 
 	// Build ordered repo list for deterministic output
@@ -40,7 +41,7 @@ func (p *Processor) Apply(changes []Change, opts ApplyOptions, reporter ui.Progr
 	}
 
 	// Apply repos in parallel
-	allResults := parallel.Map(repoList, defaultApplyParallel, func(_ int, entry repoEntry) []ApplyResult {
+	allResults := parallel.Map(ctx, repoList, defaultApplyParallel, func(ctx context.Context, _ int, entry repoEntry) []ApplyResult {
 		var results []ApplyResult
 		var filesToApply []Change
 		for _, c := range entry.changes {
@@ -64,7 +65,7 @@ func (p *Processor) Apply(changes []Change, opts ApplyOptions, reporter ui.Progr
 		reporter.Start(entry.name, paths)
 
 		start := time.Now()
-		prURL, err := p.applyToRepo(entry.name, filesToApply, opts)
+		prURL, err := p.applyToRepo(ctx, entry.name, filesToApply, opts)
 		elapsed := time.Since(start)
 
 		for _, c := range filesToApply {

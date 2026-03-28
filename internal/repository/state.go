@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,8 +28,8 @@ func NewProcessor(runner gh.Runner, resolver *manifest.Resolver, printer ui.Prin
 // FetchRepository fetches the current state of a single repository.
 // If the repository does not exist (404), it returns an empty CurrentState with IsNew=true.
 // Sub-fetches (branch protection, secrets, variables) run in parallel.
-func (p *Processor) FetchRepository(owner, name string) (*CurrentState, error) {
-	repo, err := p.fetchRepoSettings(owner, name)
+func (p *Processor) FetchRepository(ctx context.Context, owner, name string) (*CurrentState, error) {
+	repo, err := p.fetchRepoSettings(ctx, owner, name)
 	if err != nil {
 		if errors.Is(err, gh.ErrNotFound) {
 			return &CurrentState{Owner: owner, Name: name, IsNew: true}, nil
@@ -43,36 +44,36 @@ func (p *Processor) FetchRepository(owner, name string) (*CurrentState, error) {
 		vars     map[string]string
 	)
 
-	g := new(errgroup.Group)
+	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		var err error
-		bp, err = p.fetchBranchProtection(owner, name)
+		bp, err = p.fetchBranchProtection(ctx, owner, name)
 		return err
 	})
 
 	g.Go(func() error {
 		var err error
-		rulesets, err = p.fetchRulesets(owner, name)
+		rulesets, err = p.fetchRulesets(ctx, owner, name)
 		return err
 	})
 
 	g.Go(func() error {
 		var err error
-		secrets, err = p.fetchSecrets(owner, name)
+		secrets, err = p.fetchSecrets(ctx, owner, name)
 		return err
 	})
 
 	g.Go(func() error {
 		var err error
-		vars, err = p.fetchVariables(owner, name)
+		vars, err = p.fetchVariables(ctx, owner, name)
 		return err
 	})
 
 	var actions CurrentActions
 	g.Go(func() error {
 		var err error
-		actions, err = p.fetchActionsSettings(owner, name)
+		actions, err = p.fetchActionsSettings(ctx, owner, name)
 		return err
 	})
 
@@ -89,8 +90,8 @@ func (p *Processor) FetchRepository(owner, name string) (*CurrentState, error) {
 	return repo, nil
 }
 
-func (p *Processor) fetchRepoSettings(owner, name string) (*CurrentState, error) {
-	out, err := p.runner.Run(
+func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (*CurrentState, error) {
+	out, err := p.runner.Run(ctx,
 		"repo", "view", owner+"/"+name,
 		"--json", "description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef",
 	)
@@ -132,7 +133,7 @@ func (p *Processor) fetchRepoSettings(owner, name string) (*CurrentState, error)
 	}
 
 	// Fetch commit message settings via REST API (not available in gh repo view --json)
-	commitMsgSettings, _ := p.fetchCommitMessageSettings(owner, name)
+	commitMsgSettings, _ := p.fetchCommitMessageSettings(ctx, owner, name)
 
 	return &CurrentState{
 		Owner:       owner,
@@ -168,8 +169,8 @@ type commitMessageSettings struct {
 	SquashMergeCommitMessage string
 }
 
-func (p *Processor) fetchCommitMessageSettings(owner, name string) (commitMessageSettings, error) {
-	out, err := p.runner.Run(
+func (p *Processor) fetchCommitMessageSettings(ctx context.Context, owner, name string) (commitMessageSettings, error) {
+	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s", owner, name),
 		"--jq", "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}",
 	)
@@ -195,9 +196,9 @@ func (p *Processor) fetchCommitMessageSettings(owner, name string) (commitMessag
 	}, nil
 }
 
-func (p *Processor) fetchBranchProtection(owner, name string) (map[string]*CurrentBranchProtection, error) {
+func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string) (map[string]*CurrentBranchProtection, error) {
 	// First get the default branch to check protection
-	out, err := p.runner.Run(
+	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s/branches", owner, name),
 		"--jq", `[.[] | select(.protected == true) | .name]`,
 	)
@@ -212,7 +213,7 @@ func (p *Processor) fetchBranchProtection(owner, name string) (map[string]*Curre
 
 	result := make(map[string]*CurrentBranchProtection)
 	for _, branch := range protectedBranches {
-		bp, err := p.fetchBranchProtectionRule(owner, name, branch)
+		bp, err := p.fetchBranchProtectionRule(ctx, owner, name, branch)
 		if err != nil {
 			continue // skip branches we can't read
 		}
@@ -223,8 +224,8 @@ func (p *Processor) fetchBranchProtection(owner, name string) (map[string]*Curre
 	return result, nil
 }
 
-func (p *Processor) fetchBranchProtectionRule(owner, name, branch string) (*CurrentBranchProtection, error) {
-	out, err := p.runner.Run(
+func (p *Processor) fetchBranchProtectionRule(ctx context.Context, owner, name, branch string) (*CurrentBranchProtection, error) {
+	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, branch),
 	)
 	if err != nil {
@@ -283,8 +284,8 @@ func (p *Processor) fetchBranchProtectionRule(owner, name, branch string) (*Curr
 	return bp, nil
 }
 
-func (p *Processor) fetchRulesets(owner, name string) (map[string]*CurrentRuleset, error) {
-	out, err := p.runner.Run(
+func (p *Processor) fetchRulesets(ctx context.Context, owner, name string) (map[string]*CurrentRuleset, error) {
+	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s/rulesets", owner, name),
 		"--paginate",
 	)
@@ -312,7 +313,7 @@ func (p *Processor) fetchRulesets(owner, name string) (map[string]*CurrentRulese
 		if item.SourceType == "Organization" || item.SourceType == "Enterprise" {
 			continue
 		}
-		rs, err := p.fetchRuleset(owner, name, item.ID)
+		rs, err := p.fetchRuleset(ctx, owner, name, item.ID)
 		if err != nil {
 			continue // skip inaccessible individual rulesets
 		}
@@ -321,8 +322,8 @@ func (p *Processor) fetchRulesets(owner, name string) (map[string]*CurrentRulese
 	return result, nil
 }
 
-func (p *Processor) fetchRuleset(owner, name string, id int) (*CurrentRuleset, error) {
-	out, err := p.runner.Run(
+func (p *Processor) fetchRuleset(ctx context.Context, owner, name string, id int) (*CurrentRuleset, error) {
+	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s/rulesets/%d", owner, name, id),
 	)
 	if err != nil {
@@ -439,8 +440,8 @@ func (p *Processor) fetchRuleset(owner, name string, id int) (*CurrentRuleset, e
 	return rs, nil
 }
 
-func (p *Processor) fetchSecrets(owner, name string) ([]string, error) {
-	out, err := p.runner.Run(
+func (p *Processor) fetchSecrets(ctx context.Context, owner, name string) ([]string, error) {
+	out, err := p.runner.Run(ctx,
 		"secret", "list",
 		"--repo", owner+"/"+name,
 		"--json", "name",
@@ -457,8 +458,8 @@ func (p *Processor) fetchSecrets(owner, name string) ([]string, error) {
 	return strings.Split(raw, "\n"), nil
 }
 
-func (p *Processor) fetchVariables(owner, name string) (map[string]string, error) {
-	out, err := p.runner.Run(
+func (p *Processor) fetchVariables(ctx context.Context, owner, name string) (map[string]string, error) {
+	out, err := p.runner.Run(ctx,
 		"variable", "list",
 		"--repo", owner+"/"+name,
 		"--json", "name,value",
@@ -482,12 +483,12 @@ func (p *Processor) fetchVariables(owner, name string) (map[string]string, error
 	return result, nil
 }
 
-func (p *Processor) fetchActionsSettings(owner, name string) (CurrentActions, error) {
+func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string) (CurrentActions, error) {
 	var result CurrentActions
 	fullName := fmt.Sprintf("repos/%s/%s", owner, name)
 
 	// 1. Actions permissions (enabled + allowed_actions)
-	out, err := p.runner.Run("api", fullName+"/actions/permissions")
+	out, err := p.runner.Run(ctx, "api", fullName+"/actions/permissions")
 	if err != nil {
 		if errors.Is(err, gh.ErrNotFound) {
 			return result, nil // Actions API not available for this repo
@@ -507,7 +508,7 @@ func (p *Processor) fetchActionsSettings(owner, name string) (CurrentActions, er
 	result.SHAPinningRequired = perms.SHAPinningRequired
 
 	// 2. Workflow permissions (GITHUB_TOKEN defaults)
-	out, err = p.runner.Run("api", fullName+"/actions/permissions/workflow")
+	out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/workflow")
 	if err != nil && !errors.Is(err, gh.ErrNotFound) {
 		return result, fmt.Errorf("fetch actions workflow permissions for %s/%s: %w", owner, name, err)
 	}
@@ -524,7 +525,7 @@ func (p *Processor) fetchActionsSettings(owner, name string) (CurrentActions, er
 
 	// 3. Selected actions (only when allowed_actions == "selected")
 	if result.AllowedActions == "selected" {
-		out, err = p.runner.Run("api", fullName+"/actions/permissions/selected-actions")
+		out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/selected-actions")
 		if err != nil && !errors.Is(err, gh.ErrNotFound) {
 			return result, fmt.Errorf("fetch actions selected-actions for %s/%s: %w", owner, name, err)
 		}
@@ -545,7 +546,7 @@ func (p *Processor) fetchActionsSettings(owner, name string) (CurrentActions, er
 	}
 
 	// 4. Fork PR approval (may 404 on user-owned repos or 422 on private repos — ignore gracefully)
-	out, err = p.runner.Run("api", fullName+"/actions/permissions/fork-pr-contributor-approval")
+	out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/fork-pr-contributor-approval")
 	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrValidation) {
 		return result, fmt.Errorf("fetch actions fork-pr-approval for %s/%s: %w", owner, name, err)
 	}

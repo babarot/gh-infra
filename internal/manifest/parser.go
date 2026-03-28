@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -228,7 +229,7 @@ func parseFile(data []byte, path string) (*FileSet, []string, error) {
 
 	// Resolve source references (local files, directories, GitHub URLs)
 	resolver := DefaultResolver
-	resolved, err := resolver.ResolveFiles(fs.Spec.Files, filepath.Dir(path))
+	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -255,7 +256,7 @@ func parseFileSet(data []byte, path string) (*FileSet, []string, error) {
 
 	// Resolve source references (local files, directories, GitHub URLs)
 	resolver := DefaultResolver
-	resolved, err := resolver.ResolveFiles(fs.Spec.Files, filepath.Dir(path))
+	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}

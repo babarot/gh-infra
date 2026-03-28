@@ -2,6 +2,7 @@ package fileset
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -66,7 +67,7 @@ func TestPlan_NewFile(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
-	changes, _ := p.Plan(fileSets, "", nil)
+	changes, _ := p.Plan(context.Background(), fileSets, "", nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -91,7 +92,7 @@ func TestPlan_NoChange(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "name: CI"},
 	})
 
-	changes, _ := p.Plan(fileSets, "", nil)
+	changes, _ := p.Plan(context.Background(), fileSets, "", nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -113,7 +114,7 @@ func TestPlan_ContentDiffers(t *testing.T) {
 		{Path: ".github/ci.yml", Content: "new content"},
 	})
 
-	changes, _ := p.Plan(fileSets, "", nil)
+	changes, _ := p.Plan(context.Background(), fileSets, "", nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -139,7 +140,7 @@ func TestPlan_CreateOnly_FileNotExists(t *testing.T) {
 		{Path: "VERSION", Content: "0.1.0", Reconcile: manifest.ReconcileCreateOnly},
 	})
 
-	changes, _ := p.Plan(fileSets, "", nil)
+	changes, _ := p.Plan(context.Background(), fileSets, "", nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -161,7 +162,7 @@ func TestPlan_CreateOnly_FileExists(t *testing.T) {
 		{Path: "VERSION", Content: "0.1.0", Reconcile: manifest.ReconcileCreateOnly},
 	})
 
-	changes, _ := p.Plan(fileSets, "", nil)
+	changes, _ := p.Plan(context.Background(), fileSets, "", nil)
 
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
@@ -186,7 +187,7 @@ func TestPlan_MultipleFilesDiffer(t *testing.T) {
 		{Path: "b.txt", Content: "new b"},
 	})
 
-	changes, err := p.Plan(fileSets, "", nil)
+	changes, err := p.Plan(context.Background(), fileSets, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -213,7 +214,7 @@ type WildcardMockRunner struct {
 	DefaultResponse []byte
 }
 
-func (m *WildcardMockRunner) Run(args ...string) ([]byte, error) {
+func (m *WildcardMockRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 	key := strings.Join(args, " ")
 	m.Called = append(m.Called, args)
 	if err, ok := m.Errors[key]; ok {
@@ -258,7 +259,7 @@ func TestApply_CreateFile(t *testing.T) {
 		},
 	}
 
-	results := p.Apply(changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -291,7 +292,7 @@ func TestApply_UpdateFile(t *testing.T) {
 		},
 	}
 
-	results := p.Apply(changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -321,7 +322,7 @@ func TestApply_NoOpNotApplied(t *testing.T) {
 		{Type: ChangeNoOp, Target: "owner/repo", Path: "b.txt"},
 	}
 
-	results := p.Apply(changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for noop, got %d", len(results))
@@ -456,7 +457,7 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 		},
 	}
 
-	changes, err := p.Plan(fileSets, "", nil)
+	changes, err := p.Plan(context.Background(), fileSets, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -511,7 +512,7 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 		},
 	}
 
-	changes, err := p.Plan(fileSets, "", nil)
+	changes, err := p.Plan(context.Background(), fileSets, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

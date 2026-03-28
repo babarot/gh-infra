@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/babarot/gh-infra/internal/logger"
@@ -42,7 +43,7 @@ func planTaskKey(fullName string) string {
 }
 
 // Plan fetches current state for all repositories, computes diffs, and returns changes.
-func (p *Processor) Plan(repos []*manifest.Repository, opts PlanOptions, tracker *ui.RefreshTracker) ([]Change, []*manifest.Repository, error) {
+func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts PlanOptions, tracker *ui.RefreshTracker) ([]Change, []*manifest.Repository, error) {
 	var targets []*manifest.Repository
 	for _, repo := range repos {
 		if opts.FilterRepo != "" && repo.Metadata.FullName() != opts.FilterRepo {
@@ -60,16 +61,16 @@ func (p *Processor) Plan(repos []*manifest.Repository, opts PlanOptions, tracker
 
 	diffOpts := DiffOptions{ForceSecrets: opts.ForceSecrets, Resolver: p.resolver}
 
-	results := parallel.Map(targets, defaultParallel, func(idx int, r *manifest.Repository) repoResult {
+	results := parallel.Map(ctx, targets, defaultParallel, func(ctx context.Context, idx int, r *manifest.Repository) repoResult {
 		logger.Debug("fetch start", "repo", r.Metadata.FullName())
-		current, err := p.FetchRepository(r.Metadata.Owner, r.Metadata.Name)
+		current, err := p.FetchRepository(ctx, r.Metadata.Owner, r.Metadata.Name)
 		if err != nil {
 			logger.Error("fetch failed", "repo", r.Metadata.FullName(), "err", err)
 			tracker.Error(planTaskKey(r.Metadata.FullName()), err)
 			return repoResult{index: idx, repo: r, err: err}
 		}
 
-		changes := Diff(r, current, diffOpts)
+		changes := Diff(ctx, r, current, diffOpts)
 		logger.Debug("diff done", "repo", r.Metadata.FullName(), "changes", len(changes))
 		tracker.Done(planTaskKey(r.Metadata.FullName()))
 		return repoResult{index: idx, repo: r, changes: changes}

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -33,7 +34,7 @@ func TestDiff_Noop(t *testing.T) {
 	desired := baseDesired()
 	current := baseState()
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	if len(changes) != 0 {
 		t.Errorf("expected no changes, got %d: %v", len(changes), changes)
 	}
@@ -800,7 +801,7 @@ func TestDiff_FullIntegration(t *testing.T) {
 		c.Visibility = "public"
 		c.Features.Issues = true
 
-		changes := Diff(d, c)
+		changes := Diff(context.Background(), d, c)
 
 		// description + visibility + issues + branch protection (create) + secret (create) + variable (create)
 		if len(changes) != 6 {
@@ -971,7 +972,7 @@ func TestDiff_Rulesets_Create(t *testing.T) {
 	}
 	current := baseState()
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 	}
@@ -1018,7 +1019,7 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	if len(changes) != 0 {
 		t.Errorf("expected no changes, got %d: %v", len(changes), changes)
 	}
@@ -1040,7 +1041,7 @@ func TestDiff_Rulesets_UpdateEnforcement(t *testing.T) {
 		Enforcement: "active",
 	}
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	fields := collectChildFields(changes)
 	if !fields["enforcement"] {
 		t.Error("expected enforcement change, not found")
@@ -1079,7 +1080,7 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	fields := collectChildFields(changes)
 	if !fields["rules.non_fast_forward"] {
 		t.Error("expected rules.non_fast_forward change")
@@ -1117,7 +1118,7 @@ func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	fields := collectChildFields(changes)
 	if !fields["rules.pull_request.required_approving_review_count"] {
 		t.Error("expected review count change")
@@ -1156,7 +1157,7 @@ func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+	changes := Diff(context.Background(), desired, current, DiffOptions{Resolver: resolver})
 
 	fields := collectChildFields(changes)
 	if fields["bypass_actors"] {
@@ -1192,7 +1193,7 @@ func TestDiff_Rulesets_BypassActorsChanged(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+	changes := Diff(context.Background(), desired, current, DiffOptions{Resolver: resolver})
 
 	fields := collectChildFields(changes)
 	if !fields["bypass_actors"] {
@@ -1238,7 +1239,7 @@ func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+	changes := Diff(context.Background(), desired, current, DiffOptions{Resolver: resolver})
 
 	fields := collectChildFields(changes)
 	if fields["rules.required_status_checks.contexts"] {
@@ -1280,7 +1281,7 @@ func TestDiff_Rulesets_StatusChecksNoApp(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+	changes := Diff(context.Background(), desired, current, DiffOptions{Resolver: resolver})
 
 	fields := collectChildFields(changes)
 	if fields["rules.required_status_checks.contexts"] {
@@ -1327,7 +1328,7 @@ func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
 		},
 	}
 
-	changes := Diff(desired, current, DiffOptions{Resolver: resolver})
+	changes := Diff(context.Background(), desired, current, DiffOptions{Resolver: resolver})
 
 	fields := collectChildFields(changes)
 	if !fields["rules.required_status_checks.contexts"] {
@@ -1340,7 +1341,7 @@ func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
 func TestDiffActions_NoSpec(t *testing.T) {
 	desired := baseDesired()
 	current := baseState()
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	for _, c := range changes {
 		if c.Resource == manifest.ResourceActions {
 			t.Fatal("expected no actions changes when spec.actions is nil")
@@ -1363,7 +1364,7 @@ func TestDiffActions_NoChange(t *testing.T) {
 		SHAPinningRequired:  true,
 		WorkflowPermissions: "read",
 	}
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 	for _, c := range changes {
 		if c.Resource == manifest.ResourceActions {
 			t.Fatal("expected no actions changes when state matches desired")
@@ -1396,7 +1397,7 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 		ForkPRApproval:         "first_time_contributors",
 	}
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 
 	var actionsChange *Change
 	for i := range changes {
@@ -1447,7 +1448,7 @@ func TestDiffActions_ChildOrder(t *testing.T) {
 		AllowedActions: "all",
 	}
 
-	changes := Diff(desired, current)
+	changes := Diff(context.Background(), desired, current)
 
 	var actionsChange *Change
 	for i := range changes {

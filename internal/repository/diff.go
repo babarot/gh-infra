@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -74,7 +75,7 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 
 // Diff compares desired state with current state and returns changes.
 // If the repository does not exist (current.IsNew), a single ChangeCreate is returned.
-func Diff(desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
+func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
 	var opt DiffOptions
 	if len(opts) > 0 {
 		opt = opts[0]
@@ -97,7 +98,7 @@ func Diff(desired *manifest.Repository, current *CurrentState, opts ...DiffOptio
 	changes = append(changes, diffFeatures(name, desired, current)...)
 	changes = append(changes, diffMergeStrategy(name, desired, current)...)
 	changes = append(changes, diffBranchProtection(name, desired, current)...)
-	changes = append(changes, diffRulesets(name, desired, current, opt.Resolver)...)
+	changes = append(changes, diffRulesets(ctx, name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
@@ -251,7 +252,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 	return changes
 }
 
-func diffRulesets(name string, desired *manifest.Repository, current *CurrentState, resolver *manifest.Resolver) []Change {
+func diffRulesets(ctx context.Context, name string, desired *manifest.Repository, current *CurrentState, resolver *manifest.Resolver) []Change {
 	var changes []Change
 
 	for _, drs := range desired.Spec.Rulesets {
@@ -306,7 +307,7 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 		appendChildChanged(&fieldChanges, "target", drs.Target, crs.Target)
 
 		// bypass_actors
-		if !rulesetBypassActorsEqual(drs.BypassActors, crs.BypassActors, resolver) {
+		if !rulesetBypassActorsEqual(ctx, drs.BypassActors, crs.BypassActors, resolver) {
 			fieldChanges = append(fieldChanges, Change{
 				Type: ChangeUpdate, Field: "bypass_actors",
 				OldValue: fmt.Sprintf("%d actors", len(crs.BypassActors)),
@@ -373,7 +374,7 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 						OldValue: csc.StrictRequiredStatusChecksPolicy, NewValue: *sc.StrictRequiredStatusChecksPolicy,
 					})
 				}
-				if !rulesetStatusChecksEqual(sc.Contexts, csc.Contexts, resolver) {
+				if !rulesetStatusChecksEqual(ctx, sc.Contexts, csc.Contexts, resolver) {
 					fieldChanges = append(fieldChanges, Change{
 						Type: ChangeUpdate, Field: "rules.required_status_checks.contexts",
 						OldValue: statusCheckContexts(csc.Contexts), NewValue: desiredStatusCheckContexts(sc.Contexts),
@@ -397,13 +398,13 @@ func diffRulesets(name string, desired *manifest.Repository, current *CurrentSta
 	return changes
 }
 
-func rulesetBypassActorsEqual(desired []manifest.RulesetBypassActor, current []CurrentRulesetBypassActor, resolver *manifest.Resolver) bool {
+func rulesetBypassActorsEqual(ctx context.Context, desired []manifest.RulesetBypassActor, current []CurrentRulesetBypassActor, resolver *manifest.Resolver) bool {
 	if len(desired) != len(current) {
 		return false
 	}
 	dm := make(map[string]bool)
 	if resolver != nil {
-		resolved, err := resolver.ResolveBypassActors(desired)
+		resolved, err := resolver.ResolveBypassActors(ctx, desired)
 		if err != nil {
 			return false
 		}
@@ -453,13 +454,13 @@ func formatConditions(include, exclude []string) string {
 	return fmt.Sprintf("include:%v exclude:%v", include, exclude)
 }
 
-func rulesetStatusChecksEqual(desired []manifest.RulesetStatusCheck, current []CurrentRulesetStatusCheck, resolver *manifest.Resolver) bool {
+func rulesetStatusChecksEqual(ctx context.Context, desired []manifest.RulesetStatusCheck, current []CurrentRulesetStatusCheck, resolver *manifest.Resolver) bool {
 	if len(desired) != len(current) {
 		return false
 	}
 	dm := make(map[string]bool)
 	if resolver != nil {
-		resolved, err := resolver.ResolveStatusChecks(desired)
+		resolved, err := resolver.ResolveStatusChecks(ctx, desired)
 		if err != nil {
 			return false
 		}

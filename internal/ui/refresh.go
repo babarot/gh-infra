@@ -240,14 +240,6 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 		// https://github.com/charmbracelet/bubbletea/issues/1590
 		drainStdinAfterBubbletea()
 
-		// If Ctrl+C was pressed, exit immediately. Background goroutines
-		// (gh CLI calls in parallel.Map) cannot be cancelled and would
-		// keep the process alive indefinitely.
-		select {
-		case <-cancelled:
-			os.Exit(130)
-		default:
-		}
 	}()
 
 	return tracker

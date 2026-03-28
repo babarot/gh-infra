@@ -1,6 +1,9 @@
 package gh
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // MockRunner is a test double for Runner.
 type MockRunner struct {
@@ -9,7 +12,7 @@ type MockRunner struct {
 	Called    [][]string
 }
 
-func (m *MockRunner) Run(args ...string) ([]byte, error) {
+func (m *MockRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 	key := strings.Join(args, " ")
 	m.Called = append(m.Called, args)
 	if err, ok := m.Errors[key]; ok {

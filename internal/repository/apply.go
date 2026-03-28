@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,7 @@ const defaultApplyParallel = 5
 // Apply executes all changes in the plan result.
 // Changes are grouped by repo and applied in parallel across repos.
 // Within a single repo, changes are applied sequentially to maintain ordering.
-func (p *Processor) Apply(changes []Change, repos []*manifest.Repository, reporter ui.ProgressReporter) []ApplyResult {
+func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manifest.Repository, reporter ui.ProgressReporter) []ApplyResult {
 	repoMap := make(map[string]*manifest.Repository)
 	for _, r := range repos {
 		repoMap[r.Metadata.FullName()] = r
@@ -30,7 +31,7 @@ func (p *Processor) Apply(changes []Change, repos []*manifest.Repository, report
 	}
 
 	// Apply repo groups in parallel
-	allResults := parallel.Map(groups, defaultApplyParallel, func(_ int, g changeGroup) []ApplyResult {
+	allResults := parallel.Map(ctx, groups, defaultApplyParallel, func(ctx context.Context, _ int, g changeGroup) []ApplyResult {
 		fields := make([]string, 0, len(g.changes))
 		for _, c := range g.changes {
 			fields = append(fields, c.Field)
@@ -40,7 +41,7 @@ func (p *Processor) Apply(changes []Change, repos []*manifest.Repository, report
 		start := time.Now()
 		var results []ApplyResult
 		for _, c := range g.changes {
-			result := p.applyChange(c, repoMap[c.Name])
+			result := p.applyChange(ctx, c, repoMap[c.Name])
 			results = append(results, result)
 		}
 		elapsed := time.Since(start)
@@ -75,13 +76,13 @@ type ApplyResult struct {
 	Err    error
 }
 
-func (p *Processor) applyChange(c Change, repo *manifest.Repository) ApplyResult {
+func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Repository) ApplyResult {
 	// Generic: if this change has children, expand and apply each child.
 	if len(c.Children) > 0 {
 		for _, child := range c.Children {
 			child.Resource = c.Resource
 			child.Name = c.Name
-			if result := p.applyChange(child, repo); result.Err != nil {
+			if result := p.applyChange(ctx, child, repo); result.Err != nil {
 				return ApplyResult{Change: c, Err: result.Err}
 			}
 		}
@@ -92,19 +93,19 @@ func (p *Processor) applyChange(c Change, repo *manifest.Repository) ApplyResult
 
 	switch {
 	case c.Resource == manifest.ResourceRepository && c.Type == ChangeCreate && c.Field == "repository":
-		err = p.createRepo(repo)
+		err = p.createRepo(ctx, repo)
 	case c.Resource == manifest.ResourceRepository:
-		err = p.applyRepoSetting(c, repo)
+		err = p.applyRepoSetting(ctx, c, repo)
 	case strings.HasPrefix(c.Resource, manifest.ResourceBranchProtection):
-		err = p.applyBranchProtection(c, repo)
+		err = p.applyBranchProtection(ctx, c, repo)
 	case strings.HasPrefix(c.Resource, manifest.ResourceRuleset):
-		err = p.applyRuleset(c, repo)
+		err = p.applyRuleset(ctx, c, repo)
 	case c.Resource == manifest.ResourceSecret:
-		err = p.applySecret(c, repo)
+		err = p.applySecret(ctx, c, repo)
 	case c.Resource == manifest.ResourceVariable:
-		err = p.applyVariable(c, repo)
+		err = p.applyVariable(ctx, c, repo)
 	case c.Resource == manifest.ResourceActions:
-		err = p.applyActions(c, repo)
+		err = p.applyActions(ctx, c, repo)
 	default:
 		err = fmt.Errorf("unknown resource type: %s", c.Resource)
 	}
@@ -112,7 +113,7 @@ func (p *Processor) applyChange(c Change, repo *manifest.Repository) ApplyResult
 	return ApplyResult{Change: c, Err: err}
 }
 
-func (p *Processor) createRepo(repo *manifest.Repository) error {
+func (p *Processor) createRepo(ctx context.Context, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
@@ -141,16 +142,16 @@ func (p *Processor) createRepo(repo *manifest.Repository) error {
 		}
 	}
 
-	_, err := p.runner.Run(args...)
+	_, err := p.runner.Run(ctx, args...)
 	if err != nil {
 		return wrapError(err, fullName, "create")
 	}
 
 	// Apply remaining settings via gh repo edit
-	return p.applyAllSettings(repo)
+	return p.applyAllSettings(ctx, repo)
 }
 
-func (p *Processor) applyAllSettings(repo *manifest.Repository) error {
+func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
@@ -163,7 +164,7 @@ func (p *Processor) applyAllSettings(repo *manifest.Repository) error {
 		}
 		for flag, val := range featureFlags {
 			if val != nil {
-				if err := p.toggleFeature(fullName, flag, *val); err != nil {
+				if err := p.toggleFeature(ctx, fullName, flag, *val); err != nil {
 					return err
 				}
 			}
@@ -180,7 +181,7 @@ func (p *Processor) applyAllSettings(repo *manifest.Repository) error {
 		}
 		for flag, val := range mergeFlags {
 			if val != nil {
-				if err := p.toggleFeature(fullName, flag, *val); err != nil {
+				if err := p.toggleFeature(ctx, fullName, flag, *val); err != nil {
 					return err
 				}
 			}
@@ -195,7 +196,7 @@ func (p *Processor) applyAllSettings(repo *manifest.Repository) error {
 		}
 		for field, val := range commitFields {
 			if val != nil {
-				if err := p.updateRepoField(fullName, field, *val); err != nil {
+				if err := p.updateRepoField(ctx, fullName, field, *val); err != nil {
 					return err
 				}
 			}
@@ -204,33 +205,33 @@ func (p *Processor) applyAllSettings(repo *manifest.Repository) error {
 
 	// Homepage
 	if repo.Spec.Homepage != nil {
-		if _, err := p.runner.Run("repo", "edit", fullName, "--homepage", *repo.Spec.Homepage); err != nil {
+		if _, err := p.runner.Run(ctx, "repo", "edit", fullName, "--homepage", *repo.Spec.Homepage); err != nil {
 			return wrapError(err, fullName, "homepage")
 		}
 	}
 
 	// Topics
 	for _, t := range repo.Spec.Topics {
-		if _, err := p.runner.Run("repo", "edit", fullName, "--add-topic", t); err != nil {
+		if _, err := p.runner.Run(ctx, "repo", "edit", fullName, "--add-topic", t); err != nil {
 			return wrapError(err, fullName, "add-topic:"+t)
 		}
 	}
 
 	// Actions (permissions, workflow defaults, selected actions, fork PR)
 	if a := repo.Spec.Actions; a != nil && a.Enabled != nil {
-		if err := p.applyActionsPermissions(owner, name, a); err != nil {
+		if err := p.applyActionsPermissions(ctx, owner, name, a); err != nil {
 			return err
 		}
-		if err := p.applyActionsWorkflow(owner, name, a); err != nil {
+		if err := p.applyActionsWorkflow(ctx, owner, name, a); err != nil {
 			return err
 		}
 		if a.SelectedActions != nil {
-			if err := p.applyActionsSelectedActions(owner, name, a); err != nil {
+			if err := p.applyActionsSelectedActions(ctx, owner, name, a); err != nil {
 				return err
 			}
 		}
 		if a.ForkPRApproval != nil {
-			if err := p.applyActionsForkPR(owner, name, a); err != nil {
+			if err := p.applyActionsForkPR(ctx, owner, name, a); err != nil {
 				return err
 			}
 		}
@@ -239,22 +240,22 @@ func (p *Processor) applyAllSettings(repo *manifest.Repository) error {
 	return nil
 }
 
-func (p *Processor) applyRepoSetting(c Change, repo *manifest.Repository) error {
+func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
 
 	switch c.Field {
 	case "description":
-		_, err := p.runner.Run("repo", "edit", fullName, "--description", fmt.Sprintf("%v", c.NewValue))
+		_, err := p.runner.Run(ctx, "repo", "edit", fullName, "--description", fmt.Sprintf("%v", c.NewValue))
 		return wrapError(err, fullName, c.Field)
 
 	case "homepage":
-		_, err := p.runner.Run("repo", "edit", fullName, "--homepage", fmt.Sprintf("%v", c.NewValue))
+		_, err := p.runner.Run(ctx, "repo", "edit", fullName, "--homepage", fmt.Sprintf("%v", c.NewValue))
 		return wrapError(err, fullName, c.Field)
 
 	case "visibility":
-		_, err := p.runner.Run("repo", "edit", fullName, "--visibility", fmt.Sprintf("%v", c.NewValue))
+		_, err := p.runner.Run(ctx, "repo", "edit", fullName, "--visibility", fmt.Sprintf("%v", c.NewValue))
 		return wrapError(err, fullName, c.Field)
 
 	case "archived":
@@ -263,64 +264,64 @@ func (p *Processor) applyRepoSetting(c Change, repo *manifest.Repository) error 
 			return fmt.Errorf("unexpected type for archived: %T", c.NewValue)
 		}
 		if archived {
-			_, err := p.runner.Run("repo", "archive", fullName, "--yes")
+			_, err := p.runner.Run(ctx, "repo", "archive", fullName, "--yes")
 			return wrapError(err, fullName, c.Field)
 		}
-		_, err := p.runner.Run("repo", "unarchive", fullName, "--yes")
+		_, err := p.runner.Run(ctx, "repo", "unarchive", fullName, "--yes")
 		return wrapError(err, fullName, c.Field)
 
 	case "topics":
-		return p.applyTopics(fullName, repo)
+		return p.applyTopics(ctx, fullName, repo)
 
 	case "issues":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "enable-issues", v)
+		return p.toggleFeature(ctx, fullName, "enable-issues", v)
 	case "projects":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "enable-projects", v)
+		return p.toggleFeature(ctx, fullName, "enable-projects", v)
 	case "wiki":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "enable-wiki", v)
+		return p.toggleFeature(ctx, fullName, "enable-wiki", v)
 	case "discussions":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "enable-discussions", v)
+		return p.toggleFeature(ctx, fullName, "enable-discussions", v)
 	case "allow_merge_commit":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "enable-merge-commit", v)
+		return p.toggleFeature(ctx, fullName, "enable-merge-commit", v)
 	case "allow_squash_merge":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "enable-squash-merge", v)
+		return p.toggleFeature(ctx, fullName, "enable-squash-merge", v)
 	case "allow_rebase_merge":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "enable-rebase-merge", v)
+		return p.toggleFeature(ctx, fullName, "enable-rebase-merge", v)
 	case "auto_delete_head_branches":
 		v, _ := c.NewValue.(bool)
-		return p.toggleFeature(fullName, "delete-branch-on-merge", v)
+		return p.toggleFeature(ctx, fullName, "delete-branch-on-merge", v)
 
 	case "merge_commit_title", "merge_commit_message", "squash_merge_commit_title", "squash_merge_commit_message":
-		return p.updateRepoField(owner+"/"+name, c.Field, fmt.Sprintf("%v", c.NewValue))
+		return p.updateRepoField(ctx, owner+"/"+name, c.Field, fmt.Sprintf("%v", c.NewValue))
 	}
 
 	return nil
 }
 
-func (p *Processor) updateRepoField(fullName, field, value string) error {
+func (p *Processor) updateRepoField(ctx context.Context, fullName, field, value string) error {
 	endpoint := fmt.Sprintf("repos/%s", fullName)
-	_, err := p.runner.Run("api", endpoint, "--method", "PATCH",
+	_, err := p.runner.Run(ctx, "api", endpoint, "--method", "PATCH",
 		"-f", fmt.Sprintf("%s=%s", field, value),
 	)
 	return wrapError(err, fullName, field)
 }
 
-func (p *Processor) toggleFeature(repo, flag string, enable bool) error {
+func (p *Processor) toggleFeature(ctx context.Context, repo, flag string, enable bool) error {
 	arg := fmt.Sprintf("--%s=%t", flag, enable)
-	_, err := p.runner.Run("repo", "edit", repo, arg)
+	_, err := p.runner.Run(ctx, "repo", "edit", repo, arg)
 	return wrapError(err, repo, flag)
 }
 
-func (p *Processor) applyTopics(fullName string, repo *manifest.Repository) error {
+func (p *Processor) applyTopics(ctx context.Context, fullName string, repo *manifest.Repository) error {
 	// Get current topics
-	out, err := p.runner.Run("repo", "view", fullName, "--json", "repositoryTopics", "--jq", ".repositoryTopics[].name")
+	out, err := p.runner.Run(ctx, "repo", "view", fullName, "--json", "repositoryTopics", "--jq", ".repositoryTopics[].name")
 	if err != nil {
 		return wrapError(err, fullName, "topics")
 	}
@@ -340,7 +341,7 @@ func (p *Processor) applyTopics(fullName string, repo *manifest.Repository) erro
 	// Remove topics not in desired
 	for t := range currentTopics {
 		if !desiredTopics[t] {
-			if _, err := p.runner.Run("repo", "edit", fullName, "--remove-topic", t); err != nil {
+			if _, err := p.runner.Run(ctx, "repo", "edit", fullName, "--remove-topic", t); err != nil {
 				return wrapError(err, fullName, "remove-topic:"+t)
 			}
 		}
@@ -349,7 +350,7 @@ func (p *Processor) applyTopics(fullName string, repo *manifest.Repository) erro
 	// Add topics not in current
 	for t := range desiredTopics {
 		if !currentTopics[t] {
-			if _, err := p.runner.Run("repo", "edit", fullName, "--add-topic", t); err != nil {
+			if _, err := p.runner.Run(ctx, "repo", "edit", fullName, "--add-topic", t); err != nil {
 				return wrapError(err, fullName, "add-topic:"+t)
 			}
 		}
@@ -358,7 +359,7 @@ func (p *Processor) applyTopics(fullName string, repo *manifest.Repository) erro
 	return nil
 }
 
-func (p *Processor) applyBranchProtection(c Change, repo *manifest.Repository) error {
+func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 
@@ -381,10 +382,10 @@ func (p *Processor) applyBranchProtection(c Change, repo *manifest.Repository) e
 	}
 
 	// Use the field-based API approach (Runner doesn't pipe stdin).
-	return p.applyBranchProtectionViaAPI(owner, name, bp)
+	return p.applyBranchProtectionViaAPI(ctx, owner, name, bp)
 }
 
-func (p *Processor) applyBranchProtectionViaAPI(owner, name string, bp *manifest.BranchProtection) error {
+func (p *Processor) applyBranchProtectionViaAPI(ctx context.Context, owner, name string, bp *manifest.BranchProtection) error {
 	payload := buildBranchProtectionPayload(bp)
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -401,7 +402,7 @@ func (p *Processor) applyBranchProtectionViaAPI(owner, name string, bp *manifest
 		"--body", string(payloadJSON),
 	}
 
-	_, err = p.runner.Run(args...)
+	_, err = p.runner.Run(ctx, args...)
 	return wrapError(err, owner+"/"+name, "branch_protection:"+bp.Pattern)
 }
 
@@ -441,7 +442,7 @@ func buildBranchProtectionPayload(bp *manifest.BranchProtection) map[string]any 
 	return payload
 }
 
-func (p *Processor) applyRuleset(c Change, repo *manifest.Repository) error {
+func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 
@@ -459,7 +460,7 @@ func (p *Processor) applyRuleset(c Change, repo *manifest.Repository) error {
 		return fmt.Errorf("ruleset %q not found in desired state", rulesetName)
 	}
 
-	payload, err := buildRulesetPayload(rs, p.resolver)
+	payload, err := buildRulesetPayload(ctx, rs, p.resolver)
 	if err != nil {
 		return err
 	}
@@ -470,7 +471,7 @@ func (p *Processor) applyRuleset(c Change, repo *manifest.Repository) error {
 
 	switch c.Type {
 	case ChangeCreate:
-		_, err = p.runner.Run("api",
+		_, err = p.runner.Run(ctx, "api",
 			fmt.Sprintf("repos/%s/%s/rulesets", owner, name),
 			"--method", "POST",
 			"--header", "Accept: application/vnd.github+json",
@@ -483,11 +484,11 @@ func (p *Processor) applyRuleset(c Change, repo *manifest.Repository) error {
 		if rs.Target != nil {
 			target = *rs.Target
 		}
-		rulesetID, err := p.resolveRulesetID(owner, name, rulesetName, target)
+		rulesetID, err := p.resolveRulesetID(ctx, owner, name, rulesetName, target)
 		if err != nil {
 			return err
 		}
-		_, err = p.runner.Run("api",
+		_, err = p.runner.Run(ctx, "api",
 			fmt.Sprintf("repos/%s/%s/rulesets/%d", owner, name, rulesetID),
 			"--method", "PUT",
 			"--header", "Accept: application/vnd.github+json",
@@ -499,8 +500,8 @@ func (p *Processor) applyRuleset(c Change, repo *manifest.Repository) error {
 	return nil
 }
 
-func (p *Processor) resolveRulesetID(owner, name, rulesetName, target string) (int, error) {
-	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/%s/rulesets", owner, name))
+func (p *Processor) resolveRulesetID(ctx context.Context, owner, name, rulesetName, target string) (int, error) {
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/rulesets", owner, name))
 	if err != nil {
 		return 0, fmt.Errorf("list rulesets for %s/%s: %w", owner, name, err)
 	}
@@ -531,7 +532,7 @@ func (p *Processor) resolveRulesetID(owner, name, rulesetName, target string) (i
 	}
 }
 
-func buildRulesetPayload(rs *manifest.Ruleset, resolver *manifest.Resolver) (map[string]any, error) {
+func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *manifest.Resolver) (map[string]any, error) {
 	target := "branch"
 	if rs.Target != nil {
 		target = *rs.Target
@@ -549,7 +550,7 @@ func buildRulesetPayload(rs *manifest.Ruleset, resolver *manifest.Resolver) (map
 
 	// bypass_actors (resolve names → IDs)
 	if len(rs.BypassActors) > 0 && resolver != nil {
-		resolved, err := resolver.ResolveBypassActors(rs.BypassActors)
+		resolved, err := resolver.ResolveBypassActors(ctx, rs.BypassActors)
 		if err != nil {
 			return nil, fmt.Errorf("resolve bypass actors: %w", err)
 		}
@@ -606,7 +607,7 @@ func buildRulesetPayload(rs *manifest.Ruleset, resolver *manifest.Resolver) (map
 
 	if rs.Rules.RequiredStatusChecks != nil && resolver != nil {
 		sc := rs.Rules.RequiredStatusChecks
-		resolvedChecks, err := resolver.ResolveStatusChecks(sc.Contexts)
+		resolvedChecks, err := resolver.ResolveStatusChecks(ctx, sc.Contexts)
 		if err != nil {
 			return nil, fmt.Errorf("resolve status checks: %w", err)
 		}
@@ -643,7 +644,7 @@ func buildRulesetPayload(rs *manifest.Ruleset, resolver *manifest.Resolver) (map
 	return payload, nil
 }
 
-func (p *Processor) applySecret(c Change, repo *manifest.Repository) error {
+func (p *Processor) applySecret(ctx context.Context, c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
@@ -657,14 +658,14 @@ func (p *Processor) applySecret(c Change, repo *manifest.Repository) error {
 		}
 	}
 
-	_, err := p.runner.Run("secret", "set", c.Field,
+	_, err := p.runner.Run(ctx, "secret", "set", c.Field,
 		"--repo", fullName,
 		"--body", value,
 	)
 	return wrapError(err, fullName, "secret:"+c.Field)
 }
 
-func (p *Processor) applyVariable(c Change, repo *manifest.Repository) error {
+func (p *Processor) applyVariable(ctx context.Context, c Change, repo *manifest.Repository) error {
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
@@ -678,14 +679,14 @@ func (p *Processor) applyVariable(c Change, repo *manifest.Repository) error {
 		}
 	}
 
-	_, err := p.runner.Run("variable", "set", c.Field,
+	_, err := p.runner.Run(ctx, "variable", "set", c.Field,
 		"--repo", fullName,
 		"--body", value,
 	)
 	return wrapError(err, fullName, "variable:"+c.Field)
 }
 
-func (p *Processor) applyActions(c Change, repo *manifest.Repository) error {
+func (p *Processor) applyActions(ctx context.Context, c Change, repo *manifest.Repository) error {
 	a := repo.Spec.Actions
 	if a == nil {
 		return nil
@@ -695,18 +696,18 @@ func (p *Processor) applyActions(c Change, repo *manifest.Repository) error {
 
 	switch {
 	case c.Field == "enabled" || c.Field == "allowed_actions" || c.Field == "sha_pinning_required":
-		return p.applyActionsPermissions(owner, name, a)
+		return p.applyActionsPermissions(ctx, owner, name, a)
 	case c.Field == "workflow_permissions" || c.Field == "can_approve_pull_requests":
-		return p.applyActionsWorkflow(owner, name, a)
+		return p.applyActionsWorkflow(ctx, owner, name, a)
 	case c.Field == "fork_pr_approval":
-		return p.applyActionsForkPR(owner, name, a)
+		return p.applyActionsForkPR(ctx, owner, name, a)
 	case strings.HasPrefix(c.Field, "selected_actions."):
-		return p.applyActionsSelectedActions(owner, name, a)
+		return p.applyActionsSelectedActions(ctx, owner, name, a)
 	}
 	return nil
 }
 
-func (p *Processor) applyActionsPermissions(owner, name string, a *manifest.Actions) error {
+func (p *Processor) applyActionsPermissions(ctx context.Context, owner, name string, a *manifest.Actions) error {
 	if a.Enabled == nil {
 		return nil // nothing to apply (empty actions block)
 	}
@@ -725,7 +726,7 @@ func (p *Processor) applyActionsPermissions(owner, name string, a *manifest.Acti
 	if err != nil {
 		return err
 	}
-	_, err = p.runner.Run("api",
+	_, err = p.runner.Run(ctx, "api",
 		fmt.Sprintf("repos/%s/%s/actions/permissions", owner, name),
 		"--method", "PUT",
 		"--body", string(body),
@@ -733,7 +734,7 @@ func (p *Processor) applyActionsPermissions(owner, name string, a *manifest.Acti
 	return wrapError(err, owner+"/"+name, "actions.permissions")
 }
 
-func (p *Processor) applyActionsWorkflow(owner, name string, a *manifest.Actions) error {
+func (p *Processor) applyActionsWorkflow(ctx context.Context, owner, name string, a *manifest.Actions) error {
 	payload := map[string]any{}
 	if a.WorkflowPermissions != nil {
 		payload["default_workflow_permissions"] = *a.WorkflowPermissions
@@ -745,7 +746,7 @@ func (p *Processor) applyActionsWorkflow(owner, name string, a *manifest.Actions
 	if err != nil {
 		return err
 	}
-	_, err = p.runner.Run("api",
+	_, err = p.runner.Run(ctx, "api",
 		fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", owner, name),
 		"--method", "PUT",
 		"--body", string(body),
@@ -753,7 +754,7 @@ func (p *Processor) applyActionsWorkflow(owner, name string, a *manifest.Actions
 	return wrapError(err, owner+"/"+name, "actions.workflow")
 }
 
-func (p *Processor) applyActionsSelectedActions(owner, name string, a *manifest.Actions) error {
+func (p *Processor) applyActionsSelectedActions(ctx context.Context, owner, name string, a *manifest.Actions) error {
 	if a.SelectedActions == nil {
 		return nil
 	}
@@ -772,7 +773,7 @@ func (p *Processor) applyActionsSelectedActions(owner, name string, a *manifest.
 	if err != nil {
 		return err
 	}
-	_, err = p.runner.Run("api",
+	_, err = p.runner.Run(ctx, "api",
 		fmt.Sprintf("repos/%s/%s/actions/permissions/selected-actions", owner, name),
 		"--method", "PUT",
 		"--body", string(body),
@@ -780,7 +781,7 @@ func (p *Processor) applyActionsSelectedActions(owner, name string, a *manifest.
 	return wrapError(err, owner+"/"+name, "actions.selected_actions")
 }
 
-func (p *Processor) applyActionsForkPR(owner, name string, a *manifest.Actions) error {
+func (p *Processor) applyActionsForkPR(ctx context.Context, owner, name string, a *manifest.Actions) error {
 	if a.ForkPRApproval == nil {
 		return nil
 	}
@@ -791,7 +792,7 @@ func (p *Processor) applyActionsForkPR(owner, name string, a *manifest.Actions) 
 	if err != nil {
 		return err
 	}
-	_, err = p.runner.Run("api",
+	_, err = p.runner.Run(ctx, "api",
 		fmt.Sprintf("repos/%s/%s/actions/permissions/fork-pr-contributor-approval", owner, name),
 		"--method", "PUT",
 		"--body", string(body),

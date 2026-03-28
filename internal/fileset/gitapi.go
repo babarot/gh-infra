@@ -1,6 +1,7 @@
 package fileset
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -22,51 +23,51 @@ type treeEntry struct {
 // applyToRepo creates a single commit with all file changes using Git Data API.
 // Falls back to Contents API for empty repositories (no commits yet).
 // applyToRepo returns (prURL, error). prURL is non-empty only for pull_request strategy.
-func (p *Processor) applyToRepo(repo string, changes []Change, opts ApplyOptions) (string, error) {
-	headSHA, defaultBranch, err := p.getHeadSHA(repo)
+func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions) (string, error) {
+	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
 		if strings.Contains(err.Error(), "repository is empty") {
-			return "", p.applyToEmptyRepo(repo, changes, opts)
+			return "", p.applyToEmptyRepo(ctx, repo, changes, opts)
 		}
 		return "", fmt.Errorf("get HEAD: %w", err)
 	}
 
 	message := resolveCommitMessage(opts)
-	return p.applyViaGitDataAPI(repo, defaultBranch, headSHA, changes, message, opts)
+	return p.applyViaGitDataAPI(ctx, repo, defaultBranch, headSHA, changes, message, opts)
 }
 
 // applyViaGitDataAPI creates blobs, a tree, a commit, and updates the ref
 // (or creates a PR) in a single atomic operation. All files are included in
 // one commit regardless of count.
-func (p *Processor) applyViaGitDataAPI(repo, branch, headSHA string, changes []Change, message string, opts ApplyOptions) (string, error) {
+func (p *Processor) applyViaGitDataAPI(ctx context.Context, repo, branch, headSHA string, changes []Change, message string, opts ApplyOptions) (string, error) {
 	// 1. Create blobs
-	entries, err := p.createBlobs(repo, changes)
+	entries, err := p.createBlobs(ctx, repo, changes)
 	if err != nil {
 		return "", err
 	}
 
 	// 2. Create tree
-	treeSHA, err := p.createTree(repo, headSHA, entries)
+	treeSHA, err := p.createTree(ctx, repo, headSHA, entries)
 	if err != nil {
 		return "", fmt.Errorf("create tree: %w", err)
 	}
 
 	// 3. Create commit
-	commitSHA, err := p.createCommit(repo, message, treeSHA, headSHA)
+	commitSHA, err := p.createCommit(ctx, repo, message, treeSHA, headSHA)
 	if err != nil {
 		return "", fmt.Errorf("create commit: %w", err)
 	}
 
 	// 4. Update ref or create PR
 	if opts.Via == manifest.ViaPullRequest {
-		return p.createPR(repo, branch, commitSHA, message, opts)
+		return p.createPR(ctx, repo, branch, commitSHA, message, opts)
 	}
-	return "", p.updateRef(repo, branch, commitSHA)
+	return "", p.updateRef(ctx, repo, branch, commitSHA)
 }
 
 // createBlobs creates a Git blob for each file change and returns tree entries.
 // ChangeDelete entries get a nil SHA which tells the Git Data API to remove the file.
-func (p *Processor) createBlobs(repo string, changes []Change) ([]treeEntry, error) {
+func (p *Processor) createBlobs(ctx context.Context, repo string, changes []Change) ([]treeEntry, error) {
 	var entries []treeEntry
 	for _, c := range changes {
 		if c.Type == ChangeDelete {
@@ -78,7 +79,7 @@ func (p *Processor) createBlobs(repo string, changes []Change) ([]treeEntry, err
 			})
 			continue
 		}
-		blobSHA, err := p.createBlob(repo, c.Desired)
+		blobSHA, err := p.createBlob(ctx, repo, c.Desired)
 		if err != nil {
 			return nil, fmt.Errorf("create blob for %s: %w", c.Path, err)
 		}
@@ -94,7 +95,7 @@ func (p *Processor) createBlobs(repo string, changes []Change) ([]treeEntry, err
 }
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
-func (p *Processor) applyToEmptyRepo(repo string, changes []Change, opts ApplyOptions) error {
+func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions) error {
 	p.printer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
 	message := opts.CommitMessage
 	if message == "" {
@@ -102,7 +103,7 @@ func (p *Processor) applyToEmptyRepo(repo string, changes []Change, opts ApplyOp
 	}
 	for _, c := range changes {
 		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
-		if err := p.putFileViaContentsAPI(repo, c.Path, c.Desired, "", commitMsg); err != nil {
+		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg); err != nil {
 			return err
 		}
 	}
@@ -112,7 +113,7 @@ func (p *Processor) applyToEmptyRepo(repo string, changes []Change, opts ApplyOp
 // putFileViaContentsAPI creates or updates a single file using the Contents API.
 // This results in one commit per call. Use for empty repos or when Git Data API
 // is not available. Pass sha="" for new files, or the current blob SHA for updates.
-func (p *Processor) putFileViaContentsAPI(repo, path, content, sha, message string) error {
+func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, content, sha, message string) error {
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
 	endpoint := fmt.Sprintf("repos/%s/contents/%s", repo, path)
 
@@ -126,16 +127,16 @@ func (p *Processor) putFileViaContentsAPI(repo, path, content, sha, message stri
 		args = append(args, "-f", fmt.Sprintf("sha=%s", sha))
 	}
 
-	_, err := p.runner.Run(args...)
+	_, err := p.runner.Run(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("put %s: %w", path, err)
 	}
 	return nil
 }
 
-func (p *Processor) getHeadSHA(repo string) (sha, branch string, err error) {
+func (p *Processor) getHeadSHA(ctx context.Context, repo string) (sha, branch string, err error) {
 	// Get default branch name
-	out, err := p.runner.Run("repo", "view", repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name")
+	out, err := p.runner.Run(ctx, "repo", "view", repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name")
 	if err != nil {
 		return "", "", err
 	}
@@ -145,7 +146,7 @@ func (p *Processor) getHeadSHA(repo string) (sha, branch string, err error) {
 	}
 
 	// Get HEAD SHA
-	out, err = p.runner.Run("api", fmt.Sprintf("repos/%s/git/ref/heads/%s", repo, branch), "--jq", ".object.sha")
+	out, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/ref/heads/%s", repo, branch), "--jq", ".object.sha")
 	if err != nil {
 		return "", "", err
 	}
@@ -153,9 +154,9 @@ func (p *Processor) getHeadSHA(repo string) (sha, branch string, err error) {
 	return sha, branch, nil
 }
 
-func (p *Processor) createBlob(repo, content string) (string, error) {
+func (p *Processor) createBlob(ctx context.Context, repo, content string) (string, error) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/blobs", repo),
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/blobs", repo),
 		"--method", "POST",
 		"-f", fmt.Sprintf("content=%s", encoded),
 		"-f", "encoding=base64",
@@ -172,7 +173,7 @@ func (p *Processor) createBlob(repo, content string) (string, error) {
 	return resp.SHA, nil
 }
 
-func (p *Processor) createTree(repo, baseTree string, entries any) (string, error) {
+func (p *Processor) createTree(ctx context.Context, repo, baseTree string, entries any) (string, error) {
 	body := map[string]any{
 		"base_tree": baseTree,
 		"tree":      entries,
@@ -195,7 +196,7 @@ func (p *Processor) createTree(repo, baseTree string, entries any) (string, erro
 	}
 	tmpFile.Close()
 
-	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/trees", repo),
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/trees", repo),
 		"--method", "POST",
 		"--input", tmpFile.Name(),
 	)
@@ -211,7 +212,7 @@ func (p *Processor) createTree(repo, baseTree string, entries any) (string, erro
 	return resp.SHA, nil
 }
 
-func (p *Processor) createCommit(repo, message, treeSHA, parentSHA string) (string, error) {
+func (p *Processor) createCommit(ctx context.Context, repo, message, treeSHA, parentSHA string) (string, error) {
 	body := map[string]any{
 		"message": message,
 		"tree":    treeSHA,
@@ -234,7 +235,7 @@ func (p *Processor) createCommit(repo, message, treeSHA, parentSHA string) (stri
 	}
 	tmpFile.Close()
 
-	out, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/commits", repo),
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/commits", repo),
 		"--method", "POST",
 		"--input", tmpFile.Name(),
 	)
@@ -250,8 +251,8 @@ func (p *Processor) createCommit(repo, message, treeSHA, parentSHA string) (stri
 	return resp.SHA, nil
 }
 
-func (p *Processor) updateRef(repo, branch, commitSHA string) error {
-	_, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
+func (p *Processor) updateRef(ctx context.Context, repo, branch, commitSHA string) error {
+	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
 		"--method", "PATCH",
 		"-f", fmt.Sprintf("sha=%s", commitSHA),
 	)
@@ -259,21 +260,21 @@ func (p *Processor) updateRef(repo, branch, commitSHA string) error {
 }
 
 // createPR creates a pull request and returns its URL.
-func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts ApplyOptions) (string, error) {
+func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA, title string, opts ApplyOptions) (string, error) {
 	branchName := opts.Branch
 	if branchName == "" {
 		branchName = fmt.Sprintf("gh-infra/sync-%s", opts.FileSetOwner)
 	}
 
 	// Create branch pointing to the new commit; if it already exists, force-update it.
-	_, err := p.runner.Run("api", fmt.Sprintf("repos/%s/git/refs", repo),
+	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs", repo),
 		"--method", "POST",
 		"-f", fmt.Sprintf("ref=refs/heads/%s", branchName),
 		"-f", fmt.Sprintf("sha=%s", commitSHA),
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "Reference already exists") {
-			_, err = p.runner.Run("api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branchName),
+			_, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branchName),
 				"--method", "PATCH",
 				"-f", fmt.Sprintf("sha=%s", commitSHA),
 				"-F", "force=true",
@@ -293,7 +294,7 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 	if prBody == "" {
 		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetOwner)
 	}
-	out, err := p.runner.Run("pr", "create",
+	out, err := p.runner.Run(ctx, "pr", "create",
 		"--repo", repo,
 		"--base", defaultBranch,
 		"--head", branchName,
@@ -302,7 +303,7 @@ func (p *Processor) createPR(repo, defaultBranch, commitSHA, title string, opts 
 	)
 	if err != nil && strings.Contains(err.Error(), "already exists") {
 		// Retrieve existing PR URL
-		existing, lookupErr := p.runner.Run("pr", "view",
+		existing, lookupErr := p.runner.Run(ctx, "pr", "view",
 			"--repo", repo,
 			branchName,
 			"--json", "url", "--jq", ".url",
