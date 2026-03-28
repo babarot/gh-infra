@@ -13,6 +13,7 @@ func TestNewProcessor(t *testing.T) {
 	p := NewProcessor(mock, nil, nil)
 	if p == nil {
 		t.Fatal("expected non-nil Processor")
+		return
 	}
 	if p.runner != mock {
 		t.Error("expected runner to be the mock")

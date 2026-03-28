@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 
 	"github.com/spf13/cobra"
 
@@ -48,7 +49,7 @@ func runApply(path, filterRepo string, autoApprove, forceSecrets, failOnUnknown 
 		DryRun:        false,
 	})
 	if err != nil {
-		if err == context.Canceled {
+		if errors.Is(err, context.Canceled) {
 			printCancelled()
 			return nil
 		}

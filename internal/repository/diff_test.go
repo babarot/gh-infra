@@ -1408,6 +1408,7 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 	}
 	if actionsChange == nil {
 		t.Fatal("expected actions change, got none")
+		return
 	}
 
 	fields := make(map[string]bool)
@@ -1459,6 +1460,7 @@ func TestDiffActions_ChildOrder(t *testing.T) {
 	}
 	if actionsChange == nil {
 		t.Fatal("expected actions change")
+		return
 	}
 
 	// enabled and allowed_actions should appear before selected_actions.*

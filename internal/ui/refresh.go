@@ -41,7 +41,7 @@ const (
 	taskDone
 	taskError
 	taskFailed
-	taskCancelled
+	taskCanceled
 )
 
 type refreshItem struct {
@@ -56,7 +56,7 @@ type refreshItem struct {
 type refreshModel struct {
 	items     []refreshItem
 	remaining int
-	cancelled chan struct{} // closed on Ctrl+C to signal callers
+	canceled  chan struct{} // closed on Ctrl+C to signal callers
 }
 
 type taskDoneMsg struct{ name string }
@@ -149,10 +149,10 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			for i := range m.items {
 				if m.items[i].status == taskRunning {
-					m.items[i].status = taskCancelled
+					m.items[i].status = taskCanceled
 				}
 			}
-			close(m.cancelled)
+			close(m.canceled)
 			return m, tea.Quit
 		}
 		return m, nil
@@ -182,8 +182,8 @@ func (m refreshModel) View() tea.View {
 			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render(IconError), Bold.Render(item.name), item.errMsg)
 		case taskFailed:
 			fmt.Fprintf(&b, "  %s %s\n", Red.Render(IconError), item.failLabel)
-		case taskCancelled:
-			fmt.Fprintf(&b, "  %s %s\n", Dim.Render(IconError), Dim.Render(item.name+" (cancelled)"))
+		case taskCanceled:
+			fmt.Fprintf(&b, "  %s %s\n", Dim.Render(IconError), Dim.Render(item.name+" (canceled)"))
 		case taskRunning:
 			fmt.Fprintf(&b, "  %s %s...\n", item.spinner.View(), item.name)
 		}
@@ -193,11 +193,11 @@ func (m refreshModel) View() tea.View {
 
 // RefreshTracker tracks parallel task progress with spinners or plain text.
 type RefreshTracker struct {
-	program   *tea.Program
-	fallback  bool
-	done      chan struct{}
-	cancelled chan struct{}
-	mu        sync.Mutex
+	program  *tea.Program
+	fallback bool
+	done     chan struct{}
+	canceled chan struct{}
+	mu       sync.Mutex
 }
 
 // RunRefresh starts a spinner display for the given tasks.
@@ -217,18 +217,18 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
-	cancelled := make(chan struct{})
+	canceled := make(chan struct{})
 	model := newRefreshModel(tasks)
-	model.cancelled = cancelled
+	model.canceled = canceled
 	p := tea.NewProgram(
 		model,
 		tea.WithOutput(os.Stderr),
 	)
 
 	tracker := &RefreshTracker{
-		program:   p,
-		done:      make(chan struct{}),
-		cancelled: cancelled,
+		program:  p,
+		done:     make(chan struct{}),
+		canceled: canceled,
 	}
 
 	go func() {
@@ -292,12 +292,12 @@ func (t *RefreshTracker) Error(name string, err error) {
 	}
 }
 
-// Cancelled returns a channel that is closed when the user presses Ctrl+C.
-func (t *RefreshTracker) Cancelled() <-chan struct{} {
+// Canceled returns a channel that is closed when the user presses Ctrl+C.
+func (t *RefreshTracker) Canceled() <-chan struct{} {
 	if t == nil {
 		return nil
 	}
-	return t.cancelled
+	return t.canceled
 }
 
 // Wait blocks until all tasks are reported and the display finishes.

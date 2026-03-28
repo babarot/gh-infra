@@ -88,6 +88,7 @@ func TestToManifest(t *testing.T) {
 	f := repo.Spec.Features
 	if f == nil {
 		t.Fatal("expected non-nil Features")
+		return
 	}
 	assertBoolPtr(t, "Issues", f.Issues, true)
 	assertBoolPtr(t, "Projects", f.Projects, false)
@@ -98,6 +99,7 @@ func TestToManifest(t *testing.T) {
 	ms := repo.Spec.MergeStrategy
 	if ms == nil {
 		t.Fatal("expected non-nil MergeStrategy")
+		return
 	}
 	assertBoolPtr(t, "AllowMergeCommit", ms.AllowMergeCommit, true)
 	assertBoolPtr(t, "AllowSquashMerge", ms.AllowSquashMerge, true)

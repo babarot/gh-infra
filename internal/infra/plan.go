@@ -94,7 +94,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		ch := tracker.Cancelled()
+		ch := tracker.Canceled()
 		if ch == nil {
 			return
 		}

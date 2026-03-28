@@ -76,7 +76,7 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		return repoResult{index: idx, repo: r, changes: changes}
 	})
 
-	// If cancelled, return immediately without printing errors.
+	// If canceled, return immediately without printing errors.
 	if ctx.Err() != nil {
 		return nil, nil, nil
 	}

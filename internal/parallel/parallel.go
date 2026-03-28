@@ -8,7 +8,7 @@ import (
 // Map processes items concurrently and returns results in input order.
 // concurrency controls the maximum number of goroutines running at once.
 // If concurrency <= 0, all items are processed without a limit.
-// When ctx is cancelled, remaining unstarted items are skipped.
+// When ctx is canceled, remaining unstarted items are skipped.
 func Map[T, R any](ctx context.Context, items []T, concurrency int, fn func(context.Context, int, T) R) []R {
 	results := make([]R, len(items))
 	if len(items) == 0 {

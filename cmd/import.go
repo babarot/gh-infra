@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -32,7 +33,7 @@ func runImport(args []string) error {
 
 	result, err := infra.Import(targets)
 	if err != nil {
-		if err == context.Canceled {
+		if errors.Is(err, context.Canceled) {
 			printCancelled()
 			return nil
 		}

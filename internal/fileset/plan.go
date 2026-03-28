@@ -168,7 +168,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 		return unitResult{changes: out}
 	})
 
-	// If cancelled, return immediately without surfacing errors.
+	// If canceled, return immediately without surfacing errors.
 	if ctx.Err() != nil {
 		return nil, nil
 	}

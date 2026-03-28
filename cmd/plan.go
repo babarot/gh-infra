@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -45,7 +46,7 @@ func runPlan(path, filterRepo string, ci, failOnUnknown bool) error {
 		DryRun:        true,
 	})
 	if err != nil {
-		if err == context.Canceled {
+		if errors.Is(err, context.Canceled) {
 			printCancelled()
 			return nil
 		}
