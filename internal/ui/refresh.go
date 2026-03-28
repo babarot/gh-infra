@@ -128,15 +128,24 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case taskDoneMsg:
 		for i := range m.items {
-			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+			if m.items[i].name != msg.name {
+				continue
+			}
+			if m.items[i].status == taskRunning {
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.items[i].status = taskDone
 					m.items[i].statusText = ""
 					m.remaining--
 				}
-				break
+			} else if m.items[i].pending > 0 {
+				// Already errored/failed but other sources still pending.
+				m.items[i].pending--
+				if m.items[i].pending <= 0 {
+					m.remaining--
+				}
 			}
+			break
 		}
 		if m.remaining <= 0 {
 			return m, tea.Quit
@@ -148,7 +157,11 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
 				m.items[i].status = taskError
 				m.items[i].errMsg = msg.err.Error()
-				m.remaining--
+				m.items[i].statusText = ""
+				m.items[i].pending--
+				if m.items[i].pending <= 0 {
+					m.remaining--
+				}
 				break
 			}
 		}
@@ -161,7 +174,11 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.items {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
 				m.items[i].status = taskFailed
-				m.remaining--
+				m.items[i].statusText = ""
+				m.items[i].pending--
+				if m.items[i].pending <= 0 {
+					m.remaining--
+				}
 				break
 			}
 		}
@@ -219,9 +236,13 @@ func (m refreshModel) View() tea.View {
 		case taskError:
 			fmt.Fprintf(&b, "  %s %s  %s\n", Red.Render(IconError), Bold.Render(padded), item.errMsg)
 		case taskFailed:
-			fmt.Fprintf(&b, "  %s %s\n", Red.Render(IconError), item.failLabel)
+			failLabel := item.failLabel
+			if failLabel == item.name {
+				failLabel = padded
+			}
+			fmt.Fprintf(&b, "  %s %s\n", Red.Render(IconError), failLabel)
 		case taskCanceled:
-			fmt.Fprintf(&b, "  %s %s\n", Dim.Render(IconError), Dim.Render(item.name+" (canceled)"))
+			fmt.Fprintf(&b, "  %s %s\n", Dim.Render(IconError), Dim.Render(padded+" (canceled)"))
 		case taskRunning:
 			if item.statusText != "" {
 				fmt.Fprintf(&b, "  %s %s  %s\n", item.spinner.View(), padded, Dim.Render(item.statusText))
