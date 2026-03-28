@@ -108,7 +108,6 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 		// Print fileset changes (aligned by file path width, independent of repo fields)
 		if len(fChanges) > 0 {
 			p.SetColumnWidth(filePathWidth(fChanges))
-			p.SetFileDescWidth(fileDescWidth(fChanges))
 			label := fmt.Sprintf("%d file", len(fChanges))
 			if len(fChanges) != 1 {
 				label += "s"
@@ -245,30 +244,6 @@ func repoFieldWidth(changes []repository.Change) int {
 			if len(c.Field) > w {
 				w = len(c.Field)
 			}
-		}
-	}
-	return w
-}
-
-// fileDescWidth returns the max description width for file changes in a group.
-// This ensures descriptions like "(new file)" and "(content changed)" align within
-// the same repo group, without being influenced by other repos.
-func fileDescWidth(changes []fileset.Change) int {
-	w := 0
-	for _, c := range changes {
-		var icon string
-		switch c.Type {
-		case fileset.ChangeCreate:
-			icon = ui.IconAdd
-		case fileset.ChangeUpdate:
-			icon = ui.IconChange
-		case fileset.ChangeDelete:
-			icon = ui.IconRemove
-		default:
-			continue
-		}
-		if desc := ui.FileDesc(icon); len(desc) > w {
-			w = len(desc)
 		}
 	}
 	return w
