@@ -63,7 +63,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
 		p.Message("No resources found in " + opts.Path)
-		return &PlanResult{}, nil
+		return nil, context.Canceled
 	}
 
 	if !opts.DryRun {

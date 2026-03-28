@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,7 @@ import (
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/ui"
 )
 
 var (
@@ -57,4 +59,8 @@ func NewRootCmd(version, revision string) *cobra.Command {
 	)
 
 	return root
+}
+
+func printCancelled() {
+	fmt.Fprintf(os.Stderr, "\n%s\n", ui.Dim.Render("Interrupted."))
 }
