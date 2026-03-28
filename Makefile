@@ -4,7 +4,8 @@ LDFLAGS := "-X main.version=$(VERSION) -X main.revision=$(shell git rev-parse --
 
 all: build
 
-TEST_PKGS := ./internal/repository/ ./internal/fileset/ ./internal/gh/ ./internal/manifest/
+TEST_EXCLUDE := %/cmd %/cmd/gh-infra
+TEST_PKGS := $(filter-out $(TEST_EXCLUDE),$(shell go list ./...))
 
 test:
 	go test $(TEST_PKGS) -coverprofile=coverage.out -covermode=count
