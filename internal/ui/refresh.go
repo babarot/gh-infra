@@ -41,6 +41,7 @@ const (
 	taskDone
 	taskError
 	taskFailed
+	taskCancelled
 )
 
 type refreshItem struct {
@@ -55,6 +56,7 @@ type refreshItem struct {
 type refreshModel struct {
 	items     []refreshItem
 	remaining int
+	cancelled chan struct{} // closed on Ctrl+C to signal callers
 }
 
 type taskDoneMsg struct{ name string }
@@ -145,6 +147,12 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
+			for i := range m.items {
+				if m.items[i].status == taskRunning {
+					m.items[i].status = taskCancelled
+				}
+			}
+			close(m.cancelled)
 			return m, tea.Quit
 		}
 		return m, nil
@@ -174,6 +182,8 @@ func (m refreshModel) View() tea.View {
 			fmt.Fprintf(&b, "  %s %s: %s\n", Red.Render(IconError), Bold.Render(item.name), item.errMsg)
 		case taskFailed:
 			fmt.Fprintf(&b, "  %s %s\n", Red.Render(IconError), item.failLabel)
+		case taskCancelled:
+			fmt.Fprintf(&b, "  %s %s\n", Dim.Render(IconError), Dim.Render(item.name+" (cancelled)"))
 		case taskRunning:
 			fmt.Fprintf(&b, "  %s %s...\n", item.spinner.View(), item.name)
 		}
@@ -183,10 +193,11 @@ func (m refreshModel) View() tea.View {
 
 // RefreshTracker tracks parallel task progress with spinners or plain text.
 type RefreshTracker struct {
-	program  *tea.Program
-	fallback bool
-	done     chan struct{}
-	mu       sync.Mutex
+	program   *tea.Program
+	fallback  bool
+	done      chan struct{}
+	cancelled chan struct{}
+	mu        sync.Mutex
 }
 
 // RunRefresh starts a spinner display for the given tasks.
@@ -206,15 +217,18 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
+	cancelled := make(chan struct{})
 	model := newRefreshModel(tasks)
+	model.cancelled = cancelled
 	p := tea.NewProgram(
 		model,
 		tea.WithOutput(os.Stderr),
 	)
 
 	tracker := &RefreshTracker{
-		program: p,
-		done:    make(chan struct{}),
+		program:   p,
+		done:      make(chan struct{}),
+		cancelled: cancelled,
 	}
 
 	go func() {
@@ -225,6 +239,15 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 		// sequences to leak into the shell. Remove when upstream is fixed.
 		// https://github.com/charmbracelet/bubbletea/issues/1590
 		drainStdinAfterBubbletea()
+
+		// If Ctrl+C was pressed, exit immediately. Background goroutines
+		// (gh CLI calls in parallel.Map) cannot be cancelled and would
+		// keep the process alive indefinitely.
+		select {
+		case <-cancelled:
+			os.Exit(130)
+		default:
+		}
 	}()
 
 	return tracker
@@ -275,6 +298,14 @@ func (t *RefreshTracker) Error(name string, err error) {
 	if t.program != nil {
 		t.program.Send(taskErrorMsg{name: name, err: err})
 	}
+}
+
+// Cancelled returns a channel that is closed when the user presses Ctrl+C.
+func (t *RefreshTracker) Cancelled() <-chan struct{} {
+	if t == nil {
+		return nil
+	}
+	return t.cancelled
 }
 
 // Wait blocks until all tasks are reported and the display finishes.

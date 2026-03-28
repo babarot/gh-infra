@@ -62,6 +62,10 @@ func (r *SpinnerReporter) Error(name string, elapsed time.Duration, err error) {
 	}
 }
 
+func (r *SpinnerReporter) Cancelled() <-chan struct{} {
+	return r.tracker.Cancelled()
+}
+
 func (r *SpinnerReporter) Wait() {
 	r.tracker.Wait()
 }
