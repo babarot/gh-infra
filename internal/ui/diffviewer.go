@@ -52,12 +52,19 @@ func RunDiffViewer(entries []DiffEntry) error {
 // --- bubbletea model ---
 
 type diffViewModel struct {
-	entries   []DiffEntry
-	cursor    int // selected file index
-	scrollY   int // scroll offset in diff pane
-	width     int
-	height    int
-	listWidth int
+	entries    []DiffEntry
+	cursor     int // selected file index
+	scrollY    int // scroll offset in diff pane
+	listOffset int // scroll offset for file list pane
+	width      int
+	height     int
+	listWidth  int
+}
+
+// listItem represents one visual line in the file list pane.
+type listItem struct {
+	text     string
+	entryIdx int // index into entries, or -1 for group headers
 }
 
 func newDiffViewModel(entries []DiffEntry) diffViewModel {
@@ -118,35 +125,31 @@ func (m *diffViewModel) View() tea.View {
 	diffWidth := max(m.width-m.listWidth-3, 10) // 3 for separator
 	visibleHeight := m.height - 3               // reserve 3 for padding + help line
 
-	// Left pane: file list
-	var listLines []string
-	for i, e := range m.entries {
-		labelWidth := m.listWidth - 6 // " ▸ ~ " = 5 + margin
-		label := truncate(e.Path, labelWidth)
-		var line string
-		if e.Skip {
-			// Grayed out when skipped
-			if i == m.cursor {
-				line = fmt.Sprintf(" ▸ %s %s", Dim.Render(e.Icon), Dim.Render(label))
-			} else {
-				line = fmt.Sprintf("   %s %s", Dim.Render(e.Icon), Dim.Render(label))
-			}
-		} else {
-			icon := renderDiffIcon(e.Icon)
-			if i == m.cursor {
-				line = fmt.Sprintf(" ▸ %s %s", icon, Bold.Render(label))
-			} else {
-				line = fmt.Sprintf("   %s %s", icon, label)
-			}
+	// Left pane: file list grouped by repository
+	items := m.buildListItems()
+
+	// Find cursor's visual line and auto-scroll to keep it visible
+	cursorLine := 0
+	for i, item := range items {
+		if item.entryIdx == m.cursor {
+			cursorLine = i
+			break
 		}
-		listLines = append(listLines, line)
 	}
-	// Pad to fill height
+	if cursorLine < m.listOffset {
+		m.listOffset = cursorLine
+	}
+	if cursorLine >= m.listOffset+visibleHeight {
+		m.listOffset = cursorLine - visibleHeight + 1
+	}
+
+	endIdx := min(m.listOffset+visibleHeight, len(items))
+	var listLines []string
+	for _, item := range items[m.listOffset:endIdx] {
+		listLines = append(listLines, item.text)
+	}
 	for len(listLines) < visibleHeight {
 		listLines = append(listLines, "")
-	}
-	if len(listLines) > visibleHeight {
-		listLines = listLines[:visibleHeight]
 	}
 
 	// Right pane: content generated from raw data based on skip flag
@@ -197,14 +200,19 @@ func (m *diffViewModel) View() tea.View {
 // Layout per line: " ▸ ~ filename" = 4 (prefix " ▸ ") + icon(1) + " " + filename
 // So overhead = 4 + 1 + 1 = 6, plus 2 for right margin.
 func (m *diffViewModel) calcListWidth() int {
-	const overhead = 8 // " ▸ ~ " + 2 margin
-	maxPath := 0
+	const overhead = 8 // "  ▸ ~ " prefix + margin
+	maxLen := 0
 	for _, e := range m.entries {
-		if len(e.Path) > maxPath {
-			maxPath = len(e.Path)
+		// File entry width
+		if w := len(e.Path) + overhead; w > maxLen {
+			maxLen = w
+		}
+		// Repo header width: "  owner/repo"
+		if w := len(e.Target) + 2; w > maxLen {
+			maxLen = w
 		}
 	}
-	lw := maxPath + overhead
+	lw := maxLen
 	// Ensure at least half the terminal is available for the diff pane
 	maxAllowed := m.width / 2
 	if lw > maxAllowed {
@@ -245,6 +253,39 @@ func (m *diffViewModel) buildRightPane(entry DiffEntry, width int) []string {
 		raw = raw[:len(raw)-1]
 	}
 	return raw
+}
+
+// buildListItems builds visual list lines grouped by repository (Target).
+func (m *diffViewModel) buildListItems() []listItem {
+	var items []listItem
+	lastTarget := ""
+	for i, e := range m.entries {
+		if e.Target != lastTarget {
+			lastTarget = e.Target
+			header := "  " + Dim.Render(e.Target)
+			items = append(items, listItem{text: header, entryIdx: -1})
+		}
+
+		labelWidth := m.listWidth - 8 // "  ▸ ~ " prefix + margin
+		label := truncate(e.Path, labelWidth)
+		var line string
+		if e.Skip {
+			if i == m.cursor {
+				line = fmt.Sprintf("  ▸ %s %s", Dim.Render(e.Icon), Dim.Render(label))
+			} else {
+				line = fmt.Sprintf("    %s %s", Dim.Render(e.Icon), Dim.Render(label))
+			}
+		} else {
+			icon := renderDiffIcon(e.Icon)
+			if i == m.cursor {
+				line = fmt.Sprintf("  ▸ %s %s", icon, Bold.Render(label))
+			} else {
+				line = fmt.Sprintf("    %s %s", icon, label)
+			}
+		}
+		items = append(items, listItem{text: line, entryIdx: i})
+	}
+	return items
 }
 
 func (m *diffViewModel) clampScroll() {

@@ -39,6 +39,47 @@ func TestGenerateDiff_NoDiff(t *testing.T) {
 	}
 }
 
+func TestBuildListItems_GroupsByRepo(t *testing.T) {
+	m := &diffViewModel{
+		entries: []DiffEntry{
+			{Path: ".github/release.yml", Target: "org/repo-a", Icon: "~"},
+			{Path: ".octocov.yaml", Target: "org/repo-a", Icon: "+"},
+			{Path: ".github/release.yml", Target: "org/repo-b", Icon: "~"},
+			{Path: ".tagpr", Target: "org/repo-b", Icon: "+"},
+		},
+		listWidth: 50,
+	}
+
+	items := m.buildListItems()
+
+	// Expect: header(repo-a), file, file, header(repo-b), file, file = 6 items
+	if len(items) != 6 {
+		t.Fatalf("expected 6 items (2 headers + 4 files), got %d", len(items))
+	}
+
+	// Headers should have entryIdx -1
+	if items[0].entryIdx != -1 {
+		t.Error("first item should be a header (entryIdx=-1)")
+	}
+	if !strings.Contains(items[0].text, "org/repo-a") {
+		t.Error("first header should contain repo-a")
+	}
+	if items[3].entryIdx != -1 {
+		t.Error("fourth item should be a header (entryIdx=-1)")
+	}
+	if !strings.Contains(items[3].text, "org/repo-b") {
+		t.Error("second header should contain repo-b")
+	}
+
+	// File items should reference correct entry indices
+	if items[1].entryIdx != 0 || items[2].entryIdx != 1 {
+		t.Errorf("first group file indices: got %d, %d; want 0, 1", items[1].entryIdx, items[2].entryIdx)
+	}
+	if items[4].entryIdx != 2 || items[5].entryIdx != 3 {
+		t.Errorf("second group file indices: got %d, %d; want 2, 3", items[4].entryIdx, items[5].entryIdx)
+	}
+}
+
 func TestBuildRightPane_Skip(t *testing.T) {
 	m := &diffViewModel{entries: []DiffEntry{{
 		Path:    "a.txt",
