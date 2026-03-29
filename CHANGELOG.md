@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.6.2](https://github.com/babarot/gh-infra/compare/v0.6.1...v0.6.2) - 2026-03-29
+### Improvements
+- Separate column width calculation per section for independent alignment by @babarot in https://github.com/babarot/gh-infra/pull/56
+- Add Ctrl+C cancellation support with graceful context propagation by @babarot in https://github.com/babarot/gh-infra/pull/57
+- Unify spinner display with Docker-like live status per repository by @babarot in https://github.com/babarot/gh-infra/pull/58
+- Group diff viewer file list by repository by @babarot in https://github.com/babarot/gh-infra/pull/59
+### Refactorings
+- Refactor: clean architecture, DRY, and scalable design by @babarot in https://github.com/babarot/gh-infra/pull/53
+
 ## [v0.6.1](https://github.com/babarot/gh-infra/compare/v0.6.0...v0.6.1) - 2026-03-27
 ### Improvements
 - Improve gh CLI error parsing with HTTP status codes and stdout fallback by @babarot in https://github.com/babarot/gh-infra/pull/52
