@@ -125,4 +125,6 @@ When `gh infra import` exports a repository's rulesets, numeric IDs from the API
 | `actor_type: OrganizationAdmin` | `org-admin: true` |
 | `integration_id: N` in status checks | `app: {slug}` (resolved via check-runs API) |
 
-If reverse resolution fails (e.g., no check-runs available for an unknown App ID), the export falls back to `app: id:N` format. This requires manual correction before the YAML can be used with `plan` or `apply`.
+If reverse resolution fails, the export falls back to `app: "id:N"` format. This commonly happens with **private GitHub Apps** that are not publicly resolvable via `GET /apps/{slug}` and have no check-runs on the repository.
+
+The `id:N` format is fully functional — `plan` and `apply` accept it as-is and resolve the numeric ID directly, bypassing slug lookup. No manual correction is required, though you may replace it with the actual slug for readability if you know it.

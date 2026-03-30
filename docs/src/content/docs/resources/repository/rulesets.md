@@ -98,7 +98,7 @@ bypass_actors:
 |-------|-------------|
 | `role` | Built-in repository role: `admin`, `write`, or `maintain` |
 | `team` | Organization team slug (resolved via API) |
-| `app` | GitHub App slug (resolved via API) |
+| `app` | GitHub App slug (resolved via API). Private apps that cannot be resolved are exported as `id:N` by `import`, which is accepted as-is by `plan` and `apply` |
 | `org-admin` | Set to `true` for organization administrators |
 | `custom-role` | Enterprise Cloud custom role name (resolved via API) |
 | `bypass_mode` | `always` (pushes and PRs) or `pull_request` (PRs only) |
