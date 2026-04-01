@@ -108,15 +108,48 @@ func runImportInto(args []string, intoPath string) error {
 		return nil
 	}
 
-	// TODO(phase2): implement PlanInto + diff display + ApplyInto
-	for _, tm := range targets {
-		msg := fmt.Sprintf("matched: %d repo, %d reposet, %d fileset",
-			len(tm.Matches.Repositories), len(tm.Matches.RepositorySets), len(tm.Matches.FileSets))
-		p.Success(tm.Target.FullName(), msg)
+	plan, planPrinter, err := infra.ImportInto(targets)
+	if err != nil {
+		return err
 	}
-	p.Message("import --into plan/apply not yet implemented (Phase 2+)")
 
+	if !plan.HasChanges() {
+		planPrinter.Message("No changes detected")
+		return nil
+	}
+
+	// Build diff entries for confirmation UI.
+	entries := buildImportDiffEntries(plan)
+
+	planPrinter.Separator()
+	ok, err := planPrinter.ConfirmWithDiff("Apply import changes?", entries)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if err := importer.ApplyInto(plan); err != nil {
+		return err
+	}
+
+	planPrinter.Summary(fmt.Sprintf("Import complete! %d documents updated.", plan.UpdatedDocs))
 	return nil
+}
+
+// buildImportDiffEntries converts an IntoPlan into DiffEntry items for the diff viewer.
+func buildImportDiffEntries(plan *importer.IntoPlan) []ui.DiffEntry {
+	var entries []ui.DiffEntry
+	for _, d := range plan.RepoDiffs {
+		entries = append(entries, ui.DiffEntry{
+			Path:    d.Field,
+			Icon:    "~",
+			Current: fmt.Sprintf("%v", d.Old),
+			Desired: fmt.Sprintf("%v", d.New),
+		})
+	}
+	return entries
 }
 
 func parseImportTargets(args []string) ([]infra.ImportTarget, error) {

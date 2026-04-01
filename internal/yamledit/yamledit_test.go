@@ -1,0 +1,132 @@
+package yamledit
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestReplaceNode_SingleDoc(t *testing.T) {
+	data := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: my-repo
+  owner: my-org
+spec:
+  description: old desc
+  visibility: private
+`)
+
+	type spec struct {
+		Description string `yaml:"description"`
+		Visibility  string `yaml:"visibility"`
+	}
+
+	updated, err := ReplaceNode(data, 0, "$.spec", spec{
+		Description: "new desc",
+		Visibility:  "public",
+	})
+	if err != nil {
+		t.Fatalf("ReplaceNode error: %v", err)
+	}
+
+	result := string(updated)
+	if !strings.Contains(result, "new desc") {
+		t.Errorf("expected 'new desc' in output:\n%s", result)
+	}
+	if !strings.Contains(result, "public") {
+		t.Errorf("expected 'public' in output:\n%s", result)
+	}
+	// Metadata should be preserved
+	if !strings.Contains(result, "my-repo") {
+		t.Errorf("expected 'my-repo' preserved in output:\n%s", result)
+	}
+}
+
+func TestReplaceNode_MultiDoc_TargetOnly(t *testing.T) {
+	data := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: repo-a
+  owner: my-org
+spec:
+  description: first
+---
+apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: repo-b
+  owner: my-org
+spec:
+  description: second
+`)
+
+	type spec struct {
+		Description string `yaml:"description"`
+	}
+
+	// Replace only in second document (index 1)
+	updated, err := ReplaceNode(data, 1, "$.spec", spec{Description: "updated-second"})
+	if err != nil {
+		t.Fatalf("ReplaceNode error: %v", err)
+	}
+
+	result := string(updated)
+	// First doc should be unchanged
+	if !strings.Contains(result, "first") {
+		t.Errorf("first doc should be unchanged:\n%s", result)
+	}
+	// Second doc should be updated
+	if !strings.Contains(result, "updated-second") {
+		t.Errorf("expected 'updated-second' in output:\n%s", result)
+	}
+}
+
+func TestReplaceNode_InvalidPathSyntax(t *testing.T) {
+	data := []byte(`kind: Repository
+spec:
+  description: test
+`)
+	type spec struct {
+		Description string `yaml:"description"`
+	}
+
+	// Invalid path syntax should return an error
+	_, err := ReplaceNode(data, 0, "[[invalid", spec{Description: "x"})
+	if err == nil {
+		t.Error("expected error for invalid path syntax")
+	}
+}
+
+func TestReplaceNode_DocIndexOutOfRange(t *testing.T) {
+	data := []byte(`kind: Repository
+spec:
+  description: test
+`)
+	type spec struct {
+		Description string `yaml:"description"`
+	}
+
+	_, err := ReplaceNode(data, 5, "$.spec", spec{Description: "x"})
+	if err == nil {
+		t.Error("expected error for out-of-range doc index")
+	}
+}
+
+func TestReplaceContent_LiteralBlock(t *testing.T) {
+	data := []byte(`kind: File
+spec:
+  content: |
+    old content
+    line 2
+`)
+
+	updated, err := ReplaceContent(data, 0, "$.spec.content", "new content\nline 2\n")
+	if err != nil {
+		t.Fatalf("ReplaceContent error: %v", err)
+	}
+
+	result := string(updated)
+	if !strings.Contains(result, "new content") {
+		t.Errorf("expected 'new content' in output:\n%s", result)
+	}
+}
