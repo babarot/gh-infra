@@ -122,8 +122,8 @@ func runImportInto(args []string, intoPath string) error {
 
 	planPrinter.Separator()
 
-	// Print repo-level field diffs to terminal (same pattern as plan command).
-	printImportRepoDiffs(planPrinter, plan)
+	// Print plan to terminal (repo field diffs + file change summary).
+	printImportPlan(planPrinter, plan)
 
 	// File-level changes go to the diff viewer for interactive confirmation.
 	fileEntries := buildImportFileDiffEntries(plan)
@@ -172,50 +172,102 @@ func applyImportSkipSelections(plan *importer.IntoPlan, entries []ui.DiffEntry) 
 	}
 }
 
-// printImportRepoDiffs prints repo-level field diffs to the terminal,
+// printImportPlan prints the import plan to the terminal,
 // grouped by target repo name (matching the plan command's output pattern).
-func printImportRepoDiffs(p ui.Printer, plan *importer.IntoPlan) {
-	if len(plan.RepoDiffs) == 0 {
-		return
-	}
-
-	// Group diffs by target.
-	type group struct {
-		name  string
-		diffs []importer.FieldDiff
-	}
-	seen := make(map[string]int) // target → index in groups
-	var groups []group
+// Repo-level field diffs are printed inline; file-level changes show path + diff stats.
+func printImportPlan(p ui.Printer, plan *importer.IntoPlan) {
+	// Collect all target names in order.
+	seen := make(map[string]bool)
+	var targets []string
 	for _, d := range plan.RepoDiffs {
-		idx, ok := seen[d.Target]
-		if !ok {
-			idx = len(groups)
-			seen[d.Target] = idx
-			groups = append(groups, group{name: d.Target})
+		if !seen[d.Target] {
+			seen[d.Target] = true
+			targets = append(targets, d.Target)
 		}
-		groups[idx].diffs = append(groups[idx].diffs, d)
+	}
+	for _, c := range plan.FileChanges {
+		if c.Type == fileset.ChangeNoOp {
+			continue
+		}
+		if !seen[c.Target] {
+			seen[c.Target] = true
+			targets = append(targets, c.Target)
+		}
 	}
 
-	for _, g := range groups {
-		p.ActionHeader(g.name, "will be updated")
-		p.GroupHeader(ui.IconChange, g.name)
+	// Index by target.
+	repoDiffsByTarget := make(map[string][]importer.FieldDiff)
+	for _, d := range plan.RepoDiffs {
+		repoDiffsByTarget[d.Target] = append(repoDiffsByTarget[d.Target], d)
+	}
+	fileChangesByTarget := make(map[string][]importer.Change)
+	for _, c := range plan.FileChanges {
+		if c.Type == fileset.ChangeNoOp {
+			continue
+		}
+		fileChangesByTarget[c.Target] = append(fileChangesByTarget[c.Target], c)
+	}
 
-		// Compute column width for alignment.
-		w := 0
-		for _, d := range g.diffs {
-			if len(d.Field) > w {
-				w = len(d.Field)
+	for _, target := range targets {
+		rDiffs := repoDiffsByTarget[target]
+		fChanges := fileChangesByTarget[target]
+
+		p.ActionHeader(target, "will be updated")
+		p.GroupHeader(ui.IconChange, target)
+
+		// Print repo-level field diffs.
+		if len(rDiffs) > 0 {
+			w := 0
+			for _, d := range rDiffs {
+				if len(d.Field) > w {
+					w = len(d.Field)
+				}
+			}
+			p.SetColumnWidth(w)
+
+			for _, d := range rDiffs {
+				p.PrintChange(ui.ChangeItem{
+					Icon:  ui.IconChange,
+					Field: d.Field,
+					Old:   formatDiffValue(d.Old),
+					New:   formatDiffValue(d.New),
+				})
 			}
 		}
-		p.SetColumnWidth(w)
 
-		for _, d := range g.diffs {
-			p.PrintChange(ui.ChangeItem{
-				Icon: ui.IconChange,
-				Old:  formatDiffValue(d.Old),
-				New:  formatDiffValue(d.New),
-				Field: d.Field,
-			})
+		// Print file-level change summary.
+		if len(fChanges) > 0 {
+			w := 0
+			for _, c := range fChanges {
+				if len(c.Path) > w {
+					w = len(c.Path)
+				}
+			}
+			p.SetColumnWidth(w)
+
+			count := len(fChanges)
+			label := fmt.Sprintf("%d file", count)
+			if count != 1 {
+				label += "s"
+			}
+			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
+
+			for _, c := range fChanges {
+				var icon string
+				switch c.WriteMode {
+				case importer.WriteSkip:
+					icon = ui.IconWarning
+				default:
+					icon = ui.IconChange
+				}
+				added, removed := fileset.DiffStat(c.Current, c.Desired)
+				p.PrintFileChange(ui.FileItem{
+					Icon:    icon,
+					Path:    c.Path,
+					Added:   added,
+					Removed: removed,
+				})
+			}
 		}
 
 		p.GroupEnd()
