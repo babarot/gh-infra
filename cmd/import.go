@@ -9,6 +9,7 @@ import (
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
+	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/importer"
 	"github.com/babarot/gh-infra/internal/infra"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -115,15 +116,29 @@ func runImportInto(args []string, intoPath string) error {
 	}
 
 	if !plan.HasChanges() {
-		planPrinter.Message("No changes detected")
+		planPrinter.Message("\nNo changes detected")
 		return nil
 	}
 
-	// Build diff entries for confirmation UI.
-	entries := buildImportDiffEntries(plan)
-
 	planPrinter.Separator()
-	ok, err := planPrinter.ConfirmWithDiff("Apply import changes?", entries)
+
+	// Print repo-level field diffs to terminal (same pattern as plan command).
+	printImportRepoDiffs(planPrinter, plan)
+
+	// File-level changes go to the diff viewer for interactive confirmation.
+	fileEntries := buildImportFileDiffEntries(plan)
+
+	var ok bool
+	if len(fileEntries) > 0 {
+		ok, err = planPrinter.ConfirmWithDiff("Apply import changes?", fileEntries)
+		if err != nil {
+			return err
+		}
+		// Write skip selections back to plan.FileChanges.
+		applyImportSkipSelections(plan, fileEntries)
+	} else {
+		ok, err = planPrinter.Confirm("Apply import changes?")
+	}
 	if err != nil {
 		return err
 	}
@@ -139,21 +154,79 @@ func runImportInto(args []string, intoPath string) error {
 	return nil
 }
 
-// buildImportDiffEntries converts an IntoPlan into DiffEntry items for the diff viewer.
-func buildImportDiffEntries(plan *importer.IntoPlan) []ui.DiffEntry {
-	var entries []ui.DiffEntry
+// applyImportSkipSelections writes skip selections from the diff viewer back
+// to plan.FileChanges, setting skipped entries to NoOp so they are not applied.
+func applyImportSkipSelections(plan *importer.IntoPlan, entries []ui.DiffEntry) {
+	type key struct{ target, path string }
+	skipped := make(map[key]bool, len(entries))
+	for _, e := range entries {
+		if e.Skip {
+			skipped[key{e.Target, e.Path}] = true
+		}
+	}
+	for i := range plan.FileChanges {
+		c := &plan.FileChanges[i]
+		if skipped[key{c.Target, c.Path}] {
+			c.Type = fileset.ChangeNoOp
+		}
+	}
+}
 
-	// Repo-level field diffs.
-	for _, d := range plan.RepoDiffs {
-		entries = append(entries, ui.DiffEntry{
-			Path:    d.Field,
-			Icon:    ui.IconChange,
-			Current: formatDiffValue(d.Old),
-			Desired: formatDiffValue(d.New),
-		})
+// printImportRepoDiffs prints repo-level field diffs to the terminal,
+// grouped by target repo name (matching the plan command's output pattern).
+func printImportRepoDiffs(p ui.Printer, plan *importer.IntoPlan) {
+	if len(plan.RepoDiffs) == 0 {
+		return
 	}
 
-	// File-level changes.
+	// Group diffs by target.
+	type group struct {
+		name  string
+		diffs []importer.FieldDiff
+	}
+	seen := make(map[string]int) // target → index in groups
+	var groups []group
+	for _, d := range plan.RepoDiffs {
+		idx, ok := seen[d.Target]
+		if !ok {
+			idx = len(groups)
+			seen[d.Target] = idx
+			groups = append(groups, group{name: d.Target})
+		}
+		groups[idx].diffs = append(groups[idx].diffs, d)
+	}
+
+	for _, g := range groups {
+		p.ActionHeader(g.name, "will be updated")
+		p.GroupHeader(ui.IconChange, g.name)
+
+		// Compute column width for alignment.
+		w := 0
+		for _, d := range g.diffs {
+			if len(d.Field) > w {
+				w = len(d.Field)
+			}
+		}
+		p.SetColumnWidth(w)
+
+		for _, d := range g.diffs {
+			p.PrintChange(ui.ChangeItem{
+				Icon: ui.IconChange,
+				Old:  formatDiffValue(d.Old),
+				New:  formatDiffValue(d.New),
+				Field: d.Field,
+			})
+		}
+
+		p.GroupEnd()
+		p.SetColumnWidth(0)
+	}
+}
+
+// buildImportFileDiffEntries converts file-level changes into DiffEntry items for the diff viewer.
+func buildImportFileDiffEntries(plan *importer.IntoPlan) []ui.DiffEntry {
+	var entries []ui.DiffEntry
+
 	for _, c := range plan.FileChanges {
 		entry := ui.DiffEntry{
 			Path:   c.Path,
@@ -172,11 +245,10 @@ func buildImportDiffEntries(plan *importer.IntoPlan) []ui.DiffEntry {
 				entry.Current = c.Current
 				entry.Desired = c.Desired
 			case "noop":
-				continue // skip no-op entries
+				continue
 			}
 		}
 
-		// Append warnings to the entry.
 		for _, w := range c.Warnings {
 			entry.Icon = ui.IconWarning
 			if entry.Current != "" {

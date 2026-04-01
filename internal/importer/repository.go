@@ -37,6 +37,10 @@ func PlanRepository(input RepoPlanInput) (RepoPlan, error) {
 			continue
 		}
 
+		fullName := doc.Resource.Metadata.FullName()
+		for i := range diffs {
+			diffs[i].Target = fullName
+		}
 		plan.Diffs = append(plan.Diffs, diffs...)
 
 		// Patch YAML: replace $.spec with the imported spec
@@ -89,6 +93,10 @@ func PlanRepositorySet(input RepoPlanInput) (RepoPlan, error) {
 			continue
 		}
 
+		fullName := doc.Resource.Metadata.FullName()
+		for i := range diffs {
+			diffs[i].Target = fullName
+		}
 		plan.Diffs = append(plan.Diffs, diffs...)
 
 		// Patch YAML: replace $.repositories[N].spec
