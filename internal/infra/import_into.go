@@ -9,26 +9,49 @@ import (
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/importer"
+	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// ImportResult holds the outcome of the import-into plan phase.
+// ImportOptions configures the Import function.
+type ImportOptions struct {
+	Args []string // owner/repo arguments
+	Into string   // non-empty = import into local manifests
+}
+
+// ImportResult holds the outcome of the Import function.
 type ImportResult struct {
-	Plan    *importer.Result
+	// stdout mode fields
+	YAMLDocs  [][]byte
+	Errors    map[string]error
+	Succeeded int
+	Failed    int
+
+	// --into mode: diff result for local manifest updates.
+	Plan *importer.Result
+
 	printer ui.Printer
 }
 
 // Printer returns the printer used during this session.
 func (r *ImportResult) Printer() ui.Printer { return r.printer }
 
-// HasChanges reports whether any changes were detected.
-func (r *ImportResult) HasChanges() bool { return r.Plan.HasChanges() }
+// HasChanges reports whether any changes were detected (--into mode).
+func (r *ImportResult) HasChanges() bool {
+	if r.Plan == nil {
+		return false
+	}
+	return r.Plan.HasChanges()
+}
 
 // DiffEntries returns file-level diff entries for the interactive diff viewer.
 // WriteSkip entries are excluded (shown in the console plan only).
 func (r *ImportResult) DiffEntries() []ui.DiffEntry {
-	var entries []ui.DiffEntry
+	if r.Plan == nil {
+		return nil
+	}
 
+	var entries []ui.DiffEntry
 	for _, c := range r.Plan.FileChanges {
 		if c.WriteMode == importer.WriteSkip {
 			continue
@@ -51,7 +74,6 @@ func (r *ImportResult) DiffEntries() []ui.DiffEntry {
 			entries = append(entries, entry)
 		}
 	}
-
 	return entries
 }
 
@@ -73,21 +95,46 @@ func (r *ImportResult) MarkSkips(entries []ui.DiffEntry) {
 	}
 }
 
-// ImportApply writes the planned changes to local files.
-func ImportApply(result *ImportResult) error {
-	return importer.Write(result.Plan)
+// Write writes the planned changes to local files (--into mode).
+func (r *ImportResult) Write() error {
+	return importer.Write(r.Plan)
 }
 
-// ImportPlan fetches GitHub state, compares it against local manifests,
-// and prints the diff to the terminal. The returned result provides
-// methods for diff viewing and skip selection.
-func ImportPlan(targets []importer.TargetMatches) (*ImportResult, error) {
-	runner := gh.NewRunner(false)
+// importInto parses manifests, matches targets, fetches GitHub state,
+// compares it against local manifests, and prints the diff to the terminal.
+func importInto(opts ImportOptions) (*ImportResult, error) {
 	printer := ui.NewStandardPrinter()
+
+	// Parse manifests and match targets.
+	parsed, err := manifest.ParseAll(opts.Into)
+	if err != nil {
+		return nil, err
+	}
+
+	targets, err := parseArgs(opts.Args)
+	if err != nil {
+		return nil, err
+	}
+
+	var matched []importer.TargetMatches
+	for _, tm := range targets {
+		matches := importer.FindMatches(parsed, tm.Target.FullName())
+		if matches.IsEmpty() {
+			printer.Warning(tm.Target.FullName(), "not found in manifests, skipping")
+			continue
+		}
+		matched = append(matched, importer.TargetMatches{Target: tm.Target, Matches: matches})
+	}
+
+	if len(matched) == 0 {
+		return &ImportResult{printer: printer}, nil
+	}
+
+	runner := gh.NewRunner(false)
 
 	// Build spinner tasks.
 	var tasks []ui.RefreshTask
-	for _, tm := range targets {
+	for _, tm := range matched {
 		tasks = append(tasks, ui.RefreshTask{
 			Name:      tm.Target.FullName(),
 			FailLabel: tm.Target.FullName(),
@@ -99,7 +146,7 @@ func ImportPlan(targets []importer.TargetMatches) (*ImportResult, error) {
 
 	tracker := ui.RunRefresh(tasks)
 
-	plan, err := importer.Diff(targets, runner, printer, tracker)
+	plan, err := importer.Diff(matched, runner, printer, tracker)
 
 	tracker.Wait()
 
