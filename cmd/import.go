@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	goyaml "github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
-	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/importer"
 	"github.com/babarot/gh-infra/internal/infra"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -110,23 +108,26 @@ func runImportInto(args []string, intoPath string) error {
 		return nil
 	}
 
-	plan, planPrinter, err := infra.ImportInto(targets)
+	result, err := infra.ImportInto(targets)
 	if err != nil {
 		return err
 	}
 
-	if !plan.HasChanges() {
-		planPrinter.Message("\nNo changes detected")
+	if !result.HasChanges() {
+		result.Printer().Message("\nNo changes detected")
 		return nil
 	}
+
+	planPrinter := result.Printer()
+	plan := result.Plan
 
 	planPrinter.Separator()
 
 	// Print plan to terminal (repo field diffs + file change summary).
-	printImportPlan(planPrinter, plan)
+	infra.PrintImportPlan(planPrinter, plan)
 
 	// File-level changes go to the diff viewer for interactive confirmation.
-	fileEntries := buildImportFileDiffEntries(plan)
+	fileEntries := infra.BuildImportFileDiffEntries(plan)
 
 	var ok bool
 	if len(fileEntries) > 0 {
@@ -135,7 +136,7 @@ func runImportInto(args []string, intoPath string) error {
 			return err
 		}
 		// Write skip selections back to plan.FileChanges.
-		applyImportSkipSelections(plan, fileEntries)
+		infra.ApplyImportSkipSelections(plan, fileEntries)
 	} else {
 		ok, err = planPrinter.Confirm("Apply import changes?")
 	}
@@ -146,202 +147,12 @@ func runImportInto(args []string, intoPath string) error {
 		return nil
 	}
 
-	if err := importer.ApplyInto(plan); err != nil {
+	if err := infra.ApplyImportInto(result); err != nil {
 		return err
 	}
 
 	planPrinter.Summary(fmt.Sprintf("Import complete! %d documents updated.", plan.UpdatedDocs))
 	return nil
-}
-
-// applyImportSkipSelections writes skip selections from the diff viewer back
-// to plan.FileChanges, setting skipped entries to NoOp so they are not applied.
-func applyImportSkipSelections(plan *importer.IntoPlan, entries []ui.DiffEntry) {
-	type key struct{ target, path string }
-	skipped := make(map[key]bool, len(entries))
-	for _, e := range entries {
-		if e.Skip {
-			skipped[key{e.Target, e.Path}] = true
-		}
-	}
-	for i := range plan.FileChanges {
-		c := &plan.FileChanges[i]
-		if skipped[key{c.Target, c.Path}] {
-			c.Type = fileset.ChangeNoOp
-		}
-	}
-}
-
-// printImportPlan prints the import plan to the terminal,
-// grouped by target repo name (matching the plan command's output pattern).
-// Repo-level field diffs are printed inline; file-level changes show path + diff stats.
-func printImportPlan(p ui.Printer, plan *importer.IntoPlan) {
-	// Collect all target names in order.
-	seen := make(map[string]bool)
-	var targets []string
-	for _, d := range plan.RepoDiffs {
-		if !seen[d.Target] {
-			seen[d.Target] = true
-			targets = append(targets, d.Target)
-		}
-	}
-	for _, c := range plan.FileChanges {
-		if c.Type == fileset.ChangeNoOp && c.WriteMode != importer.WriteSkip {
-			continue
-		}
-		if !seen[c.Target] {
-			seen[c.Target] = true
-			targets = append(targets, c.Target)
-		}
-	}
-
-	// Index by target.
-	repoDiffsByTarget := make(map[string][]importer.FieldDiff)
-	for _, d := range plan.RepoDiffs {
-		repoDiffsByTarget[d.Target] = append(repoDiffsByTarget[d.Target], d)
-	}
-	fileChangesByTarget := make(map[string][]importer.Change)
-	for _, c := range plan.FileChanges {
-		if c.Type == fileset.ChangeNoOp && c.WriteMode != importer.WriteSkip {
-			continue
-		}
-		fileChangesByTarget[c.Target] = append(fileChangesByTarget[c.Target], c)
-	}
-
-	for _, target := range targets {
-		rDiffs := repoDiffsByTarget[target]
-		fChanges := fileChangesByTarget[target]
-
-		p.ActionHeader(target, "will be updated")
-		p.GroupHeader(ui.IconChange, target)
-
-		// Print repo-level field diffs.
-		if len(rDiffs) > 0 {
-			w := 0
-			for _, d := range rDiffs {
-				if len(d.Field) > w {
-					w = len(d.Field)
-				}
-			}
-			p.SetColumnWidth(w)
-
-			for _, d := range rDiffs {
-				p.PrintChange(ui.ChangeItem{
-					Icon:  ui.IconChange,
-					Field: d.Field,
-					Old:   formatDiffValue(d.Old),
-					New:   formatDiffValue(d.New),
-				})
-			}
-		}
-
-		// Print file-level change summary.
-		if len(fChanges) > 0 {
-			w := 0
-			for _, c := range fChanges {
-				if len(importLocalPath(c)) > w {
-					w = len(importLocalPath(c))
-				}
-			}
-			p.SetColumnWidth(w)
-
-			count := len(fChanges)
-			label := fmt.Sprintf("%d file", count)
-			if count != 1 {
-				label += "s"
-			}
-			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
-
-			for _, c := range fChanges {
-				item := ui.FileItem{
-					Path: importLocalPath(c),
-				}
-				if c.WriteMode == importer.WriteSkip {
-					item.Icon = ui.IconWarning
-					item.Reason = c.Reason
-				} else {
-					item.Icon = ui.IconChange
-					item.Added, item.Removed = fileset.DiffStat(c.Current, c.Desired)
-				}
-				p.PrintFileChange(item)
-			}
-		}
-
-		p.GroupEnd()
-		p.SetColumnWidth(0)
-	}
-}
-
-// buildImportFileDiffEntries converts file-level changes into DiffEntry items for the diff viewer.
-func buildImportFileDiffEntries(plan *importer.IntoPlan) []ui.DiffEntry {
-	var entries []ui.DiffEntry
-
-	for _, c := range plan.FileChanges {
-		entry := ui.DiffEntry{
-			Path:   importLocalPath(c),
-			Target: c.Target,
-		}
-		// WriteSkip entries (create_only, templates/patches, github:// source) cannot
-		// be applied — they are shown in the console plan output only.
-		if c.WriteMode == importer.WriteSkip {
-			continue
-		}
-		switch c.Type {
-		case "update":
-			entry.Icon = ui.IconChange
-			entry.Current = c.Current
-			entry.Desired = c.Desired
-		default:
-			continue // noop, etc.
-		}
-
-		for _, w := range c.Warnings {
-			entry.Icon = ui.IconWarning
-			if entry.Current != "" {
-				entry.Current += "\n# " + w
-			}
-		}
-
-		entries = append(entries, entry)
-	}
-
-	return entries
-}
-
-// importLocalPath returns the local write-back path for display.
-// Uses the local target path when available, falling back to the repo-internal path.
-func importLocalPath(c importer.Change) string {
-	if c.LocalTarget != "" {
-		return c.LocalTarget
-	}
-	if c.ManifestPath != "" {
-		return c.ManifestPath + ":" + c.Path
-	}
-	return c.Path
-}
-
-// formatDiffValue formats a FieldDiff value as YAML text for the diff viewer.
-// Scalar types (string, bool, nil) are rendered inline; complex types (structs,
-// slices, maps) are marshaled to multi-line YAML so the unified diff is readable.
-func formatDiffValue(v any) string {
-	if v == nil {
-		return "(none)"
-	}
-	switch val := v.(type) {
-	case string:
-		return val
-	case bool:
-		if val {
-			return "true"
-		}
-		return "false"
-	}
-	// Complex types: marshal to YAML.
-	data, err := goyaml.Marshal(v)
-	if err != nil {
-		return fmt.Sprintf("%v", v)
-	}
-	return strings.TrimRight(string(data), "\n")
 }
 
 func parseImportTargets(args []string) ([]infra.ImportTarget, error) {
