@@ -87,3 +87,18 @@ spec:
 | `merge_commit_message` | string | Message format for merge commits |
 | `squash_merge_commit_title` | string | Title format for squash merges |
 | `squash_merge_commit_message` | string | Message format for squash merges |
+
+## Release Immutability
+
+Prevent releases and their assets from being modified or deleted after publishing:
+
+```yaml
+spec:
+  release_immutability: true
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `release_immutability` | bool | `true` to lock releases after publishing. Once enabled, release assets and metadata cannot be edited or deleted |
+
+This setting uses a dedicated GitHub API endpoint (`/repos/{owner}/{repo}/immutable-releases`) rather than the standard repository settings endpoint.

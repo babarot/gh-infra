@@ -279,39 +279,67 @@ func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manife
 		return p.applyTopics(ctx, fullName, repo)
 
 	case "release_immutability":
-		enabled, _ := c.NewValue.(bool)
+		enabled, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.applyReleaseImmutability(ctx, owner, name, enabled)
 
 	case "issues":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "enable-issues", v)
 	case "projects":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "enable-projects", v)
 	case "wiki":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "enable-wiki", v)
 	case "discussions":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "enable-discussions", v)
 	case "allow_merge_commit":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "enable-merge-commit", v)
 	case "allow_squash_merge":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "enable-squash-merge", v)
 	case "allow_rebase_merge":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "enable-rebase-merge", v)
 	case "auto_delete_head_branches":
-		v, _ := c.NewValue.(bool)
+		v, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
 		return p.toggleFeature(ctx, fullName, "delete-branch-on-merge", v)
 
 	case "merge_commit_title", "merge_commit_message", "squash_merge_commit_title", "squash_merge_commit_message":
 		return p.updateRepoField(ctx, owner+"/"+name, c.Field, fmt.Sprintf("%v", c.NewValue))
-	}
 
-	return nil
+	default:
+		return fmt.Errorf("unknown field: %s", c.Field)
+	}
 }
 
 func (p *Processor) updateRepoField(ctx context.Context, fullName, field, value string) error {

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -45,6 +46,7 @@ func TestFetchRepository(t *testing.T) {
 				"merge_commit_title": "MERGE_MESSAGE",
 				"merge_commit_message": "PR_BODY"
 			}`),
+			"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
 			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`[]`),
 			"secret list --repo myorg/myrepo --json name --jq .[].name":                       []byte("SECRET1\nSECRET2"),
 			"variable list --repo myorg/myrepo --json name,value":                             []byte(`[{"name":"VAR1","value":"val1"},{"name":"VAR2","value":"val2"}]`),
@@ -274,6 +276,128 @@ func TestCurrentState_FullName(t *testing.T) {
 	if got := s.FullName(); got != "myorg/myrepo" {
 		t.Errorf("FullName() = %q, want myorg/myrepo", got)
 	}
+}
+
+func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
+	// Base responses required for fetchRepoSettings to succeed
+	baseResponses := map[string][]byte{
+		"repo view myorg/myrepo --json description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef": []byte(`{
+			"description": "A test repo",
+			"homepageUrl": "",
+			"visibility": "PUBLIC",
+			"isArchived": false,
+			"repositoryTopics": [],
+			"hasIssuesEnabled": true,
+			"hasProjectsEnabled": false,
+			"hasWikiEnabled": true,
+			"hasDiscussionsEnabled": false,
+			"mergeCommitAllowed": true,
+			"squashMergeAllowed": true,
+			"rebaseMergeAllowed": false,
+			"deleteBranchOnMerge": true,
+			"defaultBranchRef": {"name": "main"}
+		}`),
+		"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": []byte(`{
+			"squash_merge_commit_title": "PR_TITLE",
+			"squash_merge_commit_message": "COMMIT_MESSAGES",
+			"merge_commit_title": "MERGE_MESSAGE",
+			"merge_commit_message": "PR_BODY"
+		}`),
+		"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`[]`),
+	}
+
+	t.Run("commit message settings 404 is ignored", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		for k, v := range baseResponses {
+			responses[k] = v
+		}
+		delete(responses, "api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}")
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": fmt.Errorf("%w: api error", gh.ErrNotFound),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err != nil {
+			t.Fatalf("expected no error for 404, got: %v", err)
+		}
+		if state.MergeStrategy.MergeCommitTitle != "" {
+			t.Errorf("expected empty MergeCommitTitle, got %q", state.MergeStrategy.MergeCommitTitle)
+		}
+	})
+
+	t.Run("release immutability 403 is ignored", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		for k, v := range baseResponses {
+			responses[k] = v
+		}
+		delete(responses, "api repos/myorg/myrepo/immutable-releases")
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				"api repos/myorg/myrepo/immutable-releases": fmt.Errorf("%w: api error", gh.ErrForbidden),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err != nil {
+			t.Fatalf("expected no error for 403, got: %v", err)
+		}
+		if state.ReleaseImmutability {
+			t.Error("expected ReleaseImmutability = false for 403")
+		}
+	})
+
+	t.Run("commit message settings 500 propagates error", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		for k, v := range baseResponses {
+			responses[k] = v
+		}
+		delete(responses, "api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}")
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": fmt.Errorf("internal server error"),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err == nil {
+			t.Fatal("expected error for 500, got nil")
+		}
+		if !strings.Contains(err.Error(), "fetch commit message settings") {
+			t.Errorf("expected 'fetch commit message settings' in error, got: %v", err)
+		}
+	})
+
+	t.Run("release immutability 500 propagates error", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		for k, v := range baseResponses {
+			responses[k] = v
+		}
+		delete(responses, "api repos/myorg/myrepo/immutable-releases")
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				"api repos/myorg/myrepo/immutable-releases": fmt.Errorf("internal server error"),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err == nil {
+			t.Fatal("expected error for 500, got nil")
+		}
+		if !strings.Contains(err.Error(), "fetch release immutability") {
+			t.Errorf("expected 'fetch release immutability' in error, got: %v", err)
+		}
+	})
 }
 
 func TestFetchActionsSettings(t *testing.T) {

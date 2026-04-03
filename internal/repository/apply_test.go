@@ -185,6 +185,49 @@ func TestApplyFeatureToggle(t *testing.T) {
 	}
 }
 
+func TestApplyRepoSetting_BoolTypeAssertionError(t *testing.T) {
+	boolFields := []string{
+		"release_immutability",
+		"issues",
+		"projects",
+		"wiki",
+		"discussions",
+		"allow_merge_commit",
+		"allow_squash_merge",
+		"allow_rebase_merge",
+		"auto_delete_head_branches",
+	}
+
+	for _, field := range boolFields {
+		t.Run(field, func(t *testing.T) {
+			mock := &gh.MockRunner{}
+			proc := NewProcessor(mock, nil, nil)
+
+			repo := newTestRepo("myorg", "myrepo")
+			changes := []Change{
+				{
+					Type:     ChangeUpdate,
+					Resource: "Repository",
+					Name:     "myorg/myrepo",
+					Field:    field,
+					NewValue: "not-a-bool", // wrong type
+				},
+			}
+
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			if len(results) != 1 {
+				t.Fatalf("expected 1 result, got %d", len(results))
+			}
+			if results[0].Err == nil {
+				t.Fatal("expected error for non-bool NewValue, got nil")
+			}
+			if !strings.Contains(results[0].Err.Error(), "unexpected type") {
+				t.Errorf("expected 'unexpected type' in error, got: %v", results[0].Err)
+			}
+		})
+	}
+}
+
 func TestApplyWithErrNotFound(t *testing.T) {
 	notFoundErr := fmt.Errorf("%w: %w", gh.ErrNotFound, &gh.ExitError{
 		Cmd: "repo edit myorg/myrepo", ExitCode: 1,

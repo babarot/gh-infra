@@ -146,10 +146,18 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 	}
 
 	// Fetch commit message settings via REST API (not available in gh repo view --json)
-	commitMsgSettings, _ := p.fetchCommitMessageSettings(ctx, owner, name)
+	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
+	commitMsgSettings, err := p.fetchCommitMessageSettings(ctx, owner, name)
+	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrForbidden) {
+		return nil, fmt.Errorf("fetch commit message settings for %s/%s: %w", owner, name, err)
+	}
 
 	// Fetch release immutability setting via dedicated REST API endpoint
-	releaseImmutability, _ := p.fetchReleaseImmutability(ctx, owner, name)
+	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
+	releaseImmutability, err := p.fetchReleaseImmutability(ctx, owner, name)
+	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrForbidden) {
+		return nil, fmt.Errorf("fetch release immutability for %s/%s: %w", owner, name, err)
+	}
 
 	return &CurrentState{
 		Owner:               owner,
