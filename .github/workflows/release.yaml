@@ -4,12 +4,15 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 concurrency:
   group: ${{ github.workflow }}
 
 jobs:
   tagpr:
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -27,7 +30,9 @@ jobs:
       tag: ${{ steps.run-tagpr.outputs.tag }}
 
   goreleaser:
-    if: needs.tagpr.outputs.tag != ''
+    if: >-
+      (needs.tagpr.outputs.tag != '' && !cancelled()) ||
+      github.ref_type == 'tag'
     needs: tagpr
     runs-on: ubuntu-latest
     timeout-minutes: 5
