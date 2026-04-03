@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.7.0](https://github.com/babarot/gh-infra/compare/v0.6.2...v0.7.0) - 2026-04-03
+### New Features
+- feat: add release_immutability support for repositories by @yagihash in https://github.com/babarot/gh-infra/pull/63
+### Improvements
+- fix: harden type assertions, fetch error handling, and add release_immutability docs by @babarot in https://github.com/babarot/gh-infra/pull/64
+
 ## [v0.6.2](https://github.com/babarot/gh-infra/compare/v0.6.1...v0.6.2) - 2026-03-30
 ### Bug fixes
 - fix: replace --body with --input - for gh api calls by @yagihash in https://github.com/babarot/gh-infra/pull/61
