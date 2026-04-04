@@ -239,7 +239,7 @@ func parseFile(data []byte, path string) (*FileSet, []string, error) {
 	fs := &FileSet{
 		APIVersion: f.APIVersion,
 		Kind:       KindFileSet,
-		Metadata:   FileSetMetadata{Owner: f.Metadata.Owner},
+		Metadata:   FileSetMetadata{Name: f.Metadata.Name, Owner: f.Metadata.Owner},
 		Spec: FileSetSpec{
 			Repositories:  []FileSetRepository{{Name: f.Metadata.Name}},
 			Files:         f.Spec.Files,

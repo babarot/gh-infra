@@ -10,8 +10,9 @@ import (
 
 func TestFileSetApplyArgs(t *testing.T) {
 	fs := &manifest.FileSet{
-		Metadata: manifest.FileSetMetadata{Owner: "org"},
+		Metadata: manifest.FileSetMetadata{Name: "myfs", Owner: "org"},
 		Spec: manifest.FileSetSpec{
+			Repositories:  []manifest.FileSetRepository{{Name: "repo1"}, {Name: "repo3"}},
 			CommitMessage: "sync files",
 			Via:           "push",
 			Branch:        "main",
@@ -19,10 +20,11 @@ func TestFileSetApplyArgs(t *testing.T) {
 			PRBody:        "pr body",
 		},
 	}
+	id := fs.Identity() // "org/myfs"
 	allChanges := []fileset.Change{
-		{FileSetOwner: "org", Target: "org/repo1", Path: "a.txt"},
-		{FileSetOwner: "other", Target: "other/repo2", Path: "b.txt"},
-		{FileSetOwner: "org", Target: "org/repo3", Path: "c.txt"},
+		{FileSetID: id, Target: "org/repo1", Path: "a.txt"},
+		{FileSetID: "other/otherfs", Target: "other/repo2", Path: "b.txt"},
+		{FileSetID: id, Target: "org/repo3", Path: "c.txt"},
 	}
 
 	changes, opts := fileSetApplyArgs(fs, allChanges)
@@ -52,12 +54,50 @@ func TestFileSetApplyArgs(t *testing.T) {
 	}
 }
 
-func TestFileSetApplyArgs_NoMatch(t *testing.T) {
-	fs := &manifest.FileSet{
-		Metadata: manifest.FileSetMetadata{Owner: "org"},
+func TestFileSetApplyArgs_SameOwnerDifferentName(t *testing.T) {
+	fs1 := &manifest.FileSet{
+		Metadata: manifest.FileSetMetadata{Name: "repo-a", Owner: "org"},
+		Spec: manifest.FileSetSpec{
+			Repositories: []manifest.FileSetRepository{{Name: "repo-a"}},
+		},
+	}
+	fs2 := &manifest.FileSet{
+		Metadata: manifest.FileSetMetadata{Name: "repo-b", Owner: "org"},
+		Spec: manifest.FileSetSpec{
+			Repositories: []manifest.FileSetRepository{{Name: "repo-b"}},
+		},
 	}
 	allChanges := []fileset.Change{
-		{FileSetOwner: "other", Target: "other/repo"},
+		{FileSetID: fs1.Identity(), Target: "org/repo-a", Path: "a.txt"},
+		{FileSetID: fs2.Identity(), Target: "org/repo-b", Path: "b.txt"},
+	}
+
+	changes1, _ := fileSetApplyArgs(fs1, allChanges)
+	changes2, _ := fileSetApplyArgs(fs2, allChanges)
+
+	if len(changes1) != 1 {
+		t.Fatalf("fs1: expected 1 change, got %d", len(changes1))
+	}
+	if changes1[0].Target != "org/repo-a" {
+		t.Errorf("fs1: changes[0].Target = %q, want org/repo-a", changes1[0].Target)
+	}
+	if len(changes2) != 1 {
+		t.Fatalf("fs2: expected 1 change, got %d", len(changes2))
+	}
+	if changes2[0].Target != "org/repo-b" {
+		t.Errorf("fs2: changes[0].Target = %q, want org/repo-b", changes2[0].Target)
+	}
+}
+
+func TestFileSetApplyArgs_NoMatch(t *testing.T) {
+	fs := &manifest.FileSet{
+		Metadata: manifest.FileSetMetadata{Name: "myrepo", Owner: "org"},
+		Spec: manifest.FileSetSpec{
+			Repositories: []manifest.FileSetRepository{{Name: "myrepo"}},
+		},
+	}
+	allChanges := []fileset.Change{
+		{FileSetID: "other/otherrepo", Target: "other/repo"},
 	}
 	changes, _ := fileSetApplyArgs(fs, allChanges)
 	if len(changes) != 0 {

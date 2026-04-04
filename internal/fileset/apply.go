@@ -14,7 +14,7 @@ type ApplyOptions struct {
 	CommitMessage string
 	Via           string // "push" or "pull_request"
 	Branch        string
-	FileSetOwner  string
+	FileSetID     string
 	PRTitle       string // custom PR title (pull_request only)
 	PRBody        string // custom PR body (pull_request only)
 }
@@ -112,5 +112,5 @@ func resolveCommitMessage(opts ApplyOptions) string {
 	if opts.CommitMessage != "" {
 		return opts.CommitMessage
 	}
-	return fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetOwner)
+	return fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
 }

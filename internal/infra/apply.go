@@ -165,7 +165,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]fileset.Change, fileset.ApplyOptions) {
 	var fsChanges []fileset.Change
 	for _, c := range allChanges {
-		if c.FileSetOwner == fs.Metadata.Owner {
+		if c.FileSetID == fs.Identity() {
 			fsChanges = append(fsChanges, c)
 		}
 	}
@@ -173,7 +173,7 @@ func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]file
 		CommitMessage: fs.Spec.CommitMessage,
 		Via:           fs.Spec.Via,
 		Branch:        fs.Spec.Branch,
-		FileSetOwner:  fs.Metadata.Owner,
+		FileSetID:     fs.Identity(),
 		PRTitle:       fs.Spec.PRTitle,
 		PRBody:        fs.Spec.PRBody,
 	}

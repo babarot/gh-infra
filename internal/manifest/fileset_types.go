@@ -1,5 +1,10 @@
 package manifest
 
+import (
+	"sort"
+	"strings"
+)
+
 // FileSet represents a set of files to distribute to target repositories.
 type FileSet struct {
 	APIVersion string          `yaml:"apiVersion"`
@@ -9,7 +14,23 @@ type FileSet struct {
 }
 
 type FileSetMetadata struct {
+	Name  string `yaml:"name,omitempty"`
 	Owner string `yaml:"owner" validate:"required"`
+}
+
+// Identity returns a unique identifier for this FileSet.
+// For kind: File (expanded), this is "owner/name".
+// For kind: FileSet without a name, it derives from sorted repo names.
+func (fs *FileSet) Identity() string {
+	if fs.Metadata.Name != "" {
+		return fs.Metadata.Owner + "/" + fs.Metadata.Name
+	}
+	names := make([]string, len(fs.Spec.Repositories))
+	for i, r := range fs.Spec.Repositories {
+		names[i] = r.Name
+	}
+	sort.Strings(names)
+	return fs.Metadata.Owner + "/" + strings.Join(names, "+")
 }
 
 type FileSetSpec struct {

@@ -99,7 +99,7 @@ func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes [
 	p.printer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
 	message := opts.CommitMessage
 	if message == "" {
-		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetOwner)
+		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
 	}
 	for _, c := range changes {
 		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
@@ -263,7 +263,7 @@ func (p *Processor) updateRef(ctx context.Context, repo, branch, commitSHA strin
 func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA, title string, opts ApplyOptions) (string, error) {
 	branchName := opts.Branch
 	if branchName == "" {
-		branchName = fmt.Sprintf("gh-infra/sync-%s", opts.FileSetOwner)
+		branchName = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
 	}
 
 	// Create branch pointing to the new commit; if it already exists, force-update it.
@@ -292,7 +292,7 @@ func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA
 	}
 	prBody := opts.PRBody
 	if prBody == "" {
-		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetOwner)
+		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetID)
 	}
 	out, err := p.runner.Run(ctx, "pr", "create",
 		"--repo", repo,
@@ -317,4 +317,20 @@ func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// sanitizeBranchName converts an identity string into a valid Git branch name component.
+func sanitizeBranchName(s string) string {
+	s = strings.ReplaceAll(s, "/", "-")
+	s = strings.ReplaceAll(s, " ", "-")
+	s = strings.ReplaceAll(s, "..", "")
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '~', '^', ':', '?', '*', '[', '\\':
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.Trim(s, "-.")
+	return s
 }

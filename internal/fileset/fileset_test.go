@@ -251,15 +251,15 @@ func TestApply_CreateFile(t *testing.T) {
 
 	changes := []Change{
 		{
-			FileSetOwner: "ci-files",
-			Target:       "owner/repo",
-			Path:         ".github/ci.yml",
-			Type:         ChangeCreate,
-			Desired:      "name: CI",
+			FileSetID: "ci-files",
+			Target:    "owner/repo",
+			Path:      ".github/ci.yml",
+			Type:      ChangeCreate,
+			Desired:   "name: CI",
 		},
 	}
 
-	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, ui.NoopReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -283,16 +283,16 @@ func TestApply_UpdateFile(t *testing.T) {
 
 	changes := []Change{
 		{
-			FileSetOwner: "ci-files",
-			Target:       "owner/repo",
-			Path:         ".github/ci.yml",
-			Type:         ChangeUpdate,
-			Desired:      "name: CI v2",
-			SHA:          "old123",
+			FileSetID: "ci-files",
+			Target:    "owner/repo",
+			Path:      ".github/ci.yml",
+			Type:      ChangeUpdate,
+			Desired:   "name: CI v2",
+			SHA:       "old123",
 		},
 	}
 
-	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, ui.NoopReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -322,7 +322,7 @@ func TestApply_NoOpNotApplied(t *testing.T) {
 		{Type: ChangeNoOp, Target: "owner/repo", Path: "b.txt"},
 	}
 
-	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetOwner: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, ui.NoopReporter{})
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for noop, got %d", len(results))

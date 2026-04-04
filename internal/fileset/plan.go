@@ -66,7 +66,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			}
 			files := ResolveFiles(fs, target)
 			units = append(units, planUnit{
-				fileSetName: fs.Metadata.Owner,
+				fileSetName: fs.Identity(),
 				target:      target,
 				files:       files,
 				owner:       fs.Metadata.Owner,
@@ -148,10 +148,10 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			for _, repoFile := range repoFiles {
 				if !allPlannedPaths[repoFile] {
 					out = append(out, Change{
-						Type:         ChangeDelete,
-						Target:       fullName,
-						Path:         repoFile,
-						FileSetOwner: u.fileSetName,
+						Type:      ChangeDelete,
+						Target:    fullName,
+						Path:      repoFile,
+						FileSetID: u.fileSetName,
 					})
 				}
 			}
@@ -187,18 +187,18 @@ func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string
 	current, err := p.fetchFileContent(ctx, repo, file.Path)
 	if err != nil || !current.Exists {
 		return Change{
-			FileSetOwner: fileSetName,
-			Target:       repo,
-			Path:         file.Path,
-			Type:         ChangeCreate,
-			Desired:      file.Content,
+			FileSetID: fileSetName,
+			Target:    repo,
+			Path:      file.Path,
+			Type:      ChangeCreate,
+			Desired:   file.Content,
 		}
 	}
 	return Change{
-		FileSetOwner: fileSetName,
-		Target:       repo,
-		Path:         file.Path,
-		Type:         ChangeNoOp,
+		FileSetID: fileSetName,
+		Target:    repo,
+		Path:      file.Path,
+		Type:      ChangeNoOp,
 	}
 }
 
@@ -206,11 +206,11 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 	current, err := p.fetchFileContent(ctx, repo, file.Path)
 	if err != nil || !current.Exists {
 		return Change{
-			FileSetOwner: fileSetName,
-			Target:       repo,
-			Path:         file.Path,
-			Type:         ChangeCreate,
-			Desired:      file.Content,
+			FileSetID: fileSetName,
+			Target:    repo,
+			Path:      file.Path,
+			Type:      ChangeCreate,
+			Desired:   file.Content,
 		}
 	}
 
@@ -220,22 +220,22 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 
 	if currentContent == desiredContent {
 		return Change{
-			FileSetOwner: fileSetName,
-			Target:       repo,
-			Path:         file.Path,
-			Type:         ChangeNoOp,
+			FileSetID: fileSetName,
+			Target:    repo,
+			Path:      file.Path,
+			Type:      ChangeNoOp,
 		}
 	}
 
 	// Content differs — update
 	return Change{
-		FileSetOwner: fileSetName,
-		Target:       repo,
-		Path:         file.Path,
-		Type:         ChangeUpdate,
-		Current:      current.Content,
-		Desired:      file.Content,
-		SHA:          current.SHA,
+		FileSetID: fileSetName,
+		Target:    repo,
+		Path:      file.Path,
+		Type:      ChangeUpdate,
+		Current:   current.Content,
+		Desired:   file.Content,
+		SHA:       current.SHA,
 	}
 }
 

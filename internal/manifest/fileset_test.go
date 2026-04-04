@@ -20,6 +20,26 @@ func TestFileSetRepository_UnmarshalYAML_String(t *testing.T) {
 	}
 }
 
+func TestFileSet_Identity_WithName(t *testing.T) {
+	fs := &FileSet{
+		Metadata: FileSetMetadata{Name: "gomi", Owner: "babarot"},
+		Spec:     FileSetSpec{Repositories: []FileSetRepository{{Name: "gomi"}}},
+	}
+	if got := fs.Identity(); got != "babarot/gomi" {
+		t.Errorf("Identity() = %q, want %q", got, "babarot/gomi")
+	}
+}
+
+func TestFileSet_Identity_WithoutName(t *testing.T) {
+	fs := &FileSet{
+		Metadata: FileSetMetadata{Owner: "org"},
+		Spec:     FileSetSpec{Repositories: []FileSetRepository{{Name: "b"}, {Name: "a"}}},
+	}
+	if got := fs.Identity(); got != "org/a+b" {
+		t.Errorf("Identity() = %q, want %q", got, "org/a+b")
+	}
+}
+
 func TestFileSetRepository_UnmarshalYAML_Struct(t *testing.T) {
 	input := `
 name: my-repo
