@@ -62,6 +62,8 @@ func ParseAll(path string, opts ...ParseOptions) (*ParseResult, error) {
 		}
 		result.Repositories = append(result.Repositories, parsed.Repositories...)
 		result.FileSets = append(result.FileSets, parsed.FileSets...)
+		result.RepositoryDocs = append(result.RepositoryDocs, parsed.RepositoryDocs...)
+		result.FileDocs = append(result.FileDocs, parsed.FileDocs...)
 		result.Warnings = append(result.Warnings, parsed.Warnings...)
 	}
 	return result, nil
@@ -89,6 +91,8 @@ func parseFileAll(path string, opt ParseOptions) (*ParseResult, error) {
 		}
 		result.Repositories = append(result.Repositories, parsed.Repositories...)
 		result.FileSets = append(result.FileSets, parsed.FileSets...)
+		result.RepositoryDocs = append(result.RepositoryDocs, parsed.RepositoryDocs...)
+		result.FileDocs = append(result.FileDocs, parsed.FileDocs...)
 		result.Warnings = append(result.Warnings, parsed.Warnings...)
 	}
 
@@ -125,6 +129,8 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 
 	result := &ParseResult{}
 
+	docIndex := docNum - 1 // convert 1-based to 0-based
+
 	switch doc.Kind {
 	case KindRepository:
 		repos, err := parseRepository(data, path)
@@ -132,18 +138,27 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 			return nil, err
 		}
 		result.Repositories = repos
+		for _, r := range repos {
+			result.RepositoryDocs = append(result.RepositoryDocs, &RepositoryDocument{
+				Resource:   r,
+				SourcePath: path,
+				DocIndex:   docIndex,
+			})
+		}
 	case KindRepositorySet:
-		repos, err := parseRepositorySet(data, path)
+		repos, docs, err := parseRepositorySet(data, path, docIndex)
 		if err != nil {
 			return nil, err
 		}
 		result.Repositories = repos
+		result.RepositoryDocs = docs
 	case KindFile:
 		fs, warnings, err := parseFile(data, path)
 		if err != nil {
 			return nil, err
 		}
 		result.FileSets = []*FileSet{fs}
+		result.FileDocs = []*FileDocument{{Resource: fs, SourcePath: path, DocIndex: docIndex, Files: fs.Spec.Files}}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
 		fs, warnings, err := parseFileSet(data, path)
@@ -151,6 +166,7 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 			return nil, err
 		}
 		result.FileSets = []*FileSet{fs}
+		result.FileDocs = []*FileDocument{{Resource: fs, SourcePath: path, DocIndex: docIndex, Files: fs.Spec.Files}}
 		result.Warnings = append(result.Warnings, warnings...)
 	default:
 		if opt.FailOnUnknown {
@@ -172,14 +188,17 @@ func parseRepository(data []byte, path string) ([]*Repository, error) {
 	return []*Repository{&repo}, nil
 }
 
-func parseRepositorySet(data []byte, path string) ([]*Repository, error) {
+func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, []*RepositoryDocument, error) {
 	var set RepositorySet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&set); err != nil {
-		return nil, fmt.Errorf("parse RepositorySet in %s: %w", path, err)
+		return nil, nil, fmt.Errorf("parse RepositorySet in %s: %w", path, err)
 	}
 
 	var repos []*Repository
-	for _, entry := range set.Repositories {
+	var docs []*RepositoryDocument
+	for i := range set.Repositories {
+		entry := set.Repositories[i]
+		originalSpec := entry.Spec // copy before merge
 		repo := &Repository{
 			APIVersion: set.APIVersion,
 			Kind:       KindRepository,
@@ -190,11 +209,20 @@ func parseRepositorySet(data []byte, path string) ([]*Repository, error) {
 			Spec: mergeSpecs(set.Defaults, entry.Spec),
 		}
 		if err := repo.Validate(); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
+			return nil, nil, fmt.Errorf("%s: %w", path, err)
 		}
 		repos = append(repos, repo)
+		docs = append(docs, &RepositoryDocument{
+			Resource:          repo,
+			SourcePath:        path,
+			DocIndex:          docIndex,
+			FromSet:           true,
+			SetEntryIndex:     i,
+			DefaultsSpec:      set.Defaults,
+			OriginalEntrySpec: &originalSpec,
+		})
 	}
-	return repos, nil
+	return repos, docs, nil
 }
 
 func parseFile(data []byte, path string) (*FileSet, []string, error) {
@@ -305,8 +333,9 @@ func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
 		// Normalize to forward slashes for GitHub paths
 		destPath = filepath.ToSlash(destPath)
 		entries = append(entries, FileEntry{
-			Path:    destPath,
-			Content: string(content),
+			Path:           destPath,
+			Content:        string(content),
+			OriginalSource: p,
 		})
 		return nil
 	})

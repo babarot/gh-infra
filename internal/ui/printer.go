@@ -23,10 +23,11 @@ type ChangeItem struct {
 
 // FileItem represents a file-level change for PrintFileChange.
 type FileItem struct {
-	Icon    string // IconAdd, IconChange, IconRemove
+	Icon    string // IconAdd, IconChange, IconRemove, IconWarning
 	Path    string
 	Added   int
 	Removed int
+	Reason  string // skip reason (if set, line is dimmed and reason replaces diff stat)
 }
 
 // ResultItem represents an apply result for PrintResult.
@@ -220,6 +221,12 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 // PrintFileChange prints a file-level change with diff stat.
 func (p *StandardPrinter) PrintFileChange(item FileItem) {
 	icon := renderIcon(item.Icon)
+	if item.Reason != "" {
+		// Dimmed line with skip reason instead of diff stat.
+		fmt.Fprintf(p.out, "          %s %s  %s\n",
+			icon, Dim.Render(fmt.Sprintf("%-*s", p.subItemWidth(), item.Path)), Dim.Render(item.Reason))
+		return
+	}
 	stat := formatDiffStat(item.Added, item.Removed)
 	fmt.Fprintf(p.out, "          %s %-*s %s\n",
 		icon, p.subItemWidth(), item.Path, stat)

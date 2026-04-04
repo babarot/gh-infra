@@ -22,6 +22,30 @@ type ParseResult struct {
 	Repositories []*Repository
 	FileSets     []*FileSet
 	Warnings     []string // deprecation warnings collected during parse
+
+	// Document-level metadata for import --into.
+	// These carry the same resources as Repositories/FileSets plus parse-origin info.
+	RepositoryDocs []*RepositoryDocument
+	FileDocs       []*FileDocument
+}
+
+// RepositoryDocument wraps a Repository with parse-origin metadata.
+type RepositoryDocument struct {
+	Resource          *Repository            // the parsed Repository
+	SourcePath        string                 // file path that was parsed
+	DocIndex          int                    // 0-based position in multi-doc YAML
+	FromSet           bool                   // true if expanded from a RepositorySet
+	SetEntryIndex     int                    // index within RepositorySet.Repositories (valid when FromSet)
+	DefaultsSpec      *RepositorySetDefaults // RepositorySet defaults (valid when FromSet)
+	OriginalEntrySpec *RepositorySpec        // pre-merge override spec (valid when FromSet)
+}
+
+// FileDocument wraps a FileSet with parse-origin metadata.
+type FileDocument struct {
+	Resource   *FileSet    // the parsed FileSet (or File expanded to FileSet)
+	SourcePath string      // file path that was parsed
+	DocIndex   int         // 0-based position in multi-doc YAML
+	Files      []FileEntry // source-resolved files (OriginalSource set); use for import comparisons
 }
 
 // Ptr returns a pointer to the given value.

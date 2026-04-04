@@ -1186,3 +1186,149 @@ func TestSplitDocuments(t *testing.T) {
 		})
 	}
 }
+
+func TestParseResult_RepositoryDocs(t *testing.T) {
+	dir := t.TempDir()
+	content := `apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: my-repo
+  owner: my-org
+spec:
+  visibility: public
+`
+	path := filepath.Join(dir, "repo.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll error: %v", err)
+	}
+
+	if len(result.RepositoryDocs) != 1 {
+		t.Fatalf("expected 1 RepositoryDoc, got %d", len(result.RepositoryDocs))
+	}
+
+	doc := result.RepositoryDocs[0]
+	if doc.Resource.Metadata.Name != "my-repo" {
+		t.Errorf("Resource.Name = %q, want %q", doc.Resource.Metadata.Name, "my-repo")
+	}
+	if doc.SourcePath != path {
+		t.Errorf("SourcePath = %q, want %q", doc.SourcePath, path)
+	}
+	if doc.DocIndex != 0 {
+		t.Errorf("DocIndex = %d, want 0", doc.DocIndex)
+	}
+	if doc.FromSet {
+		t.Error("FromSet should be false for standalone Repository")
+	}
+}
+
+func TestParseRepositorySet_DefaultsSpec(t *testing.T) {
+	dir := t.TempDir()
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec:
+    visibility: private
+    features:
+      issues: true
+repositories:
+  - name: repo-a
+  - name: repo-b
+    spec:
+      visibility: public
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll error: %v", err)
+	}
+
+	if len(result.RepositoryDocs) != 2 {
+		t.Fatalf("expected 2 RepositoryDocs, got %d", len(result.RepositoryDocs))
+	}
+
+	for i, doc := range result.RepositoryDocs {
+		if !doc.FromSet {
+			t.Errorf("doc[%d].FromSet should be true", i)
+		}
+		if doc.DefaultsSpec == nil {
+			t.Errorf("doc[%d].DefaultsSpec should not be nil", i)
+		}
+		if doc.SetEntryIndex != i {
+			t.Errorf("doc[%d].SetEntryIndex = %d, want %d", i, doc.SetEntryIndex, i)
+		}
+	}
+
+	// Verify defaults spec content
+	defaults := result.RepositoryDocs[0].DefaultsSpec
+	if defaults.Spec.Visibility == nil || *defaults.Spec.Visibility != "private" {
+		t.Errorf("DefaultsSpec.Visibility = %v, want private", defaults.Spec.Visibility)
+	}
+}
+
+func TestParseRepositorySet_OriginalEntrySpec(t *testing.T) {
+	dir := t.TempDir()
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec:
+    visibility: private
+repositories:
+  - name: repo-a
+  - name: repo-b
+    spec:
+      visibility: public
+      description: "override desc"
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll error: %v", err)
+	}
+
+	if len(result.RepositoryDocs) != 2 {
+		t.Fatalf("expected 2 RepositoryDocs, got %d", len(result.RepositoryDocs))
+	}
+
+	// repo-a: no override → OriginalEntrySpec should have zero-value fields
+	docA := result.RepositoryDocs[0]
+	if docA.OriginalEntrySpec == nil {
+		t.Fatal("repo-a OriginalEntrySpec should not be nil")
+	}
+	if docA.OriginalEntrySpec.Visibility != nil {
+		t.Errorf("repo-a OriginalEntrySpec.Visibility should be nil, got %v", docA.OriginalEntrySpec.Visibility)
+	}
+
+	// repo-b: has overrides
+	docB := result.RepositoryDocs[1]
+	if docB.OriginalEntrySpec == nil {
+		t.Fatal("repo-b OriginalEntrySpec should not be nil")
+	}
+	if docB.OriginalEntrySpec.Visibility == nil || *docB.OriginalEntrySpec.Visibility != "public" {
+		t.Errorf("repo-b OriginalEntrySpec.Visibility = %v, want public", docB.OriginalEntrySpec.Visibility)
+	}
+	if docB.OriginalEntrySpec.Description == nil || *docB.OriginalEntrySpec.Description != "override desc" {
+		t.Errorf("repo-b OriginalEntrySpec.Description = %v, want 'override desc'", docB.OriginalEntrySpec.Description)
+	}
+
+	// But the merged result for repo-b should have visibility=public (override wins)
+	if result.Repositories[1].Spec.Visibility == nil || *result.Repositories[1].Spec.Visibility != "public" {
+		t.Errorf("merged repo-b Visibility = %v, want public", result.Repositories[1].Spec.Visibility)
+	}
+}

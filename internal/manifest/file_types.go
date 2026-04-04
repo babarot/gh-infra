@@ -77,13 +77,14 @@ func (s *FileSpec) UnmarshalYAML(unmarshal func(any) error) error {
 }
 
 type FileEntry struct {
-	Path      string            `yaml:"path"                validate:"required"`
-	Content   string            `yaml:"content,omitempty" validate:"exclusive=source"`
-	Source    string            `yaml:"source,omitempty"`
-	Patches   []string          `yaml:"patches,omitempty"`
-	Vars      map[string]string `yaml:"vars,omitempty"`
-	Reconcile string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
-	DirScope  string            `yaml:"-"`
+	Path           string            `yaml:"path"                validate:"required"`
+	Content        string            `yaml:"content,omitempty" validate:"exclusive=source"`
+	Source         string            `yaml:"source,omitempty"`
+	Patches        []string          `yaml:"patches,omitempty"`
+	Vars           map[string]string `yaml:"vars,omitempty"`
+	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
+	DirScope       string            `yaml:"-"`
+	OriginalSource string            `yaml:"-"` // local file path set during source resolution (import --into)
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`

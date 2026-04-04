@@ -3,54 +3,30 @@ package infra
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	goyaml "github.com/goccy/go-yaml"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/importer"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// ImportTarget specifies a repository to import.
-type ImportTarget struct {
-	Owner string
-	Name  string
-}
-
-// FullName returns "owner/name".
-func (t ImportTarget) FullName() string {
-	return t.Owner + "/" + t.Name
-}
-
-// ImportResult holds the outcome of the import phase.
-type ImportResult struct {
-	// YAMLDocs contains the marshaled YAML for each successfully imported target, in order.
-	YAMLDocs [][]byte
-	// Errors maps target full name to its error (nil if successful).
-	Errors map[string]error
-
-	Succeeded int
-	Failed    int
-
-	engine *engine
-}
-
-// Printer returns the printer used during this import session.
-func (r *ImportResult) Printer() ui.Printer {
-	if r.engine == nil {
-		return ui.NewStandardPrinter()
+// Import fetches current state of the given repositories and outputs them as YAML to stdout.
+// All display is handled internally.
+func Import(args []string) error {
+	targets, err := parseArgs(args)
+	if err != nil {
+		return err
 	}
-	return r.engine.printer
-}
 
-// Import fetches current state of the given repositories and converts them to YAML manifests.
-func Import(targets []ImportTarget) (*ImportResult, error) {
 	p := ui.NewStandardPrinter()
 
 	runner := gh.NewRunner(false)
-	resolver := manifest.NewResolver(runner, targets[0].Owner)
+	resolver := manifest.NewResolver(runner, targets[0].Target.Owner)
 	eng := newEngine(runner, resolver, p)
 
 	label := "repository"
@@ -64,7 +40,7 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 	names := make([]string, len(targets))
 	tasks := make([]ui.RefreshTask, len(targets))
 	for i, t := range targets {
-		names[i] = t.FullName()
+		names[i] = t.Target.FullName()
 		tasks[i] = ui.RefreshTask{
 			Name:      names[i],
 			FailLabel: names[i],
@@ -72,7 +48,6 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 	}
 	tracker := ui.RunRefresh(tasks)
 
-	// Create a cancellable context; cancel when the spinner is interrupted via Ctrl+C.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
@@ -87,17 +62,16 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 		}
 	}()
 
-	// Fetch all repos in parallel
 	type fetchResult struct {
 		data []byte
 		err  error
 	}
-	results := parallel.Map(ctx, targets, parallel.DefaultConcurrency, func(ctx context.Context, _ int, t ImportTarget) fetchResult {
-		fullName := t.FullName()
+	results := parallel.Map(ctx, targets, parallel.DefaultConcurrency, func(ctx context.Context, _ int, t importer.TargetMatches) fetchResult {
+		fullName := t.Target.FullName()
 		onStatus := func(s string) {
 			tracker.UpdateStatus(fullName, s)
 		}
-		current, err := eng.repo.FetchRepository(ctx, t.Owner, t.Name, onStatus)
+		current, err := eng.repo.FetchRepository(ctx, t.Target.Owner, t.Target.Name, onStatus)
 		if err != nil {
 			tracker.Fail(fullName)
 			return fetchResult{err: err}
@@ -118,24 +92,59 @@ func Import(targets []ImportTarget) (*ImportResult, error) {
 	tracker.Wait()
 
 	if ctx.Err() != nil {
-		return nil, context.Canceled
+		return context.Canceled
 	}
 
-	// Collect results
-	importResult := &ImportResult{
-		Errors: make(map[string]error),
-		engine: eng,
-	}
+	// Collect and display
+	var yamlDocs [][]byte
+	exportErrors := make(map[string]error)
+	var succeeded, failed int
 	for i, r := range results {
 		fullName := names[i]
 		if r.err != nil {
-			importResult.Errors[fullName] = r.err
-			importResult.Failed++
+			exportErrors[fullName] = r.err
+			failed++
 		} else {
-			importResult.YAMLDocs = append(importResult.YAMLDocs, r.data)
-			importResult.Succeeded++
+			yamlDocs = append(yamlDocs, r.data)
+			succeeded++
 		}
 	}
 
-	return importResult, nil
+	p.Separator()
+
+	out := p.OutWriter()
+	for i, doc := range yamlDocs {
+		if i > 0 {
+			fmt.Fprintln(out, "---")
+		}
+		fmt.Fprint(out, string(doc))
+	}
+
+	for name, err := range exportErrors {
+		p.Warning(name, fmt.Sprintf("skipping: %v", err))
+	}
+
+	summaryMsg := fmt.Sprintf("Import complete! %s exported", ui.Bold.Render(fmt.Sprintf("%d", succeeded)))
+	if failed > 0 {
+		summaryMsg += fmt.Sprintf(", %s failed", ui.Bold.Render(fmt.Sprintf("%d", failed)))
+	}
+	summaryMsg += "."
+	p.Summary(summaryMsg)
+
+	return nil
+}
+
+// parseArgs parses owner/repo arguments into targets.
+func parseArgs(args []string) ([]importer.TargetMatches, error) {
+	var targets []importer.TargetMatches
+	for _, arg := range args {
+		parts := strings.SplitN(arg, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return nil, fmt.Errorf("invalid target: %q (expected owner/repo)", arg)
+		}
+		targets = append(targets, importer.TargetMatches{
+			Target: importer.Target{Owner: parts[0], Name: parts[1]},
+		})
+	}
+	return targets, nil
 }
