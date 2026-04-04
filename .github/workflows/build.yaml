@@ -12,16 +12,21 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: go.mod
           cache: true
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
           version: latest
 
@@ -30,22 +35,25 @@ jobs:
       matrix:
         os: ['ubuntu-latest', 'macos-latest']
     runs-on: ${{ matrix.os }}
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
       actions: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: go.mod
           cache: true
       - name: Run tests
         run: make test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run octocov
         if: runner.os == 'Linux'
         uses: k1LoW/octocov-action@73d561f65d59e66899ed5c87e4621a913b5d5c20 # v1.5.0
@@ -53,10 +61,10 @@ jobs:
         if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
+          echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
       - name: Update coverage badge
         if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
-        uses: Schneegans/dynamic-badges-action@v1.7.0
+        uses: Schneegans/dynamic-badges-action@0e50b8bad39e7e1afd3e4e9c2b7dd145fad07501 # v1.8.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: c8e4b1de0846824230d86cb2d86f38cf
