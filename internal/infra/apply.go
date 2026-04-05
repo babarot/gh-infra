@@ -136,6 +136,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 
 		_ = g.Wait()
 		tracker.Wait()
+		tracker.PrintErrors()
 
 		s, f := repository.CountApplyResults(allRepoResults)
 		totalSucceeded += s

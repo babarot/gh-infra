@@ -117,7 +117,8 @@ const (
 	IconSuccess = "✓"
 	IconError   = "✗"
 	IconWarning = "⚠"
-	IconArrow   = "→"
+	IconArrow    = "→"
+	IconEllipsis = "…"
 )
 
 func (p *StandardPrinter) Phase(msg string) {

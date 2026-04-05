@@ -282,6 +282,78 @@ func TestView_ErrorShowsMessage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// truncateError
+// ---------------------------------------------------------------------------
+
+func TestTruncateError(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      string
+		maxWidth int
+		want     string
+	}{
+		{"short single line", "403 Forbidden", 40, "403 Forbidden"},
+		{"multi-line", "first line\nsecond line\nthird line", 40, "first line…"},
+		{"long single line", "abcdefghijklmnopqrstuvwxyz", 10, "abcdefghi…"},
+		{"long multi-line", "abcdefghijklmnopqrstuvwxyz\nsecond", 10, "abcdefghi…"},
+		{"empty", "", 40, ""},
+		{"exact width", "abcdefghij", 10, "abcdefghij"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateError(tt.msg, tt.maxWidth)
+			if got != tt.want {
+				t.Errorf("truncateError(%q, %d) = %q, want %q", tt.msg, tt.maxWidth, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestView_ErrorTruncated(t *testing.T) {
+	m := makeModel(task("repo", 1))
+	m = update(t, m, taskErrorMsg{
+		name: "repo",
+		err:  fmt.Errorf("first line\nHint: do something\nUnderlying error: details"),
+	})
+
+	view := m.View().Content
+	if !strings.Contains(view, "first line") {
+		t.Errorf("view missing first line of error, got:\n%s", view)
+	}
+	if strings.Contains(view, "Hint:") {
+		t.Errorf("view should not contain second line of error, got:\n%s", view)
+	}
+	if strings.Contains(view, "Underlying error:") {
+		t.Errorf("view should not contain third line of error, got:\n%s", view)
+	}
+}
+
+func TestRefreshTracker_ErrorsCollected(t *testing.T) {
+	tracker := &RefreshTracker{fallback: true, done: closedChan()}
+
+	// In fallback mode, Error() prints to DefaultPrinter but also collects.
+	// Override DefaultPrinter to suppress output.
+	oldPrinter := DefaultPrinter
+	var buf bytes.Buffer
+	DefaultPrinter = NewStandardPrinterWith(&buf, &buf)
+	defer func() { DefaultPrinter = oldPrinter }()
+
+	tracker.Error("repo/a", fmt.Errorf("err1"))
+	tracker.Error("repo/b", fmt.Errorf("err2"))
+
+	errors := tracker.Errors()
+	if len(errors) != 2 {
+		t.Fatalf("len(Errors()) = %d, want 2", len(errors))
+	}
+	if errors[0].Name != "repo/a" || errors[0].Err.Error() != "err1" {
+		t.Errorf("errors[0] = {%q, %q}, want {repo/a, err1}", errors[0].Name, errors[0].Err)
+	}
+	if errors[1].Name != "repo/b" || errors[1].Err.Error() != "err2" {
+		t.Errorf("errors[1] = {%q, %q}, want {repo/b, err2}", errors[1].Name, errors[1].Err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // StreamReporter
 // ---------------------------------------------------------------------------
 
