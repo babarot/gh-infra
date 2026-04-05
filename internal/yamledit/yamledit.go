@@ -10,104 +10,58 @@ import (
 	"github.com/goccy/go-yaml/parser"
 )
 
-// ReplaceNode replaces a structured node at the given YAML path in the specified
-// document of a (possibly multi-document) YAML byte slice.
+// Set replaces the node at yamlPath in the given document.
 // Comments and formatting in unchanged parts are preserved.
-func ReplaceNode(data []byte, docIndex int, yamlPath string, value any, opts ...goyaml.EncodeOption) ([]byte, error) {
-	file, err := parser.ParseBytes(data, parser.ParseComments)
-	if err != nil {
-		return nil, fmt.Errorf("yamledit: parse: %w", err)
-	}
-
-	if docIndex < 0 || docIndex >= len(file.Docs) {
-		return nil, fmt.Errorf("yamledit: document index %d out of range (have %d docs)", docIndex, len(file.Docs))
-	}
-
-	path, err := goyaml.PathString(yamlPath)
-	if err != nil {
-		return nil, fmt.Errorf("yamledit: invalid path %q: %w", yamlPath, err)
-	}
-
-	// Marshal the Go value to YAML, then parse it back to get an AST node.
-	valueBytes, err := goyaml.MarshalWithOptions(value, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("yamledit: marshal value: %w", err)
-	}
-	valueFile, err := parser.ParseBytes(valueBytes, 0)
-	if err != nil {
-		return nil, fmt.Errorf("yamledit: parse value: %w", err)
-	}
-	if len(valueFile.Docs) == 0 || valueFile.Docs[0].Body == nil {
-		return nil, fmt.Errorf("yamledit: marshaled value produced empty AST")
-	}
-	valueNode := valueFile.Docs[0].Body
-
-	// ReplaceWithNode operates on all docs in an ast.File.
-	// To target a single document, wrap it in a temporary single-doc file.
-	targetDoc := file.Docs[docIndex]
-	tmpFile := &ast.File{Docs: []*ast.DocumentNode{targetDoc}}
-
-	if err := path.ReplaceWithNode(tmpFile, valueNode); err != nil {
-		return nil, fmt.Errorf("yamledit: replace at %q in doc %d: %w", yamlPath, docIndex, err)
-	}
-
-	file.Docs[docIndex] = tmpFile.Docs[0]
-
-	return []byte(file.String()), nil
-}
-
-// ReplaceContent replaces a literal block (content: |) at the given YAML path
-// in the specified document. Comments are preserved.
-// Multiline strings are always rendered as literal block scalars (|).
-func ReplaceContent(data []byte, docIndex int, yamlPath string, content string) ([]byte, error) {
-	return ReplaceNode(data, docIndex, yamlPath, content, goyaml.UseLiteralStyleIfMultiline(true))
-}
-
-// MergeNode merges a mapping node at the given YAML path in the specified
-// document. This is useful for updating only changed fields while preserving
-// ordering and formatting of untouched siblings.
-func MergeNode(data []byte, docIndex int, yamlPath string, value any, opts ...goyaml.EncodeOption) ([]byte, error) {
-	file, targetDoc, err := parseDocument(data, docIndex)
+func Set(data []byte, docIndex int, yamlPath string, value any, opts ...goyaml.EncodeOption) ([]byte, error) {
+	ctx, err := newPathContext(data, docIndex, yamlPath)
 	if err != nil {
 		return nil, err
 	}
-
-	path, err := goyaml.PathString(yamlPath)
-	if err != nil {
-		return nil, fmt.Errorf("yamledit: invalid path %q: %w", yamlPath, err)
-	}
-
 	valueNode, err := marshalToNode(value, opts...)
 	if err != nil {
 		return nil, err
 	}
-
-	tmpFile := &ast.File{Docs: []*ast.DocumentNode{targetDoc}}
-	if err := path.MergeFromNode(tmpFile, valueNode); err != nil {
-		return nil, fmt.Errorf("yamledit: merge at %q in doc %d: %w", yamlPath, docIndex, err)
+	tmp := ctx.tmpFile()
+	if err := ctx.path.ReplaceWithNode(tmp, valueNode); err != nil {
+		return nil, fmt.Errorf("yamledit: set at %q in doc %d: %w", yamlPath, docIndex, err)
 	}
-
-	file.Docs[docIndex] = tmpFile.Docs[0]
-	return []byte(file.String()), nil
+	ctx.targetDoc = tmp.Docs[0]
+	return ctx.bytes(), nil
 }
 
-// DeleteNode removes the node at the given YAML path in the specified document.
-// If the deletion leaves parent mappings empty, those parents are pruned too.
-func DeleteNode(data []byte, docIndex int, yamlPath string) ([]byte, error) {
-	file, err := parser.ParseBytes(data, parser.ParseComments)
-	if err != nil {
-		return nil, fmt.Errorf("yamledit: parse: %w", err)
-	}
+// SetLiteral replaces the node at yamlPath, rendering multiline strings as a
+// literal block scalar (`|`).
+func SetLiteral(data []byte, docIndex int, yamlPath string, content string) ([]byte, error) {
+	return Set(data, docIndex, yamlPath, content, goyaml.UseLiteralStyleIfMultiline(true))
+}
 
-	if docIndex < 0 || docIndex >= len(file.Docs) {
-		return nil, fmt.Errorf("yamledit: document index %d out of range (have %d docs)", docIndex, len(file.Docs))
-	}
-
-	segs, err := parseSimplePath(yamlPath)
+// Merge merges a mapping node at yamlPath in the given document. This is useful
+// for updating only changed fields while preserving untouched siblings.
+func Merge(data []byte, docIndex int, yamlPath string, value any, opts ...goyaml.EncodeOption) ([]byte, error) {
+	ctx, err := newPathContext(data, docIndex, yamlPath)
 	if err != nil {
 		return nil, err
 	}
-	if len(segs) == 0 {
+	valueNode, err := marshalToNode(value, opts...)
+	if err != nil {
+		return nil, err
+	}
+	tmp := ctx.tmpFile()
+	if err := ctx.path.MergeFromNode(tmp, valueNode); err != nil {
+		return nil, fmt.Errorf("yamledit: merge at %q in doc %d: %w", yamlPath, docIndex, err)
+	}
+	ctx.targetDoc = tmp.Docs[0]
+	return ctx.bytes(), nil
+}
+
+// Delete removes the node at yamlPath in the specified document.
+// If the deletion leaves parent mappings empty, those parents are pruned too.
+func Delete(data []byte, docIndex int, yamlPath string) ([]byte, error) {
+	ctx, err := newSimplePathContext(data, docIndex, yamlPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(ctx.segs) == 0 {
 		return nil, fmt.Errorf("yamledit: invalid path %q", yamlPath)
 	}
 
@@ -117,10 +71,10 @@ func DeleteNode(data []byte, docIndex int, yamlPath string) ([]byte, error) {
 		child ast.Node
 	}
 
-	current := file.Docs[docIndex].Body
+	current := ctx.targetDoc.Body
 	var parents []parentRef
 
-	for i, seg := range segs[:len(segs)-1] {
+	for i, seg := range ctx.segs[:len(ctx.segs)-1] {
 		mapping, ok := current.(*ast.MappingNode)
 		if !ok {
 			return nil, fmt.Errorf("yamledit: path %q traverses non-mapping node at segment %d", yamlPath, i)
@@ -141,7 +95,7 @@ func DeleteNode(data []byte, docIndex int, yamlPath string) ([]byte, error) {
 		current = child
 	}
 
-	last := segs[len(segs)-1]
+	last := ctx.segs[len(ctx.segs)-1]
 	mapping, ok := current.(*ast.MappingNode)
 	if !ok {
 		return nil, fmt.Errorf("yamledit: path %q traverses non-mapping node at final parent", yamlPath)
@@ -158,24 +112,18 @@ func DeleteNode(data []byte, docIndex int, yamlPath string) ([]byte, error) {
 		break
 	}
 
-	return []byte(file.String()), nil
+	return ctx.bytes(), nil
 }
 
-// PathExists reports whether the given simple YAML path exists in the document.
-func PathExists(data []byte, docIndex int, yamlPath string) (bool, error) {
-	file, targetDoc, err := parseDocument(data, docIndex)
-	if err != nil {
-		return false, err
-	}
-	_ = file
-
-	segs, err := parseSimplePath(yamlPath)
+// Exists reports whether yamlPath exists in the given document.
+func Exists(data []byte, docIndex int, yamlPath string) (bool, error) {
+	ctx, err := newSimplePathContext(data, docIndex, yamlPath)
 	if err != nil {
 		return false, err
 	}
 
-	current := targetDoc.Body
-	for _, seg := range segs {
+	current := ctx.targetDoc.Body
+	for _, seg := range ctx.segs {
 		mapping, ok := current.(*ast.MappingNode)
 		if !ok {
 			return false, nil
@@ -194,6 +142,58 @@ func PathExists(data []byte, docIndex int, yamlPath string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+type pathContext struct {
+	file      *ast.File
+	targetDoc *ast.DocumentNode
+	path      *goyaml.Path
+	yamlPath  string
+	docIndex  int
+}
+
+func newPathContext(data []byte, docIndex int, yamlPath string) (*pathContext, error) {
+	file, targetDoc, err := parseDocument(data, docIndex)
+	if err != nil {
+		return nil, err
+	}
+	path, err := goyaml.PathString(yamlPath)
+	if err != nil {
+		return nil, fmt.Errorf("yamledit: invalid path %q: %w", yamlPath, err)
+	}
+	return &pathContext{
+		file:      file,
+		targetDoc: targetDoc,
+		path:      path,
+		yamlPath:  yamlPath,
+		docIndex:  docIndex,
+	}, nil
+}
+
+func (c *pathContext) tmpFile() *ast.File {
+	return &ast.File{Docs: []*ast.DocumentNode{c.targetDoc}}
+}
+
+func (c *pathContext) bytes() []byte {
+	c.file.Docs[c.docIndex] = c.targetDoc
+	return []byte(c.file.String())
+}
+
+type simplePathContext struct {
+	*pathContext
+	segs []pathSegment
+}
+
+func newSimplePathContext(data []byte, docIndex int, yamlPath string) (*simplePathContext, error) {
+	ctx, err := newPathContext(data, docIndex, yamlPath)
+	if err != nil {
+		return nil, err
+	}
+	segs, err := parseSimplePath(yamlPath)
+	if err != nil {
+		return nil, err
+	}
+	return &simplePathContext{pathContext: ctx, segs: segs}, nil
 }
 
 func parseDocument(data []byte, docIndex int) (*ast.File, *ast.DocumentNode, error) {

@@ -216,7 +216,7 @@ func patchRepositorySpec(data []byte, docIndex int, basePath string, diffs []Fie
 
 	var err error
 	if len(rootMerge) > 0 {
-		data, err = yamledit.MergeNode(data, docIndex, basePath, rootMerge)
+		data, err = yamledit.Merge(data, docIndex, basePath, rootMerge)
 		if err != nil {
 			return nil, err
 		}
@@ -246,7 +246,7 @@ func patchRepositorySpec(data []byte, docIndex int, basePath string, diffs []Fie
 		}
 	}
 	for _, path := range deletes {
-		data, err = yamledit.DeleteNode(data, docIndex, path)
+		data, err = yamledit.Delete(data, docIndex, path)
 		if err != nil {
 			return nil, err
 		}
@@ -256,14 +256,14 @@ func patchRepositorySpec(data []byte, docIndex int, basePath string, diffs []Fie
 
 func mergeNestedObject(data []byte, docIndex int, parentPath, key string, fields map[string]any) ([]byte, error) {
 	childPath := parentPath + "." + key
-	exists, err := yamledit.PathExists(data, docIndex, childPath)
+	exists, err := yamledit.Exists(data, docIndex, childPath)
 	if err != nil {
 		return nil, err
 	}
 	if exists {
-		return yamledit.MergeNode(data, docIndex, childPath, fields)
+		return yamledit.Merge(data, docIndex, childPath, fields)
 	}
-	return yamledit.MergeNode(data, docIndex, parentPath, map[string]any{key: fields})
+	return yamledit.Merge(data, docIndex, parentPath, map[string]any{key: fields})
 }
 
 func collectScalarEdit(dst map[string]any, deletes *[]string, path, key string, value *string) {

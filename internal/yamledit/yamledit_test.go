@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestReplaceNode_SingleDoc(t *testing.T) {
+func TestSet_SingleDoc(t *testing.T) {
 	data := []byte(`apiVersion: gh-infra/v1
 kind: Repository
 metadata:
@@ -21,12 +21,12 @@ spec:
 		Visibility  string `yaml:"visibility"`
 	}
 
-	updated, err := ReplaceNode(data, 0, "$.spec", spec{
+	updated, err := Set(data, 0, "$.spec", spec{
 		Description: "new desc",
 		Visibility:  "public",
 	})
 	if err != nil {
-		t.Fatalf("ReplaceNode error: %v", err)
+		t.Fatalf("Set error: %v", err)
 	}
 
 	result := string(updated)
@@ -42,7 +42,7 @@ spec:
 	}
 }
 
-func TestReplaceNode_MultiDoc_TargetOnly(t *testing.T) {
+func TestSet_MultiDoc_TargetOnly(t *testing.T) {
 	data := []byte(`apiVersion: gh-infra/v1
 kind: Repository
 metadata:
@@ -65,9 +65,9 @@ spec:
 	}
 
 	// Replace only in second document (index 1)
-	updated, err := ReplaceNode(data, 1, "$.spec", spec{Description: "updated-second"})
+	updated, err := Set(data, 1, "$.spec", spec{Description: "updated-second"})
 	if err != nil {
-		t.Fatalf("ReplaceNode error: %v", err)
+		t.Fatalf("Set error: %v", err)
 	}
 
 	result := string(updated)
@@ -81,7 +81,7 @@ spec:
 	}
 }
 
-func TestReplaceNode_InvalidPathSyntax(t *testing.T) {
+func TestSet_InvalidPathSyntax(t *testing.T) {
 	data := []byte(`kind: Repository
 spec:
   description: test
@@ -91,13 +91,13 @@ spec:
 	}
 
 	// Invalid path syntax should return an error
-	_, err := ReplaceNode(data, 0, "[[invalid", spec{Description: "x"})
+	_, err := Set(data, 0, "[[invalid", spec{Description: "x"})
 	if err == nil {
 		t.Error("expected error for invalid path syntax")
 	}
 }
 
-func TestReplaceNode_DocIndexOutOfRange(t *testing.T) {
+func TestSet_DocIndexOutOfRange(t *testing.T) {
 	data := []byte(`kind: Repository
 spec:
   description: test
@@ -106,13 +106,13 @@ spec:
 		Description string `yaml:"description"`
 	}
 
-	_, err := ReplaceNode(data, 5, "$.spec", spec{Description: "x"})
+	_, err := Set(data, 5, "$.spec", spec{Description: "x"})
 	if err == nil {
 		t.Error("expected error for out-of-range doc index")
 	}
 }
 
-func TestReplaceContent_LiteralBlock(t *testing.T) {
+func TestSetLiteral_LiteralBlock(t *testing.T) {
 	data := []byte(`kind: File
 spec:
   content: |
@@ -120,9 +120,9 @@ spec:
     line 2
 `)
 
-	updated, err := ReplaceContent(data, 0, "$.spec.content", "new content\nline 2\n")
+	updated, err := SetLiteral(data, 0, "$.spec.content", "new content\nline 2\n")
 	if err != nil {
-		t.Fatalf("ReplaceContent error: %v", err)
+		t.Fatalf("SetLiteral error: %v", err)
 	}
 
 	result := string(updated)
@@ -131,7 +131,7 @@ spec:
 	}
 }
 
-func TestDeleteNode_PrunesEmptyParents(t *testing.T) {
+func TestDelete_PrunesEmptyParents(t *testing.T) {
 	data := []byte(`spec:
   actions:
     selected_actions:
@@ -139,9 +139,9 @@ func TestDeleteNode_PrunesEmptyParents(t *testing.T) {
         - foo/bar@v1
 `)
 
-	updated, err := DeleteNode(data, 0, "$.spec.actions.selected_actions.patterns_allowed")
+	updated, err := Delete(data, 0, "$.spec.actions.selected_actions.patterns_allowed")
 	if err != nil {
-		t.Fatalf("DeleteNode error: %v", err)
+		t.Fatalf("Delete error: %v", err)
 	}
 
 	result := string(updated)
@@ -156,7 +156,7 @@ func TestDeleteNode_PrunesEmptyParents(t *testing.T) {
 	}
 }
 
-func TestPathExists(t *testing.T) {
+func TestExists(t *testing.T) {
 	data := []byte(`spec:
   repositories:
     - name: repo-a
@@ -164,19 +164,70 @@ func TestPathExists(t *testing.T) {
         description: hello
 `)
 
-	ok, err := PathExists(data, 0, "$.spec.repositories[0].spec.description")
+	ok, err := Exists(data, 0, "$.spec.repositories[0].spec.description")
 	if err != nil {
-		t.Fatalf("PathExists error: %v", err)
+		t.Fatalf("Exists error: %v", err)
 	}
 	if !ok {
 		t.Fatal("expected path to exist")
 	}
 
-	ok, err = PathExists(data, 0, "$.spec.repositories[0].spec.visibility")
+	ok, err = Exists(data, 0, "$.spec.repositories[0].spec.visibility")
 	if err != nil {
-		t.Fatalf("PathExists error: %v", err)
+		t.Fatalf("Exists error: %v", err)
 	}
 	if ok {
 		t.Fatal("expected path to be missing")
+	}
+}
+
+func TestMerge_PreservesCommentsAndUntouchedSiblings(t *testing.T) {
+	data := []byte(`spec:
+  # keep this comment
+  topics: [go, cli]
+  features:
+    issues: true
+    wiki: false
+`)
+
+	updated, err := Merge(data, 0, "$.spec.features", map[string]any{
+		"issues": false,
+	})
+	if err != nil {
+		t.Fatalf("Merge error: %v", err)
+	}
+
+	result := string(updated)
+	if !strings.Contains(result, "# keep this comment") {
+		t.Fatalf("expected comment to be preserved:\n%s", result)
+	}
+	if !strings.Contains(result, "topics: [go, cli]") {
+		t.Fatalf("expected untouched flow-style topics to be preserved:\n%s", result)
+	}
+	if !strings.Contains(result, "issues: false") {
+		t.Fatalf("expected merged field to be updated:\n%s", result)
+	}
+	if !strings.Contains(result, "wiki: false") {
+		t.Fatalf("expected untouched sibling field to remain:\n%s", result)
+	}
+}
+
+func TestSetAndExists_Integration(t *testing.T) {
+	data := []byte("spec:\n  description: old\n")
+
+	updated, err := Set(data, 0, "$.spec.description", "new")
+	if err != nil {
+		t.Fatalf("Set error: %v", err)
+	}
+	if !strings.Contains(string(updated), "description: new") {
+		t.Fatalf("expected Set to update content:\n%s", string(updated))
+	}
+
+	ok, err := Exists(updated, 0, "$.spec.description")
+	if err != nil {
+		t.Fatalf("Exists error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected Exists to find updated path")
 	}
 }

@@ -40,7 +40,7 @@ func Write(plan *Result) error {
 					return fmt.Errorf("read manifest for inline edit %s: %w", c.ManifestPath, err)
 				}
 			}
-			updated, err := yamledit.ReplaceContent(data, c.DocIndex, c.YAMLPath, c.Desired)
+			updated, err := yamledit.SetLiteral(data, c.DocIndex, c.YAMLPath, c.Desired)
 			if err != nil {
 				return fmt.Errorf("inline edit %s in %s: %w", c.YAMLPath, c.ManifestPath, err)
 			}
@@ -83,22 +83,22 @@ func writePatchField(data []byte, c Change) ([]byte, error) {
 	patchesPath := c.YAMLPath + ".patches"
 
 	if c.PatchContent == "" {
-		return yamledit.DeleteNode(data, c.DocIndex, patchesPath)
+		return yamledit.Delete(data, c.DocIndex, patchesPath)
 	}
 
-	exists, err := yamledit.PathExists(data, c.DocIndex, patchesPath)
+	exists, err := yamledit.Exists(data, c.DocIndex, patchesPath)
 	if err != nil {
 		return nil, err
 	}
 
 	var updated []byte
 	if exists {
-		updated, err = yamledit.ReplaceNode(data, c.DocIndex, patchesPath, []string{c.PatchContent})
+		updated, err = yamledit.Set(data, c.DocIndex, patchesPath, []string{c.PatchContent})
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		updated, err = yamledit.MergeNode(data, c.DocIndex, c.YAMLPath, map[string]any{
+		updated, err = yamledit.Merge(data, c.DocIndex, c.YAMLPath, map[string]any{
 			"patches": []string{c.PatchContent},
 		})
 		if err != nil {
@@ -107,7 +107,7 @@ func writePatchField(data []byte, c Change) ([]byte, error) {
 	}
 
 	patchContentPath := patchesPath + "[0]"
-	updated, err = yamledit.ReplaceContent(updated, c.DocIndex, patchContentPath, c.PatchContent)
+	updated, err = yamledit.SetLiteral(updated, c.DocIndex, patchContentPath, c.PatchContent)
 	if err != nil {
 		return nil, err
 	}
