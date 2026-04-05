@@ -266,6 +266,9 @@ func formatImportValue(v any) string {
 	}
 	switch val := v.(type) {
 	case string:
+		if val == "" {
+			return "(none)"
+		}
 		return val
 	case bool:
 		if val {

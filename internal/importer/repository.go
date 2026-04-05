@@ -536,23 +536,11 @@ func appendBoolPtrDiff(diffs []FieldDiff, field string, local, imported *bool) [
 }
 
 func ptrEqual(a, b *string) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
+	return derefStr(a) == derefStr(b)
 }
 
 func boolPtrEqual(a, b *bool) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
+	return derefBool(a) == derefBool(b)
 }
 
 func derefStr(p *string) string {
