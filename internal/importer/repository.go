@@ -189,65 +189,259 @@ type repositoryPatchPlan struct {
 var repositoryNestedMergeOrder = []string{"features", "merge_strategy", "actions"}
 
 var repositoryFieldDescriptors = []repositoryFieldDescriptor{
-	{diffField: "description", key: "description", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string { return spec.Description }},
-	{diffField: "homepage", key: "homepage", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string { return spec.Homepage }},
-	{diffField: "visibility", key: "visibility", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string { return spec.Visibility }},
-	{diffField: "archived", key: "archived", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool { return spec.Archived }},
-	{diffField: "topics", key: "topics", kind: fieldStringSlice, sliceVal: func(spec manifest.RepositorySpec) []string { return spec.Topics }},
-	{diffField: "features.issues", parentKey: "features", key: "issues", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool { return boolPtrFromFeatures(spec.Features, "issues") }},
-	{diffField: "features.projects", parentKey: "features", key: "projects", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool { return boolPtrFromFeatures(spec.Features, "projects") }},
-	{diffField: "features.wiki", parentKey: "features", key: "wiki", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool { return boolPtrFromFeatures(spec.Features, "wiki") }},
-	{diffField: "features.discussions", parentKey: "features", key: "discussions", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool { return boolPtrFromFeatures(spec.Features, "discussions") }},
-	{diffField: "merge_strategy.allow_merge_commit", parentKey: "merge_strategy", key: "allow_merge_commit", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromMergeStrategy(spec.MergeStrategy, "allow_merge_commit")
-	}},
-	{diffField: "merge_strategy.allow_squash_merge", parentKey: "merge_strategy", key: "allow_squash_merge", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromMergeStrategy(spec.MergeStrategy, "allow_squash_merge")
-	}},
-	{diffField: "merge_strategy.allow_rebase_merge", parentKey: "merge_strategy", key: "allow_rebase_merge", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromMergeStrategy(spec.MergeStrategy, "allow_rebase_merge")
-	}},
-	{diffField: "merge_strategy.auto_delete_head_branches", parentKey: "merge_strategy", key: "auto_delete_head_branches", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromMergeStrategy(spec.MergeStrategy, "auto_delete_head_branches")
-	}},
-	{diffField: "merge_strategy.squash_merge_commit_title", parentKey: "merge_strategy", key: "squash_merge_commit_title", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string {
-		return stringPtrFromMergeStrategy(spec.MergeStrategy, "squash_merge_commit_title")
-	}},
-	{diffField: "merge_strategy.squash_merge_commit_message", parentKey: "merge_strategy", key: "squash_merge_commit_message", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string {
-		return stringPtrFromMergeStrategy(spec.MergeStrategy, "squash_merge_commit_message")
-	}},
-	{diffField: "merge_strategy.merge_commit_title", parentKey: "merge_strategy", key: "merge_commit_title", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string {
-		return stringPtrFromMergeStrategy(spec.MergeStrategy, "merge_commit_title")
-	}},
-	{diffField: "merge_strategy.merge_commit_message", parentKey: "merge_strategy", key: "merge_commit_message", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string {
-		return stringPtrFromMergeStrategy(spec.MergeStrategy, "merge_commit_message")
-	}},
-	{diffField: "actions.enabled", parentKey: "actions", key: "enabled", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool { return boolPtrFromActions(spec.Actions, "enabled") }},
-	{diffField: "actions.allowed_actions", parentKey: "actions", key: "allowed_actions", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string {
-		return stringPtrFromActions(spec.Actions, "allowed_actions")
-	}},
-	{diffField: "actions.sha_pinning_required", parentKey: "actions", key: "sha_pinning_required", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromActions(spec.Actions, "sha_pinning_required")
-	}},
-	{diffField: "actions.workflow_permissions", parentKey: "actions", key: "workflow_permissions", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string {
-		return stringPtrFromActions(spec.Actions, "workflow_permissions")
-	}},
-	{diffField: "actions.can_approve_pull_requests", parentKey: "actions", key: "can_approve_pull_requests", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromActions(spec.Actions, "can_approve_pull_requests")
-	}},
-	{diffField: "actions.fork_pr_approval", parentKey: "actions", key: "fork_pr_approval", kind: fieldString, stringVal: func(spec manifest.RepositorySpec) *string {
-		return stringPtrFromActions(spec.Actions, "fork_pr_approval")
-	}},
-	{diffField: "actions.selected_actions.github_owned_allowed", parentKey: "actions.selected_actions", key: "github_owned_allowed", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromSelectedActions(spec.Actions, "github_owned_allowed")
-	}},
-	{diffField: "actions.selected_actions.verified_allowed", parentKey: "actions.selected_actions", key: "verified_allowed", kind: fieldBool, boolVal: func(spec manifest.RepositorySpec) *bool {
-		return boolPtrFromSelectedActions(spec.Actions, "verified_allowed")
-	}},
-	{diffField: "actions.selected_actions.patterns_allowed", parentKey: "actions.selected_actions", key: "patterns_allowed", kind: fieldStringSlice, sliceVal: func(spec manifest.RepositorySpec) []string { return patternsFromSelectedActions(spec.Actions) }},
-	{prefix: "branch_protection.", key: "branch_protection", kind: fieldCollection, valueVal: func(spec manifest.RepositorySpec) any { return spec.BranchProtection }},
-	{prefix: "rulesets.", key: "rulesets", kind: fieldCollection, valueVal: func(spec manifest.RepositorySpec) any { return spec.Rulesets }},
-	{prefix: "variables.", key: "variables", kind: fieldCollection, valueVal: func(spec manifest.RepositorySpec) any { return spec.Variables }},
+	{
+		diffField: "description",
+		key:       "description",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return spec.Description
+		},
+	},
+	{
+		diffField: "homepage",
+		key:       "homepage",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return spec.Homepage
+		},
+	},
+	{
+		diffField: "visibility",
+		key:       "visibility",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return spec.Visibility
+		},
+	},
+	{
+		diffField: "archived",
+		key:       "archived",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return spec.Archived
+		},
+	},
+	{
+		diffField: "topics",
+		key:       "topics",
+		kind:      fieldStringSlice,
+		sliceVal: func(spec manifest.RepositorySpec) []string {
+			return spec.Topics
+		},
+	},
+	{
+		diffField: "features.issues",
+		parentKey: "features",
+		key:       "issues",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromFeatures(spec.Features, "issues")
+		},
+	},
+	{
+		diffField: "features.projects",
+		parentKey: "features",
+		key:       "projects",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromFeatures(spec.Features, "projects")
+		},
+	},
+	{
+		diffField: "features.wiki",
+		parentKey: "features",
+		key:       "wiki",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromFeatures(spec.Features, "wiki")
+		},
+	},
+	{
+		diffField: "features.discussions",
+		parentKey: "features",
+		key:       "discussions",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromFeatures(spec.Features, "discussions")
+		},
+	},
+	{
+		diffField: "merge_strategy.allow_merge_commit",
+		parentKey: "merge_strategy",
+		key:       "allow_merge_commit",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromMergeStrategy(spec.MergeStrategy, "allow_merge_commit")
+		},
+	},
+	{
+		diffField: "merge_strategy.allow_squash_merge",
+		parentKey: "merge_strategy",
+		key:       "allow_squash_merge",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromMergeStrategy(spec.MergeStrategy, "allow_squash_merge")
+		},
+	},
+	{
+		diffField: "merge_strategy.allow_rebase_merge",
+		parentKey: "merge_strategy",
+		key:       "allow_rebase_merge",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromMergeStrategy(spec.MergeStrategy, "allow_rebase_merge")
+		},
+	},
+	{
+		diffField: "merge_strategy.auto_delete_head_branches",
+		parentKey: "merge_strategy",
+		key:       "auto_delete_head_branches",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromMergeStrategy(spec.MergeStrategy, "auto_delete_head_branches")
+		},
+	},
+	{
+		diffField: "merge_strategy.squash_merge_commit_title",
+		parentKey: "merge_strategy",
+		key:       "squash_merge_commit_title",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return stringPtrFromMergeStrategy(spec.MergeStrategy, "squash_merge_commit_title")
+		},
+	},
+	{
+		diffField: "merge_strategy.squash_merge_commit_message",
+		parentKey: "merge_strategy",
+		key:       "squash_merge_commit_message",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return stringPtrFromMergeStrategy(spec.MergeStrategy, "squash_merge_commit_message")
+		},
+	},
+	{
+		diffField: "merge_strategy.merge_commit_title",
+		parentKey: "merge_strategy",
+		key:       "merge_commit_title",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return stringPtrFromMergeStrategy(spec.MergeStrategy, "merge_commit_title")
+		},
+	},
+	{
+		diffField: "merge_strategy.merge_commit_message",
+		parentKey: "merge_strategy",
+		key:       "merge_commit_message",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return stringPtrFromMergeStrategy(spec.MergeStrategy, "merge_commit_message")
+		},
+	},
+	{
+		diffField: "actions.enabled",
+		parentKey: "actions",
+		key:       "enabled",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromActions(spec.Actions, "enabled")
+		},
+	},
+	{
+		diffField: "actions.allowed_actions",
+		parentKey: "actions",
+		key:       "allowed_actions",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return stringPtrFromActions(spec.Actions, "allowed_actions")
+		},
+	},
+	{
+		diffField: "actions.sha_pinning_required",
+		parentKey: "actions",
+		key:       "sha_pinning_required",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromActions(spec.Actions, "sha_pinning_required")
+		},
+	},
+	{
+		diffField: "actions.workflow_permissions",
+		parentKey: "actions",
+		key:       "workflow_permissions",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return stringPtrFromActions(spec.Actions, "workflow_permissions")
+		},
+	},
+	{
+		diffField: "actions.can_approve_pull_requests",
+		parentKey: "actions",
+		key:       "can_approve_pull_requests",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromActions(spec.Actions, "can_approve_pull_requests")
+		},
+	},
+	{
+		diffField: "actions.fork_pr_approval",
+		parentKey: "actions",
+		key:       "fork_pr_approval",
+		kind:      fieldString,
+		stringVal: func(spec manifest.RepositorySpec) *string {
+			return stringPtrFromActions(spec.Actions, "fork_pr_approval")
+		},
+	},
+	{
+		diffField: "actions.selected_actions.github_owned_allowed",
+		parentKey: "actions.selected_actions",
+		key:       "github_owned_allowed",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromSelectedActions(spec.Actions, "github_owned_allowed")
+		},
+	},
+	{
+		diffField: "actions.selected_actions.verified_allowed",
+		parentKey: "actions.selected_actions",
+		key:       "verified_allowed",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromSelectedActions(spec.Actions, "verified_allowed")
+		},
+	},
+	{
+		diffField: "actions.selected_actions.patterns_allowed",
+		parentKey: "actions.selected_actions",
+		key:       "patterns_allowed",
+		kind:      fieldStringSlice,
+		sliceVal: func(spec manifest.RepositorySpec) []string {
+			return patternsFromSelectedActions(spec.Actions)
+		},
+	},
+	{
+		prefix: "branch_protection.",
+		key:    "branch_protection",
+		kind:   fieldCollection,
+		valueVal: func(spec manifest.RepositorySpec) any {
+			return spec.BranchProtection
+		},
+	},
+	{
+		prefix: "rulesets.",
+		key:    "rulesets",
+		kind:   fieldCollection,
+		valueVal: func(spec manifest.RepositorySpec) any {
+			return spec.Rulesets
+		},
+	},
+	{
+		prefix: "variables.",
+		key:    "variables",
+		kind:   fieldCollection,
+		valueVal: func(spec manifest.RepositorySpec) any {
+			return spec.Variables
+		},
+	},
 }
 
 func newRepositoryPatchPlan(basePath string) *repositoryPatchPlan {
