@@ -277,3 +277,199 @@ spec:
 		t.Fatalf("expected source to remain:\n%s", out)
 	}
 }
+
+func TestWrite_WritePatch_OnRepositoryOverride(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - name: repo-a
+      overrides:
+        - path: VERSION
+          source: ./templates/common/VERSION
+          sync_mode: create_only
+  files:
+    - path: VERSION
+      source: ./templates/common/VERSION
+`)
+	if err := os.WriteFile(manifestPath, yamlData, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	plan := &Result{
+		ManifestEdits: make(map[string][]byte),
+		FileChanges: []Change{
+			{
+				Type:         fileset.ChangeUpdate,
+				WriteMode:    WritePatch,
+				ManifestPath: manifestPath,
+				DocIndex:     0,
+				YAMLPath:     "$.spec.repositories[0].overrides[0]",
+				Path:         "VERSION",
+				PatchContent: "--- a/VERSION\n+++ b/VERSION\n@@ -1 +1 @@\n-0.1.0\n+v1.2.6\n",
+				PatchEntry:   &manifest.FileEntry{Path: "VERSION"},
+			},
+		},
+	}
+
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	got, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	out := string(got)
+	if !strings.Contains(out, "overrides:") {
+		t.Fatalf("expected overrides block to remain:\n%s", out)
+	}
+	if !strings.Contains(out, "sync_mode: create_only") {
+		t.Fatalf("expected deprecated sync_mode in override to be preserved:\n%s", out)
+	}
+	if !strings.Contains(out, "patches:") {
+		t.Fatalf("expected patches to be added under override entry:\n%s", out)
+	}
+}
+
+func TestWrite_MixedInlineAndPatchInSameManifest(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  files:
+    - path: VERSION
+      source: ./templates/common/VERSION
+      sync_mode: create_only
+    - path: config.txt
+      content: old
+`)
+	if err := os.WriteFile(manifestPath, yamlData, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	plan := &Result{
+		ManifestEdits: make(map[string][]byte),
+		FileChanges: []Change{
+			{
+				Type:         fileset.ChangeUpdate,
+				WriteMode:    WritePatch,
+				ManifestPath: manifestPath,
+				DocIndex:     0,
+				YAMLPath:     "$.spec.files[0]",
+				Path:         "VERSION",
+				PatchContent: "--- a/VERSION\n+++ b/VERSION\n@@ -1 +1 @@\n-0.1.0\n+v1.2.6\n",
+				PatchEntry:   &manifest.FileEntry{Path: "VERSION"},
+			},
+			{
+				Type:         fileset.ChangeUpdate,
+				WriteMode:    WriteInline,
+				ManifestPath: manifestPath,
+				DocIndex:     0,
+				YAMLPath:     "$.spec.files[1].content",
+				Desired:      "new content",
+			},
+		},
+	}
+
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	got, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	out := string(got)
+	if !strings.Contains(out, "patches:") {
+		t.Fatalf("expected patch entry to be written:\n%s", out)
+	}
+	if !strings.Contains(out, "content: new content") {
+		t.Fatalf("expected inline edit to be written:\n%s", out)
+	}
+	if !strings.Contains(out, "sync_mode: create_only") {
+		t.Fatalf("expected unrelated patch entry fields to remain:\n%s", out)
+	}
+}
+
+func TestPatchEditOps_AddPatchSequence(t *testing.T) {
+	data := []byte(`kind: File
+spec:
+  files:
+    - path: VERSION
+      source: ./templates/common/VERSION
+`)
+
+	ops, err := patchEditOps(data, Change{
+		DocIndex:     0,
+		YAMLPath:     "$.spec.files[0]",
+		PatchContent: "--- a/VERSION\n+++ b/VERSION\n@@ -1 +1 @@\n-0.1.0\n+v1.2.6\n",
+	})
+	if err != nil {
+		t.Fatalf("patchEditOps error: %v", err)
+	}
+
+	if len(ops) != 2 {
+		t.Fatalf("expected 2 edit ops, got %d", len(ops))
+	}
+	if ops[0].kind != editMerge {
+		t.Fatalf("expected first op to merge patches field, got %s", ops[0].kind)
+	}
+	if ops[1].kind != editSetLiteral {
+		t.Fatalf("expected second op to set literal patch content, got %s", ops[1].kind)
+	}
+}
+
+func TestApplyEditOps_PatchAndInline(t *testing.T) {
+	data := []byte(`kind: FileSet
+spec:
+  files:
+    - path: VERSION
+      source: ./templates/common/VERSION
+    - path: config.txt
+      content: old
+`)
+
+	updated, err := applyEditOps(data, []editOp{
+		{
+			kind:     editMerge,
+			docIndex: 0,
+			path:     "$.spec.files[0]",
+			value: map[string]any{
+				"patches": []string{"--- a/VERSION\n+++ b/VERSION\n"},
+			},
+		},
+		{
+			kind:     editSetLiteral,
+			docIndex: 0,
+			path:     "$.spec.files[0].patches[0]",
+			value:    "--- a/VERSION\n+++ b/VERSION\n",
+		},
+		{
+			kind:     editSet,
+			docIndex: 0,
+			path:     "$.spec.files[1].content",
+			value:    "new content",
+		},
+	})
+	if err != nil {
+		t.Fatalf("applyEditOps error: %v", err)
+	}
+
+	out := string(updated)
+	if !strings.Contains(out, "patches:") {
+		t.Fatalf("expected patches field to be added:\n%s", out)
+	}
+	if !strings.Contains(out, "content: new content") {
+		t.Fatalf("expected inline content to be updated:\n%s", out)
+	}
+}

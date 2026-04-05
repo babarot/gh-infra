@@ -8,6 +8,22 @@ import (
 	"github.com/babarot/gh-infra/internal/yamledit"
 )
 
+type editKind string
+
+const (
+	editSet        editKind = "set"
+	editSetLiteral editKind = "set_literal"
+	editMerge      editKind = "merge"
+	editDelete     editKind = "delete"
+)
+
+type editOp struct {
+	kind     editKind
+	docIndex int
+	path     string
+	value    any
+}
+
 // Write writes the planned changes to disk.
 // It applies manifest edits (repo spec patches) and file changes.
 func Write(plan *Result) error {
@@ -40,7 +56,12 @@ func Write(plan *Result) error {
 					return fmt.Errorf("read manifest for inline edit %s: %w", c.ManifestPath, err)
 				}
 			}
-			updated, err := yamledit.SetLiteral(data, c.DocIndex, c.YAMLPath, c.Desired)
+			updated, err := applyEditOps(data, []editOp{{
+				kind:     editSetLiteral,
+				docIndex: c.DocIndex,
+				path:     c.YAMLPath,
+				value:    c.Desired,
+			}})
 			if err != nil {
 				return fmt.Errorf("inline edit %s in %s: %w", c.YAMLPath, c.ManifestPath, err)
 			}
@@ -62,7 +83,7 @@ func Write(plan *Result) error {
 					return fmt.Errorf("read manifest for patch edit %s: %w", c.ManifestPath, err)
 				}
 			}
-			updated, err := writePatchField(data, c)
+			updated, err := applyPatchChange(data, c)
 			if err != nil {
 				return fmt.Errorf("patch edit %s in %s: %w", c.YAMLPath, c.ManifestPath, err)
 			}
@@ -79,11 +100,23 @@ func Write(plan *Result) error {
 	return nil
 }
 
-func writePatchField(data []byte, c Change) ([]byte, error) {
+func applyPatchChange(data []byte, c Change) ([]byte, error) {
+	ops, err := patchEditOps(data, c)
+	if err != nil {
+		return nil, err
+	}
+	return applyEditOps(data, ops)
+}
+
+func patchEditOps(data []byte, c Change) ([]editOp, error) {
 	patchesPath := c.YAMLPath + ".patches"
 
 	if c.PatchContent == "" {
-		return yamledit.Delete(data, c.DocIndex, patchesPath)
+		return []editOp{{
+			kind:     editDelete,
+			docIndex: c.DocIndex,
+			path:     patchesPath,
+		}}, nil
 	}
 
 	exists, err := yamledit.Exists(data, c.DocIndex, patchesPath)
@@ -91,25 +124,58 @@ func writePatchField(data []byte, c Change) ([]byte, error) {
 		return nil, err
 	}
 
-	var updated []byte
+	var ops []editOp
 	if exists {
-		updated, err = yamledit.Set(data, c.DocIndex, patchesPath, []string{c.PatchContent})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		updated, err = yamledit.Merge(data, c.DocIndex, c.YAMLPath, map[string]any{
-			"patches": []string{c.PatchContent},
+		ops = append(ops, editOp{
+			kind:     editSet,
+			docIndex: c.DocIndex,
+			path:     patchesPath,
+			value:    []string{c.PatchContent},
 		})
-		if err != nil {
-			return nil, err
-		}
+	} else {
+		ops = append(ops, editOp{
+			kind:     editMerge,
+			docIndex: c.DocIndex,
+			path:     c.YAMLPath,
+			value: map[string]any{
+				"patches": []string{c.PatchContent},
+			},
+		})
 	}
 
 	patchContentPath := patchesPath + "[0]"
-	updated, err = yamledit.SetLiteral(updated, c.DocIndex, patchContentPath, c.PatchContent)
-	if err != nil {
-		return nil, err
+	ops = append(ops, editOp{
+		kind:     editSetLiteral,
+		docIndex: c.DocIndex,
+		path:     patchContentPath,
+		value:    c.PatchContent,
+	})
+	return ops, nil
+}
+
+func applyEditOps(data []byte, ops []editOp) ([]byte, error) {
+	var err error
+	updated := data
+	for _, op := range ops {
+		switch op.kind {
+		case editSet:
+			updated, err = yamledit.Set(updated, op.docIndex, op.path, op.value)
+		case editSetLiteral:
+			content, ok := op.value.(string)
+			if !ok {
+				return nil, fmt.Errorf("edit %s at %s requires string value", op.kind, op.path)
+			}
+			updated, err = yamledit.SetLiteral(updated, op.docIndex, op.path, content)
+		case editMerge:
+			updated, err = yamledit.Merge(updated, op.docIndex, op.path, op.value)
+		case editDelete:
+			updated, err = yamledit.Delete(updated, op.docIndex, op.path)
+		default:
+			return nil, fmt.Errorf("unknown edit op kind %q", op.kind)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	return updated, nil
 }
