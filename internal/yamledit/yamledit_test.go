@@ -130,3 +130,53 @@ spec:
 		t.Errorf("expected 'new content' in output:\n%s", result)
 	}
 }
+
+func TestDeleteNode_PrunesEmptyParents(t *testing.T) {
+	data := []byte(`spec:
+  actions:
+    selected_actions:
+      patterns_allowed:
+        - foo/bar@v1
+`)
+
+	updated, err := DeleteNode(data, 0, "$.spec.actions.selected_actions.patterns_allowed")
+	if err != nil {
+		t.Fatalf("DeleteNode error: %v", err)
+	}
+
+	result := string(updated)
+	if strings.Contains(result, "patterns_allowed") {
+		t.Fatalf("expected patterns_allowed to be deleted:\n%s", result)
+	}
+	if strings.Contains(result, "selected_actions") {
+		t.Fatalf("expected selected_actions to be pruned:\n%s", result)
+	}
+	if strings.Contains(result, "actions:") {
+		t.Fatalf("expected actions to be pruned when empty:\n%s", result)
+	}
+}
+
+func TestPathExists(t *testing.T) {
+	data := []byte(`spec:
+  repositories:
+    - name: repo-a
+      spec:
+        description: hello
+`)
+
+	ok, err := PathExists(data, 0, "$.spec.repositories[0].spec.description")
+	if err != nil {
+		t.Fatalf("PathExists error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected path to exist")
+	}
+
+	ok, err = PathExists(data, 0, "$.spec.repositories[0].spec.visibility")
+	if err != nil {
+		t.Fatalf("PathExists error: %v", err)
+	}
+	if ok {
+		t.Fatal("expected path to be missing")
+	}
+}

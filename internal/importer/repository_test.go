@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -249,6 +250,105 @@ spec:
 	updated := string(mb["/tmp/test.yaml"])
 	if updated == string(yamlData) {
 		t.Error("manifestBytes should have been updated")
+	}
+}
+
+func TestDiffRepository_PatchesOnlyChangedFields(t *testing.T) {
+	local := manifest.RepositorySpec{
+		Topics: []string{"gist", "go", "cli", "gist-editor"},
+		Features: &manifest.Features{
+			Issues:      manifest.Ptr(true),
+			Wiki:        manifest.Ptr(false),
+			Projects:    manifest.Ptr(false),
+			Discussions: manifest.Ptr(false),
+		},
+		MergeStrategy: &manifest.MergeStrategy{
+			AllowSquashMerge:         manifest.Ptr(true),
+			AllowMergeCommit:         manifest.Ptr(true),
+			AllowRebaseMerge:         manifest.Ptr(false),
+			AutoDeleteHeadBranches:   manifest.Ptr(true),
+			SquashMergeCommitTitle:   manifest.Ptr("COMMIT_OR_PR_TITLE"),
+			SquashMergeCommitMessage: manifest.Ptr("COMMIT_MESSAGES"),
+			MergeCommitTitle:         manifest.Ptr("PR_TITLE"),
+			MergeCommitMessage:       manifest.Ptr("PR_BODY"),
+		},
+	}
+	imported := manifest.Repository{
+		Spec: manifest.RepositorySpec{
+			Topics: []string{"go", "cli", "gist-editor", "gist"},
+			Features: &manifest.Features{
+				Issues:      manifest.Ptr(true),
+				Wiki:        manifest.Ptr(false),
+				Projects:    manifest.Ptr(false),
+				Discussions: manifest.Ptr(false),
+			},
+			MergeStrategy: &manifest.MergeStrategy{
+				AllowSquashMerge:         manifest.Ptr(true),
+				AllowMergeCommit:         manifest.Ptr(true),
+				AllowRebaseMerge:         manifest.Ptr(false),
+				AutoDeleteHeadBranches:   manifest.Ptr(true),
+				SquashMergeCommitTitle:   manifest.Ptr("COMMIT_OR_PR_TITLE"),
+				SquashMergeCommitMessage: manifest.Ptr("COMMIT_MESSAGES"),
+				MergeCommitTitle:         manifest.Ptr("MERGE_MESSAGE"),
+				MergeCommitMessage:       manifest.Ptr("PR_TITLE"),
+			},
+		},
+	}
+
+	doc := &manifest.RepositoryDocument{
+		Resource:   &manifest.Repository{Spec: local},
+		SourcePath: "/tmp/test.yaml",
+		DocIndex:   0,
+	}
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  topics: [gist, go, cli, gist-editor]
+  features:
+    issues: true
+    wiki: false
+    projects: false
+    discussions: false
+  merge_strategy:
+    allow_squash_merge: true
+    allow_merge_commit: true
+    allow_rebase_merge: false
+    auto_delete_head_branches: true
+    merge_commit_title: PR_TITLE
+    merge_commit_message: PR_BODY
+    squash_merge_commit_title: COMMIT_OR_PR_TITLE
+    squash_merge_commit_message: COMMIT_MESSAGES
+`)
+
+	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
+	_, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepository error: %v", err)
+	}
+
+	updated := string(mb["/tmp/test.yaml"])
+	if !strings.Contains(updated, "merge_commit_title: MERGE_MESSAGE") {
+		t.Fatalf("expected merge_commit_title to be updated:\n%s", updated)
+	}
+	if !strings.Contains(updated, "merge_commit_message: PR_TITLE") {
+		t.Fatalf("expected merge_commit_message to be updated:\n%s", updated)
+	}
+	if !strings.Contains(updated, "topics: [gist, go, cli, gist-editor]") {
+		t.Fatalf("expected topics formatting/order to be preserved:\n%s", updated)
+	}
+	if !strings.Contains(updated, "wiki: false") {
+		t.Fatalf("expected unchanged features.wiki to remain untouched:\n%s", updated)
+	}
+	if strings.Contains(updated, "- gist") {
+		t.Fatalf("expected topics flow style to be preserved without rewrite:\n%s", updated)
 	}
 }
 
