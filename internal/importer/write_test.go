@@ -473,3 +473,233 @@ spec:
 		t.Fatalf("expected inline content to be updated:\n%s", out)
 	}
 }
+
+func TestWrite_WritePatch_UpdatesExistingPatchWithoutChangingDeprecatedField(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: repo
+spec:
+  files:
+    - path: VERSION
+      source: ./templates/common/VERSION
+      sync_mode: create_only
+      patches:
+        - |
+          --- a/VERSION
+          +++ b/VERSION
+          @@ -1 +1 @@
+          -0.1.0
+          +v1.2.5
+`)
+	if err := os.WriteFile(manifestPath, yamlData, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	plan := &Result{
+		ManifestEdits: make(map[string][]byte),
+		FileChanges: []Change{{
+			Type:         fileset.ChangeUpdate,
+			WriteMode:    WritePatch,
+			ManifestPath: manifestPath,
+			DocIndex:     0,
+			YAMLPath:     "$.spec.files[0]",
+			Path:         "VERSION",
+			PatchContent: "--- a/VERSION\n+++ b/VERSION\n@@ -1 +1 @@\n-0.1.0\n+v1.2.6\n",
+			PatchEntry:   &manifest.FileEntry{Path: "VERSION"},
+		}},
+	}
+
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	out, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	result := string(out)
+	if !strings.Contains(result, "sync_mode: create_only") {
+		t.Fatalf("expected deprecated field to remain untouched:\n%s", result)
+	}
+	if strings.Contains(result, "+v1.2.5") {
+		t.Fatalf("expected old patch content to be replaced:\n%s", result)
+	}
+	if !strings.Contains(result, "+v1.2.6") {
+		t.Fatalf("expected new patch content to be written:\n%s", result)
+	}
+}
+
+func TestWrite_WritePatch_PreservesSiblingOverrideFields(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - name: repo-a
+      overrides:
+        - path: VERSION
+          source: ./templates/common/VERSION
+          sync_mode: create_only
+          vars: {version: current}
+`)
+	if err := os.WriteFile(manifestPath, yamlData, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	plan := &Result{
+		ManifestEdits: make(map[string][]byte),
+		FileChanges: []Change{{
+			Type:         fileset.ChangeUpdate,
+			WriteMode:    WritePatch,
+			ManifestPath: manifestPath,
+			DocIndex:     0,
+			YAMLPath:     "$.spec.repositories[0].overrides[0]",
+			Path:         "VERSION",
+			PatchContent: "--- a/VERSION\n+++ b/VERSION\n@@ -1 +1 @@\n-0.1.0\n+v1.2.6\n",
+			PatchEntry:   &manifest.FileEntry{Path: "VERSION"},
+		}},
+	}
+
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	out, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	result := string(out)
+	if !strings.Contains(result, "vars: {version: current}") {
+		t.Fatalf("expected sibling override field to remain untouched:\n%s", result)
+	}
+	if !strings.Contains(result, "patches:") {
+		t.Fatalf("expected patches field to be added:\n%s", result)
+	}
+}
+
+func TestWrite_WritePatch_UpdatesExistingOverridePatch(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - name: repo-a
+      overrides:
+        - path: VERSION
+          source: ./templates/common/VERSION
+          sync_mode: create_only
+          patches:
+            - |
+              --- a/VERSION
+              +++ b/VERSION
+              @@ -1 +1 @@
+              -0.1.0
+              +v1.2.5
+`)
+	if err := os.WriteFile(manifestPath, yamlData, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	plan := &Result{
+		ManifestEdits: make(map[string][]byte),
+		FileChanges: []Change{{
+			Type:         fileset.ChangeUpdate,
+			WriteMode:    WritePatch,
+			ManifestPath: manifestPath,
+			DocIndex:     0,
+			YAMLPath:     "$.spec.repositories[0].overrides[0]",
+			Path:         "VERSION",
+			PatchContent: "--- a/VERSION\n+++ b/VERSION\n@@ -1 +1 @@\n-0.1.0\n+v1.2.6\n",
+			PatchEntry:   &manifest.FileEntry{Path: "VERSION"},
+		}},
+	}
+
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	out, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	result := string(out)
+	if strings.Contains(result, "+v1.2.5") {
+		t.Fatalf("expected old override patch content to be replaced:\n%s", result)
+	}
+	if !strings.Contains(result, "+v1.2.6") {
+		t.Fatalf("expected new override patch content to be written:\n%s", result)
+	}
+	if !strings.Contains(result, "sync_mode: create_only") {
+		t.Fatalf("expected deprecated field to remain:\n%s", result)
+	}
+}
+
+func TestWrite_MultiDocumentTargetsCorrectDocument(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: repo-a
+spec:
+  files:
+    - path: a.txt
+      content: old-a
+---
+apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: repo-b
+spec:
+  files:
+    - path: b.txt
+      content: old-b
+`)
+	if err := os.WriteFile(manifestPath, yamlData, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	plan := &Result{
+		ManifestEdits: make(map[string][]byte),
+		FileChanges: []Change{{
+			Type:         fileset.ChangeUpdate,
+			WriteMode:    WriteInline,
+			ManifestPath: manifestPath,
+			DocIndex:     1,
+			YAMLPath:     "$.spec.files[0].content",
+			Desired:      "new-b",
+		}},
+	}
+
+	if err := Write(plan); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	out, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	result := string(out)
+	if !strings.Contains(result, "content: old-a") {
+		t.Fatalf("expected first document to remain unchanged:\n%s", result)
+	}
+	if !strings.Contains(result, "content: new-b") {
+		t.Fatalf("expected second document to be updated:\n%s", result)
+	}
+}
