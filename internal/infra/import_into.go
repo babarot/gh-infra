@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -185,11 +186,16 @@ func ImportInto(args []string, into string) (*ImportDiff, error) {
 	printer.BlankLine()
 
 	tracker := ui.RunRefresh(tasks)
+	ctx, cancel := withTrackerCancelContext(tracker)
+	defer cancel()
 
-	plan, err := importer.Diff(matched, runner, printer, tracker, parsed.FileDocs)
+	plan, err := importer.Diff(ctx, matched, runner, printer, tracker, parsed.FileDocs)
 
 	tracker.Wait()
 
+	if ctx.Err() != nil {
+		return nil, context.Canceled
+	}
 	if err != nil {
 		return nil, err
 	}

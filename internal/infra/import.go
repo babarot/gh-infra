@@ -48,19 +48,8 @@ func Import(args []string) error {
 	}
 	tracker := ui.RunRefresh(tasks)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := withTrackerCancelContext(tracker)
 	defer cancel()
-	go func() {
-		ch := tracker.Canceled()
-		if ch == nil {
-			return
-		}
-		select {
-		case <-ch:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 
 	type fetchResult struct {
 		data []byte

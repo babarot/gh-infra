@@ -14,7 +14,7 @@ import (
 // Diff builds a change plan for all targets.
 // manifestBytes is shared across targets so patches accumulate correctly.
 // Targets are processed sequentially (same file may be patched by multiple targets).
-func Diff(targets []TargetMatches, runner gh.Runner, printer DiagnosticPrinter, tracker RefreshTracker, allFileDocs []*manifest.FileDocument) (*Result, error) {
+func Diff(ctx context.Context, targets []TargetMatches, runner gh.Runner, printer DiagnosticPrinter, tracker RefreshTracker, allFileDocs []*manifest.FileDocument) (*Result, error) {
 	if printer == nil {
 		printer = noopDiagnosticPrinter{}
 	}
@@ -40,9 +40,11 @@ func Diff(targets []TargetMatches, runner gh.Runner, printer DiagnosticPrinter, 
 	resolver := manifest.NewResolver(runner, resolverOwner)
 	proc := repository.NewProcessor(runner, resolver, printer)
 
-	ctx := context.Background()
-
 	for _, tm := range targets {
+		if ctx.Err() != nil {
+			return nil, context.Canceled
+		}
+
 		fullName := tm.Target.FullName()
 
 		// Fetch current GitHub state.
@@ -51,6 +53,9 @@ func Diff(targets []TargetMatches, runner gh.Runner, printer DiagnosticPrinter, 
 		}
 		current, err := proc.FetchRepository(ctx, tm.Target.Owner, tm.Target.Name, onStatus)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil, context.Canceled
+			}
 			// Auth errors affect all targets — abort immediately.
 			if errors.Is(err, gh.ErrUnauthorized) || errors.Is(err, gh.ErrForbidden) {
 				tracker.Fail(fullName)
@@ -106,6 +111,9 @@ func Diff(targets []TargetMatches, runner gh.Runner, printer DiagnosticPrinter, 
 			tracker.UpdateStatus(fullName, "comparing files...")
 			fileChanges, err := DiffFiles(ctx, runner, tm.Matches.FileSets, fullName, sourceRefCount)
 			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil, context.Canceled
+				}
 				return nil, fmt.Errorf("plan files %s: %w", fullName, err)
 			}
 			plan.FileChanges = append(plan.FileChanges, fileChanges...)

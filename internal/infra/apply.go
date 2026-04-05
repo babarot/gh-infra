@@ -101,6 +101,8 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 			})
 		}
 		tracker := ui.RunRefresh(allTasks)
+		ctx, cancel := withTrackerCancelContext(tracker)
+		defer cancel()
 
 		g := new(errgroup.Group)
 
@@ -137,6 +139,10 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 		_ = g.Wait()
 		tracker.Wait()
 		tracker.PrintErrors()
+
+		if ctx.Err() != nil {
+			return context.Canceled
+		}
 
 		s, f := repository.CountApplyResults(allRepoResults)
 		totalSucceeded += s

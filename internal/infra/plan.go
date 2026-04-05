@@ -112,19 +112,8 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	tracker := ui.RunRefresh(allTasks)
 
 	// Create a cancellable context; cancel when the spinner is interrupted via Ctrl+C.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := withTrackerCancelContext(tracker)
 	defer cancel()
-	go func() {
-		ch := tracker.Canceled()
-		if ch == nil {
-			return
-		}
-		select {
-		case <-ch:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
