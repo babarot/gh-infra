@@ -11,18 +11,20 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // Processor handles repository plan and apply operations.
 type Processor struct {
 	runner   gh.Runner
 	resolver *manifest.Resolver
-	printer  ui.Printer
+	diagnose DiagnosticReporter
 }
 
-func NewProcessor(runner gh.Runner, resolver *manifest.Resolver, printer ui.Printer) *Processor {
-	return &Processor{runner: runner, resolver: resolver, printer: printer}
+func NewProcessor(runner gh.Runner, resolver *manifest.Resolver, diagnose DiagnosticReporter) *Processor {
+	if diagnose == nil {
+		diagnose = noopDiagnosticReporter{}
+	}
+	return &Processor{runner: runner, resolver: resolver, diagnose: diagnose}
 }
 
 // FetchRepository fetches the current state of a single repository.

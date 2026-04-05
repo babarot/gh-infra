@@ -11,13 +11,15 @@ import (
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // Apply executes all changes in the plan result.
 // Changes are grouped by repo and applied in parallel across repos.
 // Within a single repo, changes are applied sequentially to maintain ordering.
-func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manifest.Repository, reporter ui.ProgressReporter) []ApplyResult {
+func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manifest.Repository, reporter ProgressReporter) []ApplyResult {
+	if reporter == nil {
+		reporter = noopProgressReporter{}
+	}
 	repoMap := make(map[string]*manifest.Repository)
 	for _, r := range repos {
 		repoMap[r.Metadata.FullName()] = r

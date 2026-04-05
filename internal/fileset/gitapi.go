@@ -101,7 +101,7 @@ func (p *Processor) createBlobs(ctx context.Context, repo string, changes []Chan
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
 func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions) error {
-	p.printer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
+	p.writer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
 	message := opts.CommitMessage
 	if message == "" {
 		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
