@@ -54,9 +54,9 @@ func (d *ImportDiff) DiffEntries() []ui.DiffEntry {
 				WriteCurrent:   c.CurrentForAction(importer.ActionWrite),
 				PatchCurrent:   c.CurrentForAction(importer.ActionPatch),
 				Desired:        c.Desired,
-				Action:         c.SelectedAction,
-				DefaultAction:  importer.DefaultAction(c.SuggestedWriteMode),
-				AllowedActions: append([]importer.ImportAction(nil), c.AllowedActions...),
+				Action:         string(c.SelectedAction),
+				DefaultAction:  string(importer.DefaultAction(c.SuggestedWriteMode)),
+				AllowedActions: importActionsToStrings(c.AllowedActions),
 				WriteTarget:    c.DisplayPath(importer.ActionWrite),
 				PatchTarget:    c.DisplayPath(importer.ActionPatch),
 			}
@@ -84,14 +84,14 @@ func (d *ImportDiff) ApplySelections(entries []ui.DiffEntry) {
 		action := e.Action
 		if action == "" {
 			if e.Skip {
-				action = importer.ActionSkip
+				action = string(importer.ActionSkip)
 			} else if e.DefaultAction != "" {
 				action = e.DefaultAction
 			} else {
-				action = importer.ActionWrite
+				action = string(importer.ActionWrite)
 			}
 		}
-		selected[key{e.Target, repoPath}] = action
+		selected[key{e.Target, repoPath}] = importer.ImportAction(action)
 	}
 	for i := range d.Plan.FileChanges {
 		c := &d.Plan.FileChanges[i]
@@ -112,17 +112,17 @@ func (d *ImportDiff) ApplySelections(entries []ui.DiffEntry) {
 func (d *ImportDiff) MarkSkips(entries []ui.DiffEntry) {
 	for i := range entries {
 		if entries[i].Skip {
-			entries[i].Action = importer.ActionSkip
+			entries[i].Action = string(importer.ActionSkip)
 		} else if entries[i].Action == "" {
-			entries[i].Action = importer.ActionWrite
+			entries[i].Action = string(importer.ActionWrite)
 		}
 		if entries[i].DefaultAction == "" {
-			entries[i].DefaultAction = importer.ActionWrite
+			entries[i].DefaultAction = string(importer.ActionWrite)
 		}
 		if entries[i].AllowedActions == nil {
-			entries[i].AllowedActions = []importer.ImportAction{
-				importer.ActionWrite,
-				importer.ActionSkip,
+			entries[i].AllowedActions = []string{
+				string(importer.ActionWrite),
+				string(importer.ActionSkip),
 			}
 		}
 	}
@@ -303,6 +303,14 @@ func isSkipOnlyChange(c importer.Change) bool {
 		return true
 	}
 	return len(c.AllowedActions) == 0 && c.WriteMode == importer.WriteSkip
+}
+
+func importActionsToStrings(actions []importer.ImportAction) []string {
+	out := make([]string, len(actions))
+	for i, action := range actions {
+		out[i] = string(action)
+	}
+	return out
 }
 
 // formatImportValue formats a FieldDiff value as YAML text for display.

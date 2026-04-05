@@ -9,13 +9,18 @@ import (
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // Diff builds a change plan for all targets.
 // manifestBytes is shared across targets so patches accumulate correctly.
 // Targets are processed sequentially (same file may be patched by multiple targets).
-func Diff(targets []TargetMatches, runner gh.Runner, printer ui.Printer, tracker *ui.RefreshTracker, allFileDocs []*manifest.FileDocument) (*Result, error) {
+func Diff(targets []TargetMatches, runner gh.Runner, printer DiagnosticPrinter, tracker RefreshTracker, allFileDocs []*manifest.FileDocument) (*Result, error) {
+	if printer == nil {
+		printer = noopDiagnosticPrinter{}
+	}
+	if tracker == nil {
+		tracker = noopRefreshTracker{}
+	}
 	plan := &Result{
 		ManifestEdits: make(map[string][]byte),
 	}
@@ -42,31 +47,23 @@ func Diff(targets []TargetMatches, runner gh.Runner, printer ui.Printer, tracker
 
 		// Fetch current GitHub state.
 		onStatus := func(s string) {
-			if tracker != nil {
-				tracker.UpdateStatus(fullName, s)
-			}
+			tracker.UpdateStatus(fullName, s)
 		}
 		current, err := proc.FetchRepository(ctx, tm.Target.Owner, tm.Target.Name, onStatus)
 		if err != nil {
 			// Auth errors affect all targets — abort immediately.
 			if errors.Is(err, gh.ErrUnauthorized) || errors.Is(err, gh.ErrForbidden) {
-				if tracker != nil {
-					tracker.Fail(fullName)
-				}
+				tracker.Fail(fullName)
 				return nil, fmt.Errorf("fetch %s: %w", fullName, err)
 			}
 			// Other errors (network, 404, etc.) — skip this target.
 			printer.Warning(fullName, fmt.Sprintf("fetch failed: %v", err))
-			if tracker != nil {
-				tracker.Fail(fullName)
-			}
+			tracker.Fail(fullName)
 			continue
 		}
 		if current.IsNew {
 			printer.Warning(fullName, "repository not found on GitHub")
-			if tracker != nil {
-				tracker.Fail(fullName)
-			}
+			tracker.Fail(fullName)
 			continue
 		}
 
@@ -106,9 +103,7 @@ func Diff(targets []TargetMatches, runner gh.Runner, printer ui.Printer, tracker
 
 		// Plan FileSet matches.
 		if len(tm.Matches.FileSets) > 0 {
-			if tracker != nil {
-				tracker.UpdateStatus(fullName, "comparing files...")
-			}
+			tracker.UpdateStatus(fullName, "comparing files...")
 			fileChanges, err := DiffFiles(ctx, runner, tm.Matches.FileSets, fullName, sourceRefCount)
 			if err != nil {
 				return nil, fmt.Errorf("plan files %s: %w", fullName, err)
@@ -116,9 +111,7 @@ func Diff(targets []TargetMatches, runner gh.Runner, printer ui.Printer, tracker
 			plan.FileChanges = append(plan.FileChanges, fileChanges...)
 		}
 
-		if tracker != nil {
-			tracker.Done(fullName)
-		}
+		tracker.Done(fullName)
 	}
 
 	return plan, nil
