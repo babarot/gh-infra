@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.8.0](https://github.com/babarot/gh-infra/compare/v0.7.0...v0.8.0) - 2026-04-05
+### New Features
+- Add `import --into` command for pulling GitHub state into local manifests by @babarot in https://github.com/babarot/gh-infra/pull/68
+### Bug fixes
+- Fix FileSet identity collision causing duplicate apply by @babarot in https://github.com/babarot/gh-infra/pull/70
+### Improvements
+- Show step-level progress during apply and parallelize FileSets by @babarot in https://github.com/babarot/gh-infra/pull/71
+- Truncate spinner errors to one line and show detailed summary after by @babarot in https://github.com/babarot/gh-infra/pull/72
+- Auto-generate patches for shared templates during import by @babarot in https://github.com/babarot/gh-infra/pull/75
+- Patch only changed fields in YAML instead of replacing entire spec by @babarot in https://github.com/babarot/gh-infra/pull/76
+### Refactorings
+- fix: batch repo settings into single PATCH to fix create validation error by @babarot in https://github.com/babarot/gh-infra/pull/73
+- Refactor: simplify yamledit API with shorter names and shared pathContext by @babarot in https://github.com/babarot/gh-infra/pull/77
+- Refactor: replace switch-case with descriptor-based field dispatch in patchRepositorySpec by @babarot in https://github.com/babarot/gh-infra/pull/78
+- Introduce editOp abstraction for unified YAML edit operations by @babarot in https://github.com/babarot/gh-infra/pull/79
+
 ## [v0.7.0](https://github.com/babarot/gh-infra/compare/v0.6.2...v0.7.0) - 2026-04-03
 ### New Features
 - feat: add release_immutability support for repositories by @yagihash in https://github.com/babarot/gh-infra/pull/63
