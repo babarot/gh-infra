@@ -424,6 +424,55 @@ spec:
 	}
 }
 
+func TestDiffRepository_PreservesCommentsAroundPatchedFields(t *testing.T) {
+	local := manifest.RepositorySpec{
+		Description: manifest.Ptr("old"),
+	}
+	imported := manifest.Repository{
+		Spec: manifest.RepositorySpec{
+			Description: manifest.Ptr("new"),
+		},
+	}
+
+	doc := &manifest.RepositoryDocument{
+		Resource:   &manifest.Repository{Spec: local},
+		SourcePath: "/tmp/test.yaml",
+		DocIndex:   0,
+	}
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  # keep this comment
+  description: old
+  topics: [go, cli]
+`)
+
+	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
+	_, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepository error: %v", err)
+	}
+
+	updated := string(mb["/tmp/test.yaml"])
+	if !strings.Contains(updated, "# keep this comment") {
+		t.Fatalf("expected comment to be preserved:\n%s", updated)
+	}
+	if !strings.Contains(updated, "topics: [go, cli]") {
+		t.Fatalf("expected untouched flow-style sibling to remain:\n%s", updated)
+	}
+	if !strings.Contains(updated, "description: new") {
+		t.Fatalf("expected target field to be updated:\n%s", updated)
+	}
+}
+
 func TestDiffRepository_CollectionDeletionDescriptorPatch(t *testing.T) {
 	local := manifest.RepositorySpec{
 		Variables: []manifest.Variable{
@@ -775,6 +824,72 @@ repositories:
 	}
 	if !strings.Contains(updated, "- actions/checkout@*") {
 		t.Fatalf("expected patterns_allowed override item to be written:\n%s", updated)
+	}
+}
+
+func TestDiffRepositorySet_PreservesSiblingOverrideFields(t *testing.T) {
+	defaults := &manifest.RepositorySetDefaults{
+		Spec: manifest.RepositorySpec{
+			Visibility: manifest.Ptr("private"),
+		},
+	}
+	originalEntry := &manifest.RepositorySpec{
+		Topics: []string{"go"},
+	}
+
+	doc := &manifest.RepositoryDocument{
+		Resource: &manifest.Repository{
+			Metadata: manifest.RepositoryMetadata{Name: "repo", Owner: "org"},
+			Spec: manifest.RepositorySpec{
+				Visibility: manifest.Ptr("private"),
+				Topics:     []string{"go"},
+			},
+		},
+		SourcePath:        "/tmp/set.yaml",
+		DocIndex:          0,
+		FromSet:           true,
+		SetEntryIndex:     0,
+		DefaultsSpec:      defaults,
+		OriginalEntrySpec: originalEntry,
+	}
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    visibility: private
+repositories:
+  - name: repo
+    spec:
+      topics: [go]
+`)
+
+	imported := &manifest.Repository{
+		Spec: manifest.RepositorySpec{
+			Visibility:  manifest.Ptr("private"),
+			Topics:      []string{"go"},
+			Description: manifest.Ptr("hello"),
+		},
+	}
+
+	mb := map[string][]byte{"/tmp/set.yaml": yamlData}
+	_, err := DiffRepositorySet(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepositorySet error: %v", err)
+	}
+
+	updated := string(mb["/tmp/set.yaml"])
+	if !strings.Contains(updated, "topics: [go]") {
+		t.Fatalf("expected sibling override field to remain untouched:\n%s", updated)
+	}
+	if !strings.Contains(updated, "description: hello") {
+		t.Fatalf("expected new override field to be added:\n%s", updated)
 	}
 }
 

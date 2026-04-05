@@ -231,3 +231,74 @@ func TestSetAndExists_Integration(t *testing.T) {
 		t.Fatal("expected Exists to find updated path")
 	}
 }
+
+func TestDelete_PreservesCommentsOnSiblingNodes(t *testing.T) {
+	data := []byte(`spec:
+  actions:
+    # keep this
+    enabled: true
+    fork_pr_approval: first_time_contributors
+`)
+
+	updated, err := Delete(data, 0, "$.spec.actions.fork_pr_approval")
+	if err != nil {
+		t.Fatalf("Delete error: %v", err)
+	}
+
+	result := string(updated)
+	if strings.Contains(result, "fork_pr_approval") {
+		t.Fatalf("expected target field to be deleted:\n%s", result)
+	}
+	if !strings.Contains(result, "# keep this") {
+		t.Fatalf("expected sibling comment to be preserved:\n%s", result)
+	}
+	if !strings.Contains(result, "enabled: true") {
+		t.Fatalf("expected sibling field to remain:\n%s", result)
+	}
+}
+
+func TestMerge_PreservesFlowStyleSiblingMap(t *testing.T) {
+	data := []byte(`spec:
+  actions: {enabled: true, allowed_actions: all}
+  description: hello
+`)
+
+	updated, err := Merge(data, 0, "$.spec", map[string]any{
+		"homepage": "https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("Merge error: %v", err)
+	}
+
+	result := string(updated)
+	if !strings.Contains(result, "actions: {enabled: true, allowed_actions: all}") {
+		t.Fatalf("expected untouched flow-style map to be preserved:\n%s", result)
+	}
+	if !strings.Contains(result, "homepage: https://example.com") {
+		t.Fatalf("expected merged field to be added:\n%s", result)
+	}
+}
+
+func TestSet_ReplacesFieldWithHeadComment(t *testing.T) {
+	data := []byte(`spec:
+  # field comment
+  description: old
+  visibility: private
+`)
+
+	updated, err := Set(data, 0, "$.spec.description", "new")
+	if err != nil {
+		t.Fatalf("Set error: %v", err)
+	}
+
+	result := string(updated)
+	if !strings.Contains(result, "# field comment") {
+		t.Fatalf("expected head comment to be preserved:\n%s", result)
+	}
+	if !strings.Contains(result, "description: new") {
+		t.Fatalf("expected target field to be replaced:\n%s", result)
+	}
+	if !strings.Contains(result, "visibility: private") {
+		t.Fatalf("expected sibling field to remain:\n%s", result)
+	}
+}
