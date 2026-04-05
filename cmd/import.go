@@ -70,7 +70,7 @@ func runImportInto(args []string, intoPath string) error {
 		if err != nil {
 			return err
 		}
-		diff.MarkSkips(fileEntries)
+		diff.ApplySelections(fileEntries)
 	} else {
 		ok, err = p.Confirm("Apply import changes?")
 	}

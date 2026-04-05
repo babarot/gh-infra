@@ -36,11 +36,15 @@ func Write(plan *Result) error {
 
 	// Apply file changes.
 	for _, c := range plan.FileChanges {
-		if c.Type != fileset.ChangeUpdate {
+		mode := c.EffectiveWriteMode()
+		if err := c.ValidateWriteMode(); err != nil {
+			return err
+		}
+		if c.Type != fileset.ChangeUpdate || mode == WriteSkip {
 			continue
 		}
 
-		switch c.WriteMode {
+		switch mode {
 		case WriteSource:
 			if err := os.WriteFile(c.LocalTarget, []byte(c.Desired), 0644); err != nil {
 				return fmt.Errorf("write source %s: %w", c.LocalTarget, err)
@@ -85,15 +89,12 @@ func Write(plan *Result) error {
 			}
 			updated, err := applyPatchChange(data, c)
 			if err != nil {
-				return fmt.Errorf("patch edit %s in %s: %w", c.YAMLPath, c.ManifestPath, err)
+				return fmt.Errorf("patch edit %s in %s: %w", c.PatchYAMLPath, c.ManifestPath, err)
 			}
 			plan.ManifestEdits[c.ManifestPath] = updated
 			if err := os.WriteFile(c.ManifestPath, updated, 0644); err != nil {
 				return fmt.Errorf("write manifest %s: %w", c.ManifestPath, err)
 			}
-
-		case WriteSkip:
-			// Nothing to do.
 		}
 	}
 
@@ -109,7 +110,11 @@ func applyPatchChange(data []byte, c Change) ([]byte, error) {
 }
 
 func patchEditOps(data []byte, c Change) ([]editOp, error) {
-	patchesPath := c.YAMLPath + ".patches"
+	basePath := c.PatchYAMLPath
+	if basePath == "" {
+		basePath = c.YAMLPath
+	}
+	patchesPath := basePath + ".patches"
 
 	if c.PatchContent == "" {
 		return []editOp{{
@@ -136,7 +141,7 @@ func patchEditOps(data []byte, c Change) ([]editOp, error) {
 		ops = append(ops, editOp{
 			kind:     editMerge,
 			docIndex: c.DocIndex,
-			path:     c.YAMLPath,
+			path:     basePath,
 			value: map[string]any{
 				"patches": []string{c.PatchContent},
 			},

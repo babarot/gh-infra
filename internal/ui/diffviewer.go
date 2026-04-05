@@ -10,14 +10,22 @@ import (
 )
 
 // DiffEntry holds the raw content for one file change.
-// Diff text is generated at render time; Tab toggles Skip.
+// Diff text is generated at render time; Tab cycles the selected action.
 type DiffEntry struct {
-	Path    string // file path
-	Target  string // repo full name, e.g. "owner/repo"
-	Icon    string // "+", "~", "-", "⚠"
-	Current string // current file content
-	Desired string // desired file content
-	Skip    bool   // true = will not be applied (default false = apply)
+	Path           string   // display path for the initial action
+	RepoPath       string   // repo-relative path
+	Target         string   // repo full name, e.g. "owner/repo"
+	Icon           string   // "+", "~", "-", "⚠"
+	Current        string   // current file content for selected action
+	WriteCurrent   string   // current content for write action
+	PatchCurrent   string   // current content for patch action
+	Desired        string   // desired file content
+	Action         string   // selected action
+	DefaultAction  string   // default action
+	AllowedActions []string // selectable actions
+	WriteTarget    string   // display path for write
+	PatchTarget    string   // display path for patch
+	Skip           bool     // deprecated compatibility flag
 }
 
 // GenerateDiff produces a unified diff string between current and desired content.
@@ -103,7 +111,8 @@ func (m *diffViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollY = 0
 			}
 		case "tab":
-			m.entries[m.cursor].Skip = !m.entries[m.cursor].Skip
+			m.entries[m.cursor].cycleAction()
+			m.scrollY = 0
 
 		// diff scrolling
 		case "d", "pgdown":
@@ -152,7 +161,7 @@ func (m *diffViewModel) View() tea.View {
 		listLines = append(listLines, "")
 	}
 
-	// Right pane: content generated from raw data based on skip flag
+	// Right pane: content generated from raw data based on selected action.
 	entry := m.entries[m.cursor]
 	diffLines := m.buildRightPane(entry, diffWidth)
 
@@ -168,7 +177,7 @@ func (m *diffViewModel) View() tea.View {
 			coloredLines = append(coloredLines, borderStyle.Render(strings.Repeat("─", diffWidth)))
 			continue
 		}
-		if entry.Skip {
+		if entry.effectiveAction() == "skip" {
 			// No diff coloring for skipped files — show plain text
 			coloredLines = append(coloredLines, truncate(line, diffWidth))
 		} else {
@@ -189,7 +198,7 @@ func (m *diffViewModel) View() tea.View {
 	}
 
 	// Help line
-	help := Dim.Render("  ↑↓/jk: select  tab: toggle apply/skip  d/u: scroll  q: back")
+	help := Dim.Render("  ↑↓/jk: select  tab: cycle write/patch/skip  d/u: scroll  q: back")
 
 	v := tea.NewView(strings.Join(rows, "\n") + "\n\n" + help)
 	v.AltScreen = true
@@ -204,7 +213,7 @@ func (m *diffViewModel) calcListWidth() int {
 	maxLen := 0
 	for _, e := range m.entries {
 		// File entry width
-		if w := len(e.Path) + overhead; w > maxLen {
+		if w := len(e.DisplayPath()) + overhead; w > maxLen {
 			maxLen = w
 		}
 		// Repo header width: "  owner/repo"
@@ -232,12 +241,19 @@ func (m *diffViewModel) diffVisibleLines() int {
 	return h
 }
 
-// buildRightPane generates the lines for the right pane based on the skip flag.
+// buildRightPane generates the lines for the right pane based on the selected action.
 func (m *diffViewModel) buildRightPane(entry DiffEntry, width int) []string {
 	const dividerMarker = "\x00divider\x00" // sentinel, rendered in View
 
-	if entry.Skip {
-		lines := []string{Dim.Render("Skipped (will not be applied):"), dividerMarker, ""}
+	lines := []string{
+		Dim.Render("Action: " + renderAction(entry.Action, entry.DefaultAction)),
+		Dim.Render("Target: " + entry.DisplayPath()),
+		dividerMarker,
+		"",
+	}
+
+	if entry.effectiveAction() == "skip" {
+		lines[0] = Dim.Render("Action: skip (will not be applied)")
 		if entry.Current != "" {
 			lines = append(lines, strings.Split(strings.TrimRight(entry.Current, "\n"), "\n")...)
 		} else {
@@ -247,12 +263,12 @@ func (m *diffViewModel) buildRightPane(entry DiffEntry, width int) []string {
 	}
 
 	// Show unified diff
-	diff := GenerateDiff(entry.Current, entry.Desired, entry.Path)
+	diff := GenerateDiff(entry.Current, entry.Desired, entry.DisplayPath())
 	raw := strings.Split(diff, "\n")
 	if len(raw) > 0 && raw[len(raw)-1] == "" {
 		raw = raw[:len(raw)-1]
 	}
-	return raw
+	return append(lines, raw...)
 }
 
 // buildListItems builds visual list lines grouped by repository (Target).
@@ -267,9 +283,9 @@ func (m *diffViewModel) buildListItems() []listItem {
 		}
 
 		labelWidth := m.listWidth - 8 // "  ▸ ~ " prefix + margin
-		label := truncate(e.Path, labelWidth)
+		label := truncate(e.DisplayPath(), labelWidth)
 		var line string
-		if e.Skip {
+		if e.effectiveAction() == "skip" {
 			if i == m.cursor {
 				line = fmt.Sprintf("  ▸ %s %s", Dim.Render(e.Icon), Dim.Render(label))
 			} else {
@@ -286,6 +302,72 @@ func (m *diffViewModel) buildListItems() []listItem {
 		items = append(items, listItem{text: line, entryIdx: i})
 	}
 	return items
+}
+
+func (e *DiffEntry) cycleAction() {
+	if len(e.AllowedActions) <= 1 {
+		return
+	}
+
+	current := 0
+	for i, action := range e.AllowedActions {
+		if action == e.Action {
+			current = i
+			break
+		}
+	}
+
+	e.Action = e.AllowedActions[(current+1)%len(e.AllowedActions)]
+	e.Current = e.currentForAction(e.Action)
+}
+
+func (e DiffEntry) DisplayPath() string {
+	switch e.effectiveAction() {
+	case "patch":
+		if e.PatchTarget != "" {
+			return e.PatchTarget
+		}
+	case "write":
+		if e.WriteTarget != "" {
+			return e.WriteTarget
+		}
+	}
+	return e.Path
+}
+
+func renderAction(action, defaultAction string) string {
+	if action == "" {
+		action = "write"
+	}
+	if defaultAction == "" {
+		defaultAction = "write"
+	}
+	label := string(action)
+	if action == defaultAction {
+		return label + " (default)"
+	}
+	return label
+}
+
+func (e DiffEntry) effectiveAction() string {
+	if e.Action != "" {
+		return e.Action
+	}
+	if e.Skip {
+		return "skip"
+	}
+	return "write"
+}
+
+func (e DiffEntry) currentForAction(action string) string {
+	switch action {
+	case "patch":
+		return e.PatchCurrent
+	case "write":
+		return e.WriteCurrent
+	default:
+		return e.Current
+	}
 }
 
 func (m *diffViewModel) clampScroll() {

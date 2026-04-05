@@ -56,8 +56,9 @@ func buildSourceRefCount(fileSets []*manifest.FileDocument) map[string]int {
 	return counts
 }
 
-// planImportEntry determines the WriteMode and computes the diff for a single file entry.
-// shared indicates the source template is referenced by multiple file entries.
+// planImportEntry determines the suggested write mode, supported write modes, and
+// diff contents for a single file entry. shared indicates the source template
+// is referenced by multiple file entries.
 func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoIdx int, repo manifest.FileSetRepository, repoCount int, shared bool) Change {
 	change := Change{
 		Target: fullName,
@@ -65,51 +66,65 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		Type:   fileset.ChangeNoOp,
 	}
 
-	// Populate local path info upfront so it's available even for skipped entries.
-	if file.OriginalSource != "" && !strings.HasPrefix(file.Source, "github://") {
+	sourceBacked := file.OriginalSource != "" && !strings.HasPrefix(file.Source, "github://")
+	inlineBacked := file.OriginalSource == "" && (file.Source == "" || !strings.HasPrefix(file.Source, "github://"))
+
+	// Populate write target info upfront so it's available even for skipped entries.
+	if sourceBacked {
 		change.LocalTarget = file.OriginalSource
-	} else if file.Source == "" || !strings.HasPrefix(file.Source, "github://") {
+	} else if inlineBacked {
 		change.ManifestPath = doc.SourcePath
 		change.DocIndex = doc.DocIndex
-		baseIdx := findFileIndex(doc.Resource.Spec.Files, file.Path)
-		if baseIdx >= 0 {
-			change.YAMLPath = fmt.Sprintf("$.spec.files[%d].content", baseIdx)
+		overrideIdx := findFileIndex(repo.Overrides, file.Path)
+		if overrideIdx >= 0 {
+			change.YAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d].content", repoIdx, overrideIdx)
+		} else {
+			baseIdx := findFileIndex(doc.Resource.Spec.Files, file.Path)
+			if baseIdx >= 0 {
+				change.YAMLPath = fmt.Sprintf("$.spec.files[%d].content", baseIdx)
+			}
 		}
 	}
 
 	// Templates: skip (reverse transformation is impossible)
 	if fileset.HasTemplate(file.Content, file.Vars) {
-		change.WriteMode = WriteSkip
+		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "uses templates"
 		return change
 	}
 
-	// Patches: generate/update patches instead of skipping
-	if len(file.Patches) > 0 {
-		return planPatchEntry(ctx, runner, fullName, file, doc, repoIdx, repo, repoCount)
-	}
-
-	// Determine write mode based on source
-	// (create_only is allowed — importing updates the local master template)
-	if file.OriginalSource != "" {
-		if strings.HasPrefix(file.Source, "github://") {
-			change.WriteMode = WriteSkip
-			change.Reason = "remote source (github://)"
-			return change
-		}
-		if shared || len(file.Patches) > 0 {
-			// Shared template or already has patches: generate patches to avoid
-			// overwriting the template and affecting other repositories.
-			return planPatchEntry(ctx, runner, fullName, file, doc, repoIdx, repo, repoCount)
-		}
-		change.WriteMode = WriteSource
-	} else if file.Source != "" && strings.HasPrefix(file.Source, "github://") {
-		change.WriteMode = WriteSkip
+	if file.Source != "" && strings.HasPrefix(file.Source, "github://") {
+		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "remote source (github://)"
 		return change
-	} else {
-		change.WriteMode = WriteInline
 	}
+
+	patchSupported := false
+	if len(file.Patches) > 0 || sourceBacked {
+		patchSupported = configurePatchTarget(&change, file, doc, repoIdx, repo, repoCount)
+	}
+	if len(file.Patches) > 0 && !patchSupported {
+		setWriteMetadata(&change, WriteSkip)
+		change.Reason = "expanded from directory source"
+		return change
+	}
+	patchPreferred := len(file.Patches) > 0 || shared
+	availableModes := []WriteMode{WriteInline}
+	suggestedMode := WriteInline
+	if sourceBacked {
+		availableModes = []WriteMode{WriteSource}
+		suggestedMode = WriteSource
+		if patchSupported {
+			availableModes = []WriteMode{WriteSource, WritePatch}
+			if patchPreferred {
+				suggestedMode = WritePatch
+			}
+		}
+	} else if patchSupported {
+		availableModes = []WriteMode{WriteInline, WritePatch}
+		suggestedMode = WritePatch
+	}
+	setWriteMetadata(&change, suggestedMode, availableModes...)
 
 	// Fetch current content from GitHub
 	githubContent, err := fetchFileContent(ctx, runner, fullName, file.Path)
@@ -121,102 +136,79 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 
 	change.Desired = githubContent
 
-	// Compare with local content
-	localContent := file.Content
-	change.Current = localContent
+	change.WriteCurrent = file.Content
 
-	currentNorm := strings.TrimRight(localContent, "\n")
-	desiredNorm := strings.TrimRight(githubContent, "\n")
+	if len(file.Patches) > 0 {
+		patchedContent, err := fileset.ApplyPatches(fileset.EnsureTrailingNewline(file.Content), file.Patches)
+		if err != nil {
+			setWriteMetadata(&change, WriteSkip)
+			change.Type = fileset.ChangeNoOp
+			change.Reason = fmt.Sprintf("cannot apply existing patches: %v", err)
+			return change
+		}
+		change.PatchCurrent = patchedContent
+	} else if patchSupported {
+		change.PatchCurrent = file.Content
+	}
 
-	if currentNorm == desiredNorm {
-		change.Type = fileset.ChangeNoOp
+	change.UpdateTypeForMode(change.SuggestedWriteMode)
+	if change.Type == fileset.ChangeNoOp {
 		return change
 	}
 
-	change.Type = fileset.ChangeUpdate
+	if patchSupported {
+		if strings.TrimRight(change.WriteCurrent, "\n") == strings.TrimRight(githubContent, "\n") {
+			change.PatchContent = ""
+		} else {
+			patch, err := fileset.GeneratePatch(file.Content, githubContent, file.Path)
+			if err != nil {
+				setWriteMetadata(&change, WriteSkip)
+				change.Type = fileset.ChangeNoOp
+				change.Reason = fmt.Sprintf("patch generation failed: %v", err)
+				return change
+			}
+			change.PatchContent = patch
+		}
+	}
+
 	return change
 }
 
-// planPatchEntry handles files with patches: generates a new patch from template vs GitHub content.
-func planPatchEntry(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoIdx int, repo manifest.FileSetRepository, repoCount int) Change {
-	change := Change{
-		Target:       fullName,
-		Path:         file.Path,
-		Type:         fileset.ChangeNoOp,
-		ManifestPath: doc.SourcePath,
-		DocIndex:     doc.DocIndex,
-		WriteMode:    WritePatch,
-	}
-
-	// Resolve YAMLPath: check if this file comes from an override or the base spec.
-	// We target the entire FileEntry (not just .patches) so we can add the patches
-	// field even when it doesn't exist yet.
+func configurePatchTarget(change *Change, file manifest.FileEntry, doc *manifest.FileDocument, repoIdx int, repo manifest.FileSetRepository, repoCount int) bool {
 	overrideIdx := findFileIndex(repo.Overrides, file.Path)
 	if overrideIdx >= 0 {
-		change.YAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d]", repoIdx, overrideIdx)
+		change.ManifestPath = doc.SourcePath
+		change.DocIndex = doc.DocIndex
+		change.PatchYAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d]", repoIdx, overrideIdx)
+		if file.OriginalSource == "" {
+			change.YAMLPath = change.PatchYAMLPath + ".content"
+		}
 	} else {
 		baseIdx := findFileIndex(doc.Resource.Spec.Files, file.Path)
 		if baseIdx < 0 {
-			// File comes from directory expansion — cannot write patches back
-			change.WriteMode = WriteSkip
-			change.Reason = "expanded from directory source"
-			return change
+			return false
 		}
-		change.YAMLPath = fmt.Sprintf("$.spec.files[%d]", baseIdx)
+		change.ManifestPath = doc.SourcePath
+		change.DocIndex = doc.DocIndex
+		change.PatchYAMLPath = fmt.Sprintf("$.spec.files[%d]", baseIdx)
+		if file.OriginalSource == "" {
+			change.YAMLPath = change.PatchYAMLPath + ".content"
+		}
+		if repoCount > 1 {
+			change.Warnings = append(change.Warnings,
+				fmt.Sprintf("shared manifest: affects %d repositories", repoCount))
+		}
 	}
 
-	// Shared manifest warning
-	if repoCount > 1 && overrideIdx < 0 {
-		change.Warnings = append(change.Warnings,
-			fmt.Sprintf("shared manifest: affects %d repositories", repoCount))
-	}
-
-	// Compute current patched content (template + existing patches)
-	patchedContent, err := fileset.ApplyPatches(fileset.EnsureTrailingNewline(file.Content), file.Patches)
-	if err != nil {
-		change.WriteMode = WriteSkip
-		change.Reason = fmt.Sprintf("cannot apply existing patches: %v", err)
-		return change
-	}
-
-	// Fetch current content from GitHub
-	githubContent, err := fetchFileContent(ctx, runner, fullName, file.Path)
-	if err != nil {
-		change.Type = fileset.ChangeNoOp
-		return change
-	}
-
-	change.Current = patchedContent
-	change.Desired = githubContent
-
-	// If GitHub matches the already-patched content, nothing to do
-	if strings.TrimRight(patchedContent, "\n") == strings.TrimRight(githubContent, "\n") {
-		change.Type = fileset.ChangeNoOp
-		return change
-	}
-
-	// Keep a copy of the original entry for write-back (needed to reconstruct with patches).
 	entryCopy := file
 	change.PatchEntry = &entryCopy
+	return true
+}
 
-	// If GitHub matches the raw template, patches should be removed
-	if strings.TrimRight(file.Content, "\n") == strings.TrimRight(githubContent, "\n") {
-		change.Type = fileset.ChangeUpdate
-		change.PatchContent = "" // sentinel: remove patches
-		return change
-	}
-
-	// Generate new patch: template → GitHub content
-	patch, err := fileset.GeneratePatch(file.Content, githubContent, file.Path)
-	if err != nil {
-		change.WriteMode = WriteSkip
-		change.Reason = fmt.Sprintf("patch generation failed: %v", err)
-		return change
-	}
-
-	change.Type = fileset.ChangeUpdate
-	change.PatchContent = patch
-	return change
+func setWriteMetadata(change *Change, suggested WriteMode, available ...WriteMode) {
+	change.WriteMode = suggested
+	change.SuggestedWriteMode = suggested
+	change.AvailableModes = append([]WriteMode(nil), available...)
 }
 
 // findFileIndex returns the index of the first FileEntry with the given path, or -1 if not found.

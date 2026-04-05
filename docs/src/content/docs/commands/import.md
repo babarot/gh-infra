@@ -71,11 +71,40 @@ Press `d` to open a full-screen diff viewer for file-level changes:
 | Key | Action |
 |-----|--------|
 | `↑`/`↓` or `j`/`k` | Select file |
-| `Tab` | Toggle apply/skip for the selected file |
+| `Tab` | Cycle `write` / `patch` / `skip` for the selected file |
 | `d`/`u` | Scroll diff pane |
 | `q`/`Esc` | Return to confirmation |
 
 Repository setting changes (description, visibility, features, etc.) are shown in the terminal plan output, not in the diff viewer.
+
+### `write` / `patch` / `skip`
+
+The import diff viewer does not just let you approve or reject a file change. For each file, you can choose how the change should be written back:
+
+- `write`
+  - update the file's normal write-back target
+  - inline entries update the manifest `content: |` block
+  - source-backed entries update the local source file
+- `patch`
+  - store the drift as a manifest patch under `patches:`
+- `skip`
+  - do not apply that file change in this import run
+
+The default action depends on the file shape:
+
+| File shape | Default | Allowed |
+|-----------|---------|---------|
+| Inline content | `write` | `write`, `skip` |
+| Local source (single-use) | `write` | `write`, `patch`, `skip` |
+| Local source shared by multiple repos | `patch` | `write`, `patch`, `skip` |
+| Existing `patches:` entry | `patch` | `write`, `patch`, `skip` |
+| Template-based file (`vars:` / templating) | skipped in plan | not shown in viewer |
+| `github://` source | skipped in plan | not shown in viewer |
+
+This is especially useful for shared source files:
+
+- the safe default is `patch`, so one repo's drift does not immediately rewrite the shared source
+- but if you intentionally want to update the shared source/template itself, switch that entry to `write`
 
 ### What Gets Imported
 
@@ -91,8 +120,7 @@ Repository setting changes (description, visibility, features, etc.) are shown i
 
 | Source | Reason |
 |--------|--------|
-| Files using template variables (`vars:`) | Rendered content cannot be reverse-transformed to template |
-| Files using patches (`patches:`) | Patched content cannot be split back to base + patch |
+| Templated files (`vars:`, `{{ ... }}`, `<% ... %>`, etc.) | Rendered content cannot be safely reverse-transformed back into the original template |
 | Files from GitHub source (`source: github://...`) | No local file to write back to |
 | Secrets | GitHub API does not return secret values; local values are preserved |
 
@@ -100,4 +128,12 @@ Skipped files are shown in the plan output with a warning icon and the skip reas
 
 ### Shared Source Files
 
-When a source file is shared across multiple repositories in a FileSet, importing from one repository updates the shared source. This is expected: the source is the single point of truth, so pulling drift from one repo propagates to all. A warning is shown in the plan output for visibility.
+When a source file is shared across multiple repositories in a FileSet, the default import action is `patch`, not `write`.
+
+This means:
+
+- by default, drift from one repository is captured in manifest patches
+- the shared source file is left unchanged
+- other repositories are not affected immediately
+
+If you intentionally want to make the shared source authoritative and propagate that change, switch the entry to `write` in the diff viewer.

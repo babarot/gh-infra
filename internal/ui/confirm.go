@@ -106,17 +106,17 @@ func (m *confirmDiffModel) View() tea.View {
 	}
 
 	// Show skipped files if any
-	var skipped []DiffEntry
+	var selected []DiffEntry
 	for _, e := range m.diffEntries {
-		if e.Skip {
-			skipped = append(skipped, e)
+		if e.Action != e.DefaultAction {
+			selected = append(selected, e)
 		}
 	}
-	if len(skipped) > 0 {
+	if len(selected) > 0 {
 		b.WriteString("\n")
-		b.WriteString(Dim.Render("  Skipped files (will not be applied):") + "\n")
-		for _, e := range skipped {
-			fmt.Fprintf(&b, "    %s\n", Dim.Render(e.Path))
+		b.WriteString(Dim.Render("  Non-default actions:") + "\n")
+		for _, e := range selected {
+			fmt.Fprintf(&b, "    %s -> %s\n", Dim.Render(e.DisplayPath()), Dim.Render(string(e.Action)))
 		}
 	}
 
