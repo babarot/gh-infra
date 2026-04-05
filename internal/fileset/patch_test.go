@@ -114,3 +114,72 @@ func TestApplyPatches(t *testing.T) {
 		})
 	}
 }
+
+func TestGeneratePatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		base    string
+		desired string
+		path    string
+		wantErr bool
+		empty   bool // expect empty patch (no diff)
+	}{
+		{
+			name:    "identical content returns empty",
+			base:    "hello\nworld\n",
+			desired: "hello\nworld\n",
+			path:    "test.txt",
+			empty:   true,
+		},
+		{
+			name:    "basic diff",
+			base:    "line1\nline2\nline3\n",
+			desired: "line1\nmodified\nline3\n",
+			path:    "config.yaml",
+		},
+		{
+			name:    "addition at end",
+			base:    "line1\nline2\n",
+			desired: "line1\nline2\nline3\n",
+			path:    "file.txt",
+		},
+		{
+			name:    "handles missing trailing newline",
+			base:    "hello",
+			desired: "hello\nworld",
+			path:    "f.txt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patch, err := GeneratePatch(tt.base, tt.desired, tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("GeneratePatch() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if tt.empty {
+				if patch != "" {
+					t.Errorf("expected empty patch, got:\n%s", patch)
+				}
+				return
+			}
+			if patch == "" {
+				t.Fatal("expected non-empty patch")
+			}
+
+			// Round-trip: apply the patch to base and verify it matches desired
+			base := ensureTrailingNewline(tt.base)
+			desired := ensureTrailingNewline(tt.desired)
+			result, err := ApplyPatches(base, []string{patch})
+			if err != nil {
+				t.Fatalf("round-trip apply failed: %v", err)
+			}
+			if result != desired {
+				t.Errorf("round-trip mismatch:\ngot:  %q\nwant: %q", result, desired)
+			}
+		})
+	}
+}

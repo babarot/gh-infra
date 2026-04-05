@@ -98,6 +98,7 @@ type WriteMode string
 const (
 	WriteSource WriteMode = "source" // overwrite local source file
 	WriteInline WriteMode = "inline" // AST-edit content: block in YAML
+	WritePatch  WriteMode = "patch"  // generate/update patches in manifest YAML
 	WriteSkip   WriteMode = "skip"   // skip (not writable)
 )
 
@@ -110,9 +111,10 @@ type Change struct {
 	Desired      string             // GitHub content
 	WriteMode    WriteMode
 	LocalTarget  string // write-back path (WriteSource)
-	ManifestPath string // manifest path (WriteInline)
+	ManifestPath string // manifest path (WriteInline/WritePatch)
 	DocIndex     int
-	YAMLPath     string // e.g. $.spec.files[0].content
+	YAMLPath     string // e.g. $.spec.files[0].content or $.spec.files[0].patches
+	PatchContent string // generated patch content (WritePatch only)
 	Reason       string // skip reason
 	Warnings     []string
 }

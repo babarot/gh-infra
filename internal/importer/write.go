@@ -49,6 +49,31 @@ func Write(plan *Result) error {
 				return fmt.Errorf("write manifest %s: %w", c.ManifestPath, err)
 			}
 
+		case WritePatch:
+			// Read current manifest (may already be patched by repo edits).
+			data, ok := plan.ManifestEdits[c.ManifestPath]
+			if !ok {
+				var err error
+				data, err = os.ReadFile(c.ManifestPath)
+				if err != nil {
+					return fmt.Errorf("read manifest for patch edit %s: %w", c.ManifestPath, err)
+				}
+			}
+			var patches any
+			if c.PatchContent == "" {
+				patches = []string{}
+			} else {
+				patches = []string{c.PatchContent}
+			}
+			updated, err := yamledit.ReplaceNode(data, c.DocIndex, c.YAMLPath, patches)
+			if err != nil {
+				return fmt.Errorf("patch edit %s in %s: %w", c.YAMLPath, c.ManifestPath, err)
+			}
+			plan.ManifestEdits[c.ManifestPath] = updated
+			if err := os.WriteFile(c.ManifestPath, updated, 0644); err != nil {
+				return fmt.Errorf("write manifest %s: %w", c.ManifestPath, err)
+			}
+
 		case WriteSkip:
 			// Nothing to do.
 		}

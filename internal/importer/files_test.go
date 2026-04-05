@@ -5,8 +5,15 @@ import (
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/fileset"
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 )
+
+// helper to call planImportEntry with default repo values for tests that don't need them.
+func callPlan(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoCount int) Change {
+	repo := manifest.FileSetRepository{Name: "repo"}
+	return planImportEntry(ctx, runner, fullName, file, doc, 0, repo, repoCount)
+}
 
 func TestPlanImportEntry_WriteSource(t *testing.T) {
 	file := manifest.FileEntry{
@@ -20,7 +27,7 @@ func TestPlanImportEntry_WriteSource(t *testing.T) {
 		DocIndex:   0,
 	}
 
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 0, doc, 1)
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSource {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSource)
@@ -37,12 +44,21 @@ func TestPlanImportEntry_WriteInline(t *testing.T) {
 		// No OriginalSource → inline
 	}
 	doc := &manifest.FileDocument{
-		Resource:   &manifest.FileSet{},
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{
+					{Path: "other.yaml"},
+					{Path: "another.yaml"},
+					{Path: "third.yaml"},
+					{Path: ".github/dependabot.yaml"},
+				},
+			},
+		},
 		SourcePath: "/tmp/manifest.yaml",
 		DocIndex:   2,
 	}
 
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 3, doc, 1)
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteInline {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteInline)
@@ -68,7 +84,7 @@ func TestPlanImportEntry_SkipGitHubSource(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 0, doc, 1)
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSkip {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSkip)
@@ -89,7 +105,7 @@ func TestPlanImportEntry_SkipVars(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 0, doc, 1)
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSkip {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSkip)
@@ -99,21 +115,28 @@ func TestPlanImportEntry_SkipVars(t *testing.T) {
 	}
 }
 
-func TestPlanImportEntry_SkipPatches(t *testing.T) {
+func TestPlanImportEntry_PatchesUsesWritePatch(t *testing.T) {
+	// Files with patches should use WritePatch mode, not WriteSkip.
 	file := manifest.FileEntry{
-		Path:    "config.yaml",
-		Content: "base content",
-		Patches: []string{"--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new"},
+		Path:           "config.yaml",
+		Content:        "base content\n",
+		Patches:        []string{"--- a/config.yaml\n+++ b/config.yaml\n@@ -1 +1 @@\n-base content\n+patched content\n"},
+		OriginalSource: "/tmp/template/config.yaml",
 	}
 	doc := &manifest.FileDocument{
-		Resource:   &manifest.FileSet{},
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{{Path: "config.yaml"}},
+			},
+		},
 		SourcePath: "/tmp/manifest.yaml",
 	}
 
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 0, doc, 1)
+	// nil runner → fetch will fail → NoOp, but WriteMode should be WritePatch
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
 
-	if change.WriteMode != WriteSkip {
-		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSkip)
+	if change.WriteMode != WritePatch {
+		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WritePatch)
 	}
 }
 
@@ -129,7 +152,7 @@ func TestPlanImportEntry_CreateOnly_NotSkipped(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 0, doc, 1)
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
 
 	// create_only should NOT be skipped — importing updates the local master template.
 	if change.WriteMode == WriteSkip {
@@ -152,7 +175,7 @@ func TestPlanImportEntry_SharedSourceWarning(t *testing.T) {
 	}
 
 	// repoCount = 3 → shared source warning
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 0, doc, 3)
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 3)
 
 	if change.WriteMode != WriteSource {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSource)
@@ -186,7 +209,7 @@ func TestPlanImportEntry_NoDiff(t *testing.T) {
 	}
 
 	// nil runner → fetch will fail → NoOp
-	change := planImportEntry(context.TODO(), nil, "org/repo", file, 0, doc, 1)
+	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.Type != fileset.ChangeNoOp {
 		t.Errorf("Type = %q, want %q", change.Type, fileset.ChangeNoOp)
