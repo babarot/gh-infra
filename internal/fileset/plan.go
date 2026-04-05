@@ -10,16 +10,18 @@ import (
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // Processor handles FileSet plan and apply operations.
 type Processor struct {
 	runner  gh.Runner
-	printer ui.Printer
+	printer Reporter
 }
 
-func NewProcessor(runner gh.Runner, printer ui.Printer) *Processor {
+func NewProcessor(runner gh.Runner, printer Reporter) *Processor {
+	if printer == nil {
+		printer = noopReporter{}
+	}
 	return &Processor{runner: runner, printer: printer}
 }
 
@@ -55,7 +57,10 @@ func PlanTargetRepoNames(fileSets []*manifest.FileSet, filterRepo string) []stri
 
 // Plan computes changes for all FileSets concurrently.
 // If filterRepo is non-empty, only targets matching that repo are processed.
-func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filterRepo string, tracker *ui.RefreshTracker) ([]Change, error) {
+func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filterRepo string, tracker RefreshTracker) ([]Change, error) {
+	if tracker == nil {
+		tracker = noopRefreshTracker{}
+	}
 	// Build work units (order-preserving index).
 	var units []planUnit
 	for _, fs := range fileSets {

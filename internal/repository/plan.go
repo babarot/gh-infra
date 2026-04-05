@@ -7,7 +7,6 @@ import (
 	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // PlanOptions configures the plan phase for repositories.
@@ -36,7 +35,10 @@ func PlanTargetRepoNames(repos []*manifest.Repository, filterRepo string) []stri
 }
 
 // Plan fetches current state for all repositories, computes diffs, and returns changes.
-func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts PlanOptions, tracker *ui.RefreshTracker) ([]Change, []*manifest.Repository, error) {
+func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts PlanOptions, tracker RefreshTracker) ([]Change, []*manifest.Repository, error) {
+	if tracker == nil {
+		tracker = noopRefreshTracker{}
+	}
 	var targets []*manifest.Repository
 	for _, repo := range repos {
 		if opts.FilterRepo != "" && repo.Metadata.FullName() != opts.FilterRepo {

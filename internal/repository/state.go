@@ -11,17 +11,19 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // Processor handles repository plan and apply operations.
 type Processor struct {
 	runner   gh.Runner
 	resolver *manifest.Resolver
-	printer  ui.Printer
+	printer  Reporter
 }
 
-func NewProcessor(runner gh.Runner, resolver *manifest.Resolver, printer ui.Printer) *Processor {
+func NewProcessor(runner gh.Runner, resolver *manifest.Resolver, printer Reporter) *Processor {
+	if printer == nil {
+		printer = noopReporter{}
+	}
 	return &Processor{runner: runner, resolver: resolver, printer: printer}
 }
 

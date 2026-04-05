@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/babarot/gh-infra/internal/parallel"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 // ApplyOptions configures apply behavior from FileSet spec.
@@ -21,7 +20,10 @@ type ApplyOptions struct {
 
 // Apply executes the planned file changes using Git Data API.
 // Changes are grouped by target repo and applied in parallel across repos.
-func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptions, reporter ui.ProgressReporter) []ApplyResult {
+func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptions, reporter ProgressReporter) []ApplyResult {
+	if reporter == nil {
+		reporter = noopProgressReporter{}
+	}
 	grouped := groupChangesByTarget(changes)
 
 	// Build ordered repo list for deterministic output
