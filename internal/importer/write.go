@@ -36,8 +36,8 @@ func Write(plan *Result) error {
 
 	// Apply file changes.
 	for _, c := range plan.FileChanges {
-		mode, err := c.EffectiveWriteMode()
-		if err != nil {
+		mode := c.EffectiveWriteMode()
+		if err := c.ValidateWriteMode(); err != nil {
 			return err
 		}
 		if c.Type != fileset.ChangeUpdate || mode == WriteSkip {

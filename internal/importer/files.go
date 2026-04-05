@@ -56,7 +56,7 @@ func buildSourceRefCount(fileSets []*manifest.FileDocument) map[string]int {
 	return counts
 }
 
-// planImportEntry determines the suggested write mode, selectable actions, and
+// planImportEntry determines the suggested write mode, supported write modes, and
 // diff contents for a single file entry. shared indicates the source template
 // is referenced by multiple file entries.
 func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoIdx int, repo manifest.FileSetRepository, repoCount int, shared bool) Change {
@@ -88,13 +88,13 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 
 	// Templates: skip (reverse transformation is impossible)
 	if fileset.HasTemplate(file.Content, file.Vars) {
-		setActionMetadata(&change, WriteSkip, ActionSkip)
+		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "uses templates"
 		return change
 	}
 
 	if file.Source != "" && strings.HasPrefix(file.Source, "github://") {
-		setActionMetadata(&change, WriteSkip, ActionSkip)
+		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "remote source (github://)"
 		return change
 	}
@@ -104,26 +104,27 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		patchSupported = configurePatchTarget(&change, file, doc, repoIdx, repo, repoCount)
 	}
 	if len(file.Patches) > 0 && !patchSupported {
-		setActionMetadata(&change, WriteSkip, ActionSkip)
+		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "expanded from directory source"
 		return change
 	}
 	patchPreferred := len(file.Patches) > 0 || shared
-	allowedActions := []ImportAction{ActionWrite, ActionSkip}
+	availableModes := []WriteMode{WriteInline}
 	suggestedMode := WriteInline
 	if sourceBacked {
+		availableModes = []WriteMode{WriteSource}
 		suggestedMode = WriteSource
 		if patchSupported {
-			allowedActions = []ImportAction{ActionWrite, ActionPatch, ActionSkip}
+			availableModes = []WriteMode{WriteSource, WritePatch}
 			if patchPreferred {
 				suggestedMode = WritePatch
 			}
 		}
 	} else if patchSupported {
-		allowedActions = []ImportAction{ActionWrite, ActionPatch, ActionSkip}
+		availableModes = []WriteMode{WriteInline, WritePatch}
 		suggestedMode = WritePatch
 	}
-	setActionMetadata(&change, suggestedMode, allowedActions...)
+	setWriteMetadata(&change, suggestedMode, availableModes...)
 
 	// Fetch current content from GitHub
 	githubContent, err := fetchFileContent(ctx, runner, fullName, file.Path)
@@ -136,30 +137,21 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 	change.Desired = githubContent
 
 	change.WriteCurrent = file.Content
-	if change.SelectedAction == ActionWrite {
-		change.Current = change.WriteCurrent
-	}
 
 	if len(file.Patches) > 0 {
 		patchedContent, err := fileset.ApplyPatches(fileset.EnsureTrailingNewline(file.Content), file.Patches)
 		if err != nil {
-			setActionMetadata(&change, WriteSkip, ActionSkip)
+			setWriteMetadata(&change, WriteSkip)
 			change.Type = fileset.ChangeNoOp
 			change.Reason = fmt.Sprintf("cannot apply existing patches: %v", err)
 			return change
 		}
 		change.PatchCurrent = patchedContent
-		if change.SelectedAction == ActionPatch {
-			change.Current = change.PatchCurrent
-		}
 	} else if patchSupported {
 		change.PatchCurrent = file.Content
-		if change.SelectedAction == ActionPatch {
-			change.Current = change.PatchCurrent
-		}
 	}
 
-	change.UpdateTypeForAction()
+	change.UpdateTypeForMode(change.SuggestedWriteMode)
 	if change.Type == fileset.ChangeNoOp {
 		return change
 	}
@@ -170,7 +162,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		} else {
 			patch, err := fileset.GeneratePatch(file.Content, githubContent, file.Path)
 			if err != nil {
-				setActionMetadata(&change, WriteSkip, ActionSkip)
+				setWriteMetadata(&change, WriteSkip)
 				change.Type = fileset.ChangeNoOp
 				change.Reason = fmt.Sprintf("patch generation failed: %v", err)
 				return change
@@ -213,11 +205,10 @@ func configurePatchTarget(change *Change, file manifest.FileEntry, doc *manifest
 	return true
 }
 
-func setActionMetadata(change *Change, suggested WriteMode, allowed ...ImportAction) {
+func setWriteMetadata(change *Change, suggested WriteMode, available ...WriteMode) {
 	change.WriteMode = suggested
 	change.SuggestedWriteMode = suggested
-	change.AllowedActions = append([]ImportAction(nil), allowed...)
-	change.SelectedAction = DefaultAction(suggested)
+	change.AvailableModes = append([]WriteMode(nil), available...)
 }
 
 // findFileIndex returns the index of the first FileEntry with the given path, or -1 if not found.

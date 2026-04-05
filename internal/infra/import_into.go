@@ -20,6 +20,12 @@ type ImportDiff struct {
 	printer ui.Printer
 }
 
+const (
+	importActionWrite = "write"
+	importActionPatch = "patch"
+	importActionSkip  = "skip"
+)
+
 // Printer returns the printer used during this session.
 func (d *ImportDiff) Printer() ui.Printer { return d.printer }
 
@@ -46,19 +52,19 @@ func (d *ImportDiff) DiffEntries() []ui.DiffEntry {
 		switch c.Type {
 		case "update":
 			entry := ui.DiffEntry{
-				Path:           c.DisplayPath(c.SelectedAction),
+				Path:           c.DisplayPathForMode(c.EffectiveWriteMode()),
 				RepoPath:       c.Path,
 				Target:         c.Target,
 				Icon:           ui.IconChange,
-				Current:        c.CurrentForAction(c.SelectedAction),
-				WriteCurrent:   c.CurrentForAction(importer.ActionWrite),
-				PatchCurrent:   c.CurrentForAction(importer.ActionPatch),
+				Current:        c.CurrentForMode(c.EffectiveWriteMode()),
+				WriteCurrent:   c.CurrentForMode(writeModeForAction(c, importActionWrite)),
+				PatchCurrent:   c.CurrentForMode(importer.WritePatch),
 				Desired:        c.Desired,
-				Action:         string(c.SelectedAction),
-				DefaultAction:  string(importer.DefaultAction(c.SuggestedWriteMode)),
-				AllowedActions: importActionsToStrings(c.AllowedActions),
-				WriteTarget:    c.DisplayPath(importer.ActionWrite),
-				PatchTarget:    c.DisplayPath(importer.ActionPatch),
+				Action:         defaultActionForChange(c),
+				DefaultAction:  defaultActionForChange(c),
+				AllowedActions: allowedActionsForChange(c),
+				WriteTarget:    c.DisplayPathForMode(writeModeForAction(c, importActionWrite)),
+				PatchTarget:    c.DisplayPathForMode(importer.WritePatch),
 			}
 			for _, w := range c.Warnings {
 				entry.Icon = ui.IconWarning
@@ -75,7 +81,7 @@ func (d *ImportDiff) DiffEntries() []ui.DiffEntry {
 // ApplySelections writes action selections from the diff viewer back to the plan.
 func (d *ImportDiff) ApplySelections(entries []ui.DiffEntry) {
 	type key struct{ target, path string }
-	selected := make(map[key]importer.ImportAction, len(entries))
+	selected := make(map[key]string, len(entries))
 	for _, e := range entries {
 		repoPath := e.RepoPath
 		if repoPath == "" {
@@ -84,14 +90,14 @@ func (d *ImportDiff) ApplySelections(entries []ui.DiffEntry) {
 		action := e.Action
 		if action == "" {
 			if e.Skip {
-				action = string(importer.ActionSkip)
+				action = importActionSkip
 			} else if e.DefaultAction != "" {
 				action = e.DefaultAction
 			} else {
-				action = string(importer.ActionWrite)
+				action = importActionWrite
 			}
 		}
-		selected[key{e.Target, repoPath}] = importer.ImportAction(action)
+		selected[key{e.Target, repoPath}] = action
 	}
 	for i := range d.Plan.FileChanges {
 		c := &d.Plan.FileChanges[i]
@@ -102,9 +108,7 @@ func (d *ImportDiff) ApplySelections(entries []ui.DiffEntry) {
 		if !ok {
 			continue
 		}
-		c.SelectedAction = action
-		c.Current = c.CurrentForAction(action)
-		c.UpdateTypeForAction()
+		c.UpdateTypeForMode(writeModeForAction(*c, action))
 	}
 }
 
@@ -112,17 +116,17 @@ func (d *ImportDiff) ApplySelections(entries []ui.DiffEntry) {
 func (d *ImportDiff) MarkSkips(entries []ui.DiffEntry) {
 	for i := range entries {
 		if entries[i].Skip {
-			entries[i].Action = string(importer.ActionSkip)
+			entries[i].Action = importActionSkip
 		} else if entries[i].Action == "" {
-			entries[i].Action = string(importer.ActionWrite)
+			entries[i].Action = importActionWrite
 		}
 		if entries[i].DefaultAction == "" {
-			entries[i].DefaultAction = string(importer.ActionWrite)
+			entries[i].DefaultAction = importActionWrite
 		}
 		if entries[i].AllowedActions == nil {
 			entries[i].AllowedActions = []string{
-				string(importer.ActionWrite),
-				string(importer.ActionSkip),
+				importActionWrite,
+				importActionSkip,
 			}
 		}
 	}
@@ -277,14 +281,14 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 
 			for _, c := range fChanges {
 				item := ui.FileItem{
-					Path: c.DisplayPath(c.SelectedAction),
+					Path: c.DisplayPathForMode(c.EffectiveWriteMode()),
 				}
 				if isSkipOnlyChange(c) {
 					item.Icon = ui.IconWarning
 					item.Reason = c.Reason
 				} else {
 					item.Icon = ui.IconChange
-					item.Added, item.Removed = fileset.DiffStat(c.CurrentForAction(c.SelectedAction), c.Desired)
+					item.Added, item.Removed = fileset.DiffStat(c.CurrentForMode(c.EffectiveWriteMode()), c.Desired)
 				}
 				p.PrintFileChange(item)
 			}
@@ -296,21 +300,50 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 }
 
 // localPath returns the local write-back path for display.
-func localPath(c importer.Change) string { return c.DisplayPath(c.SelectedAction) }
+func localPath(c importer.Change) string { return c.DisplayPathForMode(c.EffectiveWriteMode()) }
 
 func isSkipOnlyChange(c importer.Change) bool {
-	if len(c.AllowedActions) == 1 && c.AllowedActions[0] == importer.ActionSkip {
-		return true
-	}
-	return len(c.AllowedActions) == 0 && c.WriteMode == importer.WriteSkip
+	return len(allowedActionsForChange(c)) == 0
 }
 
-func importActionsToStrings(actions []importer.ImportAction) []string {
-	out := make([]string, len(actions))
-	for i, action := range actions {
-		out[i] = string(action)
+func allowedActionsForChange(c importer.Change) []string {
+	actions := []string{}
+	if c.SupportsMode(importer.WriteSource) || c.SupportsMode(importer.WriteInline) {
+		actions = append(actions, importActionWrite)
 	}
-	return out
+	if c.SupportsMode(importer.WritePatch) {
+		actions = append(actions, importActionPatch)
+	}
+	if len(actions) == 0 {
+		return nil
+	}
+	actions = append(actions, importActionSkip)
+	return actions
+}
+
+func defaultActionForChange(c importer.Change) string {
+	switch c.SuggestedWriteMode {
+	case importer.WritePatch:
+		return importActionPatch
+	case importer.WriteSkip:
+		return importActionSkip
+	default:
+		return importActionWrite
+	}
+}
+
+func writeModeForAction(c importer.Change, action string) importer.WriteMode {
+	switch action {
+	case importActionPatch:
+		return importer.WritePatch
+	case importActionSkip:
+		return importer.WriteSkip
+	default:
+		if c.SupportsMode(importer.WriteSource) {
+			return importer.WriteSource
+		}
+		return importer.WriteInline
+	}
 }
 
 // formatImportValue formats a FieldDiff value as YAML text for display.
