@@ -75,6 +75,12 @@ type ApplyResult struct {
 }
 
 func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Repository) ApplyResult {
+	// Merge strategy children are batched into a single PATCH to avoid
+	// ordering issues (e.g. squash_merge_commit_title requires allow_squash_merge).
+	if len(c.Children) > 0 && c.Field == "merge_strategy" {
+		return p.applyMergeStrategyBatch(ctx, c)
+	}
+
 	// Generic: if this change has children, expand and apply each child.
 	if len(c.Children) > 0 {
 		for _, child := range c.Children {
@@ -154,58 +160,11 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
 
-	// Features
-	if f := repo.Spec.Features; f != nil {
-		featureFlags := map[string]*bool{
-			"enable-projects":    f.Projects,
-			"enable-discussions": f.Discussions,
-		}
-		for flag, val := range featureFlags {
-			if val != nil {
-				if err := p.toggleFeature(ctx, fullName, flag, *val); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// Merge strategy
-	if ms := repo.Spec.MergeStrategy; ms != nil {
-		mergeFlags := map[string]*bool{
-			"enable-merge-commit":    ms.AllowMergeCommit,
-			"enable-squash-merge":    ms.AllowSquashMerge,
-			"enable-rebase-merge":    ms.AllowRebaseMerge,
-			"delete-branch-on-merge": ms.AutoDeleteHeadBranches,
-		}
-		for flag, val := range mergeFlags {
-			if val != nil {
-				if err := p.toggleFeature(ctx, fullName, flag, *val); err != nil {
-					return err
-				}
-			}
-		}
-
-		// Commit message settings
-		commitFields := map[string]*string{
-			"squash_merge_commit_title":   ms.SquashMergeCommitTitle,
-			"squash_merge_commit_message": ms.SquashMergeCommitMessage,
-			"merge_commit_title":          ms.MergeCommitTitle,
-			"merge_commit_message":        ms.MergeCommitMessage,
-		}
-		for field, val := range commitFields {
-			if val != nil {
-				if err := p.updateRepoField(ctx, fullName, field, *val); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// Homepage
-	if repo.Spec.Homepage != nil {
-		if _, err := p.runner.Run(ctx, "repo", "edit", fullName, "--homepage", *repo.Spec.Homepage); err != nil {
-			return wrapError(err, fullName, "homepage")
-		}
+	// Batch features, merge strategy, and homepage into a single PATCH.
+	// This avoids ordering issues (e.g. squash_merge_commit_title requires
+	// allow_squash_merge) and reduces API calls.
+	if err := p.applyRepoPatch(ctx, fullName, repo); err != nil {
+		return err
 	}
 
 	// Topics
@@ -243,6 +202,100 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 	}
 
 	return nil
+}
+
+// applyRepoPatch batches features, merge strategy, and homepage into a single
+// repos PATCH call. Used during repo creation to avoid ordering issues and
+// reduce API calls.
+func (p *Processor) applyRepoPatch(ctx context.Context, fullName string, repo *manifest.Repository) error {
+	payload := map[string]any{}
+
+	// Features
+	if f := repo.Spec.Features; f != nil {
+		if f.Projects != nil {
+			payload["has_projects"] = *f.Projects
+		}
+		if f.Discussions != nil {
+			payload["has_discussions"] = *f.Discussions
+		}
+	}
+
+	// Merge strategy
+	if ms := repo.Spec.MergeStrategy; ms != nil {
+		if ms.AllowMergeCommit != nil {
+			payload["allow_merge_commit"] = *ms.AllowMergeCommit
+		}
+		if ms.AllowSquashMerge != nil {
+			payload["allow_squash_merge"] = *ms.AllowSquashMerge
+		}
+		if ms.AllowRebaseMerge != nil {
+			payload["allow_rebase_merge"] = *ms.AllowRebaseMerge
+		}
+		if ms.AutoDeleteHeadBranches != nil {
+			payload["delete_branch_on_merge"] = *ms.AutoDeleteHeadBranches
+		}
+		if ms.SquashMergeCommitTitle != nil {
+			payload["squash_merge_commit_title"] = *ms.SquashMergeCommitTitle
+		}
+		if ms.SquashMergeCommitMessage != nil {
+			payload["squash_merge_commit_message"] = *ms.SquashMergeCommitMessage
+		}
+		if ms.MergeCommitTitle != nil {
+			payload["merge_commit_title"] = *ms.MergeCommitTitle
+		}
+		if ms.MergeCommitMessage != nil {
+			payload["merge_commit_message"] = *ms.MergeCommitMessage
+		}
+	}
+
+	// Homepage
+	if repo.Spec.Homepage != nil {
+		payload["homepage"] = *repo.Spec.Homepage
+	}
+
+	if len(payload) == 0 {
+		return nil
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s", fullName),
+		"--method", "PATCH",
+		"--header", "Content-Type: application/json",
+		"--input", "-",
+	)
+	return wrapError(err, fullName, "settings")
+}
+
+// applyMergeStrategyBatch batches merge strategy children into a single repos
+// PATCH call. Used during updates when multiple merge strategy fields change
+// together.
+func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) ApplyResult {
+	fullName := c.Name
+	payload := map[string]any{}
+	for _, child := range c.Children {
+		switch child.Field {
+		case "auto_delete_head_branches":
+			payload["delete_branch_on_merge"] = child.NewValue
+		default:
+			payload[child.Field] = child.NewValue
+		}
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return ApplyResult{Change: c, Err: err}
+	}
+	_, err = p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s", fullName),
+		"--method", "PATCH",
+		"--header", "Content-Type: application/json",
+		"--input", "-",
+	)
+	return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
 }
 
 func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manifest.Repository) error {

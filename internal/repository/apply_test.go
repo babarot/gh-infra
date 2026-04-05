@@ -882,6 +882,167 @@ func TestBuildRulesetPayload_WithResolver(t *testing.T) {
 	}
 }
 
+func TestApplyRepoPatch_BatchesSettings(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	repo.Spec.Features = &manifest.Features{
+		Projects:    manifest.Ptr(false),
+		Discussions: manifest.Ptr(false),
+	}
+	repo.Spec.MergeStrategy = &manifest.MergeStrategy{
+		AllowMergeCommit:         manifest.Ptr(true),
+		AllowSquashMerge:         manifest.Ptr(true),
+		AllowRebaseMerge:         manifest.Ptr(false),
+		AutoDeleteHeadBranches:   manifest.Ptr(true),
+		SquashMergeCommitTitle:   manifest.Ptr("COMMIT_OR_PR_TITLE"),
+		SquashMergeCommitMessage: manifest.Ptr("COMMIT_MESSAGES"),
+		MergeCommitTitle:         manifest.Ptr("MERGE_MESSAGE"),
+		MergeCommitMessage:       manifest.Ptr("PR_TITLE"),
+	}
+	hp := "https://example.com"
+	repo.Spec.Homepage = &hp
+
+	err := proc.applyRepoPatch(context.Background(), "myorg/myrepo", repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should be exactly 1 API call (batched PATCH)
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	}
+
+	call := strings.Join(mock.Called[0], " ")
+	if !strings.Contains(call, "repos/myorg/myrepo") {
+		t.Errorf("expected repos endpoint, got: %s", call)
+	}
+	if !strings.Contains(call, "--method PATCH") {
+		t.Errorf("expected PATCH method, got: %s", call)
+	}
+
+	// Verify JSON payload
+	body := mock.CalledStdin[0]
+	if body == nil {
+		t.Fatal("expected stdin body, got nil")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse stdin payload: %v", err)
+	}
+
+	// Features
+	if payload["has_projects"] != false {
+		t.Errorf("has_projects = %v, want false", payload["has_projects"])
+	}
+	if payload["has_discussions"] != false {
+		t.Errorf("has_discussions = %v, want false", payload["has_discussions"])
+	}
+
+	// Merge strategy
+	if payload["allow_merge_commit"] != true {
+		t.Errorf("allow_merge_commit = %v, want true", payload["allow_merge_commit"])
+	}
+	if payload["allow_squash_merge"] != true {
+		t.Errorf("allow_squash_merge = %v, want true", payload["allow_squash_merge"])
+	}
+	if payload["allow_rebase_merge"] != false {
+		t.Errorf("allow_rebase_merge = %v, want false", payload["allow_rebase_merge"])
+	}
+	if payload["delete_branch_on_merge"] != true {
+		t.Errorf("delete_branch_on_merge = %v, want true", payload["delete_branch_on_merge"])
+	}
+	if payload["squash_merge_commit_title"] != "COMMIT_OR_PR_TITLE" {
+		t.Errorf("squash_merge_commit_title = %v, want COMMIT_OR_PR_TITLE", payload["squash_merge_commit_title"])
+	}
+	if payload["squash_merge_commit_message"] != "COMMIT_MESSAGES" {
+		t.Errorf("squash_merge_commit_message = %v, want COMMIT_MESSAGES", payload["squash_merge_commit_message"])
+	}
+	if payload["merge_commit_title"] != "MERGE_MESSAGE" {
+		t.Errorf("merge_commit_title = %v, want MERGE_MESSAGE", payload["merge_commit_title"])
+	}
+	if payload["merge_commit_message"] != "PR_TITLE" {
+		t.Errorf("merge_commit_message = %v, want PR_TITLE", payload["merge_commit_message"])
+	}
+
+	// Homepage
+	if payload["homepage"] != "https://example.com" {
+		t.Errorf("homepage = %v, want https://example.com", payload["homepage"])
+	}
+}
+
+func TestApplyRepoPatch_Empty(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	// No features, merge strategy, or homepage set
+
+	err := proc.applyRepoPatch(context.Background(), "myorg/myrepo", repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected 0 gh calls for empty settings, got %d", len(mock.Called))
+	}
+}
+
+func TestApplyMergeStrategyBatch(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "allow_squash_merge", NewValue: true},
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "auto_delete_head_branches", NewValue: true},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	// Should be exactly 1 API call (batched PATCH)
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	}
+
+	body := mock.CalledStdin[0]
+	if body == nil {
+		t.Fatal("expected stdin body, got nil")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse stdin payload: %v", err)
+	}
+	if payload["allow_squash_merge"] != true {
+		t.Errorf("allow_squash_merge = %v, want true", payload["allow_squash_merge"])
+	}
+	if payload["squash_merge_commit_title"] != "PR_TITLE" {
+		t.Errorf("squash_merge_commit_title = %v, want PR_TITLE", payload["squash_merge_commit_title"])
+	}
+	// auto_delete_head_branches should be mapped to delete_branch_on_merge
+	if payload["delete_branch_on_merge"] != true {
+		t.Errorf("delete_branch_on_merge = %v, want true", payload["delete_branch_on_merge"])
+	}
+	if _, ok := payload["auto_delete_head_branches"]; ok {
+		t.Error("auto_delete_head_branches should be mapped to delete_branch_on_merge, not sent directly")
+	}
+}
+
 func TestApplyAllSettings_EmptyActions(t *testing.T) {
 	// actions: {} should not panic during new repo creation.
 	mock := &gh.MockRunner{}
