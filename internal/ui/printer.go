@@ -111,13 +111,14 @@ const Separator_ = "━━━━━━━━━━━━━━━━━━━━
 
 // Icon constants for plan/apply output.
 const (
-	IconAdd     = "+"
-	IconChange  = "~"
-	IconRemove  = "-"
-	IconSuccess = "✓"
-	IconError   = "✗"
-	IconWarning = "⚠"
-	IconArrow   = "→"
+	IconAdd      = "+"
+	IconChange   = "~"
+	IconRemove   = "-"
+	IconSuccess  = "✓"
+	IconError    = "✗"
+	IconWarning  = "⚠"
+	IconArrow    = "→"
+	IconEllipsis = "…"
 )
 
 func (p *StandardPrinter) Phase(msg string) {

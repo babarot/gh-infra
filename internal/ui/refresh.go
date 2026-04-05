@@ -47,6 +47,7 @@ type refreshModel struct {
 	items     []refreshItem
 	remaining int
 	canceled  chan struct{} // closed on Ctrl+C to signal callers
+	width     int           // terminal width for error truncation
 }
 
 type taskDoneMsg struct{ name string }
@@ -61,6 +62,11 @@ type taskStatusMsg struct {
 }
 
 func newRefreshModel(tasks []RefreshTask) refreshModel {
+	width := 80 // default
+	if w, _, err := term.GetSize(os.Stderr.Fd()); err == nil && w > 0 {
+		width = w
+	}
+
 	items := make([]refreshItem, len(tasks))
 	for i, task := range tasks {
 		s := spinner.New(
@@ -91,6 +97,7 @@ func newRefreshModel(tasks []RefreshTask) refreshModel {
 	return refreshModel{
 		items:     items,
 		remaining: len(tasks),
+		width:     width,
 	}
 }
 
@@ -221,7 +228,12 @@ func (m refreshModel) View() tea.View {
 			}
 			fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), label)
 		case taskError:
-			fmt.Fprintf(&b, "  %s %s  %s\n", Red.Render(IconError), Bold.Render(padded), item.errMsg)
+			// Show only a brief, single-line error; full details are printed after the spinner.
+			prefix := 2 + 1 + 1 + maxName + 2 // "  " + icon + " " + padded + "  "
+			available := m.width - prefix
+			available = max(available, 20)
+			errText := truncateError(item.errMsg, available)
+			fmt.Fprintf(&b, "  %s %s  %s\n", Red.Render(IconError), Bold.Render(padded), Dim.Render(errText))
 		case taskFailed:
 			failLabel := item.failLabel
 			if failLabel == item.name {
@@ -241,6 +253,12 @@ func (m refreshModel) View() tea.View {
 	return tea.NewView(b.String())
 }
 
+// TaskError records an error for post-spinner display.
+type TaskError struct {
+	Name string
+	Err  error
+}
+
 // RefreshTracker tracks parallel task progress with spinners or plain text.
 type RefreshTracker struct {
 	program  *tea.Program
@@ -248,6 +266,7 @@ type RefreshTracker struct {
 	done     chan struct{}
 	canceled chan struct{}
 	mu       sync.Mutex
+	errors   []TaskError // collected errors for post-spinner display
 }
 
 // RunRefresh starts a spinner display for the given tasks.
@@ -346,15 +365,46 @@ func (t *RefreshTracker) Error(name string, err error) {
 	if t == nil {
 		return
 	}
+	t.mu.Lock()
+	t.errors = append(t.errors, TaskError{Name: name, Err: err})
 	if t.fallback {
+		t.mu.Unlock()
 		DefaultPrinter.Error(name, err.Error())
 		return
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.program != nil {
 		t.program.Send(taskErrorMsg{name: name, err: err})
 	}
+	t.mu.Unlock()
+}
+
+// Errors returns all errors collected during the tracker's lifetime.
+// Safe to call after Wait() returns.
+func (t *RefreshTracker) Errors() []TaskError {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]TaskError, len(t.errors))
+	copy(out, t.errors)
+	return out
+}
+
+// PrintErrors prints detailed errors to stderr, grouped by task name.
+// Call after Wait() to display the full error messages that were truncated
+// in the spinner view. Returns true if any errors were printed.
+func (t *RefreshTracker) PrintErrors() bool {
+	errors := t.Errors()
+	if len(errors) == 0 {
+		return false
+	}
+	p := DefaultPrinter
+	p.BlankLine()
+	for _, te := range errors {
+		p.Error(te.Name, te.Err.Error())
+	}
+	return true
 }
 
 // Canceled returns a channel that is closed when the user presses Ctrl+C.
@@ -377,4 +427,20 @@ func closedChan() chan struct{} {
 	ch := make(chan struct{})
 	close(ch)
 	return ch
+}
+
+// truncateError returns the first line of msg, truncated to maxWidth runes.
+// If the original had multiple lines or was truncated, "…" is appended.
+func truncateError(msg string, maxWidth int) string {
+	if maxWidth <= 0 {
+		maxWidth = 60
+	}
+	first, _, hasMore := strings.Cut(msg, "\n")
+	if len(first) > maxWidth {
+		return first[:maxWidth-1] + IconEllipsis
+	}
+	if hasMore {
+		return first + IconEllipsis
+	}
+	return first
 }

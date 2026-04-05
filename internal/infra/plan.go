@@ -153,12 +153,14 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 
 	if err := g.Wait(); err != nil {
 		tracker.Wait()
+		tracker.PrintErrors()
 		if ctx.Err() != nil {
 			return nil, context.Canceled
 		}
 		return nil, err
 	}
 	tracker.Wait()
+	tracker.PrintErrors()
 
 	if ctx.Err() != nil {
 		return nil, context.Canceled
