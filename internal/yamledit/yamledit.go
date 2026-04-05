@@ -60,4 +60,3 @@ func ReplaceNode(data []byte, docIndex int, yamlPath string, value any, opts ...
 func ReplaceContent(data []byte, docIndex int, yamlPath string, content string) ([]byte, error) {
 	return ReplaceNode(data, docIndex, yamlPath, content, goyaml.UseLiteralStyleIfMultiline(true))
 }
-
