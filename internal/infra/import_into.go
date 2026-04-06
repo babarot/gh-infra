@@ -365,7 +365,7 @@ func planSkipReason(c importer.Change) string {
 		return "skip: " + c.Reason
 	}
 	if c.CreateOnly && !c.HasExistingPatches {
-		return "skip: reconcile:create_only (Tab to enable)"
+		return "skip: reconcile:create_only (Tab to change)"
 	}
 	return "skip"
 }

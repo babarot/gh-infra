@@ -384,7 +384,7 @@ func TestPrintImportPlan_CreateOnlyDefaultSkipReason(t *testing.T) {
 	})
 
 	out := buf.String()
-	if !strings.Contains(out, "skip: reconcile:create_only (Tab to enable)") {
+	if !strings.Contains(out, "skip: reconcile:create_only (Tab to change)") {
 		t.Fatalf("expected create_only skip reason in output:\n%s", out)
 	}
 }
