@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -99,10 +100,10 @@ func TestPlanImportEntry_SkipGitHubSource(t *testing.T) {
 	}
 }
 
-func TestPlanImportEntry_SkipVars(t *testing.T) {
+func TestPlanImportEntry_UnsupportedTemplateSyntaxSkips(t *testing.T) {
 	file := manifest.FileEntry{
 		Path:    "README.md",
-		Content: "{{ .repo_name }}",
+		Content: "<% if .Repo.Name %>enabled<% end %>\n",
 		Vars:    map[string]string{"repo_name": "test"},
 	}
 	doc := &manifest.FileDocument{
@@ -245,5 +246,80 @@ func TestDiffFiles_ReportsPerFileStatus(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(statuses, "\n"), "comparing files") {
 		t.Fatalf("unexpected coarse status in statuses: %v", statuses)
+	}
+}
+
+func TestPlanImportEntry_TemplateSyntaxImportsLiteralDiff(t *testing.T) {
+	file := manifest.FileEntry{
+		Path:           "go.mod",
+		Content:        "module github.com/<% .Repo.FullName %>\n\ngo 1.26.0\n",
+		OriginalSource: "/tmp/templates/go.mod",
+	}
+	doc := &manifest.FileDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{{Path: "go.mod"}},
+			},
+		},
+		SourcePath: "/tmp/manifest.yaml",
+	}
+	runner := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/org/repo/contents/go.mod": []byte(`{"content":"` + base64.StdEncoding.EncodeToString([]byte("module github.com/org/repo\n\ngo 1.27.0\n\nrequire example.com/foo v1.2.3\n")) + `","encoding":"base64"}`),
+		},
+	}
+
+	change := callPlan(context.TODO(), runner, "org/repo", file, doc, 1)
+
+	if change.WriteMode != WriteSource {
+		t.Fatalf("WriteMode = %q, want %q", change.WriteMode, WriteSource)
+	}
+	if change.Type != fileset.ChangeUpdate {
+		t.Fatalf("Type = %q, want %q", change.Type, fileset.ChangeUpdate)
+	}
+	want := "module github.com/<% .Repo.FullName %>\n\ngo 1.27.0\n\nrequire example.com/foo v1.2.3\n"
+	if change.Desired != want {
+		t.Fatalf("Desired = %q, want %q", change.Desired, want)
+	}
+	if change.Reason != "" {
+		t.Fatalf("Reason = %q, want empty", change.Reason)
+	}
+}
+
+func TestPlanImportEntry_TemplateVarsImportsLiteralDiff(t *testing.T) {
+	file := manifest.FileEntry{
+		Path:           "Makefile",
+		Content:        "GO_VERSION=<% .Vars.go_version %>\nTOOL=old\n",
+		Vars:           map[string]string{"go_version": "1.26.1"},
+		OriginalSource: "/tmp/templates/Makefile",
+	}
+	doc := &manifest.FileDocument{
+		Resource: &manifest.FileSet{
+			Spec: manifest.FileSetSpec{
+				Files: []manifest.FileEntry{{Path: "Makefile"}},
+			},
+		},
+		SourcePath: "/tmp/manifest.yaml",
+	}
+	runner := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/org/repo/contents/Makefile": []byte(`{"content":"` + base64.StdEncoding.EncodeToString([]byte("GO_VERSION=1.27.3\nTOOL=new\n")) + `","encoding":"base64"}`),
+		},
+	}
+
+	change := callPlan(context.TODO(), runner, "org/repo", file, doc, 1)
+
+	if change.WriteMode != WriteSource {
+		t.Fatalf("WriteMode = %q, want %q", change.WriteMode, WriteSource)
+	}
+	if change.Type != fileset.ChangeUpdate {
+		t.Fatalf("Type = %q, want %q", change.Type, fileset.ChangeUpdate)
+	}
+	want := "GO_VERSION=<% .Vars.go_version %>\nTOOL=new\n"
+	if change.Desired != want {
+		t.Fatalf("Desired = %q, want %q", change.Desired, want)
+	}
+	if change.Reason != "" {
+		t.Fatalf("Reason = %q, want empty", change.Reason)
 	}
 }
