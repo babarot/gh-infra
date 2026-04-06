@@ -402,13 +402,13 @@ func TestPrintImportPlan_TemplateSkipReason(t *testing.T) {
 				Type:               fileset.ChangeNoOp,
 				WriteMode:          importer.WriteSkip,
 				SuggestedWriteMode: importer.WriteSkip,
-				Reason:             "uses template variables/syntax",
+				Reason:             "cannot safely write back to template",
 			},
 		},
 	})
 
 	out := buf.String()
-	if !strings.Contains(out, "skip: uses template variables/syntax") {
+	if !strings.Contains(out, "skip: cannot safely write back to template") {
 		t.Fatalf("expected template skip reason in output:\n%s", out)
 	}
 }
@@ -427,13 +427,13 @@ func TestPrintImportPlan_TemplateSkipReasonOverridesCreateOnly(t *testing.T) {
 				WriteMode:          importer.WriteSkip,
 				SuggestedWriteMode: importer.WriteSkip,
 				CreateOnly:         true,
-				Reason:             "uses template variables/syntax",
+				Reason:             "cannot safely write back to template",
 			},
 		},
 	})
 
 	out := buf.String()
-	if !strings.Contains(out, "skip: uses template variables/syntax") {
+	if !strings.Contains(out, "skip: cannot safely write back to template") {
 		t.Fatalf("expected template skip reason in output:\n%s", out)
 	}
 	if strings.Contains(out, "reconcile:create_only") {

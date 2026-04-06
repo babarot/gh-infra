@@ -169,3 +169,34 @@ func TestCopyVars_Nil(t *testing.T) {
 		t.Error("copyVars(nil) should return nil")
 	}
 }
+
+func TestRenderTemplateWithTrace(t *testing.T) {
+	rendered, err := RenderTemplateWithTrace("module github.com/<% .Repo.FullName %>\nGO=<% .Vars.go_version %>\n", "babarot/gomi", map[string]string{
+		"go_version": "1.26.1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rendered.Text != "module github.com/babarot/gomi\nGO=1.26.1\n" {
+		t.Fatalf("Text = %q", rendered.Text)
+	}
+	if len(rendered.Lines) != 2 {
+		t.Fatalf("got %d lines, want 2", len(rendered.Lines))
+	}
+	if !rendered.Lines[0].HasPlaceholder || !rendered.Lines[1].HasPlaceholder {
+		t.Fatal("expected both lines to be placeholder-backed")
+	}
+	if got := rendered.Lines[0].Segments[1].Expr; got != ".Repo.FullName" {
+		t.Fatalf("first placeholder expr = %q", got)
+	}
+	if got := rendered.Lines[1].Segments[1].Expr; got != ".Vars.go_version" {
+		t.Fatalf("second placeholder expr = %q", got)
+	}
+}
+
+func TestRenderTemplateWithTrace_UnsupportedSyntax(t *testing.T) {
+	_, err := RenderTemplateWithTrace("<% if .Repo.Name %>ok<% end %>\n", "babarot/gomi", nil)
+	if err == nil {
+		t.Fatal("expected error for unsupported syntax")
+	}
+}

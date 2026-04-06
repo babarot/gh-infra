@@ -70,6 +70,8 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		CreateOnly:         file.Reconcile == manifest.ReconcileCreateOnly,
 		HasExistingPatches: len(file.Patches) > 0,
 	}
+	hasTemplateSyntax := strings.Contains(file.Content, "<%")
+	var templateTrace fileset.RenderedTemplate
 
 	sourceBacked := file.OriginalSource != "" && !strings.HasPrefix(file.Source, "github://")
 	inlineBacked := file.OriginalSource == "" && (file.Source == "" || !strings.HasPrefix(file.Source, "github://"))
@@ -91,11 +93,14 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		}
 	}
 
-	// Templates: skip (reverse transformation is impossible)
-	if fileset.HasTemplate(file.Content, file.Vars) {
-		setWriteMetadata(&change, WriteSkip)
-		change.Reason = "uses template variables/syntax"
-		return change
+	if hasTemplateSyntax {
+		trace, ok := prepareTemplateReverse(file.Content, fullName, file.Vars)
+		if !ok {
+			setWriteMetadata(&change, WriteSkip)
+			change.Reason = "cannot safely write back to template"
+			return change
+		}
+		templateTrace = trace
 	}
 
 	if file.Source != "" && strings.HasPrefix(file.Source, "github://") {
@@ -139,7 +144,19 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		return change
 	}
 
-	change.Desired = githubContent
+	desiredContent := githubContent
+	if hasTemplateSyntax {
+		reversed, ok := reverseRenderedTemplate(templateTrace, githubContent)
+		if !ok {
+			setWriteMetadata(&change, WriteSkip)
+			change.Type = fileset.ChangeNoOp
+			change.Reason = "cannot safely write back to template"
+			return change
+		}
+		desiredContent = reversed
+	}
+
+	change.Desired = desiredContent
 
 	change.WriteCurrent = file.Content
 
@@ -157,15 +174,11 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 	}
 
 	change.UpdateTypeForMode(change.SuggestedWriteMode)
-	if change.Type == fileset.ChangeNoOp {
-		return change
-	}
-
 	if patchSupported {
-		if strings.TrimRight(change.WriteCurrent, "\n") == strings.TrimRight(githubContent, "\n") {
+		if strings.TrimRight(change.WriteCurrent, "\n") == strings.TrimRight(desiredContent, "\n") {
 			change.PatchContent = ""
 		} else {
-			patch, err := fileset.GeneratePatch(file.Content, githubContent, file.Path)
+			patch, err := fileset.GeneratePatch(file.Content, desiredContent, file.Path)
 			if err != nil {
 				setWriteMetadata(&change, WriteSkip)
 				change.Type = fileset.ChangeNoOp
@@ -174,6 +187,11 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 			}
 			change.PatchContent = patch
 		}
+	}
+
+	change.UpdateTypeForMode(change.SuggestedWriteMode)
+	if change.Type == fileset.ChangeNoOp {
+		return change
 	}
 
 	return change
