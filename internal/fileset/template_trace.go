@@ -47,7 +47,7 @@ func RenderTemplateWithTrace(content string, repo string, vars map[string]string
 		expandedVars[k] = rendered
 	}
 
-	sourceLines := splitLinesKeepNewline(content)
+	sourceLines := SplitLinesKeepNewline(content)
 	lines := make([]RenderedLine, 0, len(sourceLines))
 	var rendered strings.Builder
 
@@ -150,7 +150,7 @@ func resolveTemplateExpr(expr string, repo RepoContext, vars map[string]string) 
 	}
 }
 
-func splitLinesKeepNewline(s string) []string {
+func SplitLinesKeepNewline(s string) []string {
 	if s == "" {
 		return nil
 	}

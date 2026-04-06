@@ -71,6 +71,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		HasExistingPatches: len(file.Patches) > 0,
 	}
 	hasTemplateSyntax := strings.Contains(file.Content, "<%")
+	var templateTrace fileset.RenderedTemplate
 
 	sourceBacked := file.OriginalSource != "" && !strings.HasPrefix(file.Source, "github://")
 	inlineBacked := file.OriginalSource == "" && (file.Source == "" || !strings.HasPrefix(file.Source, "github://"))
@@ -92,10 +93,14 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		}
 	}
 
-	if hasTemplateSyntax && !supportsTemplateReverse(file.Content, fullName, file.Vars) {
-		setWriteMetadata(&change, WriteSkip)
-		change.Reason = "cannot safely write back to template"
-		return change
+	if hasTemplateSyntax {
+		trace, ok := prepareTemplateReverse(file.Content, fullName, file.Vars)
+		if !ok {
+			setWriteMetadata(&change, WriteSkip)
+			change.Reason = "cannot safely write back to template"
+			return change
+		}
+		templateTrace = trace
 	}
 
 	if file.Source != "" && strings.HasPrefix(file.Source, "github://") {
@@ -141,7 +146,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 
 	desiredContent := githubContent
 	if hasTemplateSyntax {
-		reversed, ok := reverseTemplateContent(file.Content, fullName, file.Vars, githubContent)
+		reversed, ok := reverseRenderedTemplate(templateTrace, githubContent)
 		if !ok {
 			setWriteMetadata(&change, WriteSkip)
 			change.Type = fileset.ChangeNoOp
