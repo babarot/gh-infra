@@ -114,6 +114,55 @@ There are two kinds of skip behavior:
 
 For example, files with `reconcile: create_only` default to `skip`, while files whose remote content cannot be safely written back to the template are hard-skipped.
 
+### Hard Skip vs Default Skip
+
+These two skip modes mean very different things:
+
+- default skip
+  - the file is importable
+  - gh-infra chooses `skip` as the safest default for this run
+  - you can still press `Tab` and switch to `write` or `patch`
+- hard skip
+  - gh-infra could not produce a safe local write-back result
+  - the file is shown in the terminal plan only
+  - it does not appear in the diff viewer and cannot be toggled
+
+In practice:
+
+- `reconcile: create_only` files are usually **default skip**
+- `github://` sources are always **hard skip**
+- template-backed files may be either:
+  - importable, if gh-infra can preserve placeholders and safely apply only the literal drift
+  - hard-skipped, if the remote file can no longer be mapped back to the original template without risk
+
+### Template-Backed Files
+
+For files containing gh-infra template placeholders such as `<% .Repo.Name %>` or `<% .Repo.FullName %>`, import does **not** compare the raw template source directly against the GitHub file.
+
+Instead, gh-infra:
+
+1. renders the local template for the target repository
+2. compares that rendered content with the GitHub file
+3. tries to reconstruct updated template source while preserving the original placeholders
+
+This means simple cases can be imported safely. For example:
+
+- `module github.com/<% .Repo.FullName %>` can stay templated while nearby literal lines such as `go 1.26.1` are updated
+- `/<% .Repo.Name %>` can still be preserved if only the surrounding punctuation changes in a safe way
+
+However, gh-infra hard-skips a template-backed file when the remote file no longer has a structure that can be safely mapped back to the original template. Typical examples are:
+
+- the remote file removed or rewrote the placeholder-backed lines entirely
+- the remote file changed placeholder-derived content in a way that is ambiguous to reverse
+- the template uses unsupported control flow or complex template syntax
+
+So the rule of thumb is:
+
+- if placeholders are still recognizable and only literal drift changed, import can usually proceed
+- if the remote file effectively stopped looking like the original template, gh-infra hard-skips it
+
+For implementation details and exact safety rules, see [Import Into Manifests](../internals/import-into/).
+
 ### What Gets Imported
 
 | Resource | Behavior |
