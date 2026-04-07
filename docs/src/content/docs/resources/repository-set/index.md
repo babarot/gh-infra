@@ -53,9 +53,9 @@ All repositories in the set belong to this owner. Individual repo names are list
 
 ## Shared Features
 
-All settings available in [Repository](../repository/) — general settings, branch protection, rulesets, secrets, variables, and Actions settings — work identically in `RepositorySet`. See the Repository documentation for field references:
+All settings available in [Repository](../repository/) — general settings, labels, branch protection, rulesets, secrets, variables, and Actions settings — work identically in `RepositorySet`. See the Repository documentation for field references:
 
-- [General Settings](../repository/general/) — Description, visibility, topics, features, merge strategy
+- [General Settings](../repository/general/) — Description, visibility, topics, labels, features, merge strategy
 - [Branch Protection](../repository/branch-protection/) — Classic branch protection rules
 - [Rulesets](../repository/rulesets/) — Modern rulesets with enforcement modes and bypass actors
 - [Secrets & Variables](../repository/secrets-variables/) — GitHub Actions secrets and repository variables

@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-`Repository` manages a **single** GitHub repository — its description, visibility, topics, features, merge strategy, branch protection rules, rulesets, secrets, variables, and Actions settings.
+`Repository` manages a **single** GitHub repository — its description, visibility, topics, labels, features, merge strategy, branch protection rules, rulesets, secrets, variables, and Actions settings.
 
 :::tip[Example]
 ```yaml
@@ -20,6 +20,14 @@ spec:
   homepage: "https://example.com"
   visibility: public
   topics: [go, cli]
+
+  labels:
+    - name: kind/bug
+      color: d73a4a
+      description: "A bug; unintended behavior"
+    - name: kind/feature
+      color: "425df5"
+      description: "A feature request"
 
   features:
     issues: true
@@ -79,6 +87,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `visibility` | `public`, `private`, or `internal` — see [General Settings](./general/) |
 | `archived` | Archive (read-only) or unarchive — see [General Settings](./general/#archiving) |
 | `topics` | GitHub topics for discoverability |
+| `labels` | Repository issue/PR labels — see [General Settings](./general/#labels) |
 | `features` | Toggle issues, projects, wiki, discussions — see [General Settings](./general/) |
 | `merge_strategy` | Merge commit, squash, rebase options — see [General Settings](./general/) |
 | `branch_protection` | Classic branch protection rules — see [Branch Protection](./branch-protection/) |
