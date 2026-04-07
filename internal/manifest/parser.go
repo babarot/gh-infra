@@ -383,6 +383,9 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if len(override.Variables) > 0 {
 		result.Variables = override.Variables
 	}
+	if len(override.Labels) > 0 {
+		result.Labels = override.Labels
+	}
 
 	return result
 }

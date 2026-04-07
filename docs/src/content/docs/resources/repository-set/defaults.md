@@ -44,7 +44,7 @@ repositories:
 
 ### Lists — replaced entirely
 
-Lists like `topics` and `branch_protection` are **not merged** — the per-repo list replaces the default list entirely.
+Lists like `topics`, `labels`, and `branch_protection` are **not merged** — the per-repo list replaces the default list entirely.
 
 ```yaml
 defaults:

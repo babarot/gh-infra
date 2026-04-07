@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func init() {
@@ -170,6 +171,56 @@ func TestPrintChange_SubIndent(t *testing.T) {
 	// Sub-level should have more leading spaces than top-level
 	if !strings.HasPrefix(out, "          ") {
 		t.Errorf("expected 10-space indent for Sub, got:\n%q", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// truncateChangeValues
+// ---------------------------------------------------------------------------
+
+func TestTruncateChangeValues_NoTruncation(t *testing.T) {
+	old, new := truncateChangeValues("private", "public", 80, 40)
+	if old != "private" || new != "public" {
+		t.Errorf("should not truncate: old=%q new=%q", old, new)
+	}
+}
+
+func TestTruncateChangeValues_TruncatesNew(t *testing.T) {
+	longNew := "#425df5 \"An improvement to existing functionality; not a new feature or bug fix\""
+	old, new := truncateChangeValues("(none)", longNew, 80, 40)
+	// old is short, should stay intact
+	if old != "(none)" {
+		t.Errorf("old should not be truncated: %q", old)
+	}
+	// new should be truncated and end with ellipsis
+	if !strings.HasSuffix(new, IconEllipsis) {
+		t.Errorf("new should end with ellipsis: %q", new)
+	}
+	// total display width should fit within terminal width
+	oldRunes := utf8.RuneCountInString(old)
+	newRunes := utf8.RuneCountInString(new)
+	if 40+oldRunes+3+newRunes > 80 {
+		t.Errorf("total exceeds terminal width: prefix=40 old=%d arrow=3 new=%d", oldRunes, newRunes)
+	}
+}
+
+func TestTruncateChangeValues_TruncatesBoth(t *testing.T) {
+	longOld := strings.Repeat("x", 50)
+	longNew := strings.Repeat("y", 50)
+	old, new := truncateChangeValues(longOld, longNew, 60, 10)
+	if !strings.HasSuffix(old, IconEllipsis) {
+		t.Errorf("old should end with ellipsis: %q", old)
+	}
+	if !strings.HasSuffix(new, IconEllipsis) {
+		t.Errorf("new should end with ellipsis: %q", new)
+	}
+}
+
+func TestTruncateChangeValues_ZeroAvailable(t *testing.T) {
+	// prefix exceeds terminal width — should not panic, return as-is
+	old, new := truncateChangeValues("a", "b", 10, 20)
+	if old != "a" || new != "b" {
+		t.Errorf("should return as-is when no space: old=%q new=%q", old, new)
 	}
 }
 

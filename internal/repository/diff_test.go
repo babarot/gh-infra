@@ -27,6 +27,7 @@ func baseState() *CurrentState {
 		BranchProtection: map[string]*CurrentBranchProtection{},
 		Rulesets:         map[string]*CurrentRuleset{},
 		Variables:        map[string]string{},
+		Labels:           map[string]*CurrentLabel{},
 	}
 }
 
@@ -772,6 +773,84 @@ func TestDiff_Variables(t *testing.T) {
 		c.Variables["ENV"] = "production"
 
 		changes := diffVariables("org/repo", d, c)
+		if len(changes) != 0 {
+			t.Errorf("expected no changes, got %d", len(changes))
+		}
+	})
+}
+
+func TestDiff_Labels(t *testing.T) {
+	t.Run("new label", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Labels = []manifest.Label{
+			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
+		}
+		c := baseState()
+
+		changes := diffLabels("org/repo", d, c)
+		if len(changes) != 1 {
+			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
+		}
+		if changes[0].Type != ChangeCreate {
+			t.Errorf("expected create, got %q", changes[0].Type)
+		}
+		if changes[0].Field != "kind/bug" {
+			t.Errorf("expected field kind/bug, got %q", changes[0].Field)
+		}
+	})
+
+	t.Run("update label color", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Labels = []manifest.Label{
+			{Name: "bug", Color: "FF0000", Description: "A bug"},
+		}
+		c := baseState()
+		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
+
+		changes := diffLabels("org/repo", d, c)
+		if len(changes) != 1 {
+			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
+		}
+		if changes[0].Type != ChangeUpdate {
+			t.Errorf("expected update, got %q", changes[0].Type)
+		}
+		if len(changes[0].Children) != 1 {
+			t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
+		}
+		if changes[0].Children[0].Field != "color" {
+			t.Errorf("expected child field color, got %q", changes[0].Children[0].Field)
+		}
+	})
+
+	t.Run("update label description", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Labels = []manifest.Label{
+			{Name: "bug", Color: "d73a4a", Description: "Updated desc"},
+		}
+		c := baseState()
+		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "Old desc"}
+
+		changes := diffLabels("org/repo", d, c)
+		if len(changes) != 1 {
+			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
+		}
+		if len(changes[0].Children) != 1 {
+			t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
+		}
+		if changes[0].Children[0].Field != "description" {
+			t.Errorf("expected child field description, got %q", changes[0].Children[0].Field)
+		}
+	})
+
+	t.Run("label same values no change", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Labels = []manifest.Label{
+			{Name: "bug", Color: "d73a4a", Description: "A bug"},
+		}
+		c := baseState()
+		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
+
+		changes := diffLabels("org/repo", d, c)
 		if len(changes) != 0 {
 			t.Errorf("expected no changes, got %d", len(changes))
 		}

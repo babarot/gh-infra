@@ -40,6 +40,7 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 		fullName := doc.Resource.Metadata.FullName()
 		for i := range diffs {
 			diffs[i].Target = fullName
+			diffs[i].SourcePath = doc.SourcePath
 		}
 		plan.Diffs = append(plan.Diffs, diffs...)
 
@@ -95,6 +96,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		fullName := doc.Resource.Metadata.FullName()
 		for i := range diffs {
 			diffs[i].Target = fullName
+			diffs[i].SourcePath = doc.SourcePath
 		}
 		plan.Diffs = append(plan.Diffs, diffs...)
 
@@ -442,6 +444,14 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 			return spec.Variables
 		},
 	},
+	{
+		prefix: "labels.",
+		key:    "labels",
+		kind:   fieldCollection,
+		valueVal: func(spec manifest.RepositorySpec) any {
+			return spec.Labels
+		},
+	},
 }
 
 func newRepositoryPatchPlan(basePath string) *repositoryPatchPlan {
@@ -693,6 +703,9 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	// Variables (Phase 2d)
 	diffs = append(diffs, compareVariables(local.Variables, imported.Variables)...)
 
+	// Labels
+	diffs = append(diffs, compareLabels(local.Labels, imported.Labels)...)
+
 	return diffs
 }
 
@@ -924,6 +937,63 @@ func compareVariables(local, imported []manifest.Variable) []FieldDiff {
 	return diffs
 }
 
+// compareLabels compares label lists.
+func compareLabels(local, imported []manifest.Label) []FieldDiff {
+	if len(local) == 0 && len(imported) == 0 {
+		return nil
+	}
+
+	type labelVal struct {
+		Color       string
+		Description string
+	}
+
+	localMap := make(map[string]labelVal)
+	for _, l := range local {
+		localMap[l.Name] = labelVal{Color: l.Color, Description: l.Description}
+	}
+	importedMap := make(map[string]labelVal)
+	for _, l := range imported {
+		importedMap[l.Name] = labelVal{Color: l.Color, Description: l.Description}
+	}
+
+	var diffs []FieldDiff
+
+	for name, iv := range importedMap {
+		lv, exists := localMap[name]
+		if !exists || lv != iv {
+			var old any
+			if exists {
+				old = formatLabelSummary(lv.Color, lv.Description)
+			}
+			diffs = append(diffs, FieldDiff{
+				Field: fmt.Sprintf("labels.%s", name),
+				Old:   old,
+				New:   formatLabelSummary(iv.Color, iv.Description),
+			})
+		}
+	}
+
+	for name, lv := range localMap {
+		if _, exists := importedMap[name]; !exists {
+			diffs = append(diffs, FieldDiff{
+				Field: fmt.Sprintf("labels.%s", name),
+				Old:   formatLabelSummary(lv.Color, lv.Description),
+				New:   nil,
+			})
+		}
+	}
+
+	return diffs
+}
+
+func formatLabelSummary(color, description string) string {
+	if description != "" {
+		return fmt.Sprintf("#%s %q", color, description)
+	}
+	return "#" + color
+}
+
 // minimalOverride returns the minimal spec override relative to defaults.
 // Fields identical to defaults are zeroed so omitempty drops them.
 func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.RepositorySpec {
@@ -968,6 +1038,11 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	// Variables: override if different
 	if !reflect.DeepEqual(defaults.Variables, imported.Variables) {
 		override.Variables = imported.Variables
+	}
+
+	// Labels: override if different
+	if !reflect.DeepEqual(defaults.Labels, imported.Labels) {
+		override.Labels = imported.Labels
 	}
 
 	// Secrets: always preserve local override (not from import)

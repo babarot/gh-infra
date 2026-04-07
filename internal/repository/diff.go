@@ -101,6 +101,7 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffRulesets(ctx, name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
+	changes = append(changes, diffLabels(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
 
 	return changes
@@ -547,6 +548,53 @@ func diffVariables(name string, desired *manifest.Repository, current *CurrentSt
 				Field:    dv.Name,
 				OldValue: cv,
 				NewValue: dv.Value,
+			})
+		}
+	}
+
+	return changes
+}
+
+func diffLabels(name string, desired *manifest.Repository, current *CurrentState) []Change {
+	var changes []Change
+
+	for _, dl := range desired.Spec.Labels {
+		cl, exists := current.Labels[dl.Name]
+		if !exists {
+			changes = append(changes, Change{
+				Type:     ChangeCreate,
+				Resource: manifest.ResourceLabel,
+				Name:     name,
+				Field:    dl.Name,
+				NewValue: dl.Color,
+			})
+			continue
+		}
+
+		var children []Change
+		if dl.Color != cl.Color {
+			children = append(children, Change{
+				Type:     ChangeUpdate,
+				Field:    "color",
+				OldValue: cl.Color,
+				NewValue: dl.Color,
+			})
+		}
+		if dl.Description != cl.Description {
+			children = append(children, Change{
+				Type:     ChangeUpdate,
+				Field:    "description",
+				OldValue: cl.Description,
+				NewValue: dl.Description,
+			})
+		}
+		if len(children) > 0 {
+			changes = append(changes, Change{
+				Type:     ChangeUpdate,
+				Resource: manifest.ResourceLabel,
+				Name:     name,
+				Field:    dl.Name,
+				Children: children,
 			})
 		}
 	}

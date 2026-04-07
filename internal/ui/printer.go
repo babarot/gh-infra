@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/term"
@@ -106,6 +107,19 @@ func (p *StandardPrinter) isOutTerminal() bool {
 		return false
 	}
 	return term.IsTerminal(f.Fd())
+}
+
+// termWidth returns the terminal width, or 0 if unavailable.
+func (p *StandardPrinter) termWidth() int {
+	f, ok := p.out.(*os.File)
+	if !ok {
+		return 0
+	}
+	w, _, err := term.GetSize(f.Fd())
+	if err != nil {
+		return 0
+	}
+	return w
 }
 
 const Separator_ = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -211,8 +225,13 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
 			indent, icon, width, item.Field, Green.Render(FormatValue(item.Value)))
 	case IconChange:
+		old, new := item.Old, item.New
+		if tw := p.termWidth(); tw > 0 {
+			prefix := len(indent) + 2 + 1 + width + 2 // indent + icon + space + field (padded) + 2 spaces
+			old, new = truncateChangeValues(old, new, tw, prefix)
+		}
 		fmt.Fprintf(p.out, "%s%s %-*s  %s %s %s\n",
-			indent, icon, width, item.Field, Dim.Render(item.Old), Dim.Render(IconArrow), Bold.Render(item.New))
+			indent, icon, width, item.Field, Dim.Render(old), Dim.Render(IconArrow), Bold.Render(new))
 	case IconRemove:
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
 			indent, icon, width, item.Field, Red.Render(FormatValue(item.Value)))
@@ -378,6 +397,50 @@ func FormatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
 	return fmt.Sprintf("%.1fs", d.Seconds())
+}
+
+// truncateChangeValues truncates old/new value strings to fit within termWidth.
+// Arrow " → " is len(IconArrow)+2 bytes but 3 display columns.
+// We use display-width arithmetic: arrow=3, ellipsis=1 display column.
+func truncateChangeValues(old, new string, termWidth, prefixWidth int) (string, string) {
+	const arrowDisplay = 3 // " → " = space + 1-col char + space
+	oldLen := utf8.RuneCountInString(old)
+	newLen := utf8.RuneCountInString(new)
+	used := prefixWidth + oldLen + arrowDisplay + newLen
+	if used <= termWidth {
+		return old, new
+	}
+
+	avail := termWidth - prefixWidth - arrowDisplay
+	if avail <= 0 {
+		return old, new
+	}
+
+	// Give old 1/3, new 2/3 of available space; if old fits, give remainder to new
+	oldMax := avail / 3
+	newMax := avail - oldMax
+	if oldLen <= oldMax {
+		newMax = avail - oldLen
+	} else if oldMax > 1 {
+		old = truncateRunes(old, oldMax-1) + IconEllipsis
+	}
+	if newLen > newMax && newMax > 1 {
+		new = truncateRunes(new, newMax-1) + IconEllipsis
+	}
+
+	return old, new
+}
+
+// truncateRunes returns the first n runes of s.
+func truncateRunes(s string, n int) string {
+	i := 0
+	for j := range s {
+		if i >= n {
+			return s[:j]
+		}
+		i++
+	}
+	return s
 }
 
 // FormatValue formats a value for display.

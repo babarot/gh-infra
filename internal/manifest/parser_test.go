@@ -1332,3 +1332,55 @@ repositories:
 		t.Errorf("merged repo-b Visibility = %v, want public", result.Repositories[1].Spec.Visibility)
 	}
 }
+
+func TestRepositorySet_LabelsMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: kind/bug
+        color: d73a4a
+        description: A bug
+      - name: kind/feature
+        color: "425df5"
+repositories:
+  - name: inherits-labels
+    spec:
+      description: "inherits default labels"
+  - name: overrides-labels
+    spec:
+      labels:
+        - name: custom-label
+          color: "FF0000"
+`
+	path := filepath.Join(dir, "labels.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+
+	// First repo inherits default labels
+	if len(repos[0].Spec.Labels) != 2 {
+		t.Errorf("inherits-labels: expected 2 labels, got %d", len(repos[0].Spec.Labels))
+	}
+
+	// Second repo overrides with its own labels (full replacement)
+	if len(repos[1].Spec.Labels) != 1 {
+		t.Fatalf("overrides-labels: expected 1 label, got %d", len(repos[1].Spec.Labels))
+	}
+	if repos[1].Spec.Labels[0].Name != "custom-label" {
+		t.Errorf("expected custom-label, got %q", repos[1].Spec.Labels[0].Name)
+	}
+}

@@ -1083,6 +1083,67 @@ func TestCompareVariables_NoDiff(t *testing.T) {
 	}
 }
 
+// --- compareLabels tests ---
+
+func TestCompareLabels_Diff(t *testing.T) {
+	local := []manifest.Label{
+		{Name: "bug", Color: "d73a4a", Description: "Old desc"},
+	}
+	imported := []manifest.Label{
+		{Name: "bug", Color: "FF0000", Description: "New desc"},
+	}
+
+	diffs := compareLabels(local, imported)
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %d: %+v", len(diffs), diffs)
+	}
+	if diffs[0].Field != "labels.bug" {
+		t.Errorf("Field = %q, want %q", diffs[0].Field, "labels.bug")
+	}
+}
+
+func TestCompareLabels_NewOnGitHub(t *testing.T) {
+	local := []manifest.Label{}
+	imported := []manifest.Label{
+		{Name: "kind/feature", Color: "425df5", Description: "A feature"},
+	}
+
+	diffs := compareLabels(local, imported)
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %d", len(diffs))
+	}
+	if diffs[0].Field != "labels.kind/feature" {
+		t.Errorf("Field = %q, want %q", diffs[0].Field, "labels.kind/feature")
+	}
+}
+
+func TestCompareLabels_DeletedOnGitHub(t *testing.T) {
+	local := []manifest.Label{
+		{Name: "old-label", Color: "aaaaaa"},
+	}
+	imported := []manifest.Label{}
+
+	diffs := compareLabels(local, imported)
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %d", len(diffs))
+	}
+	if diffs[0].New != nil {
+		t.Error("New should be nil for deleted label")
+	}
+}
+
+func TestCompareLabels_NoDiff(t *testing.T) {
+	labels := []manifest.Label{
+		{Name: "bug", Color: "d73a4a", Description: "A bug"},
+		{Name: "feature", Color: "425df5"},
+	}
+
+	diffs := compareLabels(labels, labels)
+	if len(diffs) != 0 {
+		t.Errorf("expected no diffs, got %d: %+v", len(diffs), diffs)
+	}
+}
+
 // --- compareMergeStrategy tests ---
 
 func TestCompareMergeStrategy_Diff(t *testing.T) {

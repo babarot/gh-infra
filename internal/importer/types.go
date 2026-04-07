@@ -47,10 +47,11 @@ type TargetMatches struct {
 
 // FieldDiff represents a single field-level difference (import-specific).
 type FieldDiff struct {
-	Target string // owner/repo
-	Field  string // e.g. "description", "features.issues", "rulesets.my-rule.enforcement"
-	Old    any    // local value
-	New    any    // GitHub value
+	Target     string // owner/repo
+	SourcePath string // manifest file path being updated
+	Field      string // e.g. "description", "features.issues", "rulesets.my-rule.enforcement"
+	Old        any    // local value
+	New        any    // GitHub value
 }
 
 // RepoResult is a per-Repository/RepositorySet change plan.

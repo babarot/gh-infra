@@ -110,6 +110,8 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 		err = p.applySecret(ctx, c, repo)
 	case c.Resource == manifest.ResourceVariable:
 		err = p.applyVariable(ctx, c, repo)
+	case c.Resource == manifest.ResourceLabel:
+		err = p.applyLabel(ctx, c, repo)
 	case c.Resource == manifest.ResourceActions:
 		err = p.applyActions(ctx, c, repo)
 	default:
@@ -789,6 +791,42 @@ func (p *Processor) applyVariable(ctx context.Context, c Change, repo *manifest.
 		"--body", value,
 	)
 	return wrapError(err, fullName, "variable:"+c.Field)
+}
+
+func (p *Processor) applyLabel(ctx context.Context, c Change, repo *manifest.Repository) error {
+	owner := repo.Metadata.Owner
+	name := repo.Metadata.Name
+	fullName := owner + "/" + name
+
+	// Find label from desired state
+	var label *manifest.Label
+	for i := range repo.Spec.Labels {
+		if repo.Spec.Labels[i].Name == c.Field {
+			label = &repo.Spec.Labels[i]
+			break
+		}
+	}
+	if label == nil {
+		return fmt.Errorf("label %q not found in desired state", c.Field)
+	}
+
+	switch c.Type {
+	case ChangeCreate:
+		args := []string{"label", "create", c.Field, "--repo", fullName, "--color", label.Color}
+		if label.Description != "" {
+			args = append(args, "--description", label.Description)
+		}
+		_, err := p.runner.Run(ctx, args...)
+		return wrapError(err, fullName, "label:"+c.Field)
+	case ChangeUpdate:
+		args := []string{"label", "edit", c.Field, "--repo", fullName}
+		args = append(args, "--color", label.Color)
+		args = append(args, "--description", label.Description)
+		_, err := p.runner.Run(ctx, args...)
+		return wrapError(err, fullName, "label:"+c.Field)
+	}
+
+	return nil
 }
 
 func (p *Processor) applyActions(ctx context.Context, c Change, repo *manifest.Repository) error {

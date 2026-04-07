@@ -335,3 +335,44 @@ func assertStringPtr(t *testing.T, name string, got *string, want string) {
 		t.Errorf("%s = %q, want %q", name, *got, want)
 	}
 }
+
+func TestToManifest_Labels(t *testing.T) {
+	state := &CurrentState{
+		Owner: "org",
+		Name:  "repo",
+		Labels: map[string]*CurrentLabel{
+			"bug":          {Name: "bug", Color: "d73a4a", Description: "A bug"},
+			"kind/feature": {Name: "kind/feature", Color: "425df5", Description: ""},
+		},
+	}
+
+	repo := ToManifest(context.Background(), state, nil)
+
+	if len(repo.Spec.Labels) != 2 {
+		t.Fatalf("expected 2 labels, got %d", len(repo.Spec.Labels))
+	}
+
+	labelMap := make(map[string]manifest.Label)
+	for _, l := range repo.Spec.Labels {
+		labelMap[l.Name] = l
+	}
+
+	bug, ok := labelMap["bug"]
+	if !ok {
+		t.Fatal("missing label 'bug'")
+	}
+	if bug.Color != "d73a4a" {
+		t.Errorf("bug.Color = %q, want %q", bug.Color, "d73a4a")
+	}
+	if bug.Description != "A bug" {
+		t.Errorf("bug.Description = %q, want %q", bug.Description, "A bug")
+	}
+
+	feat, ok := labelMap["kind/feature"]
+	if !ok {
+		t.Fatal("missing label 'kind/feature'")
+	}
+	if feat.Color != "425df5" {
+		t.Errorf("kind/feature.Color = %q, want %q", feat.Color, "425df5")
+	}
+}

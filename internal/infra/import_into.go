@@ -247,7 +247,12 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 		rDiffs := repoDiffsByTarget[target]
 		fChanges := fileChangesByTarget[target]
 
-		p.ActionHeader(target, "will be updated")
+		// Build header: include source file path when available
+		header := target
+		if len(rDiffs) > 0 && rDiffs[0].SourcePath != "" {
+			header = fmt.Sprintf("%s (%s)", target, rDiffs[0].SourcePath)
+		}
+		p.ActionHeader(header, "will be updated")
 		p.GroupHeader(ui.IconChange, target)
 
 		if len(rDiffs) > 0 {

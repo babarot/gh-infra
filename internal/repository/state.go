@@ -52,6 +52,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 		rulesets map[string]*CurrentRuleset
 		secrets  []string
 		vars     map[string]string
+		labels   map[string]*CurrentLabel
 	)
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -84,6 +85,13 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 		return err
 	})
 
+	g.Go(func() error {
+		status("fetching labels...")
+		var err error
+		labels, err = p.fetchLabels(ctx, owner, name)
+		return err
+	})
+
 	var actions CurrentActions
 	g.Go(func() error {
 		status("fetching actions...")
@@ -100,6 +108,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 	repo.Rulesets = rulesets
 	repo.Secrets = secrets
 	repo.Variables = vars
+	repo.Labels = labels
 	repo.Actions = actions
 
 	return repo, nil
@@ -523,6 +532,37 @@ func (p *Processor) fetchVariables(ctx context.Context, owner, name string) (map
 	result := make(map[string]string)
 	for _, v := range vars {
 		result[v.Name] = v.Value
+	}
+	return result, nil
+}
+
+func (p *Processor) fetchLabels(ctx context.Context, owner, name string) (map[string]*CurrentLabel, error) {
+	out, err := p.runner.Run(ctx,
+		"label", "list",
+		"--repo", owner+"/"+name,
+		"--json", "name,color,description",
+		"--limit", "1000",
+	)
+	if err != nil {
+		return nil, nil // labels might not be accessible
+	}
+
+	var labels []struct {
+		Name        string `json:"name"`
+		Color       string `json:"color"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(out, &labels); err != nil {
+		return nil, nil
+	}
+
+	result := make(map[string]*CurrentLabel)
+	for _, l := range labels {
+		result[l.Name] = &CurrentLabel{
+			Name:        l.Name,
+			Description: l.Description,
+			Color:       l.Color,
+		}
 	}
 	return result, nil
 }

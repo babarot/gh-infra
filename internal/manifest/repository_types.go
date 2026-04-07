@@ -13,6 +13,7 @@ const (
 	ResourceVariable         = "Variable"
 	ResourceRuleset          = "Ruleset"
 	ResourceActions          = "Actions"
+	ResourceLabel            = "Label"
 
 	// Ruleset enforcement values.
 	RulesetEnforcementActive   = "active"
@@ -68,6 +69,7 @@ type RepositorySpec struct {
 	Visibility          *string            `yaml:"visibility,omitempty" validate:"omitempty,oneof=public private internal"`
 	Archived            *bool              `yaml:"archived,omitempty"`
 	Topics              []string           `yaml:"topics,omitempty"`
+	Labels              []Label            `yaml:"labels,omitempty"            validate:"unique=name"`
 	Features            *Features          `yaml:"features,omitempty"`
 	MergeStrategy       *MergeStrategy     `yaml:"merge_strategy,omitempty"`
 	ReleaseImmutability *bool              `yaml:"release_immutability,omitempty"`
@@ -186,6 +188,12 @@ type RulesetStatusChecks struct {
 type RulesetStatusCheck struct {
 	Context string `yaml:"context"`
 	App     string `yaml:"app,omitempty"` // GitHub App slug (optional)
+}
+
+type Label struct {
+	Name        string `yaml:"name"        validate:"required"`
+	Description string `yaml:"description,omitempty"`
+	Color       string `yaml:"color"       validate:"required"`
 }
 
 type Secret struct {

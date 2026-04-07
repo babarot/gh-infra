@@ -128,6 +128,14 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		})
 	}
 
+	for _, label := range r.Labels {
+		repo.Spec.Labels = append(repo.Spec.Labels, manifest.Label{
+			Name:        label.Name,
+			Description: label.Description,
+			Color:       label.Color,
+		})
+	}
+
 	// Actions
 	if r.Actions.Enabled || r.Actions.AllowedActions != "" || r.Actions.SHAPinningRequired {
 		actions := &manifest.Actions{

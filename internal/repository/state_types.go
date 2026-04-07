@@ -18,6 +18,7 @@ type CurrentState struct {
 	Rulesets         map[string]*CurrentRuleset          // name → ruleset
 	Secrets          []string                            // names only (values are opaque)
 	Variables        map[string]string                   // name → value
+	Labels           map[string]*CurrentLabel            // name → label
 	Actions          CurrentActions
 }
 
@@ -111,6 +112,12 @@ type CurrentRulesetStatusChecks struct {
 type CurrentRulesetStatusCheck struct {
 	Context       string
 	IntegrationID int
+}
+
+type CurrentLabel struct {
+	Name        string
+	Description string
+	Color       string
 }
 
 type CurrentActions struct {

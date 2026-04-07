@@ -29,6 +29,33 @@ spec:
 | `archived` | bool | `true` to archive (read-only). Reversible — set to `false` to unarchive |
 | `topics` | list | GitHub topics for discoverability |
 
+## Labels
+
+Manage repository labels declaratively. Labels declared in the manifest are created or updated on GitHub. Existing labels not listed in the manifest are left untouched.
+
+```yaml
+spec:
+  labels:
+    - name: kind/bug
+      color: d73a4a
+      description: "A bug; unintended behavior"
+    - name: kind/feature
+      color: "425df5"
+      description: "A feature request"
+    - name: priority/high
+      color: ff0000
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Label name (must be unique within the list) |
+| `color` | string | yes | Hex color code without `#` prefix (e.g., `d73a4a`) |
+| `description` | string | no | Short description of the label's purpose |
+
+:::note
+gh-infra only creates and updates labels — it does not delete labels that are absent from the manifest. GitHub's default labels (e.g., `bug`, `enhancement`) are left in place unless you explicitly manage them.
+:::
+
 ### Archiving
 
 Set `archived: true` to mark a repository as read-only:
