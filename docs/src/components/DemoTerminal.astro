@@ -1,7 +1,17 @@
 ---
 // Terminal-styled container for demo GIF with light/dark theme support.
-// Usage: <DemoTerminal />
+// Usage: <DemoTerminal /> or <DemoTerminal darkSrc="/demo-apply.gif" />
+interface Props {
+  darkSrc?: string;
+  lightSrc?: string;
+  alt?: string;
+}
+
 const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+const { darkSrc, lightSrc, alt = 'gh-infra demo' } = Astro.props;
+const darkUrl = darkSrc || `${base}/demo.gif`;
+const lightUrl = lightSrc || `${base}/demo-light.gif`;
+const hasLight = !!lightSrc || !darkSrc;
 ---
 <div class="demo-terminal">
   <div class="terminal-chrome">
@@ -10,17 +20,19 @@ const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
     <span class="dot green"></span>
   </div>
   <img
-    src={`${base}/demo.gif`}
-    alt="gh-infra demo showing plan and apply workflow"
-    class="demo-gif demo-dark"
+    src={darkUrl}
+    alt={alt}
+    class:list={['demo-gif', { 'demo-dark': hasLight }]}
     loading="eager"
   />
-  <img
-    src={`${base}/demo-light.gif`}
-    alt="gh-infra demo showing plan and apply workflow"
-    class="demo-gif demo-light"
-    loading="eager"
-  />
+  {hasLight && (
+    <img
+      src={lightUrl}
+      alt={alt}
+      class="demo-gif demo-light"
+      loading="eager"
+    />
+  )}
 </div>
 
 <style>

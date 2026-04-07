@@ -1,0 +1,321 @@
+---
+// 2×2 grid of static terminal blocks showing key capabilities.
+// Each block emulates real gh-infra CLI output.
+---
+<div class="cap-grid">
+  <div class="cap-row">
+    <div class="cap-card">
+      <div class="cap-card-inner">
+        <div class="cap-label">RepositorySet</div>
+        <div class="cap-terminal">
+          <div class="cap-bar">
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+          </div>
+          <pre class="cap-body"><span class="c-cmd">$ gh infra plan ./repos/</span>
+
+<span class="c-dim">  # babarot/my-cli will be updated</span>
+  <span class="c-chg">~</span> <span class="c-w">babarot/my-cli</span>
+      <span class="c-chg">~</span> required_reviews  <span class="c-old">1</span> <span class="c-dim">→</span> <span class="c-new">2</span>
+
+<span class="c-dim">  # babarot/my-api will be updated</span>
+  <span class="c-chg">~</span> <span class="c-w">babarot/my-api</span>
+      <span class="c-chg">~</span> required_reviews  <span class="c-old">1</span> <span class="c-dim">→</span> <span class="c-new">2</span>
+
+<span class="c-dim">  # babarot/my-web will be updated</span>
+  <span class="c-chg">~</span> <span class="c-w">babarot/my-web</span>
+      <span class="c-chg">~</span> required_reviews  <span class="c-old">1</span> <span class="c-dim">→</span> <span class="c-new">2</span>
+
+  <span class="c-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+  Plan: <span class="c-w">0</span> to create, <span class="c-w">3</span> to update</pre>
+        </div>
+        <p class="cap-desc">One line in defaults. Three repos updated.</p>
+      </div>
+    </div>
+
+    <div class="cap-card">
+      <div class="cap-card-inner">
+        <div class="cap-label">Parallel apply</div>
+        <div class="cap-terminal">
+          <div class="cap-bar">
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+          </div>
+          <pre class="cap-body"><span class="c-cmd">$ gh infra apply ./repos/</span>
+
+  <span class="c-new">✓</span> <span class="c-w">babarot/my-cli</span>
+      <span class="c-new">✓</span> description          updated
+      <span class="c-new">✓</span> merge_strategy       updated
+  <span class="c-new">✓</span> <span class="c-w">babarot/my-api</span>
+      <span class="c-new">✓</span> branch_protection    updated
+  <span class="c-new">✓</span> <span class="c-w">babarot/my-web</span>
+      <span class="c-new">✓</span> features             updated
+      <span class="c-new">✓</span> topics               updated
+
+  <span class="c-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+  Apply complete! <span class="c-w">5</span> changes applied</pre>
+        </div>
+        <p class="cap-desc">Repos apply in parallel. Changes are atomic per repo.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap-row">
+    <div class="cap-card">
+      <div class="cap-card-inner">
+        <div class="cap-label">File delivery</div>
+        <div class="cap-terminal">
+          <div class="cap-bar">
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+          </div>
+          <pre class="cap-body"><span class="c-cmd">$ gh infra apply ./files/</span>
+
+<span class="c-dim">  # babarot/my-project — FileSet: 3 files</span>
+  <span class="c-chg">~</span> <span class="c-w">babarot/my-project</span>
+      <span class="c-chg">~</span> .github/workflows/ci.yml  <span class="c-new">+18</span> <span class="c-old">-5</span>
+      <span class="c-add">+</span> .github/dependabot.yml    <span class="c-new">+12</span>
+      <span class="c-chg">~</span> .github/CODEOWNERS        <span class="c-new">+2</span> <span class="c-old">-1</span>
+
+  via: <span class="c-cyan">pull_request</span>
+  <span class="c-new">✓</span> <span class="c-dim">→</span> github.com/babarot/my-project/pull/42</pre>
+        </div>
+        <p class="cap-desc">Distribute files across repos. Push or pull request.</p>
+      </div>
+    </div>
+
+    <div class="cap-card">
+      <div class="cap-card-inner">
+        <div class="cap-label">Diff viewer</div>
+        <div class="cap-terminal">
+          <div class="cap-bar">
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+            <span class="cap-dot"></span>
+          </div>
+          <div class="cap-body diff-viewer">
+            <div class="diff-main">
+              <div class="diff-col diff-left">
+                <pre><span class="c-w">app-api</span>
+ <span class="c-chg">~</span> CODEOWNERS
+ <span class="c-chg">~</span> ci.yml
+ <span class="c-add">+</span> dependabot.yml
+
+<span class="c-w">app-web</span>
+ <span class="c-chg">~</span> CODEOWNERS
+ <span class="c-chg">~</span> ci.yml
+ <span class="c-dim c-skip">⚠ dependabot.yml</span></pre>
+              </div>
+              <div class="diff-col diff-right">
+                <pre><span class="c-old">- * @old-owner</span>
+<span class="c-new">+ * @babarot @team</span>
+
+<span class="c-dim">@@ -1,5 +1,8 @@</span>
+ name: CI
+<span class="c-old">- on: [push]</span>
+<span class="c-new">+ on: [push, pull_req..</span>
+
+</pre>
+              </div>
+            </div>
+            <div class="diff-footer">
+              <pre><span class="c-dim">j/k: move  d/u: scroll  tab: skip  esc: done</span></pre>
+            </div>
+          </div>
+        </div>
+        <p class="cap-desc">Browse every file diff. Skip what you don't want.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .cap-grid {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
+    border-spacing: 20px 24px;
+  }
+
+  .cap-row {
+    display: table-row;
+  }
+
+  .cap-card {
+    display: table-cell;
+    width: 50%;
+    vertical-align: top;
+  }
+
+  .cap-card-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .cap-label {
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #9ece6a;
+    margin: 0 0 8px;
+  }
+
+  .cap-terminal {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    background: #16161e;
+    border: 1px solid #292e42;
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .cap-terminal:hover {
+    border-color: #3b4261;
+  }
+
+  .cap-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #1a1b27;
+    border-bottom: 1px solid #292e42;
+  }
+
+  .cap-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .cap-dot:nth-child(1) { background: #f7768e; }
+  .cap-dot:nth-child(2) { background: #e0af68; }
+  .cap-dot:nth-child(3) { background: #9ece6a; }
+
+  .cap-body {
+    flex: 1;
+    min-height: 20rem;
+    margin: 0;
+    padding: 14px 16px;
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.68rem;
+    line-height: 1.6;
+    color: #a9b1d6;
+    overflow: auto;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cap-desc {
+    margin: 8px 0 0;
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.75rem;
+    color: #565f89;
+  }
+
+  /* Diff viewer layout */
+  .diff-viewer {
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+  }
+
+  .diff-main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .diff-col {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .diff-col pre {
+    margin: 0;
+    padding: 14px 12px;
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.68rem;
+    line-height: 1.6;
+    color: #a9b1d6;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    white-space: pre;
+  }
+
+  .diff-left {
+    border-right: 1px solid #292e42;
+  }
+
+  .diff-footer {
+    border-top: 1px solid #292e42;
+  }
+
+  .diff-footer pre {
+    margin: 0;
+    padding: 8px 12px;
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.68rem;
+    line-height: 1.6;
+    color: #a9b1d6;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cap-body :global(.c-cmd) { color: #c0caf5; }
+  .cap-body :global(.c-dim) { color: #3b4261; }
+  .cap-body :global(.c-w) { color: #c0caf5; font-weight: 600; }
+  .cap-body :global(.c-chg) { color: #e0af68; font-weight: 700; }
+  .cap-body :global(.c-add) { color: #9ece6a; font-weight: 700; }
+  .cap-body :global(.c-old) { color: #f7768e; }
+  .cap-body :global(.c-new) { color: #9ece6a; }
+  .cap-body :global(.c-cyan) { color: #7dcfff; }
+  .cap-body :global(.c-skip) { text-decoration: line-through; opacity: 0.6; }
+
+  :global([data-theme='light']) .cap-terminal {
+    border-color: #c4c8da;
+  }
+
+  :global([data-theme='light']) .cap-terminal:hover {
+    border-color: #b4b5b9;
+  }
+
+  :global([data-theme='light']) .cap-label {
+    color: #587539;
+  }
+
+  :global([data-theme='light']) .cap-desc {
+    color: #8990b3;
+  }
+
+  @media (max-width: 700px) {
+    .cap-grid,
+    .cap-row {
+      display: block;
+    }
+
+    .cap-card {
+      display: block;
+      width: 100%;
+    }
+
+    .cap-card + .cap-card {
+      margin-top: 20px;
+    }
+  }
+</style>

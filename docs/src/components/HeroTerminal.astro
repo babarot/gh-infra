@@ -1,0 +1,289 @@
+---
+// Animated terminal for the hero section showing import → plan workflow.
+// Typing animation inspired by sem's hero terminal.
+---
+<div class="hero-terminal">
+  <div class="ht-bar">
+    <span class="ht-dot"></span>
+    <span class="ht-dot"></span>
+    <span class="ht-dot"></span>
+    <span class="ht-title">~/repos</span>
+  </div>
+  <div class="ht-body">
+    <pre id="hero-term"></pre>
+  </div>
+</div>
+
+<script>
+(function() {
+  const el = document.getElementById('hero-term');
+  if (!el) return;
+
+  const lines = [
+    { text: '$ gh infra import babarot/my-project', cls: 'ht-cmd', typing: true, pause: 400 },
+    { text: '', pause: 200 },
+    { parts: [
+      { text: 'apiVersion:', cls: 'ht-key' },
+      { text: ' gh-infra/v1', cls: '' },
+    ], pause: 40 },
+    { parts: [
+      { text: 'kind:', cls: 'ht-key' },
+      { text: ' Repository', cls: '' },
+    ], pause: 40 },
+    { parts: [
+      { text: 'metadata:', cls: 'ht-key' },
+    ], pause: 40 },
+    { parts: [
+      { text: '  name:', cls: 'ht-key' },
+      { text: ' my-project', cls: '' },
+    ], pause: 40 },
+    { parts: [
+      { text: '  owner:', cls: 'ht-key' },
+      { text: ' babarot', cls: '' },
+    ], pause: 40 },
+    { text: '', pause: 20 },
+    { parts: [
+      { text: 'spec:', cls: 'ht-key' },
+    ], pause: 40 },
+    { parts: [
+      { text: '  description:', cls: 'ht-key' },
+      { text: ' ', cls: '' },
+      { text: '"My project"', cls: 'ht-str' },
+    ], pause: 40 },
+    { parts: [
+      { text: '  visibility:', cls: 'ht-key' },
+      { text: ' public', cls: '' },
+    ], pause: 40 },
+    { parts: [
+      { text: '  features:', cls: 'ht-key' },
+    ], pause: 40 },
+    { parts: [
+      { text: '    wiki:', cls: 'ht-key' },
+      { text: ' true', cls: '' },
+    ], pause: 40 },
+    { parts: [
+      { text: '    discussions:', cls: 'ht-key' },
+      { text: ' false', cls: '' },
+    ], pause: 40 },
+    { text: '', pause: 600 },
+
+    // plan
+    { text: '$ gh infra plan ./', cls: 'ht-cmd', typing: true, pause: 400 },
+    { text: '', pause: 200 },
+    { parts: [
+      { text: '  # babarot/my-project will be updated', cls: 'ht-dim' },
+    ], pause: 60 },
+    { parts: [
+      { text: '  ~ ', cls: 'ht-chg' },
+      { text: 'babarot/my-project', cls: 'ht-w' },
+    ], pause: 60 },
+    { parts: [
+      { text: '      ~ ', cls: 'ht-chg' },
+      { text: 'description        ', cls: '' },
+      { text: '"My project"', cls: 'ht-old' },
+      { text: ' → ', cls: 'ht-dim' },
+      { text: '"My awesome project"', cls: 'ht-new' },
+    ], pause: 80 },
+    { parts: [
+      { text: '      ~ ', cls: 'ht-chg' },
+      { text: 'features.wiki      ', cls: '' },
+      { text: 'true', cls: 'ht-old' },
+      { text: ' → ', cls: 'ht-dim' },
+      { text: 'false', cls: 'ht-new' },
+    ], pause: 80 },
+    { parts: [
+      { text: '      + ', cls: 'ht-add' },
+      { text: 'topics             ', cls: '' },
+      { text: '[go, cli]', cls: 'ht-new' },
+    ], pause: 80 },
+    { text: '', pause: 40 },
+    { parts: [
+      { text: '  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', cls: 'ht-dim' },
+    ], pause: 40 },
+    { text: '', pause: 40 },
+    { parts: [
+      { text: '  Plan: ', cls: '' },
+      { text: '0', cls: 'ht-w' },
+      { text: ' to create, ', cls: '' },
+      { text: '1', cls: 'ht-w' },
+      { text: ' to update, ', cls: '' },
+      { text: '0', cls: 'ht-w' },
+      { text: ' to destroy', cls: '' },
+    ], pause: 100 },
+  ];
+
+  function span(text, cls) {
+    if (!cls) return document.createTextNode(text);
+    const s = document.createElement('span');
+    s.className = cls;
+    s.textContent = text;
+    return s;
+  }
+
+  let cancelled = false;
+
+  function sleep(ms) {
+    return new Promise((resolve, reject) => {
+      const id = setTimeout(resolve, ms);
+      // Check cancellation via polling — lightweight since sleeps are short
+      const check = setInterval(() => {
+        if (cancelled) { clearTimeout(id); clearInterval(check); reject('cancelled'); }
+      }, 50);
+      // Clean up interval when sleep resolves normally
+      const orig = resolve;
+      resolve = () => { clearInterval(check); orig(); };
+    });
+  }
+
+  async function typeText(parent, text, cls) {
+    const node = cls ? document.createElement('span') : null;
+    if (node) { node.className = cls; parent.appendChild(node); }
+    const target = node || parent;
+    for (let i = 0; i < text.length; i++) {
+      if (cancelled) return;
+      target.textContent += text[i];
+      await new Promise(r => setTimeout(r, 25 + Math.random() * 20));
+      if (cancelled) return;
+    }
+  }
+
+  async function run() {
+    cancelled = false;
+    el.textContent = '';
+    try {
+      for (const line of lines) {
+        if (cancelled) return;
+        if (line.typing) {
+          await typeText(el, line.text, line.cls);
+          if (cancelled) return;
+          el.appendChild(document.createTextNode('\n'));
+        } else if (line.parts) {
+          for (const p of line.parts) el.appendChild(span(p.text, p.cls));
+          el.appendChild(document.createTextNode('\n'));
+        } else {
+          el.appendChild(span(line.text, line.cls));
+          el.appendChild(document.createTextNode('\n'));
+        }
+        if (line.pause) await sleep(line.pause);
+      }
+      if (cancelled) return;
+      const cursor = document.createElement('span');
+      cursor.textContent = '█';
+      cursor.style.animation = 'ht-blink 1s step-end infinite';
+      el.appendChild(document.createTextNode('$ '));
+      el.appendChild(cursor);
+    } catch (e) {
+      // cancelled
+    }
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      run();
+    } else {
+      cancelled = true;
+      el.textContent = '';
+    }
+  });
+  observer.observe(el);
+})();
+</script>
+
+<style>
+  @keyframes ht-blink {
+    50% { opacity: 0; }
+  }
+
+  .hero-terminal {
+    max-width: 680px;
+    margin: 2rem auto;
+    background: #16161e;
+    border: 1px solid #292e42;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+
+  .ht-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: #1a1b27;
+    border-bottom: 1px solid #292e42;
+  }
+
+  .ht-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .ht-dot:nth-child(1) { background: #f7768e; }
+  .ht-dot:nth-child(2) { background: #e0af68; }
+  .ht-dot:nth-child(3) { background: #9ece6a; }
+
+  .ht-title {
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.72rem;
+    color: #565f89;
+    margin-left: 4px;
+  }
+
+  .ht-body {
+    padding: 16px 20px;
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.78rem;
+    line-height: 1.7;
+    color: #a9b1d6;
+    overflow-x: auto;
+    min-height: 360px;
+  }
+
+  .ht-body pre {
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Token classes */
+  .ht-body :global(.ht-cmd) { color: #c0caf5; }
+  .ht-body :global(.ht-key) { color: #7aa2f7; }
+  .ht-body :global(.ht-str) { color: #9ece6a; }
+  .ht-body :global(.ht-dim) { color: #3b4261; }
+  .ht-body :global(.ht-w) { color: #c0caf5; font-weight: 600; }
+  .ht-body :global(.ht-chg) { color: #e0af68; font-weight: 700; }
+  .ht-body :global(.ht-add) { color: #9ece6a; font-weight: 700; }
+  .ht-body :global(.ht-old) { color: #f7768e; text-decoration: line-through; }
+  .ht-body :global(.ht-new) { color: #9ece6a; }
+
+  /* Light theme */
+  :global([data-theme='light']) .hero-terminal {
+    background: #e9e9ed;
+    border-color: #c4c8da;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+  }
+
+  :global([data-theme='light']) .ht-bar {
+    background: #d5d6db;
+    border-color: #c4c8da;
+  }
+
+  :global([data-theme='light']) .ht-body {
+    color: #3b4261;
+  }
+
+  :global([data-theme='light']) .ht-body :global(.ht-cmd) { color: #343b58; }
+  :global([data-theme='light']) .ht-body :global(.ht-key) { color: #2e7de9; }
+  :global([data-theme='light']) .ht-body :global(.ht-str) { color: #587539; }
+  :global([data-theme='light']) .ht-body :global(.ht-dim) { color: #8990b3; }
+  :global([data-theme='light']) .ht-body :global(.ht-w) { color: #343b58; }
+  :global([data-theme='light']) .ht-body :global(.ht-chg) { color: #8c6c3e; }
+  :global([data-theme='light']) .ht-body :global(.ht-add) { color: #587539; }
+  :global([data-theme='light']) .ht-body :global(.ht-old) { color: #f52a65; }
+  :global([data-theme='light']) .ht-body :global(.ht-new) { color: #587539; }
+</style>

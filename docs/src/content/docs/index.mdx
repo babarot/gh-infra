@@ -3,7 +3,9 @@ title: gh-infra
 description: Declarative GitHub infrastructure management via YAML
 template: splash
 hero:
-  tagline: Like Terraform, but for GitHub — no state file required.
+  tagline: >
+    Declarative GitHub infrastructure.<br>
+    No state file. No HCL. Just YAML.
   actions:
     - text: Get Started
       link: ./introduction/getting-started/
@@ -14,8 +16,21 @@ hero:
       variant: minimal
 ---
 
+import InstallBox from '../../components/InstallBox.astro';
+import HeroTerminal from '../../components/HeroTerminal.astro';
 import CodeShowcase from '../../components/CodeShowcase.astro';
 import Features from '../../components/Features.astro';
+import CapabilityGrid from '../../components/CapabilityGrid.astro';
+import FadeIn from '../../components/FadeIn.astro';
+
+<HeroTerminal />
+
+<FadeIn>
+<div class="landing-section" style="text-align: center;">
+  <h2 class="narrative-heading">Get started in seconds.</h2>
+  <InstallBox />
+</div>
+</FadeIn>
 
 export const importLeft = `<span class="hl-prompt">$</span> <span class="hl-cmd">gh infra import</span> babarot/my-project
 
@@ -33,6 +48,20 @@ export const importRight = `<span class="hl-key">apiVersion:</span> gh-infra/v1
   <span class="hl-key">features:</span>
     <span class="hl-key">wiki:</span> true
     <span class="hl-key">discussions:</span> false`;
+
+<FadeIn>
+<div class="landing-section">
+  <h2 class="narrative-heading">Import what you already have.</h2>
+  <p class="narrative-sub">Point it at a repo. Get YAML back. No manual writing needed.</p>
+
+  <CodeShowcase
+    leftTitle="terminal"
+    rightTitle="repos/my-project.yaml"
+    leftHtml={importLeft}
+    rightHtml={importRight}
+  />
+</div>
+</FadeIn>
 
 export const planLeft = `<span class="hl-key">apiVersion:</span> gh-infra/v1
 <span class="hl-key">kind:</span> Repository
@@ -61,27 +90,19 @@ export const planRight = `<span class="hl-dim"># babarot/my-project will be upda
 Plan: <span class="hl-repo">0</span> to create, <span class="hl-repo">1</span> to update, <span class="hl-repo">0</span> to destroy
 To apply, run: <span class="hl-repo">gh infra apply</span>`;
 
-<div class="section-label">
-  <span class="section-label-text">Import existing repos</span>
+<FadeIn>
+<div class="landing-section">
+  <h2 class="narrative-heading">See every change before it lands.</h2>
+  <p class="narrative-sub">Edit the YAML. Run plan. Get a precise diff of what will change.</p>
+
+  <CodeShowcase
+    leftTitle="repos/my-project.yaml"
+    rightTitle="gh infra plan"
+    leftHtml={planLeft}
+    rightHtml={planRight}
+  />
 </div>
-
-<CodeShowcase
-  leftTitle="terminal"
-  rightTitle="repos/my-project.yaml"
-  leftHtml={importLeft}
-  rightHtml={importRight}
-/>
-
-<div class="section-label">
-  <span class="section-label-text">Edit YAML. See the diff.</span>
-</div>
-
-<CodeShowcase
-  leftTitle="repos/my-project.yaml"
-  rightTitle="gh infra plan"
-  leftHtml={planLeft}
-  rightHtml={planRight}
-/>
+</FadeIn>
 
 export const applyLeft = `<span class="hl-prompt">$</span> <span class="hl-cmd">gh infra apply</span> ./repos/
 
@@ -102,15 +123,33 @@ export const applyRight = `<span class="hl-dim">━━━━━━━━━━�
 
 Apply complete! 2 changes applied.`;
 
-<div class="section-label">
-  <span class="section-label-text">Apply with confidence</span>
+<FadeIn>
+<div class="landing-section">
+  <h2 class="narrative-heading">Apply with confidence.</h2>
+  <p class="narrative-sub">Confirm once. Changes apply in parallel. Done.</p>
+
+  <CodeShowcase
+    leftTitle="gh infra apply"
+    rightTitle="result"
+    leftHtml={applyLeft}
+    rightHtml={applyRight}
+  />
 </div>
+</FadeIn>
 
-<CodeShowcase
-  leftTitle="gh infra apply"
-  rightTitle="result"
-  leftHtml={applyLeft}
-  rightHtml={applyRight}
-/>
+<FadeIn>
+<div class="landing-section">
+  <h2 class="narrative-heading">Everything you need. Nothing you don't.</h2>
 
-<Features />
+  <Features />
+</div>
+</FadeIn>
+
+<FadeIn>
+<div class="landing-section">
+  <h2 class="narrative-heading">See it in action.</h2>
+  <p class="narrative-sub">Real CLI output. Real workflows.</p>
+
+  <CapabilityGrid />
+</div>
+</FadeIn>

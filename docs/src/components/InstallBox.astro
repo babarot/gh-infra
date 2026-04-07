@@ -1,0 +1,106 @@
+---
+// Copyable install command with terminal styling.
+// Usage: <InstallBox />
+---
+<div class="install-box">
+  <code class="install-cmd">
+    <span class="install-prompt">$</span> gh extension install babarot/gh-infra
+  </code>
+  <button class="install-copy" aria-label="Copy install command">
+    <svg class="install-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <g class="icon-copy-g"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+      <g class="icon-check-g" style="display:none"><polyline points="20 6 9 17 4 12"/></g>
+    </svg>
+  </button>
+</div>
+
+<script>
+  document.querySelectorAll('.install-copy').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const copyG = btn.querySelector('.icon-copy-g') as SVGElement;
+      const checkG = btn.querySelector('.icon-check-g') as SVGElement;
+      if (!copyG || !checkG) return;
+      navigator.clipboard.writeText('gh extension install babarot/gh-infra').then(() => {
+        copyG.style.display = 'none';
+        checkG.style.display = '';
+        (btn.querySelector('.install-icon') as SVGElement).style.color = '#9ece6a';
+        setTimeout(() => {
+          copyG.style.display = '';
+          checkG.style.display = 'none';
+          (btn.querySelector('.install-icon') as SVGElement).style.color = '';
+        }, 2000);
+      });
+    });
+  });
+</script>
+
+<style>
+  .install-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    background: #16161e;
+    border: 1px solid #292e42;
+    border-radius: 8px;
+    padding: 14px 24px;
+    margin: 1.5rem auto 0;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .install-box:hover {
+    border-color: #3b4261;
+  }
+
+  .install-cmd {
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.85rem;
+    line-height: 1;
+    color: #a9b1d6;
+    background: none;
+    padding: 0;
+    white-space: nowrap;
+  }
+
+  .install-prompt {
+    color: #565f89;
+  }
+
+  .install-copy {
+    all: unset;
+    cursor: pointer;
+    color: #565f89;
+    line-height: 0;
+    transition: color 0.2s;
+  }
+
+  .install-copy:hover {
+    color: #a9b1d6;
+  }
+
+  /* Light theme */
+  :global([data-theme='light']) .install-box {
+    background: #e9e9ed;
+    border-color: #c4c8da;
+  }
+
+  :global([data-theme='light']) .install-box:hover {
+    border-color: #b4b5b9;
+  }
+
+  :global([data-theme='light']) .install-cmd {
+    color: #3b4261;
+  }
+
+  :global([data-theme='light']) .install-prompt {
+    color: #8990b3;
+  }
+
+  :global([data-theme='light']) .install-copy {
+    color: #8990b3;
+  }
+
+  :global([data-theme='light']) .install-copy:hover {
+    color: #3b4261;
+  }
+</style>

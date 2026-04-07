@@ -34,13 +34,23 @@ starlight-file-tree .file > .tree-entry > span > span > svg.tree-icon path {
 
 /* ===== Landing page (splash) ===== */
 
+/* Hero title — monospace, bold */
+[data-has-hero] .hero > .sl-flex > h1 {
+  font-family: var(--sl-font-mono, monospace);
+  font-weight: 800;
+  font-size: clamp(2rem, 5vw, 3rem);
+  letter-spacing: -1.5px;
+  color: var(--sl-color-white);
+}
+
 /* Gradient tagline */
 [data-has-hero] .hero > .sl-flex > .tagline {
-  font-size: clamp(1.1rem, 2.8vw, 1.5rem);
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
   background: linear-gradient(135deg, #7aa2f7 0%, #bb9af7 50%, #7dcfff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  line-height: 1.7;
 }
 
 /* Primary CTA button */
@@ -60,7 +70,35 @@ starlight-file-tree .file > .tree-entry > span > span > svg.tree-icon path {
   box-shadow: 0 4px 20px rgba(122, 162, 247, 0.4);
 }
 
-/* Section labels */
+/* Narrative section headings */
+.narrative-heading {
+  text-align: center;
+  margin: 0 auto 1rem;
+  max-width: 860px;
+  font-family: var(--sl-font-mono, monospace);
+  font-size: clamp(1.3rem, 3vw, 1.8rem);
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--sl-color-white);
+}
+
+.narrative-sub {
+  text-align: center;
+  max-width: 860px;
+  margin: 0 auto 2rem;
+  font-size: 0.85rem;
+  color: var(--sl-color-gray-3);
+  line-height: 1.7;
+}
+
+/* Landing section dividers */
+.landing-section {
+  border-top: 1px solid var(--sl-color-gray-5);
+  padding-top: 3rem;
+  margin-top: 3rem;
+}
+
+/* Section labels (legacy, kept for compatibility) */
 .section-label {
   text-align: center;
   margin: 2rem auto 1rem;
@@ -106,6 +144,10 @@ starlight-file-tree .file > .tree-entry > span > span > svg.tree-icon path {
   --sl-color-gray-5: #c4c8da;
   --sl-color-gray-6: #d5d6db;
   --sl-color-black: #e1e2e7;
+}
+
+[data-theme='light'] [data-has-hero] .hero > .sl-flex > h1 {
+  color: var(--sl-color-white);
 }
 
 [data-theme='light'] [data-has-hero] .hero > .sl-flex > .tagline {

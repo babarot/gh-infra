@@ -1,48 +1,92 @@
 ---
-// Features displayed as a simple table — rows are guaranteed aligned by the browser.
+// Feature card grid for the landing page.
+// Usage: <Features />
 ---
-<table class="features-table">
-  <tbody>
-    <tr class="row-icon">
-      <td><span class="icon">Y</span></td>
-      <td><span class="icon">S</span></td>
-      <td><span class="icon">P</span></td>
-      <td><span class="icon">G</span></td>
-    </tr>
-    <tr class="row-title">
-      <td>YAML, not HCL</td>
-      <td>No state file</td>
-      <td>Plan & Apply</td>
-      <td>Just gh + a token</td>
-    </tr>
-    <tr class="row-desc">
-      <td>No new language. Just YAML.</td>
-      <td>GitHub is the source of truth.</td>
-      <td>Preview every change before it happens.</td>
-      <td>No apps. No servers. No infra.</td>
-    </tr>
-  </tbody>
-</table>
+<div class="feature-table">
+  <div class="feature-row">
+    <div class="feature-cell">
+      <div class="feature-card">
+        <span class="feature-icon">Y</span>
+        <div class="feature-title">YAML, not HCL</div>
+        <div class="feature-desc">No new language to learn. Describe your repos in plain YAML.</div>
+      </div>
+    </div>
+    <div class="feature-cell">
+      <div class="feature-card">
+        <span class="feature-icon">S</span>
+        <div class="feature-title">No state file</div>
+        <div class="feature-desc">GitHub is the source of truth. No drift. No state to manage.</div>
+      </div>
+    </div>
+  </div>
+  <div class="feature-row">
+    <div class="feature-cell">
+      <div class="feature-card">
+        <span class="feature-icon">P</span>
+        <div class="feature-title">Plan & Apply</div>
+        <div class="feature-desc">Preview every change before it happens. Apply with confidence.</div>
+      </div>
+    </div>
+    <div class="feature-cell">
+      <div class="feature-card">
+        <span class="feature-icon">G</span>
+        <div class="feature-title">Just gh + a token</div>
+        <div class="feature-desc">No apps. No servers. No infra. Just a gh extension.</div>
+      </div>
+    </div>
+  </div>
+  <div class="feature-row">
+    <div class="feature-cell">
+      <div class="feature-card">
+        <span class="feature-icon">R</span>
+        <div class="feature-title">RepositorySet</div>
+        <div class="feature-desc">Manage repos at scale. Shared defaults, per-repo overrides.</div>
+      </div>
+    </div>
+    <div class="feature-cell">
+      <div class="feature-card">
+        <span class="feature-icon">F</span>
+        <div class="feature-title">File delivery</div>
+        <div class="feature-desc">Distribute files across repos via push or pull request.</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <style>
-  .features-table {
+  .feature-table {
+    display: table;
+    table-layout: fixed;
     width: 100%;
     max-width: 860px;
     margin: 0 auto;
-    padding-top: 2rem;
-    border-collapse: collapse;
-    border-top: 1px solid var(--sl-color-gray-5);
-    table-layout: fixed;
+    border-spacing: 16px;
   }
 
-  .features-table td {
-    text-align: center;
+  .feature-row {
+    display: table-row;
+  }
+
+  .feature-cell {
+    display: table-cell;
+    width: 50%;
     vertical-align: top;
-    padding: 0.3rem 0.75rem;
-    border: none;
   }
 
-  .icon {
+  .feature-card {
+    padding: 20px;
+    height: 100%;
+    background: #16161e;
+    border: 1px solid #292e42;
+    border-radius: 12px;
+    transition: border-color 0.2s;
+  }
+
+  .feature-card:hover {
+    border-color: #3b4261;
+  }
+
+  .feature-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -54,25 +98,56 @@
     font-weight: 700;
     font-size: 0.85rem;
     font-family: var(--sl-font-mono, monospace);
+    margin-bottom: 10px;
   }
 
-  .row-title td {
+  .feature-title {
     font-size: 0.9rem;
     font-weight: 700;
-    color: var(--sl-color-white);
-    padding-top: 0.5rem;
+    color: #c0caf5;
+    margin-bottom: 4px;
   }
 
-  .row-desc td {
+  .feature-desc {
     font-size: 0.8rem;
-    color: var(--sl-color-gray-3);
+    color: #565f89;
     line-height: 1.5;
-    padding-top: 0.2rem;
-    padding-bottom: 1rem;
+    min-height: calc(1.5em * 2);
   }
 
-  :global([data-theme='light']) .icon {
+  /* Light theme */
+  :global([data-theme='light']) .feature-card {
+    background: #e9e9ed;
+    border-color: #c4c8da;
+  }
+
+  :global([data-theme='light']) .feature-card:hover {
+    border-color: #b4b5b9;
+  }
+
+  :global([data-theme='light']) .feature-icon {
     background: linear-gradient(135deg, rgba(97, 131, 187, 0.15), rgba(152, 84, 197, 0.15));
     color: #6183bb;
+  }
+
+  :global([data-theme='light']) .feature-title {
+    color: #343b58;
+  }
+
+  :global([data-theme='light']) .feature-desc {
+    color: #8990b3;
+  }
+
+  @media (max-width: 600px) {
+    .feature-table,
+    .feature-row,
+    .feature-cell {
+      display: block;
+      width: 100%;
+    }
+
+    .feature-cell + .feature-cell {
+      margin-top: 16px;
+    }
   }
 </style>
