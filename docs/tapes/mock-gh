@@ -251,6 +251,70 @@ if [[ "$args" == *"/git/refs/"* && "$args" == *"--method"*"PATCH"* ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Pull request
+# ---------------------------------------------------------------------------
+
+# gh pr create --repo owner/repo ...
+if [[ "$args" == *"pr create"* ]]; then
+  delay
+  echo "https://github.com/${repo}/pull/42"
+  exit 0
+fi
+
+# gh pr view (human-readable format)
+if [[ "$args" == *"pr view"* && "$args" != *"--json"* ]]; then
+  delay
+  green='\033[32m'
+  bold='\033[1m'
+  dim='\033[2m'
+  cyan='\033[36m'
+  reset='\033[0m'
+  printf "${bold}chore: sync managed files${reset} ${green}babarot/my-project#42${reset}\n"
+  printf "${green}Open${reset} • babarot wants to merge 1 commit into ${cyan}main${reset} from ${cyan}gh-infra/sync${reset} • about 1 minute ago\n"
+  printf "${green}+128${reset} ${dim}-12${reset} • ${dim}7 changed files${reset}\n"
+  printf "\n"
+  printf "  ${bold}## Summary${reset}\n"
+  printf "  Automated file sync by gh-infra.\n"
+  printf "\n"
+  printf "  ${bold}## Files${reset}\n"
+  printf "  • .github/CODEOWNERS\n"
+  printf "  • .github/workflows/ci.yml\n"
+  printf "  • .github/workflows/release.yml ${dim}(new)${reset}\n"
+  printf "  • .github/dependabot.yml ${dim}(new)${reset}\n"
+  printf "  • .github/PULL_REQUEST_TEMPLATE.md ${dim}(new)${reset}\n"
+  printf "  • .golangci.yml ${dim}(new)${reset}\n"
+  printf "  • LICENSE\n"
+  printf "\n"
+  printf "${dim}View this pull request on GitHub: https://github.com/${repo}/pull/42${reset}\n"
+  exit 0
+fi
+
+# gh pr view --json ...
+if [[ "$args" == *"pr view"*"--json"* ]]; then
+  delay
+  if [[ "$args" == *"--jq"* ]]; then
+    echo "https://github.com/${repo}/pull/42"
+  else
+    echo "{\"number\":42,\"title\":\"chore: sync managed files\",\"url\":\"https://github.com/${repo}/pull/42\"}"
+  fi
+  exit 0
+fi
+
+# Create PR: POST repos/owner/repo/pulls
+if [[ "$args" == *"/pulls"* && "$args" == *"--method"*"POST"* ]]; then
+  delay
+  echo "{\"html_url\":\"https://github.com/${repo}/pull/42\",\"number\":42}"
+  exit 0
+fi
+
+# Create ref (branch for PR)
+if [[ "$args" == *"/git/refs"* && "$args" == *"--method"*"POST"* ]]; then
+  delay
+  echo '{"ref":"refs/heads/gh-infra/sync"}'
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Write operations (succeed with delay)
 # ---------------------------------------------------------------------------
 

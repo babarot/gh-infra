@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Record all VHS tapes in parallel, then convert MP4→GIF sequentially.
 #
-# VHS's GIF generation is unreliable under parallel Docker on macOS.
-# Workaround: let VHS produce MP4 (which works fine in parallel),
-# then re-generate GIFs from MP4 using ffmpeg one at a time.
+# Each container gets resource limits to prevent starvation when running
+# in parallel. GIF generation is done separately via ffmpeg because VHS's
+# built-in GIF output is unreliable under parallel Docker on macOS.
 #
 # Usage: vhs.sh [-e KEY=VAL ...]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VHS_IMAGE="ghcr.io/charmbracelet/vhs"
+VHS_IMAGE="gh-infra-vhs"
 FFMPEG_IMAGE="jrottenberg/ffmpeg:7-alpine"
 
 docker_flags=()
@@ -23,7 +23,8 @@ if [[ ${#tapes[@]} -eq 0 ]]; then
   exit 0
 fi
 
-docker pull "$VHS_IMAGE"
+# Build custom image with vim pre-installed (cached after first build)
+docker build -q -t "$VHS_IMAGE" "$SCRIPT_DIR"
 
 echo "Recording ${#tapes[@]} tapes in parallel ..."
 
@@ -34,10 +35,11 @@ for tape in "${tapes[@]}"; do
   names+=("$name")
   echo "  ▶ $name"
   docker run --rm \
+    --memory=2g --cpus=2 \
     -v "$SCRIPT_DIR":/data \
     -w /data \
     ${docker_flags[@]+"${docker_flags[@]}"} \
-    "$VHS_IMAGE" "$name.tape" > /dev/null 2>&1 &
+    "$VHS_IMAGE" "$name.tape" &
   pids+=($!)
 done
 
@@ -57,11 +59,10 @@ if [[ $failures -gt 0 ]]; then
   exit 1
 fi
 
-# Re-generate GIFs from MP4 sequentially (VHS GIF output is unreliable in parallel)
+# Re-generate GIFs from MP4 sequentially
 echo "Converting MP4 → GIF ..."
 for name in "${names[@]}"; do
   mp4="$SCRIPT_DIR/$name.mp4"
-  gif="$SCRIPT_DIR/$name.gif"
   if [[ -f "$mp4" && "$(stat -f%z "$mp4" 2>/dev/null || stat -c%s "$mp4")" -gt 0 ]]; then
     echo "  ▶ $name.gif"
     docker run --rm -v "$SCRIPT_DIR":/data -w /data "$FFMPEG_IMAGE" \

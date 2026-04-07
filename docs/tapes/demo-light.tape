@@ -10,9 +10,9 @@ Output demo-light.mp4
 Set Theme { "name": "gh-infra-light", "black": "#0f0f14", "red": "#f52a65", "green": "#587539", "yellow": "#8c6c3e", "blue": "#2e7de9", "magenta": "#9854f1", "cyan": "#007197", "white": "#6172b0", "brightBlack": "#a1a6c5", "brightRed": "#f52a65", "brightGreen": "#587539", "brightYellow": "#8c6c3e", "brightBlue": "#2e7de9", "brightMagenta": "#9854f1", "brightCyan": "#007197", "brightWhite": "#3760bf", "background": "#e1e2e7", "foreground": "#3760bf", "selection": "#b6bfe2", "cursor": "#3760bf" }
 
 Set Shell "bash"
-Set FontSize 22
-Set Width 1200
-Set Height 800
+Set FontSize 20
+Set Width 1400
+Set Height 900
 Set Padding 20
 Set WindowBar ""
 Set TypingSpeed 50ms

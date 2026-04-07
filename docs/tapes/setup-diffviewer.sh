@@ -15,15 +15,13 @@ exec /data/mock-gh "$@"
 WRAPPER
 chmod +x /usr/local/bin/gh
 
-# Prepare mock data: 2 repos with old file contents.
-# YAML wants updated content → plan shows file diffs.
 export MOCK_DIR=/tmp/mock-data
 
 for repo in app-api app-web; do
   dir="$MOCK_DIR/babarot/${repo}"
   mkdir -p "$dir" "$dir/contents/.github/workflows"
 
-  # Repo settings (needed for plan to not error)
+  # Repo settings (no changes — just needed so plan doesn't error)
   cat > "$dir/view.json" << 'JSON'
 {
   "description": "",
@@ -43,20 +41,30 @@ for repo in app-api app-web; do
 }
 JSON
 
-  # Old CODEOWNERS (differs from desired)
+  # Old CODEOWNERS
   echo -n '* @old-owner' > "$dir/contents/.github/CODEOWNERS"
 
-  # Old CI workflow (differs from desired)
+  # Old CI workflow (checkout v3, push only, no lint, no coverage)
   cat > "$dir/contents/.github/workflows/ci.yml" << 'CI'
 name: CI
 on: [push]
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: make test
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: make test
 CI
+
+  # dependabot.yml does NOT exist on GitHub (404 → new file)
 done
 
 mkdir -p /tmp/demo
@@ -80,14 +88,53 @@ spec:
     - path: .github/workflows/ci.yml
       content: |
         name: CI
-        on: [push, pull_request]
+        on:
+          push:
+            branches: [main]
+          pull_request:
+
         jobs:
+          lint:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+
+              - name: Setup Go
+                uses: actions/setup-go@v5
+                with:
+                  go-version-file: go.mod
+
+              - name: Lint
+                uses: golangci/golangci-lint-action@v6
+
           test:
             runs-on: ubuntu-latest
             steps:
               - uses: actions/checkout@v4
-              - run: make lint
-              - run: make test
+
+              - name: Setup Go
+                uses: actions/setup-go@v5
+                with:
+                  go-version-file: go.mod
+
+              - name: Test
+                run: make test
+
+              - name: Upload coverage
+                uses: codecov/codecov-action@v4
+
+    - path: .github/dependabot.yml
+      content: |
+        version: 2
+        updates:
+          - package-ecosystem: gomod
+            directory: /
+            schedule:
+              interval: weekly
+          - package-ecosystem: github-actions
+            directory: /
+            schedule:
+              interval: weekly
 
   via: push
 YAML
