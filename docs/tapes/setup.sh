@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
-# Setup script for VHS demo recording.
-# Runs inside the VHS Docker container during the Hide phase.
-#
-# Expects:
-#   /data/.gh-infra  — pre-built Linux binary (built by 'make demos')
-#   /data/mock-gh    — mock gh CLI with canned API responses
+# Setup for intro demo (import → edit → plan).
 set -euo pipefail
 
-# Install pre-built gh-infra
 cp /data/.gh-infra /usr/local/bin/gh-infra
 chmod +x /usr/local/bin/gh-infra
 
-# Install gh wrapper:
-#   'gh infra ...' → real gh-infra binary
-#   everything else → mock-gh (canned API responses with delay)
 cat > /usr/local/bin/gh << 'WRAPPER'
 #!/usr/bin/env bash
 if [[ "$1" == "infra" ]]; then
@@ -24,10 +15,48 @@ exec /data/mock-gh "$@"
 WRAPPER
 chmod +x /usr/local/bin/gh
 
-# Prepare working directory (import will create the YAML)
+# Prepare mock data: two repos with different settings
+export MOCK_DIR=/tmp/mock-data
+mkdir -p "$MOCK_DIR/babarot/my-project" "$MOCK_DIR/babarot/my-service"
+
+cat > "$MOCK_DIR/babarot/my-project/view.json" << 'JSON'
+{
+  "description": "My project",
+  "homepageUrl": "",
+  "visibility": "PUBLIC",
+  "isArchived": false,
+  "repositoryTopics": [],
+  "hasIssuesEnabled": true,
+  "hasProjectsEnabled": true,
+  "hasWikiEnabled": true,
+  "hasDiscussionsEnabled": false,
+  "mergeCommitAllowed": true,
+  "squashMergeAllowed": false,
+  "rebaseMergeAllowed": true,
+  "deleteBranchOnMerge": false,
+  "defaultBranchRef": { "name": "main" }
+}
+JSON
+
+cat > "$MOCK_DIR/babarot/my-service/view.json" << 'JSON'
+{
+  "description": "My service",
+  "homepageUrl": "",
+  "visibility": "PUBLIC",
+  "isArchived": false,
+  "repositoryTopics": [],
+  "hasIssuesEnabled": true,
+  "hasProjectsEnabled": true,
+  "hasWikiEnabled": false,
+  "hasDiscussionsEnabled": false,
+  "mergeCommitAllowed": true,
+  "squashMergeAllowed": true,
+  "rebaseMergeAllowed": true,
+  "deleteBranchOnMerge": true,
+  "defaultBranchRef": { "name": "main" }
+}
+JSON
+
 mkdir -p /tmp/demo
-
-# Pass through env vars from host (e.g. GH_INFRA_OUTPUT=stream)
 export GH_INFRA_OUTPUT="${GH_INFRA_OUTPUT:-}"
-
 export PS1='$ '
