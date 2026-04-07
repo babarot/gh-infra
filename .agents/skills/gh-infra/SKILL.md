@@ -1,34 +1,53 @@
 ---
 name: gh-infra
 description: >
-  Overview of gh-infra and complete command reference (import, validate, plan, apply).
-  Use when managing GitHub repository settings, branch protection, rulesets, secrets,
-  variables, or files declaratively via YAML manifests.
+  Overview of gh-infra and command workflow (import, validate, plan, apply).
+  Use when managing GitHub repository settings, labels, actions settings, rulesets,
+  secrets, variables, or files declaratively via YAML manifests.
 ---
 
 # gh-infra
 
-gh-infra is a declarative GitHub infrastructure management tool. Define repository settings in YAML, then use a Terraform-like `plan` → `apply` workflow to sync them to GitHub.
+gh-infra is a declarative GitHub infrastructure tool for repository settings and managed files.
+
+Use this skill to choose the right resource kind, command flow, and operating pattern. Use the related skills for schema details.
 
 Key characteristics:
 
-- **No state file** — GitHub is the source of truth. gh-infra fetches live state on every run.
-- **Selective management** — only fields declared in YAML are managed. Omitted fields are left untouched.
-- **Four resource kinds**: `Repository`, `RepositorySet`, `File`, `FileSet`.
+- No state file. GitHub is the source of truth.
+- Selective management. Omitted fields are left untouched.
+- Four resource kinds: `Repository`, `RepositorySet`, `File`, `FileSet`.
+- Supports both bootstrap import and reverse import into existing manifests.
+
+## Use This Skill For
+
+- Choosing between `Repository` / `RepositorySet` / `File` / `FileSet`
+- Running `import`, `validate`, `plan`, and `apply`
+- Picking a central-management vs self-managed repo layout
+- Finding the right manifest skill for a concrete edit
+- Routing `import --into` work to the dedicated skill
 
 ## Related Skills
 
-| Task | Skill to use |
-|------|-------------|
-| Write/edit `Repository` or `RepositorySet` YAML | **repository-manifest** |
-| Write/edit `File` or `FileSet` YAML | **file-manifest** |
-| Set up GitHub Actions workflows (`--ci`, `--auto-approve`) | **ci-cd** |
+| Task | Skill |
+|------|-------|
+| Write/edit `Repository` or `RepositorySet` YAML | `repository-manifest` |
+| Write/edit `File` or `FileSet` YAML | `file-manifest` |
+| Set up CI workflows and auth | `ci-cd` |
+| Pull live GitHub state back into existing manifests | `import-into` |
 
-## YAML Document Structure
+## Resource Selection
 
-Every manifest starts with `apiVersion` and `kind`. The structure differs between single-repo and set kinds:
+Use:
 
-Single-repo kinds (`Repository`, `File`):
+- `Repository` for one repository's settings in one file
+- `RepositorySet` for many repositories with shared defaults
+- `File` for files in one repository
+- `FileSet` for distributing shared files to many repositories
+
+Every manifest starts with `apiVersion` and `kind`.
+
+Single-repo resources:
 
 ```yaml
 apiVersion: gh-infra/v1
@@ -40,7 +59,7 @@ spec:
   # ...
 ```
 
-Set kinds (`RepositorySet`, `FileSet`):
+Set resources:
 
 ```yaml
 apiVersion: gh-infra/v1
@@ -64,154 +83,94 @@ spec:
   files: [...]              # FileSet: files to distribute
 ```
 
-A single YAML file can contain multiple documents separated by `---`. This allows mixing different resource kinds in one file:
+A single YAML file can contain multiple `---`-separated documents. Anchors do not cross document boundaries.
+
+## Command Workflow
+
+Default workflow:
+
+```text
+import -> edit YAML -> validate -> plan -> apply
+```
+
+### import
+
+Bootstrap a manifest from live GitHub state:
+
+```bash
+gh infra import <owner/repo>
+```
+
+### validate
+
+Validate syntax and schema without contacting GitHub:
+
+```bash
+gh infra validate [path]
+```
+
+### plan
+
+Show diff against live GitHub state:
+
+```bash
+gh infra plan [path]
+```
+
+Use `--ci` for drift-detection workflows.
+
+### apply
+
+Apply changes to GitHub:
+
+```bash
+gh infra apply [path]
+```
+
+Use `--auto-approve` in CI. `--force-secrets` re-sends all declared secrets.
+
+## Path Behavior
+
+For `validate`, `plan`, and `apply`:
+
+- No argument or `.`: read `*.yaml` and `*.yml` in the current directory
+- File path: read that file only
+- Directory path: read top-level `*.yaml` and `*.yml` only
+- Subdirectories are not scanned
+- Unknown YAML kinds are skipped unless `--fail-on-unknown` is set
+
+## Common Patterns
+
+- Central management repo: keep org-wide manifests in `repos/` and `files/`
+- Self-managed repo: keep one manifest inside the managed repository and auto-apply on merge
+
+Read [references/patterns.md](./references/patterns.md) for layout guidance.
+
+## Read Next
+
+- Command details: [references/commands.md](./references/commands.md)
+- Operating patterns: [references/patterns.md](./references/patterns.md)
+
+## Example Multi-Doc File
 
 ```yaml
 apiVersion: gh-infra/v1
 kind: Repository
 metadata:
-  owner: babarot
-  name: gomi
+  owner: my-org
+  name: my-repo
 spec:
   visibility: public
 ---
 apiVersion: gh-infra/v1
 kind: File
 metadata:
-  owner: babarot
-  name: gomi
+  owner: my-org
+  name: my-repo
 spec:
   files:
     - path: .github/CODEOWNERS
       content: |
-        * @babarot
+        * @username
   via: push
 ```
-
-Note: YAML anchors do not work across document boundaries (`---`). Each document has its own scope.
-
-## Commands
-
-### import
-
-Export an existing repository's settings as a complete `Repository` YAML manifest.
-
-```bash
-gh infra import <owner/repo>
-```
-
-Example:
-
-```bash
-gh infra import babarot/my-project > repos/my-project.yaml
-```
-
-Use this as the starting point when adopting gh-infra for an existing repo — import, review, edit, then plan/apply.
-
-### validate
-
-Check YAML syntax and schema without contacting GitHub.
-
-```bash
-gh infra validate [path]
-```
-
-| Argument | Behavior |
-|----------|----------|
-| *(none)* or `.` | All `*.yaml` in the current directory |
-| File | That file only |
-| Directory | All `*.yaml` directly under it (subdirectories are ignored) |
-
-Flags:
-
-| Flag | Description |
-|------|-------------|
-| `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
-
-Exits 0 if all files are valid.
-
-### plan
-
-Show diff between YAML and current GitHub state. **No mutations are made.**
-
-```bash
-gh infra plan [path]
-```
-
-Path behavior is the same as `validate`. Non-gh-infra YAML files are silently skipped.
-
-Flags:
-
-| Flag | Description |
-|------|-------------|
-| `-r, --repo <owner/repo>` | Target a specific repository |
-| `--ci` | Exit with code 1 if changes detected (for CI drift detection) |
-| `--fail-on-unknown` | Error on YAML files with unknown Kind |
-
-Examples:
-
-```bash
-gh infra plan ./repos/
-gh infra plan ./repos/gomi.yaml
-gh infra plan ./repos/ --repo babarot/gomi
-gh infra plan ./repos/ --ci
-```
-
-### apply
-
-Apply changes to GitHub. Requires interactive confirmation by default.
-
-```bash
-gh infra apply [path]
-```
-
-Path behavior is the same as `validate`.
-
-Flags:
-
-| Flag | Description |
-|------|-------------|
-| `-r, --repo <owner/repo>` | Target a specific repository |
-| `--auto-approve` | Skip confirmation prompt (required for CI) |
-| `--force-secrets` | Re-set all secrets even if they already exist |
-| `--fail-on-unknown` | Error on YAML files with unknown Kind |
-
-Interactive diff viewer (at confirmation prompt):
-
-| Key | Action |
-|-----|--------|
-| `d` | Open full-screen diff viewer |
-| `↑`/`↓` or `j`/`k` | Select file |
-| `Tab` | Toggle apply/skip for the selected file |
-| `d`/`u` | Scroll diff pane |
-| `q`/`Esc` | Return to confirmation |
-
-Toggling a file to "skip" is a runtime-only decision — the YAML manifest is not modified.
-
-Examples:
-
-```bash
-gh infra apply ./repos/
-gh infra apply ./repos/ --auto-approve
-gh infra apply ./repos/ --force-secrets
-gh infra apply ./repos/ --repo babarot/gomi
-```
-
-## Recommended Workflow
-
-```
-import → edit YAML → validate → plan → apply
-```
-
-1. `gh infra import owner/repo > repos/repo.yaml` — capture current state
-2. Edit the YAML to declare the desired state
-3. `gh infra validate` — check syntax
-4. `gh infra plan` — review what would change
-5. `gh infra apply` — apply the changes
-
-## Global Flags
-
-| Flag | Description |
-|------|-------------|
-| `-V, --verbose` | Show gh command execution details |
-| `--log-level <level>` | Set log level: trace, debug, info, warn, error |

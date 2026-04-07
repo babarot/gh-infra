@@ -38,16 +38,10 @@ demo:
 	fi
 	@echo "Building gh-infra for Linux..."
 	@GOOS=linux GOARCH=amd64 go build -ldflags $(LDFLAGS) -trimpath -o docs/tapes/.gh-infra ./cmd/gh-infra/
-	@for tape in docs/tapes/*.tape; do \
-		echo "Recording $$(basename $$tape)..."; \
-		docker run --rm \
-			-v $(CURDIR)/docs/tapes:/data \
-			-w /data \
-			$(foreach v,$(DEMO_ENV),-e $(v)) \
-			ghcr.io/charmbracelet/vhs $$(basename $$tape); \
-	done
+	@docs/tapes/vhs.sh $(foreach v,$(DEMO_ENV),-e $(v))
 	@rm -f docs/tapes/.gh-infra
 	@echo "Copying assets to docs/public/..."
 	@cp docs/tapes/demo.gif docs/tapes/demo-light.gif docs/public/
+	@cp docs/tapes/demo-apply.gif docs/tapes/demo-diffviewer.gif docs/tapes/demo-import-into.gif docs/public/ 2>/dev/null || true
 
 .PHONY: all test lint build install clean docs docs-build docs-install demo

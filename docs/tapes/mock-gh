@@ -1,31 +1,90 @@
 #!/usr/bin/env bash
 # Mock gh CLI for VHS demo recording.
-# Returns canned responses with realistic delays.
-# This script is placed in PATH inside the VHS Docker container
-# so that gh-infra uses it instead of the real gh CLI.
-
+#
+# Data-driven: each setup script populates $MOCK_DIR with the "GitHub state"
+# that this mock should return. mock-gh itself is generic and scenario-agnostic.
+#
+# Directory layout:
+#   $MOCK_DIR/{owner}/{repo}/
+#     view.json                  — gh repo view --json response
+#     commit-settings.json       — squash/merge commit title/message (optional)
+#     contents/{path}            — raw file content (base64-encoded on the fly)
+#
+# Files are optional. When missing, sensible defaults are returned.
 set -euo pipefail
 
-# Simulate API latency (0.2–0.5s)
+MOCK_DIR="${MOCK_DIR:-/tmp/mock-data}"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 delay() {
   local ms=$(( RANDOM % 300 + 200 ))
   sleep "0.${ms}"
 }
 
+# Extract "owner/repo" from various argument patterns.
+extract_repo() {
+  # gh api repos/owner/repo/...
+  if [[ "$*" =~ repos/([^/]+/[^/]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return
+  fi
+
+  # gh repo view owner/repo ... | gh repo edit owner/repo ...
+  for arg in "$@"; do
+    if [[ "$arg" == */* && "$arg" != --* && "$arg" != *=* ]]; then
+      echo "$arg"
+      return
+    fi
+  done
+
+  # gh secret list --repo owner/repo | gh variable list --repo owner/repo
+  local prev=""
+  for arg in "$@"; do
+    if [[ "$prev" == "--repo" ]]; then
+      echo "$arg"
+      return
+    fi
+    prev="$arg"
+  done
+
+  echo ""
+}
+
+# Return the data directory for a repo, e.g. /tmp/mock-data/babarot/app-api
+repo_dir() {
+  local owner="${1%%/*}"
+  local name="${1##*/}"
+  echo "${MOCK_DIR}/${owner}/${name}"
+}
+
+# Read a file from the repo data dir, or print a default value.
+# Usage: read_data "babarot/app-api" "view.json" '{"fallback":true}'
+read_data() {
+  local file
+  file="$(repo_dir "$1")/$2"
+  if [[ -f "$file" ]]; then
+    cat "$file"
+  else
+    echo "$3"
+  fi
+}
+
 args="$*"
+repo="$(extract_repo "$@")"
 
 # ---------------------------------------------------------------------------
-# Plan: repository state fetching
+# Repository view
 # ---------------------------------------------------------------------------
 
-# gh repo view owner/repo --json description,homepageUrl,visibility,...
-# Differentiate by repo name for multi-repo demos.
+# gh repo view owner/repo --json description,homepageUrl,...
+# (must come before narrower matches — this is the full settings fetch)
 if [[ "$args" == *"repo view"*"--json"*"description,homepageUrl"* ]]; then
   delay
-  if [[ "$args" == *"my-service"* ]]; then
-    cat <<'JSON'
-{
-  "description": "My service",
+  read_data "$repo" "view.json" '{
+  "description": "",
   "homepageUrl": "",
   "visibility": "PUBLIC",
   "isArchived": false,
@@ -39,91 +98,63 @@ if [[ "$args" == *"repo view"*"--json"*"description,homepageUrl"* ]]; then
   "rebaseMergeAllowed": true,
   "deleteBranchOnMerge": true,
   "defaultBranchRef": { "name": "main" }
-}
-JSON
-  else
-    cat <<'JSON'
-{
-  "description": "My project",
-  "homepageUrl": "",
-  "visibility": "PUBLIC",
-  "isArchived": false,
-  "repositoryTopics": [],
-  "hasIssuesEnabled": true,
-  "hasProjectsEnabled": true,
-  "hasWikiEnabled": true,
-  "hasDiscussionsEnabled": false,
-  "mergeCommitAllowed": true,
-  "squashMergeAllowed": false,
-  "rebaseMergeAllowed": true,
-  "deleteBranchOnMerge": false,
-  "defaultBranchRef": { "name": "main" }
-}
-JSON
-  fi
+}'
   exit 0
 fi
 
-# gh api repos/owner/repo --jq {squash_merge_commit_title,...}
-if [[ "$args" == *"api repos/"*"--jq"*"squash_merge_commit_title"* ]]; then
+# gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name
+# (FileSet apply calls this separately — only matches when description is NOT in the args)
+if [[ "$args" == *"repo view"*"--json"*"defaultBranchRef"* ]]; then
   delay
-  cat <<'JSON'
-{
+  echo "main"
+  exit 0
+fi
+
+# gh repo view owner/repo --json repositoryTopics --jq (used during topic apply)
+if [[ "$args" == *"repo view"*"repositoryTopics"* ]]; then
+  delay
+  echo ''
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Repository REST API
+# ---------------------------------------------------------------------------
+
+# Commit message settings
+if [[ "$args" == *"--jq"*"squash_merge_commit_title"* ]]; then
+  delay
+  read_data "$repo" "commit-settings.json" '{
   "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
   "squash_merge_commit_message": "COMMIT_MESSAGES",
   "merge_commit_title": "MERGE_MESSAGE",
   "merge_commit_message": "PR_TITLE"
-}
-JSON
+}'
   exit 0
 fi
 
-# gh api repos/owner/repo/branches --jq (protected branches)
+# Protected branches
 if [[ "$args" == *"/branches"*"--jq"*"protected"* ]]; then
   delay
   echo '[]'
   exit 0
 fi
 
-# gh api repos/owner/repo/rulesets --paginate
+# Rulesets
 if [[ "$args" == *"/rulesets"*"--paginate"* ]]; then
   delay
   echo '[]'
   exit 0
 fi
 
-# gh api repos/owner/repo/immutable-releases
-if [[ "$args" == *"/immutable-releases"* ]]; then
-  delay
-  echo '{"enabled":false}'
-  exit 0
-fi
-
-# gh api repos/owner/repo/actions/permissions
-if [[ "$args" == *"/actions/permissions/workflow"* ]]; then
-  delay
-  echo '{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}'
-  exit 0
-fi
-if [[ "$args" == *"/actions/permissions/fork-pr-contributor-approval"* ]]; then
-  delay
-  echo '{"approval_policy":"first_time_contributors"}'
-  exit 0
-fi
-if [[ "$args" == *"/actions/permissions"* ]]; then
-  delay
-  echo '{"enabled":true,"allowed_actions":"all","sha_pinning_required":false}'
-  exit 0
-fi
-
-# gh secret list --repo owner/repo
+# Secrets
 if [[ "$args" == *"secret list"* ]]; then
   delay
   echo ''
   exit 0
 fi
 
-# gh variable list --repo owner/repo
+# Variables
 if [[ "$args" == *"variable list"* ]]; then
   delay
   echo '[]'
@@ -131,23 +162,103 @@ if [[ "$args" == *"variable list"* ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Apply: write operations (just succeed with delay)
+# Actions permissions
 # ---------------------------------------------------------------------------
 
-# gh repo edit ...
+if [[ "$args" == *"/actions/permissions/workflow"* ]]; then
+  delay
+  echo '{"default_workflow_permissions":"write","can_approve_pull_request_reviews":true}'
+  exit 0
+fi
+
+if [[ "$args" == *"/actions/permissions/fork-pr"* ]]; then
+  delay
+  echo '{}'
+  exit 0
+fi
+
+if [[ "$args" == *"/actions/permissions/selected-actions"* ]]; then
+  delay
+  echo '{}'
+  exit 0
+fi
+
+if [[ "$args" == *"/actions/permissions"* ]]; then
+  delay
+  echo '{"enabled":true,"allowed_actions":"all"}'
+  exit 0
+fi
+
+# Immutable releases
+if [[ "$args" == *"/immutable-releases"* ]]; then
+  delay
+  echo '{"enabled":false}'
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# File contents API
+# ---------------------------------------------------------------------------
+
+# GET repos/owner/repo/contents/{path} (not PUT/POST)
+if [[ "$args" == *"/contents/"* && "$args" != *"--method"* ]]; then
+  delay
+  # Extract file path: repos/owner/repo/contents/some/path → some/path
+  file_path="${args##*/contents/}"
+  file_path="${file_path%% *}"      # strip trailing flags
+  file_path="${file_path%%\?*}"     # strip query params
+
+  local_file="$(repo_dir "$repo")/contents/${file_path}"
+
+  if [[ -f "$local_file" ]]; then
+    content="$(base64 < "$local_file" | tr -d '\n')"
+    sha="$(echo -n "$file_path" | cksum | cut -d' ' -f1)"
+    echo "{\"content\":\"${content}\",\"encoding\":\"base64\",\"sha\":\"${sha}\"}"
+  else
+    echo '{"message":"Not Found"}' >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Git Data API (FileSet apply)
+# ---------------------------------------------------------------------------
+
+# Get HEAD ref
+if [[ "$args" == *"/git/ref/heads/"* ]]; then
+  delay
+  if [[ "$args" == *"--jq"* ]]; then
+    echo "aaaa1111bbbb2222cccc3333dddd4444eeee5555"
+  else
+    echo '{"object":{"sha":"aaaa1111bbbb2222cccc3333dddd4444eeee5555"}}'
+  fi
+  exit 0
+fi
+
+# Create blob / tree / commit
+if [[ "$args" == *"/git/blobs"* || "$args" == *"/git/trees"* || "$args" == *"/git/commits"* ]]; then
+  delay
+  echo '{"sha":"ffff6666aaaa7777bbbb8888cccc9999dddd0000"}'
+  exit 0
+fi
+
+# Update ref
+if [[ "$args" == *"/git/refs/"* && "$args" == *"--method"*"PATCH"* ]]; then
+  delay
+  echo '{"ref":"refs/heads/main"}'
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Write operations (succeed with delay)
+# ---------------------------------------------------------------------------
+
 if [[ "$args" == *"repo edit"* ]]; then
   delay
   exit 0
 fi
 
-# gh repo view ... --json repositoryTopics (used during topic apply)
-if [[ "$args" == *"repo view"*"repositoryTopics"* ]]; then
-  delay
-  echo ''
-  exit 0
-fi
-
-# gh api ... --method PATCH/PUT/POST (any write API call)
 if [[ "$args" == *"--method"* ]]; then
   delay
   echo '{"sha":"mock-sha-0123456789abcdef"}'
@@ -155,7 +266,7 @@ if [[ "$args" == *"--method"* ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Fallback: succeed silently
+# Fallback
 # ---------------------------------------------------------------------------
 delay
 exit 0
