@@ -614,7 +614,9 @@ func (p *Processor) fetchLabelUsage(ctx context.Context, owner, repo, labelName 
 	raw := strings.TrimSpace(string(out))
 	var count int
 	var dateStr string
-	fmt.Sscanf(raw, "%d %s", &count, &dateStr)
+	if _, err := fmt.Sscanf(raw, "%d %s", &count, &dateStr); err != nil {
+		return LabelUsage{}, err
+	}
 
 	var lastUsed time.Time
 	if dateStr != "" {
