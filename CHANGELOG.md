@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.9.0](https://github.com/babarot/gh-infra/compare/v0.8.0...v0.9.0) - 2026-04-07
+### New Features
+- Add label management support for repositories by @babarot in https://github.com/babarot/gh-infra/pull/91
+- Add label sync mode (additive/mirror) by @babarot in https://github.com/babarot/gh-infra/pull/93
+### Improvements
+- Import action selector: write / patch / skip per file by @babarot in https://github.com/babarot/gh-infra/pull/83
+- Extract withTrackerCancelContext and propagate context through Diff by @babarot in https://github.com/babarot/gh-infra/pull/84
+- Default create_only files to skip in import with soft/hard skip distinction by @babarot in https://github.com/babarot/gh-infra/pull/85
+- Add per-file status callback to DiffFiles for granular progress reporting by @babarot in https://github.com/babarot/gh-infra/pull/86
+- Reverse-map template placeholders during import by @babarot in https://github.com/babarot/gh-infra/pull/87
+### Refactorings
+- Introduce local interfaces to decouple fileset/repository from ui package by @babarot in https://github.com/babarot/gh-infra/pull/81
+- Consolidate formatImportValue into shared FormatValue by @babarot in https://github.com/babarot/gh-infra/pull/90
+
 ## [v0.8.0](https://github.com/babarot/gh-infra/compare/v0.7.0...v0.8.0) - 2026-04-05
 ### New Features
 - Add `import --into` command for pulling GitHub state into local manifests by @babarot in https://github.com/babarot/gh-infra/pull/68
