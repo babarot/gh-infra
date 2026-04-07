@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -565,6 +566,76 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string) (map[st
 		}
 	}
 	return result, nil
+}
+
+// enrichLabelDeleteInfo fetches usage stats for label delete changes and
+// embeds them in the OldValue for plan display.
+func (p *Processor) enrichLabelDeleteInfo(ctx context.Context, changes []Change) {
+	for i := range changes {
+		c := &changes[i]
+		if c.Resource != manifest.ResourceLabel || c.Type != ChangeDelete {
+			continue
+		}
+		// c.Name is "owner/repo"
+		parts := strings.SplitN(c.Name, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		usage, err := p.fetchLabelUsage(ctx, parts[0], parts[1], c.Field)
+		if err != nil {
+			continue // non-fatal: show without usage stats
+		}
+		old := fmt.Sprintf("%v", c.OldValue)
+		if usage.Count == 0 {
+			old += " (0 issues/PRs)"
+		} else {
+			age := formatTimeAgo(usage.LastUsed)
+			old += fmt.Sprintf(" (%d issues/PRs, last used %s)", usage.Count, age)
+		}
+		c.OldValue = old
+	}
+}
+
+// fetchLabelUsage returns the number of issues/PRs with a label and
+// when it was last used, via the GitHub Search API.
+func (p *Processor) fetchLabelUsage(ctx context.Context, owner, repo, labelName string) (LabelUsage, error) {
+	q := fmt.Sprintf("label:\"%s\" repo:%s/%s sort:updated-desc", labelName, owner, repo)
+	out, err := p.runner.Run(ctx,
+		"api", "/search/issues",
+		"-X", "GET",
+		"-f", "q="+q,
+		"-f", "per_page=1",
+		"--jq", `"\(.total_count) \(.items[0].updated_at // "")"`,
+	)
+	if err != nil {
+		return LabelUsage{}, err
+	}
+
+	raw := strings.TrimSpace(string(out))
+	var count int
+	var dateStr string
+	fmt.Sscanf(raw, "%d %s", &count, &dateStr)
+
+	var lastUsed time.Time
+	if dateStr != "" {
+		lastUsed, _ = time.Parse(time.RFC3339, dateStr)
+	}
+	return LabelUsage{Count: count, LastUsed: lastUsed}, nil
+}
+
+func formatTimeAgo(t time.Time) string {
+	if t.IsZero() {
+		return "unknown"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string) (CurrentActions, error) {

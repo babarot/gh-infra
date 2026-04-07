@@ -101,7 +101,7 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffRulesets(ctx, name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
-	changes = append(changes, diffLabels(name, desired, current)...)
+	changes = append(changes, diffLabels(name, desired, current, manifest.LabelSyncMode(desired.Spec.LabelSync))...)
 	changes = append(changes, diffActions(name, desired, current)...)
 
 	return changes
@@ -555,10 +555,12 @@ func diffVariables(name string, desired *manifest.Repository, current *CurrentSt
 	return changes
 }
 
-func diffLabels(name string, desired *manifest.Repository, current *CurrentState) []Change {
+func diffLabels(name string, desired *manifest.Repository, current *CurrentState, labelSync string) []Change {
 	var changes []Change
 
+	desiredSet := make(map[string]bool)
 	for _, dl := range desired.Spec.Labels {
+		desiredSet[dl.Name] = true
 		cl, exists := current.Labels[dl.Name]
 		if !exists {
 			changes = append(changes, Change{
@@ -566,7 +568,7 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 				Resource: manifest.ResourceLabel,
 				Name:     name,
 				Field:    dl.Name,
-				NewValue: dl.Color,
+				NewValue: labelSummary(dl.Color, dl.Description),
 			})
 			continue
 		}
@@ -599,7 +601,29 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 		}
 	}
 
+	// Mirror mode: delete labels not in the manifest
+	if labelSync == manifest.LabelSyncMirror {
+		for labelName, cl := range current.Labels {
+			if !desiredSet[labelName] {
+				changes = append(changes, Change{
+					Type:     ChangeDelete,
+					Resource: manifest.ResourceLabel,
+					Name:     name,
+					Field:    labelName,
+					OldValue: labelSummary(cl.Color, cl.Description),
+				})
+			}
+		}
+	}
+
 	return changes
+}
+
+func labelSummary(color, description string) string {
+	if description != "" {
+		return fmt.Sprintf("#%s %q", color, description)
+	}
+	return "#" + color
 }
 
 func diffActions(name string, desired *manifest.Repository, current *CurrentState) []Change {

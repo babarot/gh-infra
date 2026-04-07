@@ -798,7 +798,12 @@ func (p *Processor) applyLabel(ctx context.Context, c Change, repo *manifest.Rep
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
 
-	// Find label from desired state
+	if c.Type == ChangeDelete {
+		_, err := p.runner.Run(ctx, "label", "delete", c.Field, "--repo", fullName, "--yes")
+		return wrapError(err, fullName, "label:"+c.Field)
+	}
+
+	// Find label from desired state (required for create/update)
 	var label *manifest.Label
 	for i := range repo.Spec.Labels {
 		if repo.Spec.Labels[i].Name == c.Field {

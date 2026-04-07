@@ -26,7 +26,7 @@ How overrides are applied depends on the field type:
 
 ### Scalars — replaced
 
-Strings, booleans, and numbers are simply replaced by the per-repo value.
+Strings, booleans, and numbers (including `label_sync`) are simply replaced by the per-repo value.
 
 ```yaml
 defaults:

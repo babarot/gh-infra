@@ -31,6 +31,8 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 
 		// Preserve local secrets — GitHub API cannot return secret values.
 		imported.Secrets = local.Secrets
+		// Preserve local label_sync — this is a local policy, not GitHub state.
+		imported.LabelSync = local.LabelSync
 
 		diffs := compareSpecs(local, imported)
 		if len(diffs) == 0 {
@@ -78,6 +80,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 
 		imported := input.Imported.Spec
 		imported.Secrets = doc.Resource.Spec.Secrets
+		imported.LabelSync = doc.Resource.Spec.LabelSync
 
 		newOverride := minimalOverride(doc.DefaultsSpec.Spec, imported)
 
@@ -1050,6 +1053,11 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	// but for minimalOverride we keep whatever was in the imported spec.
 	if !reflect.DeepEqual(defaults.Secrets, imported.Secrets) {
 		override.Secrets = imported.Secrets
+	}
+
+	// LabelSync: preserve local policy (not from import)
+	if !ptrEqual(defaults.LabelSync, imported.LabelSync) {
+		override.LabelSync = imported.LabelSync
 	}
 
 	return override

@@ -101,6 +101,9 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		p.diagnose.Warning("", fmt.Sprintf("%d %s occurred during refresh. Affected repositories were skipped.", errors, label))
 	}
 
+	// Enrich label delete changes with usage stats (issue/PR count, last used)
+	p.enrichLabelDeleteInfo(ctx, allChanges)
+
 	logger.Info("plan complete", "total_changes", len(allChanges), "errors", errors)
 	return allChanges, targetRepos, nil
 }

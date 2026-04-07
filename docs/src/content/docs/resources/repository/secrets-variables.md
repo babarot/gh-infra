@@ -1,7 +1,7 @@
 ---
 title: Secrets & Variables
 sidebar:
-  order: 4
+  order: 5
 ---
 
 ## Secrets

@@ -15,6 +15,10 @@ const (
 	ResourceActions          = "Actions"
 	ResourceLabel            = "Label"
 
+	// Label sync mode values.
+	LabelSyncAdditive = "additive"
+	LabelSyncMirror   = "mirror"
+
 	// Ruleset enforcement values.
 	RulesetEnforcementActive   = "active"
 	RulesetEnforcementEvaluate = "evaluate"
@@ -70,6 +74,7 @@ type RepositorySpec struct {
 	Archived            *bool              `yaml:"archived,omitempty"`
 	Topics              []string           `yaml:"topics,omitempty"`
 	Labels              []Label            `yaml:"labels,omitempty"            validate:"unique=name"`
+	LabelSync           *string            `yaml:"label_sync,omitempty"        validate:"omitempty,oneof=additive mirror"`
 	Features            *Features          `yaml:"features,omitempty"`
 	MergeStrategy       *MergeStrategy     `yaml:"merge_strategy,omitempty"`
 	ReleaseImmutability *bool              `yaml:"release_immutability,omitempty"`
@@ -194,6 +199,15 @@ type Label struct {
 	Name        string `yaml:"name"        validate:"required"`
 	Description string `yaml:"description,omitempty"`
 	Color       string `yaml:"color"       validate:"required"`
+}
+
+// LabelSyncMode returns the effective label sync mode.
+// nil is treated as additive (safe default).
+func LabelSyncMode(s *string) string {
+	if s == nil {
+		return LabelSyncAdditive
+	}
+	return *s
 }
 
 type Secret struct {

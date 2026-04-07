@@ -1,7 +1,7 @@
 ---
 title: Actions
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Manage GitHub Actions permissions, SHA pinning, workflow defaults, allowed actions, and fork PR approval policies.

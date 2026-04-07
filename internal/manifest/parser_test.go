@@ -1384,3 +1384,48 @@ repositories:
 		t.Errorf("expected custom-label, got %q", repos[1].Spec.Labels[0].Name)
 	}
 }
+
+func TestRepositorySet_LabelSyncMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    label_sync: mirror
+    labels:
+      - name: kind/bug
+        color: d73a4a
+repositories:
+  - name: inherits-sync
+    spec:
+      description: "inherits label_sync from defaults"
+  - name: overrides-sync
+    spec:
+      label_sync: additive
+`
+	path := filepath.Join(dir, "sync.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+
+	// First repo inherits mirror from defaults
+	if repos[0].Spec.LabelSync == nil || *repos[0].Spec.LabelSync != LabelSyncMirror {
+		t.Errorf("inherits-sync: expected mirror, got %v", repos[0].Spec.LabelSync)
+	}
+
+	// Second repo overrides to additive
+	if repos[1].Spec.LabelSync == nil || *repos[1].Spec.LabelSync != LabelSyncAdditive {
+		t.Errorf("overrides-sync: expected additive, got %v", repos[1].Spec.LabelSync)
+	}
+}

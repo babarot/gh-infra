@@ -1,5 +1,13 @@
 package repository
 
+import "time"
+
+// LabelUsage holds usage statistics for a label (for mirror mode display).
+type LabelUsage struct {
+	Count    int
+	LastUsed time.Time
+}
+
 // CurrentState represents the current state of a GitHub repository.
 type CurrentState struct {
 	Owner               string

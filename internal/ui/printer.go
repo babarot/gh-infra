@@ -222,8 +222,13 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 	icon := renderIcon(item.Icon)
 	switch item.Icon {
 	case IconAdd:
+		val := FormatValue(item.Value)
+		if tw := p.termWidth(); tw > 0 {
+			prefix := len(indent) + 2 + 1 + width + 2
+			_, val = truncateChangeValues("", val, tw, prefix)
+		}
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
-			indent, icon, width, item.Field, Green.Render(FormatValue(item.Value)))
+			indent, icon, width, item.Field, Green.Render(val))
 	case IconChange:
 		old, new := item.Old, item.New
 		if tw := p.termWidth(); tw > 0 {
@@ -233,8 +238,13 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 		fmt.Fprintf(p.out, "%s%s %-*s  %s %s %s\n",
 			indent, icon, width, item.Field, Dim.Render(old), Dim.Render(IconArrow), Bold.Render(new))
 	case IconRemove:
+		val := FormatValue(item.Value)
+		if tw := p.termWidth(); tw > 0 {
+			prefix := len(indent) + 2 + 1 + width + 2
+			_, val = truncateChangeValues("", val, tw, prefix)
+		}
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
-			indent, icon, width, item.Field, Red.Render(FormatValue(item.Value)))
+			indent, icon, width, item.Field, Red.Render(val))
 	}
 }
 
