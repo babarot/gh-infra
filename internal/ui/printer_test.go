@@ -22,11 +22,13 @@ func TestFormatValue(t *testing.T) {
 		val  any
 		want string
 	}{
+		{"nil", nil, "<nil>"},
 		{"string slice", []string{"a", "b"}, "[a, b]"},
 		{"empty slice", []string{}, "[]"},
 		{"bool true", true, "true"},
 		{"bool false", false, "false"},
 		{"string", "hello", "hello"},
+		{"empty string", "", `""`},
 		{"int", 42, "42"},
 	}
 	for _, tt := range tests {

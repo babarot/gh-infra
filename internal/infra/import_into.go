@@ -3,9 +3,6 @@ package infra
 import (
 	"context"
 	"fmt"
-	"strings"
-
-	goyaml "github.com/goccy/go-yaml"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
@@ -266,8 +263,8 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 				p.PrintChange(ui.ChangeItem{
 					Icon:  ui.IconChange,
 					Field: d.Field,
-					Old:   formatImportValue(d.Old),
-					New:   formatImportValue(d.New),
+					Old:   ui.FormatValue(d.Old),
+					New:   ui.FormatValue(d.New),
 				})
 			}
 		}
@@ -382,28 +379,4 @@ func writeModeForAction(c importer.Change, action string) importer.WriteMode {
 		}
 		return importer.WriteInline
 	}
-}
-
-// formatImportValue formats a FieldDiff value as YAML text for display.
-func formatImportValue(v any) string {
-	if v == nil {
-		return "(none)"
-	}
-	switch val := v.(type) {
-	case string:
-		if val == "" {
-			return "(none)"
-		}
-		return val
-	case bool:
-		if val {
-			return "true"
-		}
-		return "false"
-	}
-	data, err := goyaml.Marshal(v)
-	if err != nil {
-		return fmt.Sprintf("%v", v)
-	}
-	return strings.TrimRight(string(data), "\n")
 }

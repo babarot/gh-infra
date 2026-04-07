@@ -7,7 +7,6 @@ import (
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/importer"
-	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -105,50 +104,6 @@ func TestLocalPath_FallbackToPath(t *testing.T) {
 	got := localPath(c)
 	if got != "some/file.txt" {
 		t.Errorf("localPath = %q, want %q", got, "some/file.txt")
-	}
-}
-
-// --- formatImportValue tests ---
-
-func TestFormatImportValue_String(t *testing.T) {
-	got := formatImportValue("hello")
-	if got != "hello" {
-		t.Errorf("formatImportValue = %q, want %q", got, "hello")
-	}
-}
-
-func TestFormatImportValue_Bool(t *testing.T) {
-	if got := formatImportValue(true); got != "true" {
-		t.Errorf("formatImportValue(true) = %q, want %q", got, "true")
-	}
-	if got := formatImportValue(false); got != "false" {
-		t.Errorf("formatImportValue(false) = %q, want %q", got, "false")
-	}
-}
-
-func TestFormatImportValue_Nil(t *testing.T) {
-	got := formatImportValue(nil)
-	if got != "(none)" {
-		t.Errorf("formatImportValue(nil) = %q, want %q", got, "(none)")
-	}
-}
-
-func TestFormatImportValue_Struct(t *testing.T) {
-	bp := manifest.BranchProtection{
-		Pattern:         "main",
-		RequiredReviews: manifest.Ptr(2),
-	}
-	got := formatImportValue(bp)
-	if got == "" || got == "(none)" {
-		t.Errorf("formatImportValue(struct) should produce YAML, got %q", got)
-	}
-}
-
-func TestFormatImportValue_Slice(t *testing.T) {
-	items := []string{"a", "b", "c"}
-	got := formatImportValue(items)
-	if got == "" || got == "(none)" {
-		t.Errorf("formatImportValue(slice) should produce YAML, got %q", got)
 	}
 }
 

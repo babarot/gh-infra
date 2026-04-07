@@ -9,6 +9,7 @@ import (
 
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/term"
+	goyaml "github.com/goccy/go-yaml"
 )
 
 // ChangeItem represents a single field-level change for PrintChange.
@@ -208,13 +209,13 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 	switch item.Icon {
 	case IconAdd:
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
-			indent, icon, width, item.Field, Green.Render(fmt.Sprintf("%v", item.Value)))
+			indent, icon, width, item.Field, Green.Render(FormatValue(item.Value)))
 	case IconChange:
 		fmt.Fprintf(p.out, "%s%s %-*s  %s %s %s\n",
 			indent, icon, width, item.Field, Dim.Render(item.Old), Dim.Render(IconArrow), Bold.Render(item.New))
 	case IconRemove:
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
-			indent, icon, width, item.Field, Red.Render(fmt.Sprintf("%v", item.Value)))
+			indent, icon, width, item.Field, Red.Render(FormatValue(item.Value)))
 	}
 }
 
@@ -381,7 +382,15 @@ func FormatDuration(d time.Duration) string {
 
 // FormatValue formats a value for display.
 func FormatValue(v any) string {
+	if v == nil {
+		return "<nil>"
+	}
 	switch val := v.(type) {
+	case string:
+		if val == "" {
+			return `""`
+		}
+		return val
 	case []string:
 		return "[" + strings.Join(val, ", ") + "]"
 	case bool:
@@ -390,6 +399,10 @@ func FormatValue(v any) string {
 		}
 		return "false"
 	default:
-		return fmt.Sprintf("%v", v)
+		data, err := goyaml.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return strings.TrimRight(string(data), "\n")
 	}
 }
