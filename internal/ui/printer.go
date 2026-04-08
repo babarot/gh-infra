@@ -17,10 +17,10 @@ import (
 type ChangeItem struct {
 	Icon  string // IconAdd, IconChange, IconRemove
 	Field string
-	Value any    // for create/delete: the value; for update: ignored
-	Old   string // for update only
-	New   string // for update only
-	Sub   bool   // true = sub-level indent (10), false = top-level (6)
+	Value any         // for create/delete: the value; for update: ignored
+	Old   string      // for update only
+	New   string      // for update only
+	Level IndentLevel // IndentItem (default) or IndentSub
 }
 
 // FileItem represents a file-level change for PrintFileChange.
@@ -37,7 +37,7 @@ type ResultItem struct {
 	Icon   string // IconSuccess, IconError, IconWarning
 	Field  string
 	Detail string
-	Sub    bool // true = sub-level indentation (10 spaces)
+	Level  IndentLevel // IndentItem (default) or IndentSub
 }
 
 // Printer is the interface for all user-facing output.
@@ -137,12 +137,41 @@ const (
 	IconEllipsis = "…"
 )
 
+// IndentLevel represents a nesting level in the output hierarchy.
+type IndentLevel int
+
+const (
+	IndentRoot IndentLevel = 0 // 2 spaces  — GroupHeader, Legend, Success, Error
+	IndentItem IndentLevel = 1 // 6 spaces  — SubGroupHeader, top-level changes
+	IndentSub  IndentLevel = 2 // 10 spaces — sub-level changes, file changes
+)
+
+const (
+	indentBase = 2 // spaces for root level
+	indentUnit = 4 // additional spaces per level
+)
+
+// Indent returns the whitespace prefix string for a given level.
+func Indent(level IndentLevel) string {
+	return strings.Repeat(" ", indentBase+int(level)*indentUnit)
+}
+
+// continuation returns the indent for wrapped lines at a given level.
+// Adds 2 spaces beyond the level indent to clear the icon column.
+func continuation(level IndentLevel) string {
+	return Indent(level) + "  "
+}
+
+// columnWidthOffset is the character difference between sub-item and item indent.
+// Used to pad item-level columns so values align with sub-item values.
+var columnWidthOffset = len(Indent(IndentSub)) - len(Indent(IndentItem))
+
 func (p *StandardPrinter) Phase(msg string) {
 	fmt.Fprintf(p.err, "%s\n", msg)
 }
 
 func (p *StandardPrinter) Progress(msg string) {
-	fmt.Fprintf(p.err, "  %s\n", msg)
+	fmt.Fprintf(p.err, "%s%s\n", Indent(IndentRoot), msg)
 }
 
 func (p *StandardPrinter) BlankLine() {
@@ -161,23 +190,23 @@ func (p *StandardPrinter) Separator() {
 func (p *StandardPrinter) Legend(creates, updates, deletes bool) {
 	fmt.Fprintln(p.out, "Resource actions are indicated with the following symbols:")
 	if creates {
-		fmt.Fprintf(p.out, "  %s create\n", Green.Render(IconAdd))
+		fmt.Fprintf(p.out, "%s%s create\n", Indent(IndentRoot), Green.Render(IconAdd))
 	}
 	if updates {
-		fmt.Fprintf(p.out, "  %s update\n", Yellow.Render(IconChange))
+		fmt.Fprintf(p.out, "%s%s update\n", Indent(IndentRoot), Yellow.Render(IconChange))
 	}
 	if deletes {
-		fmt.Fprintf(p.out, "  %s destroy\n", Red.Render(IconRemove))
+		fmt.Fprintf(p.out, "%s%s destroy\n", Indent(IndentRoot), Red.Render(IconRemove))
 	}
 	fmt.Fprintln(p.out)
 }
 
 func (p *StandardPrinter) ActionHeader(name, action string) {
-	fmt.Fprintf(p.out, "  %s %s %s\n", Dim.Render("#"), Bold.Render(name), Dim.Render(action))
+	fmt.Fprintf(p.out, "%s%s %s %s\n", Indent(IndentRoot), Dim.Render("#"), Bold.Render(name), Dim.Render(action))
 }
 
 func (p *StandardPrinter) GroupHeader(icon, name string) {
-	fmt.Fprintf(p.out, "  %s %s\n", renderIcon(icon), Bold.Render(name))
+	fmt.Fprintf(p.out, "%s%s %s\n", Indent(IndentRoot), renderIcon(icon), Bold.Render(name))
 }
 
 func (p *StandardPrinter) GroupEnd() {
@@ -190,95 +219,99 @@ func (p *StandardPrinter) SetColumnWidth(w int) {
 	p.colWidth = w
 }
 
-// itemWidth returns the column width for top-level items (indent 6).
-// Adds 4 to align with sub-items (indent 10) when using the same colWidth.
+const defaultSubItemWidth = 26
+
+// itemWidth returns the column width for top-level items.
+// Adds columnWidthOffset to align values with sub-items at a deeper indent.
 func (p *StandardPrinter) itemWidth() int {
 	if p.colWidth > 0 {
-		return p.colWidth + 4
+		return p.colWidth + columnWidthOffset
 	}
-	return 30
+	return defaultSubItemWidth + columnWidthOffset
 }
 
-// subItemWidth returns the column width for sub-level items (indent 10).
+// subItemWidth returns the column width for sub-level items.
 func (p *StandardPrinter) subItemWidth() int {
 	if p.colWidth > 0 {
 		return p.colWidth
 	}
-	return 26
+	return defaultSubItemWidth
+}
+
+// widthForLevel returns the appropriate column width for the given indent level.
+func (p *StandardPrinter) widthForLevel(level IndentLevel) int {
+	if level >= IndentSub {
+		return p.subItemWidth()
+	}
+	return p.itemWidth()
 }
 
 func (p *StandardPrinter) SubGroupHeader(icon, name string) {
-	fmt.Fprintf(p.out, "      %s %s\n", renderIcon(icon), Bold.Render(name))
+	fmt.Fprintf(p.out, "%s%s %s\n", Indent(IndentItem), renderIcon(icon), Bold.Render(name))
 }
 
 // PrintChange prints a single field-level change (create, update, or delete).
-// The Sub field controls indentation: false = top-level (6 spaces), true = sub-level (10 spaces).
+// The Sub field controls indentation: false = top-level, true = sub-level.
 func (p *StandardPrinter) PrintChange(item ChangeItem) {
-	indent := "      " // 6 spaces
-	width := p.itemWidth()
-	if item.Sub {
-		indent = "          " // 10 spaces
-		width = p.subItemWidth()
-	}
+	level := max(item.Level, IndentItem)
+	ind := Indent(level)
+	width := p.widthForLevel(level)
 	icon := renderIcon(item.Icon)
 	switch item.Icon {
 	case IconAdd:
 		val := FormatValue(item.Value)
 		if tw := p.termWidth(); tw > 0 {
-			prefix := len(indent) + 2 + 1 + width + 2
+			prefix := len(ind) + 2 + 1 + width + 2
 			_, val = truncateChangeValues("", val, tw, prefix)
 		}
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
-			indent, icon, width, item.Field, Green.Render(val))
+			ind, icon, width, item.Field, Green.Render(val))
 	case IconChange:
 		old, new := item.Old, item.New
 		if tw := p.termWidth(); tw > 0 {
-			prefix := len(indent) + 2 + 1 + width + 2 // indent + icon + space + field (padded) + 2 spaces
+			prefix := len(ind) + 2 + 1 + width + 2 // indent + icon + space + field (padded) + 2 spaces
 			old, new = truncateChangeValues(old, new, tw, prefix)
 		}
 		fmt.Fprintf(p.out, "%s%s %-*s  %s %s %s\n",
-			indent, icon, width, item.Field, Dim.Render(old), Dim.Render(IconArrow), Bold.Render(new))
+			ind, icon, width, item.Field, Dim.Render(old), Dim.Render(IconArrow), Bold.Render(new))
 	case IconRemove:
 		val := FormatValue(item.Value)
 		if tw := p.termWidth(); tw > 0 {
-			prefix := len(indent) + 2 + 1 + width + 2
+			prefix := len(ind) + 2 + 1 + width + 2
 			_, val = truncateChangeValues("", val, tw, prefix)
 		}
 		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
-			indent, icon, width, item.Field, Red.Render(val))
+			ind, icon, width, item.Field, Red.Render(val))
 	}
 }
 
 // File change descriptions used in plan output.
 // PrintFileChange prints a file-level change with diff stat.
 func (p *StandardPrinter) PrintFileChange(item FileItem) {
+	ind := Indent(IndentSub)
 	icon := renderIcon(item.Icon)
 	if item.Reason != "" {
-		// Dimmed line with skip reason instead of diff stat.
-		fmt.Fprintf(p.out, "          %s %s  %s\n",
-			icon, Dim.Render(fmt.Sprintf("%-*s", p.subItemWidth(), item.Path)), Dim.Render(item.Reason))
+		fmt.Fprintf(p.out, "%s%s %s  %s\n",
+			ind, icon, Dim.Render(fmt.Sprintf("%-*s", p.subItemWidth(), item.Path)), Dim.Render(item.Reason))
 		return
 	}
 	stat := formatDiffStat(item.Added, item.Removed)
-	fmt.Fprintf(p.out, "          %s %-*s %s\n",
-		icon, p.subItemWidth(), item.Path, stat)
+	fmt.Fprintf(p.out, "%s%s %-*s %s\n",
+		ind, icon, p.subItemWidth(), item.Path, stat)
 }
 
 // PrintResult prints an apply result line.
 func (p *StandardPrinter) PrintResult(item ResultItem) {
+	level := max(item.Level, IndentItem)
+	ind := Indent(level)
+	width := p.widthForLevel(level)
 	icon := renderIcon(item.Icon)
 	detail := item.Detail
-	indent := "      " // 6 spaces
-	width := p.itemWidth()
-	if item.Sub {
-		indent = "          " // 10 spaces
-		width = p.subItemWidth()
-	}
 	if item.Icon == IconError {
-		detail = strings.ReplaceAll(detail, "\n", "\n"+indent+"  ")
+		detail = strings.ReplaceAll(detail, "\n", "\n"+continuation(level))
 	}
 	fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
-		indent, icon, width, item.Field, detail)
+		ind, icon, width, item.Field, detail)
 }
 
 // formatDiffStat formats added/removed line counts like git diff --stat.
@@ -308,20 +341,20 @@ func renderIcon(icon string) string {
 }
 
 func (p *StandardPrinter) Success(name, detail string) {
-	fmt.Fprintf(p.out, "  %s %s  %s\n", Green.Render(IconSuccess), Bold.Render(name), detail)
+	fmt.Fprintf(p.out, "%s%s %s  %s\n", Indent(IndentRoot), Green.Render(IconSuccess), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) Error(name, detail string) {
-	detail = strings.ReplaceAll(detail, "\n", "\n    ")
-	fmt.Fprintf(p.out, "  %s %s  %s\n", Red.Render(IconError), Bold.Render(name), detail)
+	detail = strings.ReplaceAll(detail, "\n", "\n"+continuation(IndentRoot))
+	fmt.Fprintf(p.out, "%s%s %s  %s\n", Indent(IndentRoot), Red.Render(IconError), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) Warning(name, detail string) {
-	fmt.Fprintf(p.err, "  %s %s  %s\n", Yellow.Render(IconWarning), Bold.Render(name), detail)
+	fmt.Fprintf(p.err, "%s%s %s  %s\n", Indent(IndentRoot), Yellow.Render(IconWarning), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) Detail(msg string) {
-	fmt.Fprintf(p.out, "      %s\n", Dim.Render(msg))
+	fmt.Fprintf(p.out, "%s%s\n", Indent(IndentItem), Dim.Render(msg))
 }
 
 func (p *StandardPrinter) StreamStart(name, detail string) {
@@ -350,7 +383,7 @@ func (p *StandardPrinter) Message(msg string) {
 }
 
 func (p *StandardPrinter) ErrorMessage(err error) {
-	msg := strings.ReplaceAll(err.Error(), "\n", "\n  ")
+	msg := strings.ReplaceAll(err.Error(), "\n", "\n"+Indent(IndentRoot))
 	fmt.Fprintf(p.err, "%s %s\n", Red.Render("Error:"), msg)
 }
 

@@ -165,7 +165,7 @@ func TestPrintChange_SubIndent(t *testing.T) {
 	var buf bytes.Buffer
 	p := NewStandardPrinterWith(&buf, &buf)
 
-	p.PrintChange(ChangeItem{Icon: IconAdd, Field: "issues", Value: true, Sub: true})
+	p.PrintChange(ChangeItem{Icon: IconAdd, Field: "issues", Value: true, Level: IndentSub})
 	out := buf.String()
 
 	// Sub-level should have more leading spaces than top-level
@@ -266,7 +266,7 @@ func TestPrintResult_Sub(t *testing.T) {
 	var buf bytes.Buffer
 	p := NewStandardPrinterWith(&buf, &buf)
 
-	p.PrintResult(ResultItem{Icon: IconSuccess, Field: "bug", Detail: "created", Sub: true})
+	p.PrintResult(ResultItem{Icon: IconSuccess, Field: "bug", Detail: "created", Level: IndentSub})
 	out := buf.String()
 
 	// Sub results use 10-space indent vs 6-space for top-level
@@ -290,6 +290,66 @@ func TestPrintResult_Error(t *testing.T) {
 	}
 	if !strings.Contains(out, "forbidden") {
 		t.Errorf("expected error detail, got:\n%s", out)
+	}
+}
+
+func TestPrintResult_ErrorMultiline(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+
+	p.PrintResult(ResultItem{Icon: IconError, Field: "desc", Detail: "line1\nline2\nline3"})
+	out := buf.String()
+
+	// Continuation indent should be Indent(IndentItem) + "  " = 8 spaces
+	cont := Indent(IndentItem) + "  "
+	if !strings.Contains(out, "line1\n"+cont+"line2\n"+cont+"line3") {
+		t.Errorf("expected continuation indent %q between lines, got:\n%q", cont, out)
+	}
+}
+
+func TestPrintResult_ErrorMultilineSub(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+
+	p.PrintResult(ResultItem{Icon: IconError, Field: "bug", Detail: "err1\nerr2", Level: IndentSub})
+	out := buf.String()
+
+	// Sub continuation indent should be Indent(IndentSub) + "  " = 12 spaces
+	cont := Indent(IndentSub) + "  "
+	if !strings.Contains(out, "err1\n"+cont+"err2") {
+		t.Errorf("expected sub continuation indent %q, got:\n%q", cont, out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Indent helpers
+// ---------------------------------------------------------------------------
+
+func TestIndent(t *testing.T) {
+	tests := []struct {
+		level IndentLevel
+		want  int
+	}{
+		{IndentRoot, 2},
+		{IndentItem, 6},
+		{IndentSub, 10},
+	}
+	for _, tt := range tests {
+		got := len(Indent(tt.level))
+		if got != tt.want {
+			t.Errorf("Indent(%d) length = %d, want %d", tt.level, got, tt.want)
+		}
+	}
+}
+
+func TestContinuation(t *testing.T) {
+	// continuation adds 2 spaces beyond the indent level
+	for _, level := range []IndentLevel{IndentRoot, IndentItem, IndentSub} {
+		got := continuation(level)
+		want := Indent(level) + "  "
+		if got != want {
+			t.Errorf("continuation(%d) = %q, want %q", level, got, want)
+		}
 	}
 }
 

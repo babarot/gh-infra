@@ -272,7 +272,7 @@ func TestFilePathWidth_Empty(t *testing.T) {
 
 func TestChangeToItem_Create(t *testing.T) {
 	c := repository.Change{Type: repository.ChangeCreate, Field: "homepage", NewValue: "https://example.com"}
-	item := changeToItem(c, false)
+	item := changeToItem(c, ui.IndentItem)
 
 	if item.Icon != ui.IconAdd {
 		t.Errorf("icon = %q, want %q", item.Icon, ui.IconAdd)
@@ -280,14 +280,14 @@ func TestChangeToItem_Create(t *testing.T) {
 	if item.Field != "homepage" {
 		t.Errorf("field = %q, want homepage", item.Field)
 	}
-	if item.Sub {
-		t.Error("expected Sub=false")
+	if item.Level != ui.IndentItem {
+		t.Errorf("expected Level=IndentItem, got %d", item.Level)
 	}
 }
 
 func TestChangeToItem_Update(t *testing.T) {
 	c := repository.Change{Type: repository.ChangeUpdate, Field: "description", OldValue: "old", NewValue: "new"}
-	item := changeToItem(c, true)
+	item := changeToItem(c, ui.IndentSub)
 
 	if item.Icon != ui.IconChange {
 		t.Errorf("icon = %q, want %q", item.Icon, ui.IconChange)
@@ -295,14 +295,14 @@ func TestChangeToItem_Update(t *testing.T) {
 	if item.Old != "old" || item.New != "new" {
 		t.Errorf("old/new = %q/%q, want old/new", item.Old, item.New)
 	}
-	if !item.Sub {
-		t.Error("expected Sub=true")
+	if item.Level != ui.IndentSub {
+		t.Errorf("expected Level=IndentSub, got %d", item.Level)
 	}
 }
 
 func TestChangeToItem_Delete(t *testing.T) {
 	c := repository.Change{Type: repository.ChangeDelete, Field: "topics", OldValue: []string{"go"}}
-	item := changeToItem(c, false)
+	item := changeToItem(c, ui.IndentItem)
 
 	if item.Icon != ui.IconRemove {
 		t.Errorf("icon = %q, want %q", item.Icon, ui.IconRemove)

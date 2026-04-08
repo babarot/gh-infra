@@ -93,12 +93,12 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 				for _, c := range g.changes {
 					if len(c.Children) > 0 {
 						for _, child := range c.Children {
-							item := changeToItem(child, true)
+							item := changeToItem(child, ui.IndentSub)
 							item.Field = c.Field + "." + child.Field
 							p.PrintChange(item)
 						}
 					} else {
-						p.PrintChange(changeToItem(c, true))
+						p.PrintChange(changeToItem(c, ui.IndentSub))
 					}
 				}
 			} else {
@@ -120,10 +120,10 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 					}
 					p.SubGroupHeader(icon, header)
 					for _, child := range c.Children {
-						p.PrintChange(changeToItem(child, true))
+						p.PrintChange(changeToItem(child, ui.IndentSub))
 					}
 				} else {
-					p.PrintChange(changeToItem(c, false))
+					p.PrintChange(changeToItem(c, ui.IndentItem))
 				}
 			}
 		}
@@ -241,9 +241,9 @@ func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 			p.SubGroupHeader(ui.IconSuccess, strings.ToLower(resource)+"s")
 			for _, r := range groupedResults[resource] {
 				if r.Err != nil {
-					p.PrintResult(ui.ResultItem{Icon: ui.IconError, Field: r.Change.Field, Detail: r.Err.Error(), Sub: true})
+					p.PrintResult(ui.ResultItem{Icon: ui.IconError, Field: r.Change.Field, Detail: r.Err.Error(), Level: ui.IndentSub})
 				} else {
-					p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: r.Change.Field, Detail: fmt.Sprintf("%sd", r.Change.Type), Sub: true})
+					p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: r.Change.Field, Detail: fmt.Sprintf("%sd", r.Change.Type), Level: ui.IndentSub})
 				}
 			}
 		}
@@ -362,16 +362,16 @@ func filePathWidth(changes []fileset.Change) int {
 }
 
 // changeToItem converts a repository.Change to a ui.ChangeItem.
-func changeToItem(c repository.Change, sub bool) ui.ChangeItem {
+func changeToItem(c repository.Change, level ui.IndentLevel) ui.ChangeItem {
 	switch c.Type {
 	case repository.ChangeCreate:
-		return ui.ChangeItem{Icon: ui.IconAdd, Field: c.Field, Value: c.NewValue, Sub: sub}
+		return ui.ChangeItem{Icon: ui.IconAdd, Field: c.Field, Value: c.NewValue, Level: level}
 	case repository.ChangeUpdate:
-		return ui.ChangeItem{Icon: ui.IconChange, Field: c.Field, Old: ui.FormatValue(c.OldValue), New: ui.FormatValue(c.NewValue), Sub: sub}
+		return ui.ChangeItem{Icon: ui.IconChange, Field: c.Field, Old: ui.FormatValue(c.OldValue), New: ui.FormatValue(c.NewValue), Level: level}
 	case repository.ChangeDelete:
-		return ui.ChangeItem{Icon: ui.IconRemove, Field: c.Field, Value: c.OldValue, Sub: sub}
+		return ui.ChangeItem{Icon: ui.IconRemove, Field: c.Field, Value: c.OldValue, Level: level}
 	default:
-		return ui.ChangeItem{Field: c.Field, Sub: sub}
+		return ui.ChangeItem{Field: c.Field, Level: level}
 	}
 }
 
