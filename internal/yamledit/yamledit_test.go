@@ -131,6 +131,87 @@ spec:
 	}
 }
 
+func TestSetLiteral_SpecialCharsInContent(t *testing.T) {
+	data := []byte(`spec:
+  files:
+    - path: CODEOWNERS
+      content: |
+        old owner
+    - path: ci.yml
+      content: |
+        name: CI
+`)
+
+	// Content with * at start of line (YAML alias char) and / at start
+	newContent := "* @babarot @team-platform\n/docs/ @babarot\n"
+	updated, err := SetLiteral(data, 0, "$.spec.files[0].content", newContent)
+	if err != nil {
+		t.Fatalf("SetLiteral error: %v", err)
+	}
+
+	result := string(updated)
+	if !strings.Contains(result, "* @babarot") {
+		t.Errorf("expected '* @babarot' in output:\n%s", result)
+	}
+	if !strings.Contains(result, "/docs/ @babarot") {
+		t.Errorf("expected '/docs/ @babarot' in output:\n%s", result)
+	}
+	// Second file should be untouched
+	if !strings.Contains(result, "name: CI") {
+		t.Errorf("second file content lost:\n%s", result)
+	}
+
+	// Verify result is valid YAML
+	_, err = Set([]byte(result), 0, "$.spec.files[1].content", "name: CI updated\n")
+	if err != nil {
+		t.Fatalf("result YAML is unparseable for subsequent edit: %v", err)
+	}
+}
+
+func TestSetLiteral_StringNodeToLiteralBlock(t *testing.T) {
+	// Simulates the WritePatch flow: patches[0] starts as a quoted StringNode
+	// (from Merge) and SetLiteral converts it to a literal block scalar.
+	data := []byte(`spec:
+  files:
+    - path: ci.yml
+      content: |
+        name: CI
+        on: [push]
+      patches:
+        - "--- a/ci.yml\n+++ b/ci.yml\n"
+    - path: other.yml
+      content: |
+        name: Other
+`)
+
+	// Replace the quoted string with a multiline unified diff
+	newPatch := "--- a/ci.yml\n+++ b/ci.yml\n@@ -2 +2 @@\n-on: [push]\n+on: [push, pull_request]\n"
+	updated, err := SetLiteral(data, 0, "$.spec.files[0].patches[0]", newPatch)
+	if err != nil {
+		t.Fatalf("SetLiteral error: %v", err)
+	}
+
+	result := string(updated)
+	t.Logf("Result:\n%s", result)
+
+	if !strings.Contains(result, "+on: [push, pull_request]") {
+		t.Errorf("expected patch content with + line in output:\n%s", result)
+	}
+	if !strings.Contains(result, "-on: [push]") {
+		t.Errorf("expected patch content with - line in output:\n%s", result)
+	}
+	// Other file should be untouched
+	if !strings.Contains(result, "name: Other") {
+		t.Errorf("second file content lost:\n%s", result)
+	}
+
+	// Verify result parses for subsequent edits
+	_, err = SetLiteral([]byte(result), 0, "$.spec.files[1].content", "name: Other updated\n")
+	if err != nil {
+		t.Fatalf("result YAML is unparseable for subsequent edit: %v", err)
+	}
+}
+
 func TestDelete_PrunesEmptyParents(t *testing.T) {
 	data := []byte(`spec:
   actions:

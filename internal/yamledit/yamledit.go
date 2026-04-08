@@ -31,8 +31,114 @@ func Set(data []byte, docIndex int, yamlPath string, value any, opts ...goyaml.E
 
 // SetLiteral replaces the node at yamlPath, rendering multiline strings as a
 // literal block scalar (`|`).
+//
+// goccy/go-yaml's ReplaceWithNode corrupts literal block scalars that contain
+// YAML-special characters (*, !, etc.) at the start of lines. To work around
+// this, if the existing node is already a literal block scalar we replace the
+// content directly in the byte stream, preserving the original indentation.
 func SetLiteral(data []byte, docIndex int, yamlPath string, content string) ([]byte, error) {
-	return Set(data, docIndex, yamlPath, content, goyaml.UseLiteralStyleIfMultiline(true))
+	ctx, err := newPathContext(data, docIndex, yamlPath)
+	if err != nil {
+		return nil, err
+	}
+	node, err := ctx.path.ReadNode(ctx.tmpFile())
+	if err != nil {
+		return nil, err
+	}
+
+	if ln, ok := node.(*ast.LiteralNode); ok {
+		return replaceLiteralContent(data, ln, content)
+	}
+
+	// Single-line content doesn't need a literal block scalar, and
+	// ReplaceWithNode handles plain/quoted scalars correctly.
+	if len(strings.Split(strings.TrimRight(content, "\n"), "\n")) <= 1 {
+		return Set(data, docIndex, yamlPath, content)
+	}
+
+	// For non-LiteralNode (StringNode etc.) with multiline content, replace
+	// the entire node with a literal block scalar via direct byte replacement.
+	// Using ReplaceWithNode would corrupt the content (see replaceLiteralContent comment).
+	return replaceWithLiteralBlock(data, node, content)
+}
+
+// replaceLiteralContent replaces a literal block scalar's content directly in
+// the byte stream, avoiding goccy/go-yaml's broken ReplaceWithNode for block scalars.
+func replaceLiteralContent(data []byte, ln *ast.LiteralNode, newContent string) ([]byte, error) {
+	origin := ln.Value.GetToken().Origin
+	idx := strings.Index(string(data), origin)
+	if idx < 0 {
+		return nil, fmt.Errorf("yamledit: cannot locate literal block content in source")
+	}
+
+	// Detect indentation from the original content lines
+	indent := ""
+	for _, line := range strings.Split(origin, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		if trimmed != "" {
+			indent = line[:len(line)-len(trimmed)]
+			break
+		}
+	}
+
+	// Build replacement with same indentation
+	lines := strings.Split(strings.TrimRight(newContent, "\n"), "\n")
+	var sb strings.Builder
+	for _, line := range lines {
+		sb.WriteString(indent)
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+	// Preserve trailing whitespace from original (indent before next key)
+	parts := strings.Split(origin, "\n")
+	sb.WriteString(parts[len(parts)-1])
+
+	result := string(data[:idx]) + sb.String() + string(data[idx+len(origin):])
+	return []byte(result), nil
+}
+
+// replaceWithLiteralBlock replaces any scalar node with a literal block scalar
+// via direct byte replacement. This avoids ReplaceWithNode which corrupts
+// LiteralNode content due to an AddColumn/Origin mismatch in goccy/go-yaml.
+func replaceWithLiteralBlock(data []byte, node ast.Node, newContent string) ([]byte, error) {
+	origin := node.GetToken().Origin
+	idx := strings.Index(string(data), origin)
+	if idx < 0 {
+		return nil, fmt.Errorf("yamledit: cannot locate node origin in source")
+	}
+
+	// The Origin may have leading whitespace (e.g., " " between "- " and the
+	// value in a sequence). Preserve it so the replacement stays syntactically
+	// valid (e.g., "- |" not "-|").
+	leadingSpace := ""
+	for i, c := range origin {
+		if c != ' ' && c != '\t' {
+			leadingSpace = origin[:i]
+			break
+		}
+	}
+
+	// Determine content indentation by looking at the line containing this node.
+	// For `content: old-a`, the key indent is the number of leading spaces before
+	// `content:`. Content lines inside a literal block are indented key_indent + 2.
+	lineStart := strings.LastIndex(string(data[:idx]), "\n") + 1
+	line := string(data[lineStart:idx])
+	keyIndent := len(line) - len(strings.TrimLeft(line, " \t"))
+	contentIndent := strings.Repeat(" ", keyIndent+2)
+
+	// Build literal block scalar: "<leading>|\n" + indented content lines
+	lines := strings.Split(strings.TrimRight(newContent, "\n"), "\n")
+	var sb strings.Builder
+	sb.WriteString(leadingSpace)
+	sb.WriteString("|\n")
+	for _, line := range lines {
+		sb.WriteString(contentIndent)
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+
+	result := string(data[:idx]) + sb.String() + string(data[idx+len(origin):])
+	return []byte(result), nil
 }
 
 // Merge merges a mapping node at yamlPath in the given document. This is useful
