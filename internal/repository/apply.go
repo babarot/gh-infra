@@ -84,7 +84,9 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 	}
 
 	// Generic: if this change has children, expand and apply each child.
-	if len(c.Children) > 0 {
+	// Label and Milestone updates carry children for display (e.g. color, description)
+	// but should be applied as a single API call using the parent's Field (the name/title).
+	if len(c.Children) > 0 && c.Resource != manifest.ResourceLabel && c.Resource != manifest.ResourceMilestone {
 		for _, child := range c.Children {
 			child.Resource = c.Resource
 			child.Name = c.Name
