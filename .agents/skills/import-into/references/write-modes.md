@@ -9,13 +9,16 @@ Use when the local source of truth should move to match GitHub.
 
 ## `patch`
 
-Use when the drift is repository-specific and should not immediately rewrite a shared source.
+Use when the drift is repository-specific and should not immediately rewrite the source.
+
+Available for all file types (source-backed and inline-backed).
 
 This is the safest default for:
 
 - shared local source files
 - cases where the repo differs slightly from a common template
 - existing `patches:`-based entries
+- inline content where you want to preserve the original `content:` block and store the drift separately
 
 ## `skip`
 

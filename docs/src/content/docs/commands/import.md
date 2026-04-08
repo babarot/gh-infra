@@ -110,7 +110,7 @@ The default action depends on the file shape:
 
 | File shape | Default | Allowed |
 |-----------|---------|---------|
-| Inline content | `write` | `write`, `skip` |
+| Inline content | `write` | `write`, `patch`, `skip` |
 | Local source (single-use) | `write` | `write`, `patch`, `skip` |
 | Local source shared by multiple repos | `patch` | `write`, `patch`, `skip` |
 | Existing `patches:` entry | `patch` | `write`, `patch`, `skip` |
