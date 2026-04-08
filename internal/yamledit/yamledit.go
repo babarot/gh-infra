@@ -73,7 +73,7 @@ func replaceLiteralContent(data []byte, ln *ast.LiteralNode, newContent string) 
 
 	// Detect indentation from the original content lines
 	indent := ""
-	for _, line := range strings.Split(origin, "\n") {
+	for line := range strings.SplitSeq(origin, "\n") {
 		trimmed := strings.TrimLeft(line, " \t")
 		if trimmed != "" {
 			indent = line[:len(line)-len(trimmed)]
