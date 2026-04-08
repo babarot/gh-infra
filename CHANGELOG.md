@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.9.1](https://github.com/babarot/gh-infra/compare/v0.9.0...v0.9.1) - 2026-04-08
+### Bug fixes
+- Replace DiffEntry.Skip bool with Action-based model by @babarot in https://github.com/babarot/gh-infra/pull/97
+- Fix literal block scalar corruption in yamledit by @babarot in https://github.com/babarot/gh-infra/pull/100
+### Improvements
+- Support multiple paths in plan/apply/validate commands by @babarot in https://github.com/babarot/gh-infra/pull/103
+
 ## [v0.9.0](https://github.com/babarot/gh-infra/compare/v0.8.0...v0.9.0) - 2026-04-07
 ### New Features
 - Add label management support for repositories by @babarot in https://github.com/babarot/gh-infra/pull/91
