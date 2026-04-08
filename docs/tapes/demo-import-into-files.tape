@@ -15,7 +15,7 @@ Set Theme { "name": "gh-infra-dark", "black": "#16161e", "red": "#f7768e", "gree
 Set Shell "bash"
 Set FontSize 20
 Set Width 1400
-Set Height 900
+Set Height 1500
 Set Padding 20
 Set WindowBar ""
 Set TypingSpeed 50ms

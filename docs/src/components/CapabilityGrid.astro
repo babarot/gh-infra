@@ -287,7 +287,9 @@
   .cap-body :global(.c-cyan) { color: #7dcfff; }
   .cap-body :global(.c-skip) { text-decoration: line-through; opacity: 0.6; }
 
+  /* Light theme */
   :global([data-theme='light']) .cap-terminal {
+    background: #e9e9ed;
     border-color: #c4c8da;
   }
 
@@ -295,11 +297,45 @@
     border-color: #b4b5b9;
   }
 
+  :global([data-theme='light']) .cap-bar {
+    background: #dfdfe3;
+    border-bottom-color: #c4c8da;
+  }
+
+  :global([data-theme='light']) .cap-body {
+    color: #3b4261;
+  }
+
+  :global([data-theme='light']) .cap-body :global(.c-cmd) { color: #343b58; }
+  :global([data-theme='light']) .cap-body :global(.c-dim) { color: #8990b3; }
+  :global([data-theme='light']) .cap-body :global(.c-w) { color: #343b58; }
+  :global([data-theme='light']) .cap-body :global(.c-chg) { color: #8a5c0d; }
+  :global([data-theme='light']) .cap-body :global(.c-add) { color: #587539; }
+  :global([data-theme='light']) .cap-body :global(.c-old) { color: #c33; }
+  :global([data-theme='light']) .cap-body :global(.c-new) { color: #587539; }
+  :global([data-theme='light']) .cap-body :global(.c-cyan) { color: #2e7de9; }
+
   :global([data-theme='light']) .cap-label {
     color: #587539;
   }
 
   :global([data-theme='light']) .cap-desc {
+    color: #8990b3;
+  }
+
+  :global([data-theme='light']) .diff-col pre {
+    color: #3b4261;
+  }
+
+  :global([data-theme='light']) .diff-left {
+    border-right-color: #c4c8da;
+  }
+
+  :global([data-theme='light']) .diff-footer {
+    border-top-color: #c4c8da;
+  }
+
+  :global([data-theme='light']) .diff-footer pre {
     color: #8990b3;
   }
 
