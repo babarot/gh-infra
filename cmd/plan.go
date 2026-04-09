@@ -22,7 +22,11 @@ func newPlanCmd() *cobra.Command {
 		Use:   "plan [path...]",
 		Short: "Show changes between desired state and current GitHub state",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPlan(args, repo, ci, failOnUnknown)
+			return runPlan(args, planCommandOptions{
+				FilterRepo:    repo,
+				CI:            ci,
+				FailOnUnknown: failOnUnknown,
+			})
 		},
 	}
 
@@ -33,11 +37,17 @@ func newPlanCmd() *cobra.Command {
 	return cmd
 }
 
-func runPlan(paths []string, filterRepo string, ci, failOnUnknown bool) error {
+type planCommandOptions struct {
+	FilterRepo    string
+	CI            bool
+	FailOnUnknown bool
+}
+
+func runPlan(paths []string, opts planCommandOptions) error {
 	result, err := infra.Plan(infra.PlanOptions{
 		Paths:         paths,
-		FilterRepo:    filterRepo,
-		FailOnUnknown: failOnUnknown,
+		FilterRepo:    opts.FilterRepo,
+		FailOnUnknown: opts.FailOnUnknown,
 		DryRun:        true,
 	})
 	if err != nil {
@@ -50,7 +60,7 @@ func runPlan(paths []string, filterRepo string, ci, failOnUnknown bool) error {
 
 	if result.HasChanges {
 		result.Printer().Summary("To apply, run: " + ui.Bold.Render("gh infra apply"))
-		if ci {
+		if opts.CI {
 			os.Exit(1)
 		}
 	}

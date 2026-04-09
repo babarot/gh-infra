@@ -770,7 +770,11 @@ func TestResolveRulesetID_Ambiguous(t *testing.T) {
 	}
 	proc := NewProcessor(mock, nil, nil)
 
-	_, err := proc.resolveRulesetID(context.Background(), "o", "r", "dup", "branch")
+	_, err := proc.resolveRulesetID(context.Background(), rulesetLookup{
+		Repo:        "o/r",
+		RulesetName: "dup",
+		Target:      "branch",
+	})
 	if err == nil {
 		t.Fatal("expected error for ambiguous rulesets")
 	}
@@ -788,7 +792,11 @@ func TestResolveRulesetID_NotFound(t *testing.T) {
 	}
 	proc := NewProcessor(mock, nil, nil)
 
-	_, err := proc.resolveRulesetID(context.Background(), "o", "r", "missing", "branch")
+	_, err := proc.resolveRulesetID(context.Background(), rulesetLookup{
+		Repo:        "o/r",
+		RulesetName: "missing",
+		Target:      "branch",
+	})
 	if err == nil {
 		t.Fatal("expected error for missing ruleset")
 	}
