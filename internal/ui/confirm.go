@@ -43,15 +43,15 @@ func (m *confirmModel) View() tea.View {
 			answer = Green.Render("Yes")
 		}
 		fmt.Fprintf(&b, "\n%s %s %s\n\n",
-			huhIndigo.Render(">"),
-			huhIndigo.Render(m.title),
+			promptAccent.Render(">"),
+			promptAccent.Render(m.title),
 			answer,
 		)
 		return tea.NewView(b.String())
 	}
 	fmt.Fprintf(&b, "\n%s %s (%s / %s)\n",
-		huhIndigo.Render(">"),
-		huhIndigo.Render(m.title),
+		promptAccent.Render(">"),
+		promptAccent.Render(m.title),
 		Green.Render("(y)")+"es",
 		Red.Render("(n)")+"o",
 	)
@@ -124,8 +124,8 @@ func (m *confirmDiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// huhIndigo matches the huh Charm theme's title color (#7571F9).
-var huhIndigo = lipgloss.NewStyle().Foreground(lipgloss.Color("#7571F9")).Bold(true)
+// promptAccent is the style for the confirm prompt indicator and title.
+var promptAccent = lipgloss.NewStyle().Foreground(lipgloss.Color("#7571F9")).Bold(true)
 
 func (m *confirmDiffModel) View() tea.View {
 	var b strings.Builder
@@ -136,8 +136,8 @@ func (m *confirmDiffModel) View() tea.View {
 			answer = Green.Render("Yes")
 		}
 		fmt.Fprintf(&b, "\n%s %s %s\n\n",
-			huhIndigo.Render(">"),
-			huhIndigo.Render(m.title),
+			promptAccent.Render(">"),
+			promptAccent.Render(m.title),
 			answer,
 		)
 		return tea.NewView(b.String())
@@ -159,8 +159,8 @@ func (m *confirmDiffModel) View() tea.View {
 	}
 
 	fmt.Fprintf(&b, "\n%s %s (%s / %s / %s)\n",
-		huhIndigo.Render(">"),
-		huhIndigo.Render(m.title),
+		promptAccent.Render(">"),
+		promptAccent.Render(m.title),
 		Green.Render("(y)")+"es",
 		Red.Render("(n)")+"o",
 		Yellow.Render("(d)")+"iff",
