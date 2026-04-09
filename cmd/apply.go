@@ -23,7 +23,12 @@ func newApplyCmd() *cobra.Command {
 		Use:   "apply [path...]",
 		Short: "Apply desired state to GitHub",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runApply(args, repo, autoApprove, forceSecrets, failOnUnknown)
+			return runApply(args, applyCommandOptions{
+				FilterRepo:    repo,
+				AutoApprove:   autoApprove,
+				ForceSecrets:  forceSecrets,
+				FailOnUnknown: failOnUnknown,
+			})
 		},
 	}
 
@@ -35,12 +40,19 @@ func newApplyCmd() *cobra.Command {
 	return cmd
 }
 
-func runApply(paths []string, filterRepo string, autoApprove, forceSecrets, failOnUnknown bool) error {
+type applyCommandOptions struct {
+	FilterRepo    string
+	AutoApprove   bool
+	ForceSecrets  bool
+	FailOnUnknown bool
+}
+
+func runApply(paths []string, opts applyCommandOptions) error {
 	result, err := infra.Plan(infra.PlanOptions{
 		Paths:         paths,
-		FilterRepo:    filterRepo,
-		FailOnUnknown: failOnUnknown,
-		ForceSecrets:  forceSecrets,
+		FilterRepo:    opts.FilterRepo,
+		FailOnUnknown: opts.FailOnUnknown,
+		ForceSecrets:  opts.ForceSecrets,
 		DryRun:        false,
 	})
 	if err != nil {
@@ -58,7 +70,7 @@ func runApply(paths []string, filterRepo string, autoApprove, forceSecrets, fail
 	p := result.Printer()
 
 	// Confirm
-	if !autoApprove {
+	if !opts.AutoApprove {
 		diffEntries := buildDiffEntries(result.FileChanges)
 		confirmed, err := p.ConfirmWithDiff("Do you want to apply these changes?", diffEntries)
 		if err != nil {

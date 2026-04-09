@@ -14,13 +14,24 @@ import (
 // helper to call planImportEntry with default repo values for tests that don't need them.
 func callPlan(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoCount int) Change {
 	repo := manifest.FileSetRepository{Name: "repo"}
-	return planImportEntry(ctx, runner, fullName, file, doc, 0, repo, repoCount, false)
+	return planImportEntry(ctx, runner, fullName, file, importEntryContext{
+		Doc:       doc,
+		RepoIndex: 0,
+		Repo:      repo,
+		RepoCount: repoCount,
+	})
 }
 
 // callPlanShared is like callPlan but marks the source as shared.
 func callPlanShared(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoCount int) Change {
 	repo := manifest.FileSetRepository{Name: "repo"}
-	return planImportEntry(ctx, runner, fullName, file, doc, 0, repo, repoCount, true)
+	return planImportEntry(ctx, runner, fullName, file, importEntryContext{
+		Doc:       doc,
+		RepoIndex: 0,
+		Repo:      repo,
+		RepoCount: repoCount,
+		Shared:    true,
+	})
 }
 
 func TestPlanImportEntry_ExclusiveSourceUsesWriteSource(t *testing.T) {
@@ -229,8 +240,12 @@ func TestDiffFiles_ReportsPerFileStatus(t *testing.T) {
 	}
 
 	var statuses []string
-	_, err := DiffFiles(context.TODO(), nil, []*manifest.FileDocument{doc}, "org/repo", map[string]int{}, func(status string) {
-		statuses = append(statuses, status)
+	_, err := DiffFiles(context.TODO(), nil, []*manifest.FileDocument{doc}, DiffFilesOptions{
+		FilterRepo:     "org/repo",
+		SourceRefCount: map[string]int{},
+		OnStatus: func(status string) {
+			statuses = append(statuses, status)
+		},
 	})
 	if err != nil {
 		t.Fatalf("DiffFiles error: %v", err)

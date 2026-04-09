@@ -76,6 +76,12 @@ type ApplyResult struct {
 	Err    error
 }
 
+type rulesetLookup struct {
+	Repo        string
+	RulesetName string
+	Target      string
+}
+
 func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Repository) ApplyResult {
 	// Merge strategy children are batched into a single PATCH to avoid
 	// ordering issues (e.g. squash_merge_commit_title requires allow_squash_merge).
@@ -593,7 +599,11 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 		if rs.Target != nil {
 			target = *rs.Target
 		}
-		rulesetID, err := p.resolveRulesetID(ctx, owner, name, rulesetName, target)
+		rulesetID, err := p.resolveRulesetID(ctx, rulesetLookup{
+			Repo:        owner + "/" + name,
+			RulesetName: rulesetName,
+			Target:      target,
+		})
 		if err != nil {
 			return err
 		}
@@ -611,10 +621,10 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 	return nil
 }
 
-func (p *Processor) resolveRulesetID(ctx context.Context, owner, name, rulesetName, target string) (int, error) {
-	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/rulesets", owner, name))
+func (p *Processor) resolveRulesetID(ctx context.Context, lookup rulesetLookup) (int, error) {
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/rulesets", lookup.Repo))
 	if err != nil {
-		return 0, fmt.Errorf("list rulesets for %s/%s: %w", owner, name, err)
+		return 0, fmt.Errorf("list rulesets for %s: %w", lookup.Repo, err)
 	}
 
 	var rulesets []struct {
@@ -623,23 +633,23 @@ func (p *Processor) resolveRulesetID(ctx context.Context, owner, name, rulesetNa
 		Target string `json:"target"`
 	}
 	if err := json.Unmarshal(out, &rulesets); err != nil {
-		return 0, fmt.Errorf("parse rulesets list for %s/%s: %w", owner, name, err)
+		return 0, fmt.Errorf("parse rulesets list for %s: %w", lookup.Repo, err)
 	}
 
 	var matches []int
 	for _, rs := range rulesets {
-		if rs.Name == rulesetName && rs.Target == target {
+		if rs.Name == lookup.RulesetName && rs.Target == lookup.Target {
 			matches = append(matches, rs.ID)
 		}
 	}
 
 	switch len(matches) {
 	case 0:
-		return 0, fmt.Errorf("ruleset %q (target=%s) not found in %s/%s", rulesetName, target, owner, name)
+		return 0, fmt.Errorf("ruleset %q (target=%s) not found in %s", lookup.RulesetName, lookup.Target, lookup.Repo)
 	case 1:
 		return matches[0], nil
 	default:
-		return 0, fmt.Errorf("multiple rulesets named %q (target=%s) found in %s/%s; cannot determine which to update", rulesetName, target, owner, name)
+		return 0, fmt.Errorf("multiple rulesets named %q (target=%s) found in %s; cannot determine which to update", lookup.RulesetName, lookup.Target, lookup.Repo)
 	}
 }
 
