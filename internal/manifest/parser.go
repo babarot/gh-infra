@@ -24,7 +24,8 @@ func ParsePath(path string) ([]*Repository, error) {
 
 // ParseOptions controls parsing behavior.
 type ParseOptions struct {
-	FailOnUnknown bool // Error on files with unknown Kind (default: skip)
+	FailOnUnknown bool            // Error on files with unknown Kind (default: skip)
+	Resolver      *SourceResolver // Source resolver for File/FileSet entries (required when parsing File/FileSet kinds)
 }
 
 // ParseAll parses a file or directory and returns all resources (Repository + FileSet).
@@ -153,7 +154,10 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		result.Repositories = repos
 		result.RepositoryDocs = docs
 	case KindFile:
-		fs, warnings, err := parseFile(data, path)
+		if opt.Resolver == nil {
+			return nil, fmt.Errorf("%s: ParseOptions.Resolver is required for File kind", path)
+		}
+		fs, warnings, err := parseFile(data, path, opt.Resolver)
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +165,10 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		result.FileDocs = []*FileDocument{{Resource: fs, SourcePath: path, DocIndex: docIndex, Files: fs.Spec.Files}}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
-		fs, warnings, err := parseFileSet(data, path)
+		if opt.Resolver == nil {
+			return nil, fmt.Errorf("%s: ParseOptions.Resolver is required for FileSet kind", path)
+		}
+		fs, warnings, err := parseFileSet(data, path, opt.Resolver)
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +232,7 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	return repos, docs, nil
 }
 
-func parseFile(data []byte, path string) (*FileSet, []string, error) {
+func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, error) {
 	var f File
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&f); err != nil {
 		return nil, nil, fmt.Errorf("parse File in %s: %w", path, err)
@@ -256,7 +263,6 @@ func parseFile(data []byte, path string) (*FileSet, []string, error) {
 	}
 
 	// Resolve source references (local files, directories, GitHub URLs)
-	resolver := DefaultResolver
 	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", path, err)
@@ -272,7 +278,7 @@ func parseFile(data []byte, path string) (*FileSet, []string, error) {
 	return fs, warnings, nil
 }
 
-func parseFileSet(data []byte, path string) (*FileSet, []string, error) {
+func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, error) {
 	var fs FileSet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&fs); err != nil {
 		return nil, nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
@@ -283,7 +289,6 @@ func parseFileSet(data []byte, path string) (*FileSet, []string, error) {
 	}
 
 	// Resolve source references (local files, directories, GitHub URLs)
-	resolver := DefaultResolver
 	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", path, err)

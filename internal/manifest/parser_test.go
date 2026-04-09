@@ -6,6 +6,12 @@ import (
 	"testing"
 )
 
+// fileOpts returns ParseOptions with a no-op SourceResolver for tests that
+// parse File/FileSet kinds (which require a non-nil Resolver).
+func fileOpts() ParseOptions {
+	return ParseOptions{Resolver: &SourceResolver{}}
+}
+
 func TestParsePath_SingleRepository(t *testing.T) {
 	dir := t.TempDir()
 	content := `
@@ -524,7 +530,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -583,7 +589,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -616,7 +622,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err == nil {
 		t.Fatal("expected error for missing owner, got nil")
 	}
@@ -642,7 +648,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err == nil {
 		t.Fatal("expected error for missing targets, got nil")
 	}
@@ -667,7 +673,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err == nil {
 		t.Fatal("expected error for missing files, got nil")
 	}
@@ -697,7 +703,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("on_drift is deprecated but should still parse: %v", err)
 	}
@@ -734,7 +740,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(dir)
+	result, err := ParseAll(dir, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -774,7 +780,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -818,7 +824,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err == nil {
 		t.Fatal("expected error for missing owner, got nil")
 	}
@@ -844,7 +850,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err == nil {
 		t.Fatal("expected error for missing name, got nil")
 	}
@@ -877,7 +883,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -915,7 +921,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("on_drift is deprecated but should still parse: %v", err)
 	}
@@ -944,7 +950,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := ParseAll(path)
+	_, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("on_drift is deprecated but should still parse: %v", err)
 	}
@@ -1045,7 +1051,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -1088,7 +1094,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -1118,7 +1124,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -1155,7 +1161,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll returned error: %v", err)
 	}
@@ -1202,7 +1208,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll error: %v", err)
 	}
@@ -1248,7 +1254,7 @@ repositories:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll error: %v", err)
 	}
@@ -1297,7 +1303,7 @@ repositories:
 		t.Fatal(err)
 	}
 
-	result, err := ParseAll(path)
+	result, err := ParseAll(path, fileOpts())
 	if err != nil {
 		t.Fatalf("ParseAll error: %v", err)
 	}

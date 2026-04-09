@@ -96,7 +96,7 @@ spec:
 
 	merged := &ParseResult{}
 	for _, p := range paths {
-		result, err := ParseAll(p)
+		result, err := ParseAll(p, ParseOptions{Resolver: &SourceResolver{}})
 		if err != nil {
 			t.Fatalf("ParseAll(%s): %v", p, err)
 		}

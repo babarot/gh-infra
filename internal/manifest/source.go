@@ -12,15 +12,16 @@ import (
 
 const githubScheme = "github://"
 
-// DefaultResolver is the package-level resolver used by the parser.
-// Set RunGH before parsing to enable GitHub source support.
-var DefaultResolver = &SourceResolver{}
-
 // SourceResolver resolves file sources (local files, directories, GitHub URLs).
 type SourceResolver struct {
 	// RunGH executes a gh CLI command and returns stdout.
 	// Set by the caller to avoid importing the gh package.
 	RunGH func(ctx context.Context, args ...string) ([]byte, error)
+}
+
+// NewSourceResolver creates a SourceResolver that delegates gh CLI calls to the given function.
+func NewSourceResolver(runGH func(ctx context.Context, args ...string) ([]byte, error)) *SourceResolver {
+	return &SourceResolver{RunGH: runGH}
 }
 
 // ResolveFiles expands source references in FileSet entries.
