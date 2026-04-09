@@ -32,14 +32,15 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		return "", fmt.Errorf("get HEAD: %w", err)
 	}
 
-	message := resolveCommitMessage(opts)
-	return p.applyViaGitDataAPI(ctx, repo, defaultBranch, headSHA, changes, message, opts, statusFn)
+	return p.applyViaGitDataAPI(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
 }
 
 // applyViaGitDataAPI creates blobs, a tree, a commit, and updates the ref
 // (or creates a PR) in a single atomic operation. All files are included in
 // one commit regardless of count.
-func (p *Processor) applyViaGitDataAPI(ctx context.Context, repo, branch, headSHA string, changes []Change, message string, opts ApplyOptions, statusFn func(string)) (string, error) {
+func (p *Processor) applyViaGitDataAPI(ctx context.Context, repo, branch, headSHA string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
+	message := resolveCommitMessage(opts)
+
 	// 1. Create blobs
 	statusFn("creating blobs...")
 	entries, err := p.createBlobs(ctx, repo, changes)
@@ -64,7 +65,7 @@ func (p *Processor) applyViaGitDataAPI(ctx context.Context, repo, branch, headSH
 	// 4. Update ref or create PR
 	if opts.Via == manifest.ViaPullRequest {
 		statusFn("creating pull request...")
-		return p.createPR(ctx, repo, branch, commitSHA, message, opts)
+		return p.createPR(ctx, repo, branch, commitSHA, opts)
 	}
 	statusFn("updating ref...")
 	return "", p.updateRef(ctx, repo, branch, commitSHA)
@@ -265,7 +266,7 @@ func (p *Processor) updateRef(ctx context.Context, repo, branch, commitSHA strin
 }
 
 // createPR creates a pull request and returns its URL.
-func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA, title string, opts ApplyOptions) (string, error) {
+func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA string, opts ApplyOptions) (string, error) {
 	branchName := opts.Branch
 	if branchName == "" {
 		branchName = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
@@ -293,7 +294,7 @@ func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA
 	// Create PR (skip if one already exists for this head branch)
 	prTitle := opts.PRTitle
 	if prTitle == "" {
-		prTitle = title
+		prTitle = resolveCommitMessage(opts)
 	}
 	prBody := opts.PRBody
 	if prBody == "" {

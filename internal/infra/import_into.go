@@ -192,7 +192,13 @@ func ImportInto(args []string, into string) (*ImportDiff, error) {
 	ctx, cancel := withTrackerCancelContext(tracker)
 	defer cancel()
 
-	plan, err := importer.Diff(ctx, matched, runner, printer, tracker, parsed.FileDocs)
+	plan, err := importer.Diff(ctx, importer.DiffOptions{
+		Targets:     matched,
+		Runner:      runner,
+		Printer:     printer,
+		Tracker:     tracker,
+		AllFileDocs: parsed.FileDocs,
+	})
 
 	tracker.Wait()
 
