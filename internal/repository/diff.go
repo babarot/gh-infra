@@ -747,5 +747,10 @@ func stringSliceEqual(a, b []string) bool {
 	copy(sb, b)
 	sort.Strings(sa)
 	sort.Strings(sb)
-	return strings.Join(sa, ",") == strings.Join(sb, ",")
+	for i := range sa {
+		if sa[i] != sb[i] {
+			return false
+		}
+	}
+	return true
 }
