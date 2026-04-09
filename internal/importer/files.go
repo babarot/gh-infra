@@ -12,16 +12,23 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
+// DiffFilesOptions configures file-level import diffing.
+type DiffFilesOptions struct {
+	FilterRepo     string
+	SourceRefCount map[string]int
+	OnStatus       func(string)
+}
+
 // DiffFiles computes file-level import changes for all matched FileSets.
 // It fetches current content from GitHub and compares against local content.
-func DiffFiles(ctx context.Context, runner gh.Runner, fileSets []*manifest.FileDocument, filterRepo string, sourceRefCount map[string]int, onStatus func(string)) ([]Change, error) {
+func DiffFiles(ctx context.Context, runner gh.Runner, fileSets []*manifest.FileDocument, opts DiffFilesOptions) ([]Change, error) {
 	var changes []Change
 
 	for _, doc := range fileSets {
 		fs := doc.Resource
 		for repoIdx, repo := range fs.Spec.Repositories {
 			fullName := fs.Metadata.Owner + "/" + repo.Name
-			if filterRepo != "" && fullName != filterRepo {
+			if opts.FilterRepo != "" && fullName != opts.FilterRepo {
 				continue
 			}
 
@@ -31,11 +38,17 @@ func DiffFiles(ctx context.Context, runner gh.Runner, fileSets []*manifest.FileD
 			files := fileset.ResolveFiles(fs, repo)
 
 			for _, file := range files {
-				if onStatus != nil {
-					onStatus("fetching file " + file.Path + "...")
+				if opts.OnStatus != nil {
+					opts.OnStatus("fetching file " + file.Path + "...")
 				}
-				shared := file.OriginalSource != "" && sourceRefCount[file.OriginalSource] > 1
-				change := planImportEntry(ctx, runner, fullName, file, doc, repoIdx, repo, repoCount, shared)
+				meta := importEntryContext{
+					Doc:       doc,
+					RepoIndex: repoIdx,
+					Repo:      repo,
+					RepoCount: repoCount,
+					Shared:    file.OriginalSource != "" && opts.SourceRefCount[file.OriginalSource] > 1,
+				}
+				change := planImportEntry(ctx, runner, fullName, file, meta)
 				changes = append(changes, change)
 			}
 		}
@@ -59,10 +72,17 @@ func buildSourceRefCount(fileSets []*manifest.FileDocument) map[string]int {
 	return counts
 }
 
+type importEntryContext struct {
+	Doc       *manifest.FileDocument
+	RepoIndex int
+	Repo      manifest.FileSetRepository
+	RepoCount int
+	Shared    bool
+}
+
 // planImportEntry determines the suggested write mode, supported write modes, and
-// diff contents for a single file entry. shared indicates the source template
-// is referenced by multiple file entries.
-func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoIdx int, repo manifest.FileSetRepository, repoCount int, shared bool) Change {
+// diff contents for a single file entry.
+func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, meta importEntryContext) Change {
 	change := Change{
 		Target:             fullName,
 		Path:               file.Path,
@@ -80,13 +100,13 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 	if sourceBacked {
 		change.LocalTarget = file.OriginalSource
 	} else if inlineBacked {
-		change.ManifestPath = doc.SourcePath
-		change.DocIndex = doc.DocIndex
-		overrideIdx := findFileIndex(repo.Overrides, file.Path)
+		change.ManifestPath = meta.Doc.SourcePath
+		change.DocIndex = meta.Doc.DocIndex
+		overrideIdx := findFileIndex(meta.Repo.Overrides, file.Path)
 		if overrideIdx >= 0 {
-			change.YAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d].content", repoIdx, overrideIdx)
+			change.YAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d].content", meta.RepoIndex, overrideIdx)
 		} else {
-			baseIdx := findFileIndex(doc.Resource.Spec.Files, file.Path)
+			baseIdx := findFileIndex(meta.Doc.Resource.Spec.Files, file.Path)
 			if baseIdx >= 0 {
 				change.YAMLPath = fmt.Sprintf("$.spec.files[%d].content", baseIdx)
 			}
@@ -111,14 +131,14 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 
 	patchSupported := false
 	if len(file.Patches) > 0 || sourceBacked {
-		patchSupported = configurePatchTarget(&change, file, doc, repoIdx, repo, repoCount)
+		patchSupported = configurePatchTarget(&change, file, meta)
 	}
 	if len(file.Patches) > 0 && !patchSupported {
 		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "expanded from directory source"
 		return change
 	}
-	patchPreferred := len(file.Patches) > 0 || shared
+	patchPreferred := len(file.Patches) > 0 || meta.Shared
 	availableModes := []WriteMode{WriteInline}
 	suggestedMode := WriteInline
 	if sourceBacked {
@@ -197,29 +217,29 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 	return change
 }
 
-func configurePatchTarget(change *Change, file manifest.FileEntry, doc *manifest.FileDocument, repoIdx int, repo manifest.FileSetRepository, repoCount int) bool {
-	overrideIdx := findFileIndex(repo.Overrides, file.Path)
+func configurePatchTarget(change *Change, file manifest.FileEntry, meta importEntryContext) bool {
+	overrideIdx := findFileIndex(meta.Repo.Overrides, file.Path)
 	if overrideIdx >= 0 {
-		change.ManifestPath = doc.SourcePath
-		change.DocIndex = doc.DocIndex
-		change.PatchYAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d]", repoIdx, overrideIdx)
+		change.ManifestPath = meta.Doc.SourcePath
+		change.DocIndex = meta.Doc.DocIndex
+		change.PatchYAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d]", meta.RepoIndex, overrideIdx)
 		if file.OriginalSource == "" {
 			change.YAMLPath = change.PatchYAMLPath + ".content"
 		}
 	} else {
-		baseIdx := findFileIndex(doc.Resource.Spec.Files, file.Path)
+		baseIdx := findFileIndex(meta.Doc.Resource.Spec.Files, file.Path)
 		if baseIdx < 0 {
 			return false
 		}
-		change.ManifestPath = doc.SourcePath
-		change.DocIndex = doc.DocIndex
+		change.ManifestPath = meta.Doc.SourcePath
+		change.DocIndex = meta.Doc.DocIndex
 		change.PatchYAMLPath = fmt.Sprintf("$.spec.files[%d]", baseIdx)
 		if file.OriginalSource == "" {
 			change.YAMLPath = change.PatchYAMLPath + ".content"
 		}
-		if repoCount > 1 {
+		if meta.RepoCount > 1 {
 			change.Warnings = append(change.Warnings,
-				fmt.Sprintf("shared manifest: affects %d repositories", repoCount))
+				fmt.Sprintf("shared manifest: affects %d repositories", meta.RepoCount))
 		}
 	}
 

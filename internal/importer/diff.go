@@ -11,13 +11,24 @@ import (
 	"github.com/babarot/gh-infra/internal/repository"
 )
 
+// DiffOptions configures import diff planning.
+type DiffOptions struct {
+	Targets     []TargetMatches
+	Runner      gh.Runner
+	Printer     DiagnosticPrinter
+	Tracker     RefreshTracker
+	AllFileDocs []*manifest.FileDocument
+}
+
 // Diff builds a change plan for all targets.
 // manifestBytes is shared across targets so patches accumulate correctly.
 // Targets are processed sequentially (same file may be patched by multiple targets).
-func Diff(ctx context.Context, targets []TargetMatches, runner gh.Runner, printer DiagnosticPrinter, tracker RefreshTracker, allFileDocs []*manifest.FileDocument) (*Result, error) {
+func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
+	printer := opts.Printer
 	if printer == nil {
 		printer = noopDiagnosticPrinter{}
 	}
+	tracker := opts.Tracker
 	if tracker == nil {
 		tracker = noopRefreshTracker{}
 	}
@@ -30,17 +41,17 @@ func Diff(ctx context.Context, targets []TargetMatches, runner gh.Runner, printe
 
 	// Build source reference counts across ALL file documents (not just matched ones)
 	// to detect shared templates that should not be overwritten.
-	sourceRefCount := buildSourceRefCount(allFileDocs)
+	sourceRefCount := buildSourceRefCount(opts.AllFileDocs)
 
 	// Determine resolver owner from first target.
 	var resolverOwner string
-	if len(targets) > 0 {
-		resolverOwner = targets[0].Target.Owner
+	if len(opts.Targets) > 0 {
+		resolverOwner = opts.Targets[0].Target.Owner
 	}
-	resolver := manifest.NewResolver(runner, resolverOwner)
-	proc := repository.NewProcessor(runner, resolver, printer)
+	resolver := manifest.NewResolver(opts.Runner, resolverOwner)
+	proc := repository.NewProcessor(opts.Runner, resolver, printer)
 
-	for _, tm := range targets {
+	for _, tm := range opts.Targets {
 		if ctx.Err() != nil {
 			return nil, context.Canceled
 		}
@@ -108,8 +119,12 @@ func Diff(ctx context.Context, targets []TargetMatches, runner gh.Runner, printe
 
 		// Plan FileSet matches.
 		if len(tm.Matches.FileSets) > 0 {
-			fileChanges, err := DiffFiles(ctx, runner, tm.Matches.FileSets, fullName, sourceRefCount, func(status string) {
-				tracker.UpdateStatus(fullName, status)
+			fileChanges, err := DiffFiles(ctx, opts.Runner, tm.Matches.FileSets, DiffFilesOptions{
+				FilterRepo:     fullName,
+				SourceRefCount: sourceRefCount,
+				OnStatus: func(status string) {
+					tracker.UpdateStatus(fullName, status)
+				},
 			})
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
