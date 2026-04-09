@@ -200,10 +200,10 @@ func TestFetchSecrets(t *testing.T) {
 		}
 	})
 
-	t.Run("error returns nil", func(t *testing.T) {
+	t.Run("permission error returns nil", func(t *testing.T) {
 		mock := &gh.MockRunner{
 			Errors: map[string]error{
-				"secret list --repo myorg/myrepo --json name --jq .[].name": fmt.Errorf("forbidden"),
+				"secret list --repo myorg/myrepo --json name --jq .[].name": gh.ErrForbidden,
 			},
 		}
 		p := NewProcessor(mock, nil, nil)
@@ -213,6 +213,19 @@ func TestFetchSecrets(t *testing.T) {
 		}
 		if secrets != nil {
 			t.Errorf("expected nil secrets on error, got %v", secrets)
+		}
+	})
+
+	t.Run("unexpected error propagates", func(t *testing.T) {
+		mock := &gh.MockRunner{
+			Errors: map[string]error{
+				"secret list --repo myorg/myrepo --json name --jq .[].name": fmt.Errorf("network timeout"),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		_, err := p.fetchSecrets(context.Background(), "myorg", "myrepo")
+		if err == nil {
+			t.Fatal("expected error, got nil")
 		}
 	})
 }
@@ -256,10 +269,10 @@ func TestFetchVariables(t *testing.T) {
 		}
 	})
 
-	t.Run("error returns nil", func(t *testing.T) {
+	t.Run("permission error returns nil", func(t *testing.T) {
 		mock := &gh.MockRunner{
 			Errors: map[string]error{
-				"variable list --repo myorg/myrepo --json name,value": fmt.Errorf("forbidden"),
+				"variable list --repo myorg/myrepo --json name,value": gh.ErrForbidden,
 			},
 		}
 		p := NewProcessor(mock, nil, nil)
@@ -269,6 +282,19 @@ func TestFetchVariables(t *testing.T) {
 		}
 		if vars != nil {
 			t.Errorf("expected nil vars on error, got %v", vars)
+		}
+	})
+
+	t.Run("unexpected error propagates", func(t *testing.T) {
+		mock := &gh.MockRunner{
+			Errors: map[string]error{
+				"variable list --repo myorg/myrepo --json name,value": fmt.Errorf("network timeout"),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		_, err := p.fetchVariables(context.Background(), "myorg", "myrepo")
+		if err == nil {
+			t.Fatal("expected error, got nil")
 		}
 	})
 }
@@ -481,10 +507,10 @@ func TestFetchMilestones(t *testing.T) {
 		}
 	})
 
-	t.Run("error returns nil", func(t *testing.T) {
+	t.Run("permission error returns nil", func(t *testing.T) {
 		mock := &gh.MockRunner{
 			Errors: map[string]error{
-				"api repos/myorg/myrepo/milestones?state=all&per_page=100 --paginate": fmt.Errorf("forbidden"),
+				"api repos/myorg/myrepo/milestones?state=all&per_page=100 --paginate": gh.ErrForbidden,
 			},
 		}
 		p := NewProcessor(mock, nil, nil)
@@ -494,6 +520,19 @@ func TestFetchMilestones(t *testing.T) {
 		}
 		if milestones != nil {
 			t.Errorf("expected nil milestones on error, got %v", milestones)
+		}
+	})
+
+	t.Run("unexpected error propagates", func(t *testing.T) {
+		mock := &gh.MockRunner{
+			Errors: map[string]error{
+				"api repos/myorg/myrepo/milestones?state=all&per_page=100 --paginate": fmt.Errorf("network timeout"),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		_, err := p.fetchMilestones(context.Background(), "myorg", "myrepo")
+		if err == nil {
+			t.Fatal("expected error, got nil")
 		}
 	})
 
