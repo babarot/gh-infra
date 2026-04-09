@@ -56,9 +56,17 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		return nil, err
 	}
 
+	runner := gh.NewRunner(false)
+	sourceResolver := manifest.NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
+		return runner.Run(ctx, args...)
+	})
+
 	parsed := &manifest.ParseResult{}
 	for _, path := range paths {
-		result, err := manifest.ParseAll(path, manifest.ParseOptions{FailOnUnknown: opts.FailOnUnknown})
+		result, err := manifest.ParseAll(path, manifest.ParseOptions{
+			FailOnUnknown: opts.FailOnUnknown,
+			Resolver:      sourceResolver,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -78,8 +86,6 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	if !opts.DryRun {
 		manifest.ResolveSecrets(parsed.Repositories)
 	}
-
-	runner := gh.NewRunner(false)
 
 	var resolverOwner string
 	if len(parsed.Repositories) > 0 {

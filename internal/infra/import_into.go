@@ -145,8 +145,13 @@ func (d *ImportDiff) Write() error {
 func ImportInto(args []string, into string) (*ImportDiff, error) {
 	printer := ui.NewStandardPrinter()
 
+	runner := gh.NewRunner(false)
+	sourceResolver := manifest.NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
+		return runner.Run(ctx, args...)
+	})
+
 	// Parse manifests and match targets.
-	parsed, err := manifest.ParseAll(into)
+	parsed, err := manifest.ParseAll(into, manifest.ParseOptions{Resolver: sourceResolver})
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +175,6 @@ func ImportInto(args []string, into string) (*ImportDiff, error) {
 		printer.Message("\nNo matching resources found in manifests")
 		return &ImportDiff{Matched: false, printer: printer}, nil
 	}
-
-	runner := gh.NewRunner(false)
 
 	// Build spinner tasks.
 	var tasks []ui.RefreshTask

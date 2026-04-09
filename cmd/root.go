@@ -1,15 +1,12 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
-	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/logger"
-	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -38,12 +35,6 @@ func NewRootCmd(version, revision string) *cobra.Command {
 			// --verbose is a shorthand for debug level
 			if verbose && level == "" {
 				logger.Init("debug")
-			}
-
-			// Wire up gh runner for GitHub source resolution
-			runner := gh.NewRunner(false)
-			manifest.DefaultResolver.RunGH = func(ctx context.Context, args ...string) ([]byte, error) {
-				return runner.Run(ctx, args...)
 			}
 		},
 	}
