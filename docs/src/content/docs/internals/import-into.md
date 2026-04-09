@@ -54,6 +54,7 @@ File import planning works with four concrete write-back modes:
   - update an inline `content: |` block inside the manifest
 - `WritePatch`
   - store the drift as a patch under `patches:`
+  - available for both source-backed and inline-backed entries
 - `WriteSkip`
   - do not write anything
 

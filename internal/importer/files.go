@@ -109,8 +109,11 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		return change
 	}
 
+	// Patch mode is primarily designed for source-backed files (shared templates)
+	// and files with existing patches. inlineBacked is included for consistency
+	// so that the diff viewer offers write/patch/skip for all file types.
 	patchSupported := false
-	if len(file.Patches) > 0 || sourceBacked {
+	if len(file.Patches) > 0 || sourceBacked || inlineBacked {
 		patchSupported = configurePatchTarget(&change, file, doc, repoIdx, repo, repoCount)
 	}
 	if len(file.Patches) > 0 && !patchSupported {
@@ -132,7 +135,9 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		}
 	} else if patchSupported {
 		availableModes = []WriteMode{WriteInline, WritePatch}
-		suggestedMode = WritePatch
+		if patchPreferred {
+			suggestedMode = WritePatch
+		}
 	}
 	setWriteMetadata(&change, suggestedMode, availableModes...)
 
