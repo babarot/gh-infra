@@ -51,7 +51,13 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 			return plan, fmt.Errorf("no manifest bytes for %s", doc.SourcePath)
 		}
 
-		updated, err := patchRepositorySpec(data, doc.DocIndex, "$.spec", diffs, imported)
+		updated, err := patchRepositorySpec(repositoryPatchInput{
+			Data:     data,
+			DocIndex: doc.DocIndex,
+			BasePath: "$.spec",
+			Diffs:    diffs,
+			Desired:  imported,
+		})
 		if err != nil {
 			return plan, fmt.Errorf("yamledit patch for %s doc %d: %w", doc.SourcePath, doc.DocIndex, err)
 		}
@@ -110,7 +116,13 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 			return plan, fmt.Errorf("no manifest bytes for %s", doc.SourcePath)
 		}
 
-		updated, err := patchRepositorySpec(data, doc.DocIndex, yamlPath, diffs, newOverride)
+		updated, err := patchRepositorySpec(repositoryPatchInput{
+			Data:     data,
+			DocIndex: doc.DocIndex,
+			BasePath: yamlPath,
+			Diffs:    diffs,
+			Desired:  newOverride,
+		})
 		if err != nil {
 			return plan, fmt.Errorf("yamledit patch for %s doc %d path %s: %w",
 				doc.SourcePath, doc.DocIndex, yamlPath, err)
@@ -124,15 +136,24 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 	return plan, nil
 }
 
-func patchRepositorySpec(data []byte, docIndex int, basePath string, diffs []FieldDiff, desired manifest.RepositorySpec) ([]byte, error) {
-	plan := newRepositoryPatchPlan(basePath)
-	for _, diff := range diffs {
-		applyRepositoryDescriptor(plan, diff.Field, desired)
+type repositoryPatchInput struct {
+	Data     []byte
+	DocIndex int
+	BasePath string
+	Diffs    []FieldDiff
+	Desired  manifest.RepositorySpec
+}
+
+func patchRepositorySpec(input repositoryPatchInput) ([]byte, error) {
+	plan := newRepositoryPatchPlan(input.BasePath)
+	for _, diff := range input.Diffs {
+		applyRepositoryDescriptor(plan, diff.Field, input.Desired)
 	}
 
+	data := input.Data
 	var err error
 	if len(plan.rootMerge) > 0 {
-		data, err = yamledit.Merge(data, docIndex, basePath, plan.rootMerge)
+		data, err = yamledit.Merge(data, input.DocIndex, input.BasePath, plan.rootMerge)
 		if err != nil {
 			return nil, err
 		}
@@ -148,13 +169,13 @@ func patchRepositorySpec(data []byte, docIndex int, basePath string, diffs []Fie
 		if len(fields) == 0 {
 			continue
 		}
-		data, err = mergeNestedObject(data, docIndex, basePath, nestedKey, fields)
+		data, err = mergeNestedObject(data, input.DocIndex, input.BasePath, nestedKey, fields)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, path := range plan.deletes {
-		data, err = yamledit.Delete(data, docIndex, path)
+		data, err = yamledit.Delete(data, input.DocIndex, path)
 		if err != nil {
 			return nil, err
 		}
