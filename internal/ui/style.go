@@ -1,6 +1,10 @@
 package ui
 
-import "charm.land/lipgloss/v2"
+import (
+	"os"
+
+	"charm.land/lipgloss/v2"
+)
 
 var (
 	Green  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
@@ -11,8 +15,13 @@ var (
 	Dim    = lipgloss.NewStyle().Faint(true)
 )
 
+func init() {
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
+		DisableStyles()
+	}
+}
+
 // DisableStyles resets all styles to plain text (no color, no formatting).
-// Used in tests to make output assertions simple.
 func DisableStyles() {
 	Green = lipgloss.NewStyle()
 	Red = lipgloss.NewStyle()
