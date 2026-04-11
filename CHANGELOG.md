@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.10.0](https://github.com/babarot/gh-infra/compare/v0.9.1...v0.10.0) - 2026-04-11
+### New Features
+- Add milestone management and improve plan display grouping by @babarot in https://github.com/babarot/gh-infra/pull/104
+### Bug fixes
+- Propagate unexpected errors from sub-resource fetching by @babarot in https://github.com/babarot/gh-infra/pull/109
+- fix: resolve false-positive merge strategy diffs when GitHub returns null by @yagihash in https://github.com/babarot/gh-infra/pull/116
+### Improvements
+- Add clickable terminal hyperlinks for repository names by @babarot in https://github.com/babarot/gh-infra/pull/107
+- Sort sub-resources for deterministic export output by @babarot in https://github.com/babarot/gh-infra/pull/114
+- Suppress ANSI color codes in CI and NO_COLOR environments by @babarot in https://github.com/babarot/gh-infra/pull/115
+### Refactorings
+- Replace hardcoded indent magic numbers with IndentLevel system by @babarot in https://github.com/babarot/gh-infra/pull/106
+- Drop huh dependency in favor of inline bubbletea confirm model by @babarot in https://github.com/babarot/gh-infra/pull/108
+- Replace global DefaultResolver with explicit SourceResolver injection by @babarot in https://github.com/babarot/gh-infra/pull/110
+- Replace long positional parameter lists with typed option structs by @babarot in https://github.com/babarot/gh-infra/pull/111
+
 ## [v0.9.1](https://github.com/babarot/gh-infra/compare/v0.9.0...v0.9.1) - 2026-04-08
 ### Bug fixes
 - Replace DiffEntry.Skip bool with Action-based model by @babarot in https://github.com/babarot/gh-infra/pull/97
