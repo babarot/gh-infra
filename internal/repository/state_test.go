@@ -269,6 +269,38 @@ func TestFetchVariables(t *testing.T) {
 	})
 }
 
+func TestFetchCommitMessageSettings_NullValues(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": []byte(`{
+				"squash_merge_commit_title": null,
+				"squash_merge_commit_message": null,
+				"merge_commit_title": null,
+				"merge_commit_message": null
+			}`),
+		},
+	}
+
+	p := NewProcessor(mock, nil, nil)
+	settings, err := p.fetchCommitMessageSettings(context.Background(), "myorg", "myrepo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if settings.MergeCommitTitle != "MERGE_MESSAGE" {
+		t.Errorf("MergeCommitTitle = %q, want MERGE_MESSAGE", settings.MergeCommitTitle)
+	}
+	if settings.MergeCommitMessage != "PR_TITLE" {
+		t.Errorf("MergeCommitMessage = %q, want PR_TITLE", settings.MergeCommitMessage)
+	}
+	if settings.SquashMergeCommitTitle != "COMMIT_OR_PR_TITLE" {
+		t.Errorf("SquashMergeCommitTitle = %q, want COMMIT_OR_PR_TITLE", settings.SquashMergeCommitTitle)
+	}
+	if settings.SquashMergeCommitMessage != "COMMIT_MESSAGES" {
+		t.Errorf("SquashMergeCommitMessage = %q, want COMMIT_MESSAGES", settings.SquashMergeCommitMessage)
+	}
+}
+
 func TestCurrentState_FullName(t *testing.T) {
 	s := &CurrentState{Owner: "myorg", Name: "myrepo"}
 	if got := s.FullName(); got != "myorg/myrepo" {

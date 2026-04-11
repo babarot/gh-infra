@@ -192,20 +192,27 @@ func (p *Processor) fetchCommitMessageSettings(ctx context.Context, owner, name 
 	}
 
 	var raw struct {
-		SquashMergeCommitTitle   string `json:"squash_merge_commit_title"`
-		SquashMergeCommitMessage string `json:"squash_merge_commit_message"`
-		MergeCommitTitle         string `json:"merge_commit_title"`
-		MergeCommitMessage       string `json:"merge_commit_message"`
+		SquashMergeCommitTitle   *string `json:"squash_merge_commit_title"`
+		SquashMergeCommitMessage *string `json:"squash_merge_commit_message"`
+		MergeCommitTitle         *string `json:"merge_commit_title"`
+		MergeCommitMessage       *string `json:"merge_commit_message"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return commitMessageSettings{}, err
 	}
 
+	deref := func(s *string, def string) string {
+		if s != nil && *s != "" {
+			return *s
+		}
+		return def
+	}
+
 	return commitMessageSettings{
-		MergeCommitTitle:         raw.MergeCommitTitle,
-		MergeCommitMessage:       raw.MergeCommitMessage,
-		SquashMergeCommitTitle:   raw.SquashMergeCommitTitle,
-		SquashMergeCommitMessage: raw.SquashMergeCommitMessage,
+		MergeCommitTitle:         deref(raw.MergeCommitTitle, "MERGE_MESSAGE"),
+		MergeCommitMessage:       deref(raw.MergeCommitMessage, "PR_TITLE"),
+		SquashMergeCommitTitle:   deref(raw.SquashMergeCommitTitle, "COMMIT_OR_PR_TITLE"),
+		SquashMergeCommitMessage: deref(raw.SquashMergeCommitMessage, "COMMIT_MESSAGES"),
 	}, nil
 }
 
