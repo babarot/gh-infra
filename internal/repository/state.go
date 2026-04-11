@@ -511,7 +511,7 @@ func (p *Processor) fetchSecrets(ctx context.Context, owner, name string) ([]str
 		"--jq", ".[].name",
 	)
 	if err != nil {
-		if isPermissionOrNotFound(err) {
+		if isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("fetch secrets for %s/%s: %w", owner, name, err)
@@ -531,7 +531,7 @@ func (p *Processor) fetchVariables(ctx context.Context, owner, name string) (map
 		"--json", "name,value",
 	)
 	if err != nil {
-		if isPermissionOrNotFound(err) {
+		if isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("fetch variables for %s/%s: %w", owner, name, err)
@@ -560,7 +560,7 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string) (map[st
 		"--limit", "1000",
 	)
 	if err != nil {
-		if isPermissionOrNotFound(err) {
+		if isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("fetch labels for %s/%s: %w", owner, name, err)
@@ -593,7 +593,7 @@ func (p *Processor) fetchMilestones(ctx context.Context, owner, name string) (ma
 		"--paginate",
 	)
 	if err != nil {
-		if isPermissionOrNotFound(err) {
+		if isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("fetch milestones for %s/%s: %w", owner, name, err)
@@ -799,12 +799,12 @@ func isRepoNotFound(err error) bool {
 	return strings.Contains(msg, "Could not resolve to a Repository")
 }
 
-// isPermissionOrNotFound reports whether the error indicates a resource that
-// is not accessible due to permissions, plan restrictions, or non-existence.
-// These are expected conditions for optional sub-resources (secrets, variables,
-// labels, milestones) and should be silently ignored rather than failing the
-// entire fetch. All other errors (network, timeout, 5xx) are propagated.
-func isPermissionOrNotFound(err error) bool {
+// isIgnorableSubresourceError reports whether a sub-resource fetch failure can
+// be ignored without aborting repository state collection. This is limited to
+// optional sub-resources (secrets, variables, labels, milestones) that may be
+// inaccessible due to permissions, plan restrictions, or non-existence. All
+// other errors (network, timeout, 5xx) are propagated.
+func isIgnorableSubresourceError(err error) bool {
 	return errors.Is(err, gh.ErrNotFound) ||
 		errors.Is(err, gh.ErrForbidden) ||
 		errors.Is(err, gh.ErrValidation)
