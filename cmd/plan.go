@@ -44,6 +44,10 @@ type planCommandOptions struct {
 }
 
 func runPlan(paths []string, opts planCommandOptions) error {
+	if opts.CI {
+		ui.DisableStyles()
+	}
+
 	result, err := infra.Plan(infra.PlanOptions{
 		Paths:         paths,
 		FilterRepo:    opts.FilterRepo,
