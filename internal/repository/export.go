@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"sort"
 
 	"github.com/babarot/gh-infra/internal/manifest"
 )
@@ -121,14 +122,25 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		repo.Spec.Rulesets = append(repo.Spec.Rulesets, mrs)
 	}
 
-	for name, value := range r.Variables {
+	varNames := make([]string, 0, len(r.Variables))
+	for name := range r.Variables {
+		varNames = append(varNames, name)
+	}
+	sort.Strings(varNames)
+	for _, name := range varNames {
 		repo.Spec.Variables = append(repo.Spec.Variables, manifest.Variable{
 			Name:  name,
-			Value: value,
+			Value: r.Variables[name],
 		})
 	}
 
-	for _, label := range r.Labels {
+	labelNames := make([]string, 0, len(r.Labels))
+	for name := range r.Labels {
+		labelNames = append(labelNames, name)
+	}
+	sort.Strings(labelNames)
+	for _, name := range labelNames {
+		label := r.Labels[name]
 		repo.Spec.Labels = append(repo.Spec.Labels, manifest.Label{
 			Name:        label.Name,
 			Description: label.Description,
@@ -136,7 +148,13 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		})
 	}
 
-	for _, ms := range r.Milestones {
+	msNames := make([]string, 0, len(r.Milestones))
+	for title := range r.Milestones {
+		msNames = append(msNames, title)
+	}
+	sort.Strings(msNames)
+	for _, title := range msNames {
+		ms := r.Milestones[title]
 		m := manifest.Milestone{
 			Title:       ms.Title,
 			Description: ms.Description,

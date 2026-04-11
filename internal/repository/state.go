@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -521,7 +522,9 @@ func (p *Processor) fetchSecrets(ctx context.Context, owner, name string) ([]str
 	if raw == "" {
 		return nil, nil
 	}
-	return strings.Split(raw, "\n"), nil
+	names := strings.Split(raw, "\n")
+	sort.Strings(names)
+	return names, nil
 }
 
 func (p *Processor) fetchVariables(ctx context.Context, owner, name string) (map[string]string, error) {
