@@ -187,3 +187,43 @@ func TestResolveFiles_OverridePatchesReplacesOriginal(t *testing.T) {
 		t.Errorf("Patches should use override's patches, got %v", result[0].Patches)
 	}
 }
+
+func TestResolveFiles_InheritsContentAndSource(t *testing.T) {
+	fs := &manifest.FileSet{
+		Spec: manifest.FileSetSpec{
+			Files: []manifest.FileEntry{
+				{
+					Path:           ".goreleaser.yaml",
+					Content:        "dummy message",
+					Source:         "github://owner/repo/templates/.goreleaser.yaml",
+					OriginalSource: "templates/.goreleaser.yaml",
+				},
+			},
+		},
+	}
+
+	target := manifest.FileSetRepository{
+		Name: "repo",
+		Overrides: []manifest.FileEntry{
+			{Path: ".goreleaser.yaml", Vars: map[string]string{"Description": "overwrite message"}},
+		},
+	}
+
+	result := ResolveFiles(fs, target)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(result))
+	}
+	if result[0].Content != "dummy message" {
+		t.Errorf("Content = %q, want %q", result[0].Content, "dummy message")
+	}
+	if result[0].Source != "github://owner/repo/templates/.goreleaser.yaml" {
+		t.Errorf("Source = %q, want %q", result[0].Source, "github://owner/repo/templates/.goreleaser.yaml")
+	}
+	if result[0].OriginalSource != "templates/.goreleaser.yaml" {
+		t.Errorf("OriginalSource = %q, want %q", result[0].OriginalSource, "templates/.goreleaser.yaml")
+	}
+	if v := result[0].Vars["Description"]; v != "overwrite message" {
+		t.Errorf("Vars.Description = %q, want %q", v, "overwrite message")
+	}
+}
