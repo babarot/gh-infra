@@ -63,7 +63,8 @@ flowchart TB
 **Implementation:** `internal/repository/orchestrate.go` via `parallel.Map`
 
 - `parallel.Map` spawns a fixed pool of 10 worker goroutines that pull jobs from a channel
-- Each worker calls `Fetcher.FetchRepository()`, which internally uses `errgroup` to parallelize sub-fetches (branch protection, rulesets, secrets, variables)
+- Each worker calls `Fetcher.FetchRepository()`, which internally uses `errgroup` to parallelize sub-fetches (branch protection, rulesets, secrets, variables, actions, commit message settings, release immutability, security endpoints)
+- Within `fetchBranchProtection` and `fetchRulesets`, per-branch and per-ruleset detail fetches are themselves parallelized with `parallel.Map` (capped at `DefaultConcurrency`)
 - Spinner display via `ui.RunRefresh` shows per-repo progress (✓/✗)
 - Results are written to a pre-allocated slice by index — no mutex needed for the result array itself
 - Errors are non-fatal: failed repos are skipped and reported after all fetches complete
@@ -236,10 +237,16 @@ During `plan`, each repository triggers the following API calls:
 |----------|-------|-------|
 | `gh repo view` (GraphQL) | 1 | General settings, topics, merge strategy |
 | `GET /repos/{owner}/{repo}` | 1 | Commit message title/body settings |
+| `GET /repos/{owner}/{repo}/immutable-releases` | 1 | Release immutability |
+| `GET /repos/{owner}/{repo}/vulnerability-alerts` | 1 | Dependabot vulnerability alerts |
+| `GET /repos/{owner}/{repo}/automated-security-fixes` | 1 | Dependabot security updates |
+| `GET /repos/{owner}/{repo}/private-vulnerability-reporting` | 1 | Private vulnerability reporting |
 | `GET /repos/{owner}/{repo}/branches` | 1 | List protected branches |
-| `GET /repos/{owner}/{repo}/branches/{branch}/protection` | N | One per protected branch |
+| `GET /repos/{owner}/{repo}/branches/{branch}/protection` | N | One per protected branch (fetched in parallel) |
 | `GET /repos/{owner}/{repo}/rulesets` | 1 | List rulesets (paginated) |
-| `GET /repos/{owner}/{repo}/rulesets/{id}` | M | One per ruleset |
+| `GET /repos/{owner}/{repo}/rulesets/{id}` | M | One per ruleset (fetched in parallel) |
+| `GET /repos/{owner}/{repo}/labels` | 1 | List labels (paginated) |
+| `GET /repos/{owner}/{repo}/milestones` | 1 | List milestones (paginated) |
 | `gh secret list` | 1 | List repository secrets |
 | `gh variable list` | 1 | List repository variables |
 | `GET /repos/{owner}/{repo}/actions/permissions` | 1 | Actions enabled/disabled |
@@ -248,7 +255,7 @@ During `plan`, each repository triggers the following API calls:
 | `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` | 1 | Fork PR approval setting |
 | `GET /repos/{owner}/{repo}/contents/{path}` | F | One per file (FileSet) |
 
-**Fixed cost per repo:** ~10 calls
+**Fixed cost per repo:** ~16 calls
 **Variable cost:** N (protected branches) + M (rulesets) + F (files)
 
 ### Budget Estimates
@@ -257,10 +264,10 @@ Assuming 1 protected branch, 1 ruleset per repo:
 
 | Files per repo | Calls per repo | Repos for 5,000 budget |
 |----------------|---------------|----------------------|
-| 1 | ~13 | ~384 |
-| 5 | ~17 | ~294 |
-| 10 | ~22 | ~227 |
-| 20 | ~32 | ~156 |
+| 1 | ~19 | ~263 |
+| 5 | ~23 | ~217 |
+| 10 | ~28 | ~178 |
+| 20 | ~38 | ~131 |
 
 :::caution
 These estimates cover the **plan phase only**. An `apply` run executes the plan fetch first, then makes additional API calls to mutate state (create/update settings, Git Data API for file commits, etc.). Budget accordingly.
