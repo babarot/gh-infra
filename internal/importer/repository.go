@@ -248,6 +248,22 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		},
 	},
 	{
+		diffField: "release_immutability",
+		key:       "release_immutability",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return spec.ReleaseImmutability
+		},
+	},
+	{
+		diffField: "vulnerability_alerts",
+		key:       "vulnerability_alerts",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return spec.VulnerabilityAlerts
+		},
+	},
+	{
 		diffField: "topics",
 		key:       "topics",
 		kind:      fieldStringSlice,
@@ -703,6 +719,8 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	diffs = appendPtrDiff(diffs, "homepage", local.Homepage, imported.Homepage)
 	diffs = appendPtrDiff(diffs, "visibility", local.Visibility, imported.Visibility)
 	diffs = appendBoolPtrDiff(diffs, "archived", local.Archived, imported.Archived)
+	diffs = appendBoolPtrDiff(diffs, "release_immutability", local.ReleaseImmutability, imported.ReleaseImmutability)
+	diffs = appendBoolPtrDiff(diffs, "vulnerability_alerts", local.VulnerabilityAlerts, imported.VulnerabilityAlerts)
 
 	// List fields
 	if !stringSliceEqual(local.Topics, imported.Topics) {

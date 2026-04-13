@@ -102,3 +102,18 @@ spec:
 | `release_immutability` | bool | `true` to lock releases after publishing. Once enabled, release assets and metadata cannot be edited or deleted |
 
 This setting uses a dedicated GitHub API endpoint (`/repos/{owner}/{repo}/immutable-releases`) rather than the standard repository settings endpoint.
+
+## Vulnerability Alerts
+
+Enable or disable Dependabot vulnerability alerts for the repository:
+
+```yaml
+spec:
+  vulnerability_alerts: true
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `vulnerability_alerts` | bool | `true` to enable Dependabot vulnerability alerts. Required for features like Renovate's `osvVulnerabilityAlerts` that integrate with Dependabot |
+
+This setting uses a dedicated GitHub API endpoint (`/repos/{owner}/{repo}/vulnerability-alerts`) rather than the standard repository settings endpoint. The API signals state via HTTP status: `204 No Content` when enabled, `404 Not Found` when disabled.

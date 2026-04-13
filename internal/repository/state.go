@@ -181,6 +181,14 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 		return nil, fmt.Errorf("fetch release immutability for %s/%s: %w", owner, name, err)
 	}
 
+	// Fetch vulnerability alerts (Dependabot) setting via dedicated REST API endpoint.
+	// 404 is the documented "disabled" response and is handled inside the fetcher;
+	// 403 is ignored gracefully (e.g. GHES without support); other errors propagate.
+	vulnerabilityAlerts, err := p.fetchVulnerabilityAlerts(ctx, owner, name)
+	if err != nil && !errors.Is(err, gh.ErrForbidden) {
+		return nil, fmt.Errorf("fetch vulnerability alerts for %s/%s: %w", owner, name, err)
+	}
+
 	return &CurrentState{
 		Owner:               owner,
 		Name:                name,
@@ -190,6 +198,7 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 		Visibility:          strings.ToLower(raw.Visibility),
 		Topics:              topics,
 		ReleaseImmutability: releaseImmutability,
+		VulnerabilityAlerts: vulnerabilityAlerts,
 		Features: CurrentFeatures{
 			Issues:      raw.HasIssuesEnabled,
 			Projects:    raw.HasProjectsEnabled,
@@ -265,6 +274,22 @@ func (p *Processor) fetchReleaseImmutability(ctx context.Context, owner, name st
 		return false, err
 	}
 	return raw.Enabled, nil
+}
+
+// fetchVulnerabilityAlerts returns whether Dependabot vulnerability alerts are
+// enabled on the repository. The GitHub API signals state via HTTP status:
+// 204 No Content when enabled, 404 Not Found when disabled.
+func (p *Processor) fetchVulnerabilityAlerts(ctx context.Context, owner, name string) (bool, error) {
+	_, err := p.runner.Run(ctx,
+		"api", fmt.Sprintf("repos/%s/%s/vulnerability-alerts", owner, name),
+	)
+	if err != nil {
+		if errors.Is(err, gh.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string) (map[string]*CurrentBranchProtection, error) {

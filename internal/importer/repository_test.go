@@ -211,6 +211,64 @@ spec:
 	}
 }
 
+func TestPlanRepository_SecuritySettingsDiff(t *testing.T) {
+	local := manifest.RepositorySpec{
+		ReleaseImmutability: manifest.Ptr(false),
+		VulnerabilityAlerts: manifest.Ptr(false),
+	}
+	imported := manifest.Repository{
+		Spec: manifest.RepositorySpec{
+			ReleaseImmutability: manifest.Ptr(true),
+			VulnerabilityAlerts: manifest.Ptr(true),
+		},
+	}
+
+	doc := &manifest.RepositoryDocument{
+		Resource:   &manifest.Repository{Spec: local},
+		SourcePath: "/tmp/test.yaml",
+		DocIndex:   0,
+	}
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  release_immutability: false
+  vulnerability_alerts: false
+`)
+
+	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
+	rp, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepository error: %v", err)
+	}
+
+	found := make(map[string]bool)
+	for _, d := range rp.Diffs {
+		found[d.Field] = true
+	}
+	if !found["release_immutability"] {
+		t.Error("expected diff for release_immutability")
+	}
+	if !found["vulnerability_alerts"] {
+		t.Error("expected diff for vulnerability_alerts")
+	}
+
+	updated := string(mb["/tmp/test.yaml"])
+	if !strings.Contains(updated, "release_immutability: true") {
+		t.Errorf("expected manifest to be patched to release_immutability: true, got:\n%s", updated)
+	}
+	if !strings.Contains(updated, "vulnerability_alerts: true") {
+		t.Errorf("expected manifest to be patched to vulnerability_alerts: true, got:\n%s", updated)
+	}
+}
+
 func TestPlanRepository_ManifestBytesUpdated(t *testing.T) {
 	local := manifest.RepositorySpec{
 		Description: manifest.Ptr("old"),

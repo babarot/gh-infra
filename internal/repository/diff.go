@@ -117,6 +117,7 @@ func diffRepoSettings(name string, desired *manifest.Repository, current *Curren
 	appendChanged(dc, &changes, "visibility", desired.Spec.Visibility, current.Visibility)
 	appendChanged(dc, &changes, "archived", desired.Spec.Archived, current.Archived)
 	appendChanged(dc, &changes, "release_immutability", desired.Spec.ReleaseImmutability, current.ReleaseImmutability)
+	appendChanged(dc, &changes, "vulnerability_alerts", desired.Spec.VulnerabilityAlerts, current.VulnerabilityAlerts)
 
 	if len(desired.Spec.Topics) > 0 || len(current.Topics) > 0 {
 		if !stringSliceEqual(desired.Spec.Topics, current.Topics) {

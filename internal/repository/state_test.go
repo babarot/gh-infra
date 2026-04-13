@@ -49,6 +49,7 @@ func TestFetchRepository(t *testing.T) {
 				"merge_commit_message": "PR_BODY"
 			}`),
 			"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
+			"api repos/myorg/myrepo/vulnerability-alerts":                                    []byte(``),
 			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`[]`),
 			"secret list --repo myorg/myrepo --json name --jq .[].name":                       []byte("SECRET1\nSECRET2"),
 			"variable list --repo myorg/myrepo --json name,value":                             []byte(`[{"name":"VAR1","value":"val1"},{"name":"VAR2","value":"val2"}]`),
@@ -448,6 +449,81 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "fetch release immutability") {
 			t.Errorf("expected 'fetch release immutability' in error, got: %v", err)
+		}
+	})
+
+	t.Run("vulnerability alerts 204 means enabled", func(t *testing.T) {
+		mock := &gh.MockRunner{Responses: baseResponses}
+		p := NewProcessor(mock, nil, nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !state.VulnerabilityAlerts {
+			t.Error("expected VulnerabilityAlerts = true for 204 response")
+		}
+	})
+
+	t.Run("vulnerability alerts 404 means disabled", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		maps.Copy(responses, baseResponses)
+		delete(responses, "api repos/myorg/myrepo/vulnerability-alerts")
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				"api repos/myorg/myrepo/vulnerability-alerts": fmt.Errorf("%w: api error", gh.ErrNotFound),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err != nil {
+			t.Fatalf("expected no error for 404, got: %v", err)
+		}
+		if state.VulnerabilityAlerts {
+			t.Error("expected VulnerabilityAlerts = false for 404")
+		}
+	})
+
+	t.Run("vulnerability alerts 403 is ignored", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		maps.Copy(responses, baseResponses)
+		delete(responses, "api repos/myorg/myrepo/vulnerability-alerts")
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				"api repos/myorg/myrepo/vulnerability-alerts": fmt.Errorf("%w: api error", gh.ErrForbidden),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err != nil {
+			t.Fatalf("expected no error for 403, got: %v", err)
+		}
+		if state.VulnerabilityAlerts {
+			t.Error("expected VulnerabilityAlerts = false for 403")
+		}
+	})
+
+	t.Run("vulnerability alerts 500 propagates error", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		maps.Copy(responses, baseResponses)
+		delete(responses, "api repos/myorg/myrepo/vulnerability-alerts")
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				"api repos/myorg/myrepo/vulnerability-alerts": fmt.Errorf("internal server error"),
+			},
+		}
+		p := NewProcessor(mock, nil, nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		if err == nil {
+			t.Fatal("expected error for 500, got nil")
+		}
+		if !strings.Contains(err.Error(), "fetch vulnerability alerts") {
+			t.Errorf("expected 'fetch vulnerability alerts' in error, got: %v", err)
 		}
 	})
 }

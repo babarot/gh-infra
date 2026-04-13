@@ -132,6 +132,26 @@ func TestDiff_RepoSettings(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "vulnerability_alerts enable",
+			setup: func(d *manifest.Repository, c *CurrentState) {
+				d.Spec.VulnerabilityAlerts = manifest.Ptr(true)
+				c.VulnerabilityAlerts = false
+			},
+			wantCount: 1,
+			wantField: "vulnerability_alerts",
+			wantType:  ChangeUpdate,
+			wantOld:   false,
+			wantNew:   true,
+		},
+		{
+			name: "vulnerability_alerts same no change",
+			setup: func(d *manifest.Repository, c *CurrentState) {
+				d.Spec.VulnerabilityAlerts = manifest.Ptr(true)
+				c.VulnerabilityAlerts = true
+			},
+			wantCount: 0,
+		},
 	}
 
 	for _, tt := range tests {

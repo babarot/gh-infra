@@ -185,9 +185,49 @@ func TestApplyFeatureToggle(t *testing.T) {
 	}
 }
 
+func TestApplyVulnerabilityAlerts(t *testing.T) {
+	tests := []struct {
+		name       string
+		newValue   bool
+		wantMethod string
+	}{
+		{"enable", true, "PUT"},
+		{"disable", false, "DELETE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{}
+			proc := NewProcessor(mock, nil, nil)
+
+			repo := newTestRepo("myorg", "myrepo")
+			changes := []Change{
+				{
+					Type:     ChangeUpdate,
+					Resource: "Repository",
+					Name:     "myorg/myrepo",
+					Field:    "vulnerability_alerts",
+					NewValue: tt.newValue,
+				},
+			}
+
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			if results[0].Err != nil {
+				t.Fatalf("unexpected error: %v", results[0].Err)
+			}
+			args := mock.Called[0]
+			expected := []string{"api", "repos/myorg/myrepo/vulnerability-alerts", "--method", tt.wantMethod}
+			if strings.Join(args, " ") != strings.Join(expected, " ") {
+				t.Errorf("args: got %v, want %v", args, expected)
+			}
+		})
+	}
+}
+
 func TestApplyRepoSetting_BoolTypeAssertionError(t *testing.T) {
 	boolFields := []string{
 		"release_immutability",
+		"vulnerability_alerts",
 		"issues",
 		"projects",
 		"wiki",

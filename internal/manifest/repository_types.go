@@ -80,6 +80,7 @@ type RepositorySpec struct {
 	Features            *Features          `yaml:"features,omitempty"`
 	MergeStrategy       *MergeStrategy     `yaml:"merge_strategy,omitempty"`
 	ReleaseImmutability *bool              `yaml:"release_immutability,omitempty"`
+	VulnerabilityAlerts *bool              `yaml:"vulnerability_alerts,omitempty"`
 	BranchProtection    []BranchProtection `yaml:"branch_protection,omitempty" validate:"unique=pattern"`
 	Rulesets            []Ruleset          `yaml:"rulesets,omitempty"          validate:"unique=name"`
 	Secrets             []Secret           `yaml:"secrets,omitempty"           validate:"unique=name"`

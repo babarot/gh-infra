@@ -21,6 +21,7 @@ type CurrentState struct {
 	Features            CurrentFeatures
 	MergeStrategy       CurrentMergeStrategy
 	ReleaseImmutability bool
+	VulnerabilityAlerts bool
 
 	BranchProtection map[string]*CurrentBranchProtection // pattern → protection
 	Rulesets         map[string]*CurrentRuleset          // name → ruleset

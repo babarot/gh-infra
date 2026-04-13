@@ -50,6 +50,15 @@ spec:
 
 Use this to lock releases after publishing.
 
+## Vulnerability Alerts
+
+```yaml
+spec:
+  vulnerability_alerts: true
+```
+
+Enable Dependabot vulnerability alerts. Required when integrating with tools like Renovate's `osvVulnerabilityAlerts`. Uses PUT/DELETE on `/repos/{owner}/{repo}/vulnerability-alerts`; GitHub reports state via HTTP status (204 = enabled, 404 = disabled).
+
 ## Lifecycle
 
 - Missing repository in GitHub: `plan` shows create, `apply` creates it
