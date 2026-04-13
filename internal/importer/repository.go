@@ -265,6 +265,24 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		},
 	},
 	{
+		diffField: "security.automated_security_fixes",
+		parentKey: "security",
+		key:       "automated_security_fixes",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromSecurity(spec.Security, "automated_security_fixes")
+		},
+	},
+	{
+		diffField: "security.private_vulnerability_reporting",
+		parentKey: "security",
+		key:       "private_vulnerability_reporting",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromSecurity(spec.Security, "private_vulnerability_reporting")
+		},
+	},
+	{
 		diffField: "topics",
 		key:       "topics",
 		kind:      fieldStringSlice,
@@ -609,6 +627,10 @@ func boolPtrFromSecurity(s *manifest.Security, field string) *bool {
 	switch field {
 	case "vulnerability_alerts":
 		return s.VulnerabilityAlerts
+	case "automated_security_fixes":
+		return s.AutomatedSecurityFixes
+	case "private_vulnerability_reporting":
+		return s.PrivateVulnerabilityReporting
 	default:
 		return nil
 	}
@@ -775,6 +797,8 @@ func compareSecurity(local, imported *manifest.Security) []FieldDiff {
 	l := derefSecurity(local)
 	i := derefSecurity(imported)
 	diffs = appendBoolPtrDiff(diffs, "security.vulnerability_alerts", l.VulnerabilityAlerts, i.VulnerabilityAlerts)
+	diffs = appendBoolPtrDiff(diffs, "security.automated_security_fixes", l.AutomatedSecurityFixes, i.AutomatedSecurityFixes)
+	diffs = appendBoolPtrDiff(diffs, "security.private_vulnerability_reporting", l.PrivateVulnerabilityReporting, i.PrivateVulnerabilityReporting)
 	return diffs
 }
 

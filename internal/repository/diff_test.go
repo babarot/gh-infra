@@ -324,6 +324,91 @@ func TestDiff_MergeStrategy_BoolFlags(t *testing.T) {
 	}
 }
 
+func TestValidateDependencies(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupSpec   func(s *manifest.Security)
+		currentVA   bool
+		wantErr     bool
+		wantErrText string
+	}{
+		{
+			name:      "no security: ok",
+			setupSpec: nil,
+			wantErr:   false,
+		},
+		{
+			name:      "fixes nil: ok",
+			setupSpec: func(s *manifest.Security) {},
+			wantErr:   false,
+		},
+		{
+			name:      "fixes false: ok regardless of alerts",
+			setupSpec: func(s *manifest.Security) { s.AutomatedSecurityFixes = manifest.Ptr(false) },
+			wantErr:   false,
+		},
+		{
+			name: "fixes true + alerts true (manifest): ok",
+			setupSpec: func(s *manifest.Security) {
+				s.AutomatedSecurityFixes = manifest.Ptr(true)
+				s.VulnerabilityAlerts = manifest.Ptr(true)
+			},
+			wantErr: false,
+		},
+		{
+			name: "fixes true + alerts false (manifest): error",
+			setupSpec: func(s *manifest.Security) {
+				s.AutomatedSecurityFixes = manifest.Ptr(true)
+				s.VulnerabilityAlerts = manifest.Ptr(false)
+			},
+			wantErr:     true,
+			wantErrText: "automated_security_fixes",
+		},
+		{
+			name: "fixes true + alerts omitted, current=true: ok (effective true)",
+			setupSpec: func(s *manifest.Security) {
+				s.AutomatedSecurityFixes = manifest.Ptr(true)
+			},
+			currentVA: true,
+			wantErr:   false,
+		},
+		{
+			name: "fixes true + alerts omitted, current=false: error",
+			setupSpec: func(s *manifest.Security) {
+				s.AutomatedSecurityFixes = manifest.Ptr(true)
+			},
+			currentVA:   false,
+			wantErr:     true,
+			wantErrText: "automated_security_fixes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &manifest.Repository{
+				Spec: manifest.RepositorySpec{},
+			}
+			if tt.setupSpec != nil {
+				d.Spec.Security = &manifest.Security{}
+				tt.setupSpec(d.Spec.Security)
+			}
+			c := &CurrentState{VulnerabilityAlerts: tt.currentVA}
+
+			err := ValidateDependencies(d, c)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrText) {
+					t.Errorf("expected error containing %q, got: %v", tt.wantErrText, err)
+				}
+			} else if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestDiff_Security(t *testing.T) {
 	t.Run("nil security is noop", func(t *testing.T) {
 		d := baseDesired()
@@ -334,40 +419,75 @@ func TestDiff_Security(t *testing.T) {
 		}
 	})
 
-	t.Run("vulnerability_alerts enable", func(t *testing.T) {
+	fields := []struct {
+		name      string
+		setDesire func(s *manifest.Security)
+		setCur    func(c *CurrentState)
+		field     string
+	}{
+		{
+			name:      "vulnerability_alerts",
+			setDesire: func(s *manifest.Security) { s.VulnerabilityAlerts = manifest.Ptr(true) },
+			setCur:    func(c *CurrentState) { c.VulnerabilityAlerts = false },
+			field:     "vulnerability_alerts",
+		},
+		{
+			name:      "automated_security_fixes",
+			setDesire: func(s *manifest.Security) { s.AutomatedSecurityFixes = manifest.Ptr(true) },
+			setCur:    func(c *CurrentState) { c.AutomatedSecurityFixes = false },
+			field:     "automated_security_fixes",
+		},
+		{
+			name:      "private_vulnerability_reporting",
+			setDesire: func(s *manifest.Security) { s.PrivateVulnerabilityReporting = manifest.Ptr(true) },
+			setCur:    func(c *CurrentState) { c.PrivateVulnerabilityReporting = false },
+			field:     "private_vulnerability_reporting",
+		},
+	}
+
+	for _, f := range fields {
+		t.Run(f.name+" enable", func(t *testing.T) {
+			d := baseDesired()
+			d.Spec.Security = &manifest.Security{}
+			f.setDesire(d.Spec.Security)
+			c := baseState()
+			f.setCur(c)
+
+			changes := diffSecurity("org/repo", d, c)
+			if len(changes) != 1 {
+				t.Fatalf("expected 1 parent change, got %d", len(changes))
+			}
+			if changes[0].Field != "security" {
+				t.Errorf("expected parent field 'security', got %q", changes[0].Field)
+			}
+			if len(changes[0].Children) != 1 {
+				t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
+			}
+			child := changes[0].Children[0]
+			if child.Field != f.field {
+				t.Errorf("expected child field %q, got %q", f.field, child.Field)
+			}
+			if child.NewValue != true {
+				t.Errorf("expected NewValue=true, got %v", child.NewValue)
+			}
+		})
+	}
+
+	t.Run("multiple fields produce multiple children", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.Security = &manifest.Security{VulnerabilityAlerts: manifest.Ptr(true)}
+		d.Spec.Security = &manifest.Security{
+			VulnerabilityAlerts:           manifest.Ptr(true),
+			AutomatedSecurityFixes:        manifest.Ptr(true),
+			PrivateVulnerabilityReporting: manifest.Ptr(true),
+		}
 		c := baseState()
-		c.VulnerabilityAlerts = false
 
 		changes := diffSecurity("org/repo", d, c)
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 parent change, got %d", len(changes))
 		}
-		if changes[0].Field != "security" {
-			t.Errorf("expected parent field 'security', got %q", changes[0].Field)
-		}
-		if len(changes[0].Children) != 1 {
-			t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
-		}
-		child := changes[0].Children[0]
-		if child.Field != "vulnerability_alerts" {
-			t.Errorf("expected child field 'vulnerability_alerts', got %q", child.Field)
-		}
-		if child.NewValue != true {
-			t.Errorf("expected NewValue=true, got %v", child.NewValue)
-		}
-	})
-
-	t.Run("vulnerability_alerts no change", func(t *testing.T) {
-		d := baseDesired()
-		d.Spec.Security = &manifest.Security{VulnerabilityAlerts: manifest.Ptr(true)}
-		c := baseState()
-		c.VulnerabilityAlerts = true
-
-		changes := diffSecurity("org/repo", d, c)
-		if len(changes) != 0 {
-			t.Errorf("expected no changes, got %d", len(changes))
+		if got := len(changes[0].Children); got != 3 {
+			t.Errorf("expected 3 children, got %d", got)
 		}
 	})
 }

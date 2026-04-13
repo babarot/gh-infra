@@ -20,8 +20,10 @@ type CurrentState struct {
 	Topics              []string
 	Features            CurrentFeatures
 	MergeStrategy       CurrentMergeStrategy
-	ReleaseImmutability bool
-	VulnerabilityAlerts bool
+	ReleaseImmutability           bool
+	VulnerabilityAlerts           bool
+	AutomatedSecurityFixes        bool
+	PrivateVulnerabilityReporting bool
 
 	BranchProtection map[string]*CurrentBranchProtection // pattern → protection
 	Rulesets         map[string]*CurrentRuleset          // name → ruleset

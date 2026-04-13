@@ -69,6 +69,17 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 			return repoResult{index: idx, repo: r, err: err}
 		}
 
+		// Cross-field dependencies that need current state to evaluate.
+		// Only relevant for existing repos; for new repos these are validated
+		// implicitly by ordering during create+apply.
+		if !current.IsNew {
+			if err := ValidateDependencies(r, current); err != nil {
+				logger.Error("dependency validation failed", "repo", fullName, "err", err)
+				tracker.Error(fullName, err)
+				return repoResult{index: idx, repo: r, err: err}
+			}
+		}
+
 		changes := Diff(ctx, r, current, diffOpts)
 		logger.Debug("diff done", "repo", fullName, "changes", len(changes))
 		tracker.Done(fullName)

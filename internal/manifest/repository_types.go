@@ -92,7 +92,9 @@ type RepositorySpec struct {
 // mirroring the "Advanced Security" section of the GitHub repository
 // settings UI.
 type Security struct {
-	VulnerabilityAlerts *bool `yaml:"vulnerability_alerts,omitempty"`
+	VulnerabilityAlerts           *bool `yaml:"vulnerability_alerts,omitempty"`
+	AutomatedSecurityFixes        *bool `yaml:"automated_security_fixes,omitempty"`
+	PrivateVulnerabilityReporting *bool `yaml:"private_vulnerability_reporting,omitempty"`
 }
 
 type Features struct {

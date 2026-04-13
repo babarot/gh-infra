@@ -376,6 +376,15 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.MergeStrategy != nil {
 		result.MergeStrategy = mergeMergeStrategy(result.MergeStrategy, override.MergeStrategy)
 	}
+	if override.ReleaseImmutability != nil {
+		result.ReleaseImmutability = override.ReleaseImmutability
+	}
+	if override.Security != nil {
+		result.Security = mergeSecurity(result.Security, override.Security)
+	}
+	if override.Actions != nil {
+		result.Actions = mergeActions(result.Actions, override.Actions)
+	}
 	if len(override.BranchProtection) > 0 {
 		result.BranchProtection = override.BranchProtection
 	}
@@ -457,6 +466,78 @@ func mergeMergeStrategy(base, override *MergeStrategy) *MergeStrategy {
 	}
 	if override.SquashMergeCommitMessage != nil {
 		result.SquashMergeCommitMessage = override.SquashMergeCommitMessage
+	}
+	return &result
+}
+
+func mergeSecurity(base, override *Security) *Security {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	result := *base
+	if override.VulnerabilityAlerts != nil {
+		result.VulnerabilityAlerts = override.VulnerabilityAlerts
+	}
+	if override.AutomatedSecurityFixes != nil {
+		result.AutomatedSecurityFixes = override.AutomatedSecurityFixes
+	}
+	if override.PrivateVulnerabilityReporting != nil {
+		result.PrivateVulnerabilityReporting = override.PrivateVulnerabilityReporting
+	}
+	return &result
+}
+
+func mergeActions(base, override *Actions) *Actions {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	result := *base
+	if override.Enabled != nil {
+		result.Enabled = override.Enabled
+	}
+	if override.AllowedActions != nil {
+		result.AllowedActions = override.AllowedActions
+	}
+	if override.SHAPinningRequired != nil {
+		result.SHAPinningRequired = override.SHAPinningRequired
+	}
+	if override.WorkflowPermissions != nil {
+		result.WorkflowPermissions = override.WorkflowPermissions
+	}
+	if override.CanApprovePullRequests != nil {
+		result.CanApprovePullRequests = override.CanApprovePullRequests
+	}
+	if override.ForkPRApproval != nil {
+		result.ForkPRApproval = override.ForkPRApproval
+	}
+	if override.SelectedActions != nil {
+		result.SelectedActions = mergeSelectedActions(result.SelectedActions, override.SelectedActions)
+	}
+	return &result
+}
+
+func mergeSelectedActions(base, override *SelectedActions) *SelectedActions {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	result := *base
+	if override.GithubOwnedAllowed != nil {
+		result.GithubOwnedAllowed = override.GithubOwnedAllowed
+	}
+	if override.VerifiedAllowed != nil {
+		result.VerifiedAllowed = override.VerifiedAllowed
+	}
+	if len(override.PatternsAllowed) > 0 {
+		result.PatternsAllowed = override.PatternsAllowed
 	}
 	return &result
 }

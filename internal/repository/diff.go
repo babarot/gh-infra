@@ -73,6 +73,32 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 	}}
 }
 
+// ValidateDependencies verifies cross-field dependencies between the desired
+// manifest and the current GitHub state that cannot be checked by the offline
+// validate step (which has no access to remote state).
+//
+// The "effective" state of a field is `desired` when the manifest sets it and
+// `current` otherwise (omission means "leave as-is"). A dependency is violated
+// when the effective state of a dependent field is incompatible.
+//
+// Currently checks:
+//   - security.automated_security_fixes requires security.vulnerability_alerts
+//     to be effectively true. Required by the GitHub API.
+func ValidateDependencies(desired *manifest.Repository, current *CurrentState) error {
+	s := desired.Spec.Security
+	if s == nil || s.AutomatedSecurityFixes == nil || !*s.AutomatedSecurityFixes {
+		return nil
+	}
+	effectiveAlerts := current.VulnerabilityAlerts
+	if s.VulnerabilityAlerts != nil {
+		effectiveAlerts = *s.VulnerabilityAlerts
+	}
+	if !effectiveAlerts {
+		return fmt.Errorf("security.automated_security_fixes: true requires security.vulnerability_alerts to be enabled (current state is disabled and the manifest does not enable it)")
+	}
+	return nil
+}
+
 // Diff compares desired state with current state and returns changes.
 // If the repository does not exist (current.IsNew), a single ChangeCreate is returned.
 func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
@@ -117,6 +143,8 @@ func diffSecurity(name string, desired *manifest.Repository, current *CurrentSta
 	s := desired.Spec.Security
 	return dc.group("security", func(cc *[]Change) {
 		appendChildChanged(cc, "vulnerability_alerts", s.VulnerabilityAlerts, current.VulnerabilityAlerts)
+		appendChildChanged(cc, "automated_security_fixes", s.AutomatedSecurityFixes, current.AutomatedSecurityFixes)
+		appendChildChanged(cc, "private_vulnerability_reporting", s.PrivateVulnerabilityReporting, current.PrivateVulnerabilityReporting)
 	})
 }
 

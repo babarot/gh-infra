@@ -189,6 +189,19 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 		return nil, fmt.Errorf("fetch vulnerability alerts for %s/%s: %w", owner, name, err)
 	}
 
+	// Fetch Dependabot security updates (automated security fixes) via dedicated endpoint.
+	// 404 may also indicate the feature is unavailable on the repo; treat as disabled.
+	automatedSecurityFixes, err := p.fetchAutomatedSecurityFixes(ctx, owner, name)
+	if err != nil && !errors.Is(err, gh.ErrForbidden) {
+		return nil, fmt.Errorf("fetch automated security fixes for %s/%s: %w", owner, name, err)
+	}
+
+	// Fetch private vulnerability reporting setting via dedicated endpoint.
+	privateVulnerabilityReporting, err := p.fetchPrivateVulnerabilityReporting(ctx, owner, name)
+	if err != nil && !errors.Is(err, gh.ErrForbidden) {
+		return nil, fmt.Errorf("fetch private vulnerability reporting for %s/%s: %w", owner, name, err)
+	}
+
 	return &CurrentState{
 		Owner:               owner,
 		Name:                name,
@@ -196,9 +209,11 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 		Archived:            raw.IsArchived,
 		Homepage:            raw.HomepageURL,
 		Visibility:          strings.ToLower(raw.Visibility),
-		Topics:              topics,
-		ReleaseImmutability: releaseImmutability,
-		VulnerabilityAlerts: vulnerabilityAlerts,
+		Topics:                        topics,
+		ReleaseImmutability:           releaseImmutability,
+		VulnerabilityAlerts:           vulnerabilityAlerts,
+		AutomatedSecurityFixes:        automatedSecurityFixes,
+		PrivateVulnerabilityReporting: privateVulnerabilityReporting,
 		Features: CurrentFeatures{
 			Issues:      raw.HasIssuesEnabled,
 			Projects:    raw.HasProjectsEnabled,
@@ -290,6 +305,50 @@ func (p *Processor) fetchVulnerabilityAlerts(ctx context.Context, owner, name st
 		return false, err
 	}
 	return true, nil
+}
+
+// fetchAutomatedSecurityFixes returns whether Dependabot security updates
+// (automated security fixes) are enabled on the repository.
+// The endpoint may return 404 when the feature is unavailable on the repo
+// (e.g. vulnerability alerts disabled); treat that as disabled.
+func (p *Processor) fetchAutomatedSecurityFixes(ctx context.Context, owner, name string) (bool, error) {
+	out, err := p.runner.Run(ctx,
+		"api", fmt.Sprintf("repos/%s/%s/automated-security-fixes", owner, name),
+	)
+	if err != nil {
+		if errors.Is(err, gh.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	var raw struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return false, err
+	}
+	return raw.Enabled, nil
+}
+
+// fetchPrivateVulnerabilityReporting returns whether private vulnerability
+// reporting is enabled on the repository.
+func (p *Processor) fetchPrivateVulnerabilityReporting(ctx context.Context, owner, name string) (bool, error) {
+	out, err := p.runner.Run(ctx,
+		"api", fmt.Sprintf("repos/%s/%s/private-vulnerability-reporting", owner, name),
+	)
+	if err != nil {
+		if errors.Is(err, gh.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	var raw struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return false, err
+	}
+	return raw.Enabled, nil
 }
 
 func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string) (map[string]*CurrentBranchProtection, error) {

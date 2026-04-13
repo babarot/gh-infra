@@ -451,6 +451,182 @@ repositories:
 	}
 }
 
+func TestRepositorySet_SecurityMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    visibility: public
+    security:
+      vulnerability_alerts: true
+      automated_security_fixes: true
+      private_vulnerability_reporting: false
+repositories:
+  - name: defaults-only
+  - name: override-one
+    spec:
+      security:
+        private_vulnerability_reporting: true
+  - name: override-disable
+    spec:
+      security:
+        automated_security_fixes: false
+`
+	path := filepath.Join(dir, "security.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath returned error: %v", err)
+	}
+	if len(repos) != 3 {
+		t.Fatalf("expected 3 repos, got %d", len(repos))
+	}
+
+	check := func(t *testing.T, name string, wantVA, wantASF, wantPVR bool) {
+		t.Helper()
+		var s *Security
+		for _, r := range repos {
+			if r.Metadata.Name == name {
+				s = r.Spec.Security
+				break
+			}
+		}
+		if s == nil {
+			t.Fatalf("%s: security is nil", name)
+		}
+		if s.VulnerabilityAlerts == nil || *s.VulnerabilityAlerts != wantVA {
+			t.Errorf("%s: vulnerability_alerts = %v, want %v", name, s.VulnerabilityAlerts, wantVA)
+		}
+		if s.AutomatedSecurityFixes == nil || *s.AutomatedSecurityFixes != wantASF {
+			t.Errorf("%s: automated_security_fixes = %v, want %v", name, s.AutomatedSecurityFixes, wantASF)
+		}
+		if s.PrivateVulnerabilityReporting == nil || *s.PrivateVulnerabilityReporting != wantPVR {
+			t.Errorf("%s: private_vulnerability_reporting = %v, want %v", name, s.PrivateVulnerabilityReporting, wantPVR)
+		}
+	}
+
+	check(t, "defaults-only", true, true, false)
+	check(t, "override-one", true, true, true)
+	check(t, "override-disable", true, false, false)
+}
+
+func TestRepositorySet_ReleaseImmutabilityMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    visibility: public
+    release_immutability: true
+repositories:
+  - name: from-defaults
+  - name: overridden
+    spec:
+      release_immutability: false
+`
+	path := filepath.Join(dir, "release.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath returned error: %v", err)
+	}
+	for _, r := range repos {
+		switch r.Metadata.Name {
+		case "from-defaults":
+			if r.Spec.ReleaseImmutability == nil || *r.Spec.ReleaseImmutability != true {
+				t.Errorf("from-defaults: release_immutability = %v, want true (from defaults)", r.Spec.ReleaseImmutability)
+			}
+		case "overridden":
+			if r.Spec.ReleaseImmutability == nil || *r.Spec.ReleaseImmutability != false {
+				t.Errorf("overridden: release_immutability = %v, want false (overridden)", r.Spec.ReleaseImmutability)
+			}
+		}
+	}
+}
+
+func TestRepositorySet_ActionsMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    visibility: public
+    actions:
+      enabled: true
+      allowed_actions: selected
+      sha_pinning_required: false
+      selected_actions:
+        github_owned_allowed: true
+        verified_allowed: false
+repositories:
+  - name: from-defaults
+  - name: overridden
+    spec:
+      actions:
+        sha_pinning_required: true
+        selected_actions:
+          verified_allowed: true
+`
+	path := filepath.Join(dir, "actions.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath returned error: %v", err)
+	}
+	for _, r := range repos {
+		a := r.Spec.Actions
+		if a == nil {
+			t.Fatalf("%s: actions is nil", r.Metadata.Name)
+		}
+		// Common: enabled/allowed_actions inherited
+		if a.Enabled == nil || *a.Enabled != true {
+			t.Errorf("%s: enabled = %v, want true", r.Metadata.Name, a.Enabled)
+		}
+		if a.AllowedActions == nil || *a.AllowedActions != "selected" {
+			t.Errorf("%s: allowed_actions = %v, want selected", r.Metadata.Name, a.AllowedActions)
+		}
+		switch r.Metadata.Name {
+		case "from-defaults":
+			if a.SHAPinningRequired == nil || *a.SHAPinningRequired != false {
+				t.Errorf("from-defaults: sha_pinning_required = %v, want false", a.SHAPinningRequired)
+			}
+			if a.SelectedActions == nil || a.SelectedActions.VerifiedAllowed == nil || *a.SelectedActions.VerifiedAllowed != false {
+				t.Errorf("from-defaults: selected_actions.verified_allowed not inherited")
+			}
+		case "overridden":
+			if a.SHAPinningRequired == nil || *a.SHAPinningRequired != true {
+				t.Errorf("overridden: sha_pinning_required = %v, want true (overridden)", a.SHAPinningRequired)
+			}
+			// github_owned_allowed inherited from defaults
+			if a.SelectedActions == nil || a.SelectedActions.GithubOwnedAllowed == nil || *a.SelectedActions.GithubOwnedAllowed != true {
+				t.Errorf("overridden: selected_actions.github_owned_allowed = %v, want true (inherited)", a.SelectedActions.GithubOwnedAllowed)
+			}
+			if a.SelectedActions.VerifiedAllowed == nil || *a.SelectedActions.VerifiedAllowed != true {
+				t.Errorf("overridden: selected_actions.verified_allowed = %v, want true (overridden)", a.SelectedActions.VerifiedAllowed)
+			}
+		}
+	}
+}
+
 func TestResolveSecrets_ExpandsEnvVars(t *testing.T) {
 	// Set test environment variables
 	t.Setenv("ENV_SECRET_TOKEN", "my-secret-value")

@@ -24,7 +24,9 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			Topics:              r.Topics,
 			ReleaseImmutability: manifest.Ptr(r.ReleaseImmutability),
 			Security: &manifest.Security{
-				VulnerabilityAlerts: manifest.Ptr(r.VulnerabilityAlerts),
+				VulnerabilityAlerts:           manifest.Ptr(r.VulnerabilityAlerts),
+				AutomatedSecurityFixes:        manifest.Ptr(r.AutomatedSecurityFixes),
+				PrivateVulnerabilityReporting: manifest.Ptr(r.PrivateVulnerabilityReporting),
 			},
 			Features: &manifest.Features{
 				Issues:      manifest.Ptr(r.Features.Issues),
