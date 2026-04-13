@@ -212,7 +212,7 @@ type repositoryPatchPlan struct {
 	deletes              []string
 }
 
-var repositoryNestedMergeOrder = []string{"features", "merge_strategy", "actions"}
+var repositoryNestedMergeOrder = []string{"features", "merge_strategy", "actions", "security"}
 
 var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 	{
@@ -256,11 +256,12 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		},
 	},
 	{
-		diffField: "vulnerability_alerts",
+		diffField: "security.vulnerability_alerts",
+		parentKey: "security",
 		key:       "vulnerability_alerts",
 		kind:      fieldBool,
 		boolVal: func(spec manifest.RepositorySpec) *bool {
-			return spec.VulnerabilityAlerts
+			return boolPtrFromSecurity(spec.Security, "vulnerability_alerts")
 		},
 	},
 	{
@@ -601,6 +602,18 @@ func isPrefixedField(field, prefix string) bool {
 	return len(field) > len(prefix) && field[:len(prefix)] == prefix
 }
 
+func boolPtrFromSecurity(s *manifest.Security, field string) *bool {
+	if s == nil {
+		return nil
+	}
+	switch field {
+	case "vulnerability_alerts":
+		return s.VulnerabilityAlerts
+	default:
+		return nil
+	}
+}
+
 func boolPtrFromFeatures(f *manifest.Features, field string) *bool {
 	if f == nil {
 		return nil
@@ -720,7 +733,6 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	diffs = appendPtrDiff(diffs, "visibility", local.Visibility, imported.Visibility)
 	diffs = appendBoolPtrDiff(diffs, "archived", local.Archived, imported.Archived)
 	diffs = appendBoolPtrDiff(diffs, "release_immutability", local.ReleaseImmutability, imported.ReleaseImmutability)
-	diffs = appendBoolPtrDiff(diffs, "vulnerability_alerts", local.VulnerabilityAlerts, imported.VulnerabilityAlerts)
 
 	// List fields
 	if !stringSliceEqual(local.Topics, imported.Topics) {
@@ -736,6 +748,9 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	// Nested map: actions
 	diffs = append(diffs, compareActions(local.Actions, imported.Actions)...)
 
+	// Nested map: security
+	diffs = append(diffs, compareSecurity(local.Security, imported.Security)...)
+
 	// Branch protection (Phase 2c)
 	diffs = append(diffs, compareBranchProtection(local.BranchProtection, imported.BranchProtection)...)
 
@@ -749,6 +764,25 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	diffs = append(diffs, compareLabels(local.Labels, imported.Labels)...)
 
 	return diffs
+}
+
+// compareSecurity compares Security fields.
+func compareSecurity(local, imported *manifest.Security) []FieldDiff {
+	if local == nil && imported == nil {
+		return nil
+	}
+	var diffs []FieldDiff
+	l := derefSecurity(local)
+	i := derefSecurity(imported)
+	diffs = appendBoolPtrDiff(diffs, "security.vulnerability_alerts", l.VulnerabilityAlerts, i.VulnerabilityAlerts)
+	return diffs
+}
+
+func derefSecurity(s *manifest.Security) manifest.Security {
+	if s == nil {
+		return manifest.Security{}
+	}
+	return *s
 }
 
 // compareFeatures compares Features fields.

@@ -214,12 +214,16 @@ spec:
 func TestPlanRepository_SecuritySettingsDiff(t *testing.T) {
 	local := manifest.RepositorySpec{
 		ReleaseImmutability: manifest.Ptr(false),
-		VulnerabilityAlerts: manifest.Ptr(false),
+		Security: &manifest.Security{
+			VulnerabilityAlerts: manifest.Ptr(false),
+		},
 	}
 	imported := manifest.Repository{
 		Spec: manifest.RepositorySpec{
 			ReleaseImmutability: manifest.Ptr(true),
-			VulnerabilityAlerts: manifest.Ptr(true),
+			Security: &manifest.Security{
+				VulnerabilityAlerts: manifest.Ptr(true),
+			},
 		},
 	}
 
@@ -236,7 +240,8 @@ metadata:
   owner: org
 spec:
   release_immutability: false
-  vulnerability_alerts: false
+  security:
+    vulnerability_alerts: false
 `)
 
 	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
@@ -256,8 +261,8 @@ spec:
 	if !found["release_immutability"] {
 		t.Error("expected diff for release_immutability")
 	}
-	if !found["vulnerability_alerts"] {
-		t.Error("expected diff for vulnerability_alerts")
+	if !found["security.vulnerability_alerts"] {
+		t.Error("expected diff for security.vulnerability_alerts")
 	}
 
 	updated := string(mb["/tmp/test.yaml"])

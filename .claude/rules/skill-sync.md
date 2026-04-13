@@ -20,6 +20,7 @@ When either side changes, check whether the other side needs updating.
 | `resources/repository/actions.md` | `repository-manifest` | `references/actions.md` |
 | `resources/repository/rulesets.md`, `resources/repository/branch-protection.md` | `repository-manifest` | `references/protection.md` |
 | `resources/repository/secrets-variables.md` | `repository-manifest` | `references/secrets-variables.md` |
+| `resources/repository/security.md` | `repository-manifest` | `references/security.md` |
 | `resources/repository-set/defaults.md`, `resources/repository-set/index.md` | `repository-manifest` | `references/repository-set.md` |
 | `resources/file/sources.md`, `resources/file/templating.md` | `file-manifest` | `references/sources-and-templating.md` |
 | `resources/file/delivery.md`, `resources/file/index.md` | `file-manifest` | `references/reconcile-and-delivery.md` |

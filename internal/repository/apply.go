@@ -196,8 +196,8 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 	}
 
 	// Vulnerability alerts (Dependabot)
-	if repo.Spec.VulnerabilityAlerts != nil {
-		if err := p.applyVulnerabilityAlerts(ctx, owner, name, *repo.Spec.VulnerabilityAlerts); err != nil {
+	if s := repo.Spec.Security; s != nil && s.VulnerabilityAlerts != nil {
+		if err := p.applyVulnerabilityAlerts(ctx, owner, name, *s.VulnerabilityAlerts); err != nil {
 			return err
 		}
 	}

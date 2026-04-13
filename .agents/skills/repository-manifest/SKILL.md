@@ -37,6 +37,7 @@ Read these references as needed:
 - Actions settings and validation traps: [references/actions.md](./references/actions.md)
 - Rulesets and branch protection: [references/protection.md](./references/protection.md)
 - Secrets and variables: [references/secrets-variables.md](./references/secrets-variables.md)
+- Security (Dependabot, vulnerability alerts): [references/security.md](./references/security.md)
 
 ## RepositorySet
 

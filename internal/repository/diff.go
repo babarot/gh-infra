@@ -104,8 +104,20 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffLabels(name, desired, current, manifest.LabelSyncMode(desired.Spec.LabelSync))...)
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
+	changes = append(changes, diffSecurity(name, desired, current)...)
 
 	return changes
+}
+
+func diffSecurity(name string, desired *manifest.Repository, current *CurrentState) []Change {
+	if desired.Spec.Security == nil {
+		return nil
+	}
+	dc := diffContext{resource: manifest.ResourceRepository, name: name}
+	s := desired.Spec.Security
+	return dc.group("security", func(cc *[]Change) {
+		appendChildChanged(cc, "vulnerability_alerts", s.VulnerabilityAlerts, current.VulnerabilityAlerts)
+	})
 }
 
 func diffRepoSettings(name string, desired *manifest.Repository, current *CurrentState) []Change {
@@ -117,7 +129,6 @@ func diffRepoSettings(name string, desired *manifest.Repository, current *Curren
 	appendChanged(dc, &changes, "visibility", desired.Spec.Visibility, current.Visibility)
 	appendChanged(dc, &changes, "archived", desired.Spec.Archived, current.Archived)
 	appendChanged(dc, &changes, "release_immutability", desired.Spec.ReleaseImmutability, current.ReleaseImmutability)
-	appendChanged(dc, &changes, "vulnerability_alerts", desired.Spec.VulnerabilityAlerts, current.VulnerabilityAlerts)
 
 	if len(desired.Spec.Topics) > 0 || len(current.Topics) > 0 {
 		if !stringSliceEqual(desired.Spec.Topics, current.Topics) {

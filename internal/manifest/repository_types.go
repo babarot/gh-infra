@@ -80,12 +80,19 @@ type RepositorySpec struct {
 	Features            *Features          `yaml:"features,omitempty"`
 	MergeStrategy       *MergeStrategy     `yaml:"merge_strategy,omitempty"`
 	ReleaseImmutability *bool              `yaml:"release_immutability,omitempty"`
-	VulnerabilityAlerts *bool              `yaml:"vulnerability_alerts,omitempty"`
+	Security            *Security          `yaml:"security,omitempty"`
 	BranchProtection    []BranchProtection `yaml:"branch_protection,omitempty" validate:"unique=pattern"`
 	Rulesets            []Ruleset          `yaml:"rulesets,omitempty"          validate:"unique=name"`
 	Secrets             []Secret           `yaml:"secrets,omitempty"           validate:"unique=name"`
 	Variables           []Variable         `yaml:"variables,omitempty"         validate:"unique=name"`
 	Actions             *Actions           `yaml:"actions,omitempty"`
+}
+
+// Security groups GitHub Advanced Security related repository settings,
+// mirroring the "Advanced Security" section of the GitHub repository
+// settings UI.
+type Security struct {
+	VulnerabilityAlerts *bool `yaml:"vulnerability_alerts,omitempty"`
 }
 
 type Features struct {

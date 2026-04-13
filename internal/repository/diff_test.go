@@ -132,26 +132,6 @@ func TestDiff_RepoSettings(t *testing.T) {
 			},
 			wantCount: 0,
 		},
-		{
-			name: "vulnerability_alerts enable",
-			setup: func(d *manifest.Repository, c *CurrentState) {
-				d.Spec.VulnerabilityAlerts = manifest.Ptr(true)
-				c.VulnerabilityAlerts = false
-			},
-			wantCount: 1,
-			wantField: "vulnerability_alerts",
-			wantType:  ChangeUpdate,
-			wantOld:   false,
-			wantNew:   true,
-		},
-		{
-			name: "vulnerability_alerts same no change",
-			setup: func(d *manifest.Repository, c *CurrentState) {
-				d.Spec.VulnerabilityAlerts = manifest.Ptr(true)
-				c.VulnerabilityAlerts = true
-			},
-			wantCount: 0,
-		},
 	}
 
 	for _, tt := range tests {
@@ -342,6 +322,54 @@ func TestDiff_MergeStrategy_BoolFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDiff_Security(t *testing.T) {
+	t.Run("nil security is noop", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Security = nil
+		c := baseState()
+		if changes := diffSecurity("org/repo", d, c); len(changes) != 0 {
+			t.Errorf("expected no changes when security is nil, got %d", len(changes))
+		}
+	})
+
+	t.Run("vulnerability_alerts enable", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Security = &manifest.Security{VulnerabilityAlerts: manifest.Ptr(true)}
+		c := baseState()
+		c.VulnerabilityAlerts = false
+
+		changes := diffSecurity("org/repo", d, c)
+		if len(changes) != 1 {
+			t.Fatalf("expected 1 parent change, got %d", len(changes))
+		}
+		if changes[0].Field != "security" {
+			t.Errorf("expected parent field 'security', got %q", changes[0].Field)
+		}
+		if len(changes[0].Children) != 1 {
+			t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
+		}
+		child := changes[0].Children[0]
+		if child.Field != "vulnerability_alerts" {
+			t.Errorf("expected child field 'vulnerability_alerts', got %q", child.Field)
+		}
+		if child.NewValue != true {
+			t.Errorf("expected NewValue=true, got %v", child.NewValue)
+		}
+	})
+
+	t.Run("vulnerability_alerts no change", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Security = &manifest.Security{VulnerabilityAlerts: manifest.Ptr(true)}
+		c := baseState()
+		c.VulnerabilityAlerts = true
+
+		changes := diffSecurity("org/repo", d, c)
+		if len(changes) != 0 {
+			t.Errorf("expected no changes, got %d", len(changes))
+		}
+	})
 }
 
 func TestDiff_Features_BoolNoChange(t *testing.T) {
