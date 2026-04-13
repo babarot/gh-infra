@@ -611,6 +611,155 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 	})
 }
 
+func TestFetchBranchProtection_MultipleBranches(t *testing.T) {
+	// 5 protected branches; ensure all are fetched and returned correctly.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`["main","develop","release/1","release/2","release/3"]`),
+			"api repos/myorg/myrepo/branches/main/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
+			"api repos/myorg/myrepo/branches/develop/protection":                              []byte(`{"required_pull_request_reviews":{"required_approving_review_count":2}}`),
+			"api repos/myorg/myrepo/branches/release/1/protection":                            []byte(`{"required_pull_request_reviews":{"required_approving_review_count":3}}`),
+			"api repos/myorg/myrepo/branches/release/2/protection":                            []byte(`{"required_pull_request_reviews":{"required_approving_review_count":4}}`),
+			"api repos/myorg/myrepo/branches/release/3/protection":                            []byte(`{"required_pull_request_reviews":{"required_approving_review_count":5}}`),
+		},
+	}
+
+	p := NewProcessor(mock, nil, nil)
+	got, err := p.fetchBranchProtection(context.Background(), "myorg", "myrepo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]int{
+		"main":      1,
+		"develop":   2,
+		"release/1": 3,
+		"release/2": 4,
+		"release/3": 5,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d branches, want %d: %v", len(got), len(want), got)
+	}
+	for branch, reviews := range want {
+		bp, ok := got[branch]
+		if !ok {
+			t.Errorf("branch %q missing from result", branch)
+			continue
+		}
+		if bp.RequiredReviews != reviews {
+			t.Errorf("branch %q: required_reviews = %d, want %d", branch, bp.RequiredReviews, reviews)
+		}
+	}
+}
+
+func TestFetchBranchProtection_IndividualFailureSkipped(t *testing.T) {
+	// Two branches, one fetch fails. The failure must not abort the whole fetch.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`["main","broken"]`),
+			"api repos/myorg/myrepo/branches/main/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
+		},
+		Errors: map[string]error{
+			"api repos/myorg/myrepo/branches/broken/protection": fmt.Errorf("%w: not configured", gh.ErrNotFound),
+		},
+	}
+
+	p := NewProcessor(mock, nil, nil)
+	got, err := p.fetchBranchProtection(context.Background(), "myorg", "myrepo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d branches, want 1: %v", len(got), got)
+	}
+	if _, ok := got["main"]; !ok {
+		t.Error("expected 'main' to be present")
+	}
+	if _, ok := got["broken"]; ok {
+		t.Error("expected 'broken' to be skipped")
+	}
+}
+
+func TestFetchRulesets_MultipleRulesets(t *testing.T) {
+	// 3 rulesets; ensure all are fetched and returned correctly.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/rulesets --paginate": []byte(`[
+				{"id":1,"name":"protect-main","source_type":"Repository"},
+				{"id":2,"name":"protect-release","source_type":"Repository"},
+				{"id":3,"name":"tag-rules","source_type":"Repository"}
+			]`),
+			"api repos/myorg/myrepo/rulesets/1": []byte(`{"id":1,"name":"protect-main","target":"branch","enforcement":"active"}`),
+			"api repos/myorg/myrepo/rulesets/2": []byte(`{"id":2,"name":"protect-release","target":"branch","enforcement":"active"}`),
+			"api repos/myorg/myrepo/rulesets/3": []byte(`{"id":3,"name":"tag-rules","target":"tag","enforcement":"evaluate"}`),
+		},
+	}
+
+	p := NewProcessor(mock, nil, nil)
+	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d rulesets, want 3: %v", len(got), got)
+	}
+	for _, name := range []string{"protect-main", "protect-release", "tag-rules"} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("ruleset %q missing from result", name)
+		}
+	}
+}
+
+func TestFetchRulesets_IndividualFailureSkipped(t *testing.T) {
+	// Two rulesets, one fetch fails. The failure must not abort the whole fetch.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/rulesets --paginate": []byte(`[
+				{"id":1,"name":"ok","source_type":"Repository"},
+				{"id":2,"name":"broken","source_type":"Repository"}
+			]`),
+			"api repos/myorg/myrepo/rulesets/1": []byte(`{"id":1,"name":"ok","target":"branch","enforcement":"active"}`),
+		},
+		Errors: map[string]error{
+			"api repos/myorg/myrepo/rulesets/2": fmt.Errorf("%w: denied", gh.ErrForbidden),
+		},
+	}
+
+	p := NewProcessor(mock, nil, nil)
+	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d rulesets, want 1: %v", len(got), got)
+	}
+	if _, ok := got["ok"]; !ok {
+		t.Error("expected 'ok' to be present")
+	}
+}
+
+func TestFetchRulesets_SkipsOrgAndEnterpriseSource(t *testing.T) {
+	// Org/Enterprise-level rulesets should be filtered out before per-ruleset fetch.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/rulesets --paginate": []byte(`[
+				{"id":1,"name":"repo-level","source_type":"Repository"},
+				{"id":2,"name":"org-level","source_type":"Organization"},
+				{"id":3,"name":"ent-level","source_type":"Enterprise"}
+			]`),
+			"api repos/myorg/myrepo/rulesets/1": []byte(`{"id":1,"name":"repo-level","target":"branch","enforcement":"active"}`),
+		},
+	}
+
+	p := NewProcessor(mock, nil, nil)
+	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got["repo-level"] == nil {
+		t.Fatalf("expected only 'repo-level', got: %v", got)
+	}
+}
+
 func TestFetchActionsSettings(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{

@@ -13,6 +13,7 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/parallel"
 )
 
 // Processor handles repository plan and apply operations.
@@ -111,10 +112,42 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 	})
 
 	var (
+		commitMsgSettings             commitMessageSettings
+		releaseImmutability           bool
 		vulnerabilityAlerts           bool
 		automatedSecurityFixes        bool
 		privateVulnerabilityReporting bool
 	)
+
+	// Fetch commit message settings via REST API (not available in gh repo view --json).
+	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
+	g.Go(func() error {
+		status("fetching commit message settings...")
+		s, err := p.fetchCommitMessageSettings(ctx, owner, name)
+		if err != nil {
+			if errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden) {
+				return nil
+			}
+			return fmt.Errorf("fetch commit message settings for %s/%s: %w", owner, name, err)
+		}
+		commitMsgSettings = s
+		return nil
+	})
+
+	// Fetch release immutability setting via dedicated REST API endpoint.
+	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
+	g.Go(func() error {
+		status("fetching release immutability...")
+		v, err := p.fetchReleaseImmutability(ctx, owner, name)
+		if err != nil {
+			if errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden) {
+				return nil
+			}
+			return fmt.Errorf("fetch release immutability for %s/%s: %w", owner, name, err)
+		}
+		releaseImmutability = v
+		return nil
+	})
 
 	// Fetch vulnerability alerts (Dependabot) setting via dedicated REST API endpoint.
 	// 404 is the documented "disabled" response and is handled inside the fetcher;
@@ -172,6 +205,11 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 	repo.Labels = labels
 	repo.Milestones = milestones
 	repo.Actions = actions
+	repo.ReleaseImmutability = releaseImmutability
+	repo.MergeStrategy.MergeCommitTitle = commitMsgSettings.MergeCommitTitle
+	repo.MergeStrategy.MergeCommitMessage = commitMsgSettings.MergeCommitMessage
+	repo.MergeStrategy.SquashMergeCommitTitle = commitMsgSettings.SquashMergeCommitTitle
+	repo.MergeStrategy.SquashMergeCommitMessage = commitMsgSettings.SquashMergeCommitMessage
 	repo.Security = CurrentSecurity{
 		VulnerabilityAlerts:           vulnerabilityAlerts,
 		AutomatedSecurityFixes:        automatedSecurityFixes,
@@ -223,29 +261,14 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 		topics = append(topics, t.Name)
 	}
 
-	// Fetch commit message settings via REST API (not available in gh repo view --json)
-	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
-	commitMsgSettings, err := p.fetchCommitMessageSettings(ctx, owner, name)
-	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrForbidden) {
-		return nil, fmt.Errorf("fetch commit message settings for %s/%s: %w", owner, name, err)
-	}
-
-	// Fetch release immutability setting via dedicated REST API endpoint
-	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
-	releaseImmutability, err := p.fetchReleaseImmutability(ctx, owner, name)
-	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrForbidden) {
-		return nil, fmt.Errorf("fetch release immutability for %s/%s: %w", owner, name, err)
-	}
-
 	return &CurrentState{
-		Owner:               owner,
-		Name:                name,
-		Description:         raw.Description,
-		Archived:            raw.IsArchived,
-		Homepage:            raw.HomepageURL,
-		Visibility:          strings.ToLower(raw.Visibility),
-		Topics:              topics,
-		ReleaseImmutability: releaseImmutability,
+		Owner:       owner,
+		Name:        name,
+		Description: raw.Description,
+		Archived:    raw.IsArchived,
+		Homepage:    raw.HomepageURL,
+		Visibility:  strings.ToLower(raw.Visibility),
+		Topics:      topics,
 		Features: CurrentFeatures{
 			Issues:      raw.HasIssuesEnabled,
 			Projects:    raw.HasProjectsEnabled,
@@ -253,14 +276,12 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 			Discussions: raw.HasDiscussionsEnabled,
 		},
 		MergeStrategy: CurrentMergeStrategy{
-			AllowMergeCommit:         raw.MergeCommitAllowed,
-			AllowSquashMerge:         raw.SquashMergeAllowed,
-			AllowRebaseMerge:         raw.RebaseMergeAllowed,
-			AutoDeleteHeadBranches:   raw.DeleteBranchOnMerge,
-			MergeCommitTitle:         commitMsgSettings.MergeCommitTitle,
-			MergeCommitMessage:       commitMsgSettings.MergeCommitMessage,
-			SquashMergeCommitTitle:   commitMsgSettings.SquashMergeCommitTitle,
-			SquashMergeCommitMessage: commitMsgSettings.SquashMergeCommitMessage,
+			AllowMergeCommit:       raw.MergeCommitAllowed,
+			AllowSquashMerge:       raw.SquashMergeAllowed,
+			AllowRebaseMerge:       raw.RebaseMergeAllowed,
+			AutoDeleteHeadBranches: raw.DeleteBranchOnMerge,
+			// Commit message string fields are populated later via
+			// fetchCommitMessageSettings in the FetchRepository errgroup.
 		},
 	}, nil
 }
@@ -398,14 +419,20 @@ func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name strin
 		return nil, nil // no protected branches or parse error
 	}
 
-	result := make(map[string]*CurrentBranchProtection)
-	for _, branch := range protectedBranches {
+	// Fetch per-branch protection rules in parallel. Individual errors are
+	// swallowed (skip branch) to preserve existing behavior.
+	fetched := parallel.Map(ctx, protectedBranches, parallel.DefaultConcurrency, func(ctx context.Context, _ int, branch string) *CurrentBranchProtection {
 		bp, err := p.fetchBranchProtectionRule(ctx, owner, name, branch)
 		if err != nil {
-			continue // skip branches we can't read
+			return nil
 		}
+		return bp
+	})
+
+	result := make(map[string]*CurrentBranchProtection)
+	for i, bp := range fetched {
 		if bp != nil {
-			result[branch] = bp
+			result[protectedBranches[i]] = bp
 		}
 	}
 	return result, nil
@@ -494,17 +521,30 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string) (map[
 		return make(map[string]*CurrentRuleset), nil
 	}
 
-	result := make(map[string]*CurrentRuleset)
+	// Filter out org/enterprise-level rulesets (not manageable at repo level).
+	ids := make([]int, 0, len(rawList))
 	for _, item := range rawList {
-		// Skip org-level rulesets (not manageable at repo level)
 		if item.SourceType == "Organization" || item.SourceType == "Enterprise" {
 			continue
 		}
-		rs, err := p.fetchRuleset(ctx, owner, name, item.ID)
+		ids = append(ids, item.ID)
+	}
+
+	// Fetch per-ruleset details in parallel. Individual errors are swallowed
+	// (skip ruleset) to preserve existing behavior.
+	fetched := parallel.Map(ctx, ids, parallel.DefaultConcurrency, func(ctx context.Context, _ int, id int) *CurrentRuleset {
+		rs, err := p.fetchRuleset(ctx, owner, name, id)
 		if err != nil {
-			continue // skip inaccessible individual rulesets
+			return nil
 		}
-		result[rs.Name] = rs
+		return rs
+	})
+
+	result := make(map[string]*CurrentRuleset)
+	for _, rs := range fetched {
+		if rs != nil {
+			result[rs.Name] = rs
+		}
 	}
 	return result, nil
 }
