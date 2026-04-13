@@ -49,9 +49,9 @@ func TestFetchRepository(t *testing.T) {
 				"merge_commit_message": "PR_BODY"
 			}`),
 			"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
-			"api repos/myorg/myrepo/vulnerability-alerts":                                    []byte(``),
-			"api repos/myorg/myrepo/automated-security-fixes":                                []byte(`{"enabled": false, "paused": false}`),
-			"api repos/myorg/myrepo/private-vulnerability-reporting":                         []byte(`{"enabled": false}`),
+			"api repos/myorg/myrepo/vulnerability-alerts":                                     []byte(``),
+			"api repos/myorg/myrepo/automated-security-fixes":                                 []byte(`{"enabled": false, "paused": false}`),
+			"api repos/myorg/myrepo/private-vulnerability-reporting":                          []byte(`{"enabled": false}`),
 			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`[]`),
 			"secret list --repo myorg/myrepo --json name --jq .[].name":                       []byte("SECRET1\nSECRET2"),
 			"variable list --repo myorg/myrepo --json name,value":                             []byte(`[{"name":"VAR1","value":"val1"},{"name":"VAR2","value":"val2"}]`),
@@ -367,8 +367,8 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			"merge_commit_message": "PR_BODY"
 		}`),
 		"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
-		"api repos/myorg/myrepo/automated-security-fixes":                                []byte(`{"enabled": false, "paused": false}`),
-		"api repos/myorg/myrepo/private-vulnerability-reporting":                         []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/automated-security-fixes":                                 []byte(`{"enabled": false, "paused": false}`),
+		"api repos/myorg/myrepo/private-vulnerability-reporting":                          []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`[]`),
 	}
 
@@ -463,7 +463,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !state.VulnerabilityAlerts {
+		if !state.Security.VulnerabilityAlerts {
 			t.Error("expected VulnerabilityAlerts = true for 204 response")
 		}
 	})
@@ -484,7 +484,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error for 404, got: %v", err)
 		}
-		if state.VulnerabilityAlerts {
+		if state.Security.VulnerabilityAlerts {
 			t.Error("expected VulnerabilityAlerts = false for 404")
 		}
 	})
@@ -505,7 +505,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error for 403, got: %v", err)
 		}
-		if state.VulnerabilityAlerts {
+		if state.Security.VulnerabilityAlerts {
 			t.Error("expected VulnerabilityAlerts = false for 403")
 		}
 	})
@@ -547,7 +547,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error for 404, got: %v", err)
 		}
-		if state.AutomatedSecurityFixes {
+		if state.Security.AutomatedSecurityFixes {
 			t.Error("expected AutomatedSecurityFixes = false for 404")
 		}
 	})
@@ -584,7 +584,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !state.PrivateVulnerabilityReporting {
+		if !state.Security.PrivateVulnerabilityReporting {
 			t.Error("expected PrivateVulnerabilityReporting = true")
 		}
 	})

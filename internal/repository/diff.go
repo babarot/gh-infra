@@ -89,7 +89,7 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 	if s == nil || s.AutomatedSecurityFixes == nil || !*s.AutomatedSecurityFixes {
 		return nil
 	}
-	effectiveAlerts := current.VulnerabilityAlerts
+	effectiveAlerts := current.Security.VulnerabilityAlerts
 	if s.VulnerabilityAlerts != nil {
 		effectiveAlerts = *s.VulnerabilityAlerts
 	}
@@ -142,9 +142,9 @@ func diffSecurity(name string, desired *manifest.Repository, current *CurrentSta
 	dc := diffContext{resource: manifest.ResourceRepository, name: name}
 	s := desired.Spec.Security
 	return dc.group("security", func(cc *[]Change) {
-		appendChildChanged(cc, "vulnerability_alerts", s.VulnerabilityAlerts, current.VulnerabilityAlerts)
-		appendChildChanged(cc, "automated_security_fixes", s.AutomatedSecurityFixes, current.AutomatedSecurityFixes)
-		appendChildChanged(cc, "private_vulnerability_reporting", s.PrivateVulnerabilityReporting, current.PrivateVulnerabilityReporting)
+		appendChildChanged(cc, "vulnerability_alerts", s.VulnerabilityAlerts, current.Security.VulnerabilityAlerts)
+		appendChildChanged(cc, "automated_security_fixes", s.AutomatedSecurityFixes, current.Security.AutomatedSecurityFixes)
+		appendChildChanged(cc, "private_vulnerability_reporting", s.PrivateVulnerabilityReporting, current.Security.PrivateVulnerabilityReporting)
 	})
 }
 

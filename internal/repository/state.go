@@ -110,6 +110,57 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 		return err
 	})
 
+	var (
+		vulnerabilityAlerts           bool
+		automatedSecurityFixes        bool
+		privateVulnerabilityReporting bool
+	)
+
+	// Fetch vulnerability alerts (Dependabot) setting via dedicated REST API endpoint.
+	// 404 is the documented "disabled" response and is handled inside the fetcher;
+	// 403 is ignored gracefully (e.g. GHES without support); other errors propagate.
+	g.Go(func() error {
+		status("fetching vulnerability alerts...")
+		v, err := p.fetchVulnerabilityAlerts(ctx, owner, name)
+		if err != nil {
+			if errors.Is(err, gh.ErrForbidden) {
+				return nil
+			}
+			return fmt.Errorf("fetch vulnerability alerts for %s/%s: %w", owner, name, err)
+		}
+		vulnerabilityAlerts = v
+		return nil
+	})
+
+	// Fetch Dependabot security updates (automated security fixes) via dedicated endpoint.
+	// 404 may also indicate the feature is unavailable on the repo; treat as disabled.
+	g.Go(func() error {
+		status("fetching automated security fixes...")
+		v, err := p.fetchAutomatedSecurityFixes(ctx, owner, name)
+		if err != nil {
+			if errors.Is(err, gh.ErrForbidden) {
+				return nil
+			}
+			return fmt.Errorf("fetch automated security fixes for %s/%s: %w", owner, name, err)
+		}
+		automatedSecurityFixes = v
+		return nil
+	})
+
+	// Fetch private vulnerability reporting setting via dedicated endpoint.
+	g.Go(func() error {
+		status("fetching private vulnerability reporting...")
+		v, err := p.fetchPrivateVulnerabilityReporting(ctx, owner, name)
+		if err != nil {
+			if errors.Is(err, gh.ErrForbidden) {
+				return nil
+			}
+			return fmt.Errorf("fetch private vulnerability reporting for %s/%s: %w", owner, name, err)
+		}
+		privateVulnerabilityReporting = v
+		return nil
+	})
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
@@ -121,6 +172,11 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 	repo.Labels = labels
 	repo.Milestones = milestones
 	repo.Actions = actions
+	repo.Security = CurrentSecurity{
+		VulnerabilityAlerts:           vulnerabilityAlerts,
+		AutomatedSecurityFixes:        automatedSecurityFixes,
+		PrivateVulnerabilityReporting: privateVulnerabilityReporting,
+	}
 
 	return repo, nil
 }
@@ -181,27 +237,6 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 		return nil, fmt.Errorf("fetch release immutability for %s/%s: %w", owner, name, err)
 	}
 
-	// Fetch vulnerability alerts (Dependabot) setting via dedicated REST API endpoint.
-	// 404 is the documented "disabled" response and is handled inside the fetcher;
-	// 403 is ignored gracefully (e.g. GHES without support); other errors propagate.
-	vulnerabilityAlerts, err := p.fetchVulnerabilityAlerts(ctx, owner, name)
-	if err != nil && !errors.Is(err, gh.ErrForbidden) {
-		return nil, fmt.Errorf("fetch vulnerability alerts for %s/%s: %w", owner, name, err)
-	}
-
-	// Fetch Dependabot security updates (automated security fixes) via dedicated endpoint.
-	// 404 may also indicate the feature is unavailable on the repo; treat as disabled.
-	automatedSecurityFixes, err := p.fetchAutomatedSecurityFixes(ctx, owner, name)
-	if err != nil && !errors.Is(err, gh.ErrForbidden) {
-		return nil, fmt.Errorf("fetch automated security fixes for %s/%s: %w", owner, name, err)
-	}
-
-	// Fetch private vulnerability reporting setting via dedicated endpoint.
-	privateVulnerabilityReporting, err := p.fetchPrivateVulnerabilityReporting(ctx, owner, name)
-	if err != nil && !errors.Is(err, gh.ErrForbidden) {
-		return nil, fmt.Errorf("fetch private vulnerability reporting for %s/%s: %w", owner, name, err)
-	}
-
 	return &CurrentState{
 		Owner:               owner,
 		Name:                name,
@@ -209,11 +244,8 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 		Archived:            raw.IsArchived,
 		Homepage:            raw.HomepageURL,
 		Visibility:          strings.ToLower(raw.Visibility),
-		Topics:                        topics,
-		ReleaseImmutability:           releaseImmutability,
-		VulnerabilityAlerts:           vulnerabilityAlerts,
-		AutomatedSecurityFixes:        automatedSecurityFixes,
-		PrivateVulnerabilityReporting: privateVulnerabilityReporting,
+		Topics:              topics,
+		ReleaseImmutability: releaseImmutability,
 		Features: CurrentFeatures{
 			Issues:      raw.HasIssuesEnabled,
 			Projects:    raw.HasProjectsEnabled,

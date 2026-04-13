@@ -392,7 +392,7 @@ func TestValidateDependencies(t *testing.T) {
 				d.Spec.Security = &manifest.Security{}
 				tt.setupSpec(d.Spec.Security)
 			}
-			c := &CurrentState{VulnerabilityAlerts: tt.currentVA}
+			c := &CurrentState{Security: CurrentSecurity{VulnerabilityAlerts: tt.currentVA}}
 
 			err := ValidateDependencies(d, c)
 			if tt.wantErr {
@@ -428,19 +428,19 @@ func TestDiff_Security(t *testing.T) {
 		{
 			name:      "vulnerability_alerts",
 			setDesire: func(s *manifest.Security) { s.VulnerabilityAlerts = manifest.Ptr(true) },
-			setCur:    func(c *CurrentState) { c.VulnerabilityAlerts = false },
+			setCur:    func(c *CurrentState) { c.Security.VulnerabilityAlerts = false },
 			field:     "vulnerability_alerts",
 		},
 		{
 			name:      "automated_security_fixes",
 			setDesire: func(s *manifest.Security) { s.AutomatedSecurityFixes = manifest.Ptr(true) },
-			setCur:    func(c *CurrentState) { c.AutomatedSecurityFixes = false },
+			setCur:    func(c *CurrentState) { c.Security.AutomatedSecurityFixes = false },
 			field:     "automated_security_fixes",
 		},
 		{
 			name:      "private_vulnerability_reporting",
 			setDesire: func(s *manifest.Security) { s.PrivateVulnerabilityReporting = manifest.Ptr(true) },
-			setCur:    func(c *CurrentState) { c.PrivateVulnerabilityReporting = false },
+			setCur:    func(c *CurrentState) { c.Security.PrivateVulnerabilityReporting = false },
 			field:     "private_vulnerability_reporting",
 		},
 	}

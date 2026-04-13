@@ -20,10 +20,8 @@ type CurrentState struct {
 	Topics              []string
 	Features            CurrentFeatures
 	MergeStrategy       CurrentMergeStrategy
-	ReleaseImmutability           bool
-	VulnerabilityAlerts           bool
-	AutomatedSecurityFixes        bool
-	PrivateVulnerabilityReporting bool
+	ReleaseImmutability bool
+	Security            CurrentSecurity
 
 	BranchProtection map[string]*CurrentBranchProtection // pattern → protection
 	Rulesets         map[string]*CurrentRuleset          // name → ruleset
@@ -36,6 +34,12 @@ type CurrentState struct {
 
 func (r *CurrentState) FullName() string {
 	return r.Owner + "/" + r.Name
+}
+
+type CurrentSecurity struct {
+	VulnerabilityAlerts           bool
+	AutomatedSecurityFixes        bool
+	PrivateVulnerabilityReporting bool
 }
 
 type CurrentFeatures struct {
