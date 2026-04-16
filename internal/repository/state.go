@@ -206,6 +206,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 	repo.MergeStrategy.MergeCommitMessage = commitMsgSettings.MergeCommitMessage
 	repo.MergeStrategy.SquashMergeCommitTitle = commitMsgSettings.SquashMergeCommitTitle
 	repo.MergeStrategy.SquashMergeCommitMessage = commitMsgSettings.SquashMergeCommitMessage
+	repo.MergeStrategy.AllowAutoMerge = commitMsgSettings.AllowAutoMerge
 	repo.Security = CurrentSecurity{
 		VulnerabilityAlerts:           vulnerabilityAlerts,
 		AutomatedSecurityFixes:        automatedSecurityFixes,
@@ -287,12 +288,13 @@ type commitMessageSettings struct {
 	MergeCommitMessage       string
 	SquashMergeCommitTitle   string
 	SquashMergeCommitMessage string
+	AllowAutoMerge           bool
 }
 
 func (p *Processor) fetchCommitMessageSettings(ctx context.Context, owner, name string) (commitMessageSettings, error) {
 	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s", owner, name),
-		"--jq", "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}",
+		"--jq", "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}",
 	)
 	if err != nil {
 		return commitMessageSettings{}, err
@@ -303,6 +305,7 @@ func (p *Processor) fetchCommitMessageSettings(ctx context.Context, owner, name 
 		SquashMergeCommitMessage *string `json:"squash_merge_commit_message"`
 		MergeCommitTitle         *string `json:"merge_commit_title"`
 		MergeCommitMessage       *string `json:"merge_commit_message"`
+		AllowAutoMerge           bool    `json:"allow_auto_merge"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return commitMessageSettings{}, err
@@ -320,6 +323,7 @@ func (p *Processor) fetchCommitMessageSettings(ctx context.Context, owner, name 
 		MergeCommitMessage:       deref(raw.MergeCommitMessage, "PR_TITLE"),
 		SquashMergeCommitTitle:   deref(raw.SquashMergeCommitTitle, "COMMIT_OR_PR_TITLE"),
 		SquashMergeCommitMessage: deref(raw.SquashMergeCommitMessage, "COMMIT_MESSAGES"),
+		AllowAutoMerge:           raw.AllowAutoMerge,
 	}, nil
 }
 

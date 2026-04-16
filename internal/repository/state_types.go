@@ -53,6 +53,7 @@ type CurrentMergeStrategy struct {
 	AllowMergeCommit         bool
 	AllowSquashMerge         bool
 	AllowRebaseMerge         bool
+	AllowAutoMerge           bool
 	AutoDeleteHeadBranches   bool
 	MergeCommitTitle         string
 	MergeCommitMessage       string

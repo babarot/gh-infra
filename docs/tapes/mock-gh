@@ -128,7 +128,8 @@ if [[ "$args" == *"--jq"*"squash_merge_commit_title"* ]]; then
   "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
   "squash_merge_commit_message": "COMMIT_MESSAGES",
   "merge_commit_title": "MERGE_MESSAGE",
-  "merge_commit_message": "PR_TITLE"
+  "merge_commit_message": "PR_TITLE",
+  "allow_auto_merge": false
 }'
   exit 0
 fi

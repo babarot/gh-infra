@@ -198,6 +198,7 @@ func diffMergeStrategy(name string, desired *manifest.Repository, current *Curre
 		appendChildChanged(cc, "allow_merge_commit", ms.AllowMergeCommit, current.MergeStrategy.AllowMergeCommit)
 		appendChildChanged(cc, "allow_squash_merge", ms.AllowSquashMerge, current.MergeStrategy.AllowSquashMerge)
 		appendChildChanged(cc, "allow_rebase_merge", ms.AllowRebaseMerge, current.MergeStrategy.AllowRebaseMerge)
+		appendChildChanged(cc, "allow_auto_merge", ms.AllowAutoMerge, current.MergeStrategy.AllowAutoMerge)
 		appendChildChanged(cc, "auto_delete_head_branches", ms.AutoDeleteHeadBranches, current.MergeStrategy.AutoDeleteHeadBranches)
 		appendChildChanged(cc, "merge_commit_title", ms.MergeCommitTitle, current.MergeStrategy.MergeCommitTitle)
 		appendChildChanged(cc, "merge_commit_message", ms.MergeCommitMessage, current.MergeStrategy.MergeCommitMessage)

@@ -34,6 +34,7 @@ spec:
     allow_merge_commit: false
     allow_squash_merge: true
     allow_rebase_merge: false
+    allow_auto_merge: true
     auto_delete_head_branches: true
     merge_commit_title: MERGE_MESSAGE
     merge_commit_message: PR_TITLE

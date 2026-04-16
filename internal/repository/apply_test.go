@@ -955,6 +955,7 @@ func TestApplyRepoPatch_BatchesSettings(t *testing.T) {
 		AllowMergeCommit:         manifest.Ptr(true),
 		AllowSquashMerge:         manifest.Ptr(true),
 		AllowRebaseMerge:         manifest.Ptr(false),
+		AllowAutoMerge:           manifest.Ptr(true),
 		AutoDeleteHeadBranches:   manifest.Ptr(true),
 		SquashMergeCommitTitle:   manifest.Ptr("COMMIT_OR_PR_TITLE"),
 		SquashMergeCommitMessage: manifest.Ptr("COMMIT_MESSAGES"),
@@ -1009,6 +1010,9 @@ func TestApplyRepoPatch_BatchesSettings(t *testing.T) {
 	}
 	if payload["allow_rebase_merge"] != false {
 		t.Errorf("allow_rebase_merge = %v, want false", payload["allow_rebase_merge"])
+	}
+	if payload["allow_auto_merge"] != true {
+		t.Errorf("allow_auto_merge = %v, want true", payload["allow_auto_merge"])
 	}
 	if payload["delete_branch_on_merge"] != true {
 		t.Errorf("delete_branch_on_merge = %v, want true", payload["delete_branch_on_merge"])

@@ -354,6 +354,15 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		},
 	},
 	{
+		diffField: "merge_strategy.allow_auto_merge",
+		parentKey: "merge_strategy",
+		key:       "allow_auto_merge",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromMergeStrategy(spec.MergeStrategy, "allow_auto_merge")
+		},
+	},
+	{
 		diffField: "merge_strategy.auto_delete_head_branches",
 		parentKey: "merge_strategy",
 		key:       "auto_delete_head_branches",
@@ -665,6 +674,8 @@ func boolPtrFromMergeStrategy(m *manifest.MergeStrategy, field string) *bool {
 		return m.AllowSquashMerge
 	case "allow_rebase_merge":
 		return m.AllowRebaseMerge
+	case "allow_auto_merge":
+		return m.AllowAutoMerge
 	case "auto_delete_head_branches":
 		return m.AutoDeleteHeadBranches
 	default:
@@ -842,6 +853,7 @@ func compareMergeStrategy(local, imported *manifest.MergeStrategy) []FieldDiff {
 	diffs = appendBoolPtrDiff(diffs, "merge_strategy.allow_merge_commit", l.AllowMergeCommit, i.AllowMergeCommit)
 	diffs = appendBoolPtrDiff(diffs, "merge_strategy.allow_squash_merge", l.AllowSquashMerge, i.AllowSquashMerge)
 	diffs = appendBoolPtrDiff(diffs, "merge_strategy.allow_rebase_merge", l.AllowRebaseMerge, i.AllowRebaseMerge)
+	diffs = appendBoolPtrDiff(diffs, "merge_strategy.allow_auto_merge", l.AllowAutoMerge, i.AllowAutoMerge)
 	diffs = appendBoolPtrDiff(diffs, "merge_strategy.auto_delete_head_branches", l.AutoDeleteHeadBranches, i.AutoDeleteHeadBranches)
 	diffs = appendPtrDiff(diffs, "merge_strategy.squash_merge_commit_title", l.SquashMergeCommitTitle, i.SquashMergeCommitTitle)
 	diffs = appendPtrDiff(diffs, "merge_strategy.squash_merge_commit_message", l.SquashMergeCommitMessage, i.SquashMergeCommitMessage)
@@ -1208,6 +1220,10 @@ func minimalMergeStrategy(defaults, imported *manifest.MergeStrategy) *manifest.
 	}
 	if !boolPtrEqual(d.AllowRebaseMerge, i.AllowRebaseMerge) {
 		m.AllowRebaseMerge = i.AllowRebaseMerge
+		any = true
+	}
+	if !boolPtrEqual(d.AllowAutoMerge, i.AllowAutoMerge) {
+		m.AllowAutoMerge = i.AllowAutoMerge
 		any = true
 	}
 	if !boolPtrEqual(d.AutoDeleteHeadBranches, i.AutoDeleteHeadBranches) {

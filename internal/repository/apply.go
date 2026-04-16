@@ -264,6 +264,9 @@ func (p *Processor) applyRepoPatch(ctx context.Context, fullName string, repo *m
 		if ms.AllowRebaseMerge != nil {
 			payload["allow_rebase_merge"] = *ms.AllowRebaseMerge
 		}
+		if ms.AllowAutoMerge != nil {
+			payload["allow_auto_merge"] = *ms.AllowAutoMerge
+		}
 		if ms.AutoDeleteHeadBranches != nil {
 			payload["delete_branch_on_merge"] = *ms.AutoDeleteHeadBranches
 		}

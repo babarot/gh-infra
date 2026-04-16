@@ -70,6 +70,7 @@ spec:
     allow_merge_commit: false
     allow_squash_merge: true
     allow_rebase_merge: false
+    allow_auto_merge: true
     auto_delete_head_branches: true
     merge_commit_title: MERGE_MESSAGE            # MERGE_MESSAGE | PR_TITLE
     merge_commit_message: PR_TITLE               # PR_TITLE | PR_BODY | BLANK
@@ -82,6 +83,7 @@ spec:
 | `allow_merge_commit` | bool | Allow merge commits |
 | `allow_squash_merge` | bool | Allow squash merging |
 | `allow_rebase_merge` | bool | Allow rebase merging |
+| `allow_auto_merge` | bool | Allow auto-merge on pull requests |
 | `auto_delete_head_branches` | bool | Automatically delete head branches after merge |
 | `merge_commit_title` | string | Title format for merge commits |
 | `merge_commit_message` | string | Message format for merge commits |
