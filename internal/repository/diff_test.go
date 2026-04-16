@@ -286,6 +286,14 @@ func TestDiff_MergeStrategy_BoolFlags(t *testing.T) {
 			wantField: "allow_rebase_merge",
 		},
 		{
+			name: "allow_auto_merge enabled",
+			setup: func(ms *manifest.MergeStrategy, c *CurrentState) {
+				ms.AllowAutoMerge = manifest.Ptr(true)
+				c.MergeStrategy.AllowAutoMerge = false
+			},
+			wantField: "allow_auto_merge",
+		},
+		{
 			name: "auto_delete_head_branches enabled",
 			setup: func(ms *manifest.MergeStrategy, c *CurrentState) {
 				ms.AutoDeleteHeadBranches = manifest.Ptr(true)

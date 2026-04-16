@@ -38,6 +38,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 				AllowMergeCommit:         manifest.Ptr(r.MergeStrategy.AllowMergeCommit),
 				AllowSquashMerge:         manifest.Ptr(r.MergeStrategy.AllowSquashMerge),
 				AllowRebaseMerge:         manifest.Ptr(r.MergeStrategy.AllowRebaseMerge),
+				AllowAutoMerge:           manifest.Ptr(r.MergeStrategy.AllowAutoMerge),
 				AutoDeleteHeadBranches:   manifest.Ptr(r.MergeStrategy.AutoDeleteHeadBranches),
 				MergeCommitTitle:         manifest.Ptr(r.MergeStrategy.MergeCommitTitle),
 				MergeCommitMessage:       manifest.Ptr(r.MergeStrategy.MergeCommitMessage),

@@ -108,6 +108,7 @@ type MergeStrategy struct {
 	AllowMergeCommit         *bool   `yaml:"allow_merge_commit,omitempty"`
 	AllowSquashMerge         *bool   `yaml:"allow_squash_merge,omitempty"`
 	AllowRebaseMerge         *bool   `yaml:"allow_rebase_merge,omitempty"`
+	AllowAutoMerge           *bool   `yaml:"allow_auto_merge,omitempty"`
 	AutoDeleteHeadBranches   *bool   `yaml:"auto_delete_head_branches,omitempty"`
 	SquashMergeCommitTitle   *string `yaml:"squash_merge_commit_title,omitempty"   validate:"omitempty,oneof=PR_TITLE COMMIT_OR_PR_TITLE"`
 	SquashMergeCommitMessage *string `yaml:"squash_merge_commit_message,omitempty" validate:"omitempty,oneof=COMMIT_MESSAGES PR_BODY BLANK"`

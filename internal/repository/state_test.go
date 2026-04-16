@@ -42,11 +42,12 @@ func TestFetchRepository(t *testing.T) {
 				"deleteBranchOnMerge": true,
 				"defaultBranchRef": {"name": "main"}
 			}`),
-			"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": []byte(`{
+			"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}": []byte(`{
 				"squash_merge_commit_title": "PR_TITLE",
 				"squash_merge_commit_message": "COMMIT_MESSAGES",
 				"merge_commit_title": "MERGE_MESSAGE",
-				"merge_commit_message": "PR_BODY"
+				"merge_commit_message": "PR_BODY",
+				"allow_auto_merge": false
 			}`),
 			"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
 			"api repos/myorg/myrepo/vulnerability-alerts":                                     []byte(``),
@@ -305,7 +306,7 @@ func TestFetchVariables(t *testing.T) {
 func TestFetchCommitMessageSettings_NullValues(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
-			"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": []byte(`{
+			"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}": []byte(`{
 				"squash_merge_commit_title": null,
 				"squash_merge_commit_message": null,
 				"merge_commit_title": null,
@@ -360,7 +361,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			"deleteBranchOnMerge": true,
 			"defaultBranchRef": {"name": "main"}
 		}`),
-		"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": []byte(`{
+		"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}": []byte(`{
 			"squash_merge_commit_title": "PR_TITLE",
 			"squash_merge_commit_message": "COMMIT_MESSAGES",
 			"merge_commit_title": "MERGE_MESSAGE",
@@ -375,12 +376,12 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 	t.Run("commit message settings 404 is ignored", func(t *testing.T) {
 		responses := make(map[string][]byte)
 		maps.Copy(responses, baseResponses)
-		delete(responses, "api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}")
+		delete(responses, "api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}")
 
 		mock := &gh.MockRunner{
 			Responses: responses,
 			Errors: map[string]error{
-				"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": fmt.Errorf("%w: api error", gh.ErrNotFound),
+				"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}": fmt.Errorf("%w: api error", gh.ErrNotFound),
 			},
 		}
 		p := NewProcessor(mock, nil)
@@ -417,12 +418,12 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 	t.Run("commit message settings 500 propagates error", func(t *testing.T) {
 		responses := make(map[string][]byte)
 		maps.Copy(responses, baseResponses)
-		delete(responses, "api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}")
+		delete(responses, "api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}")
 
 		mock := &gh.MockRunner{
 			Responses: responses,
 			Errors: map[string]error{
-				"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}": fmt.Errorf("internal server error"),
+				"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge}": fmt.Errorf("internal server error"),
 			},
 		}
 		p := NewProcessor(mock, nil)
