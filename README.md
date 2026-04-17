@@ -12,7 +12,7 @@ Declarative GitHub infrastructure management via YAML. Like Terraform, but for G
   </picture>
 </a>
 
-```
+```bash
 gh infra plan    # Show what would change
 gh infra apply   # Apply the changes
 ```
@@ -47,8 +47,6 @@ gh skill install babarot/gh-infra
 # via npx
 npx skills add babarot/gh-infra
 ```
-
-> **Note:** `gh skill` is a new GitHub CLI feature ([announcement](https://github.blog/changelog/2026-04-16-manage-agent-skills-with-github-cli/)). Requires `gh` v2.90.0 or later.
 
 This gives your agent knowledge of gh-infra commands, YAML schema, and CI/CD patterns so it can write and manage manifests for you.
 
