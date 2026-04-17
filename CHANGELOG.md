@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.11.1](https://github.com/babarot/gh-infra/compare/v0.11.0...v0.11.1) - 2026-04-17
+### Improvements
+- feat: add allow_auto_merge to merge_strategy by @babarot in https://github.com/babarot/gh-infra/pull/125
+
 ## [v0.11.0](https://github.com/babarot/gh-infra/compare/v0.10.0...v0.11.0) - 2026-04-14
 ### New Features
 - Add security section for Dependabot/Advanced Security settings by @babarot in https://github.com/babarot/gh-infra/pull/118
