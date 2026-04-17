@@ -1,12 +1,12 @@
 ---
 paths:
   - "docs/src/content/docs/**"
-  - ".agents/skills/**"
+  - "skills/**"
 ---
 
 # Agent Skill ↔ Documentation Sync
 
-The Astro documentation (`docs/src/content/docs/`) is the **source of truth** for user-facing feature descriptions. The agent skills (`.agents/skills/`) are an **agent-optimized view** of the same information, tailored for LLM consumption.
+The Astro documentation (`docs/src/content/docs/`) is the **source of truth** for user-facing feature descriptions. The agent skills (`skills/`) are an **agent-optimized view** of the same information, tailored for LLM consumption. (`.agents/skills` is a symlink to `skills/` for local agent resolution.)
 
 When either side changes, check whether the other side needs updating.
 

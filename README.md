@@ -12,7 +12,7 @@ Declarative GitHub infrastructure management via YAML. Like Terraform, but for G
   </picture>
 </a>
 
-```
+```bash
 gh infra plan    # Show what would change
 gh infra apply   # Apply the changes
 ```
@@ -38,9 +38,13 @@ gh extension install babarot/gh-infra
 
 ### Agent Skills (optional)
 
-Install gh-infra skills for your coding agent (Claude Code, Codex, Cursor, etc.):
+Install gh-infra skills for your coding agent (Claude Code, Copilot, Codex, Cursor, etc.):
 
 ```bash
+# via GitHub CLI (v2.90.0+)
+gh skill install babarot/gh-infra
+
+# via npx
 npx skills add babarot/gh-infra
 ```
 
