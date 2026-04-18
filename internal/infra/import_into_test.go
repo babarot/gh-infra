@@ -7,6 +7,7 @@ import (
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/importer"
+	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
@@ -69,6 +70,48 @@ func TestParseArgs_Invalid(t *testing.T) {
 				t.Error("expected error for invalid arg")
 			}
 		})
+	}
+}
+
+// --- allRepoFullNames tests ---
+
+func TestAllRepoFullNames_ReposAndFileSets(t *testing.T) {
+	parsed := &manifest.ParseResult{
+		RepositoryDocs: []*manifest.RepositoryDocument{
+			{Resource: &manifest.Repository{Metadata: manifest.RepositoryMetadata{Owner: "org", Name: "repo-a"}}},
+			{Resource: &manifest.Repository{Metadata: manifest.RepositoryMetadata{Owner: "org", Name: "repo-b"}}},
+		},
+		FileDocs: []*manifest.FileDocument{
+			{Resource: &manifest.FileSet{
+				Metadata: manifest.FileSetMetadata{Owner: "org"},
+				Spec: manifest.FileSetSpec{
+					Repositories: []manifest.FileSetRepository{
+						{Name: "repo-b"}, // duplicate with RepositoryDocs
+						{Name: "repo-c"}, // new
+					},
+				},
+			}},
+		},
+	}
+
+	names := allRepoFullNames(parsed)
+
+	if len(names) != 3 {
+		t.Fatalf("expected 3 names, got %d: %v", len(names), names)
+	}
+	want := map[string]bool{"org/repo-a": true, "org/repo-b": true, "org/repo-c": true}
+	for _, n := range names {
+		if !want[n] {
+			t.Errorf("unexpected name: %q", n)
+		}
+	}
+}
+
+func TestAllRepoFullNames_Empty(t *testing.T) {
+	parsed := &manifest.ParseResult{}
+	names := allRepoFullNames(parsed)
+	if len(names) != 0 {
+		t.Errorf("expected 0 names, got %d", len(names))
 	}
 }
 

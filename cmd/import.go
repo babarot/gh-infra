@@ -17,11 +17,16 @@ func newImportCmd() *cobra.Command {
 		Use:   "import <owner/repo> [owner/repo ...]",
 		Short: "Export existing repository settings as YAML",
 		Long: "Fetch current GitHub repository settings and output them as gh-infra YAML.\n" +
-			"With --into, pull GitHub state back into existing local manifests.",
-		Args: cobra.MinimumNArgs(1),
+			"With --into, pull GitHub state back into existing local manifests.\n" +
+			"When --into is used without specifying repositories, all repositories\n" +
+			"defined in the manifests are targeted.",
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if intoPath != "" {
 				return runImportInto(args, intoPath)
+			}
+			if len(args) == 0 {
+				return fmt.Errorf("requires at least 1 arg when --into is not used")
 			}
 			return runImport(args)
 		},

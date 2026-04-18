@@ -157,6 +157,11 @@ func ImportInto(args []string, into string) (*ImportDiff, error) {
 		return nil, err
 	}
 
+	// When no args are given, target all repositories defined in manifests.
+	if len(args) == 0 {
+		args = allRepoFullNames(parsed)
+	}
+
 	targets, err := parseArgs(args)
 	if err != nil {
 		return nil, err
@@ -386,6 +391,30 @@ func planSkipReason(c importer.Change) string {
 		return "skip: reconcile:create_only (Tab to change)"
 	}
 	return "skip"
+}
+
+// allRepoFullNames returns deduplicated "owner/repo" names from all parsed manifests.
+func allRepoFullNames(parsed *manifest.ParseResult) []string {
+	seen := make(map[string]bool)
+	var names []string
+
+	for _, doc := range parsed.RepositoryDocs {
+		name := doc.Resource.Metadata.FullName()
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	for _, doc := range parsed.FileDocs {
+		for _, repo := range doc.Resource.Spec.Repositories {
+			name := doc.Resource.RepoFullName(repo.Name)
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+	}
+	return names
 }
 
 func writeModeForAction(c importer.Change, action string) importer.WriteMode {

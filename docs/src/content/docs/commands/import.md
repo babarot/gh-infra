@@ -17,6 +17,8 @@ gh infra import <owner/repo> [owner/repo ...]
 | `<owner/repo>` | `gh infra import babarot/my-project` | Import that repository |
 | Multiple repos | `gh infra import babarot/my-project babarot/my-cli` | Import each repository |
 
+When using `--into`, arguments are optional. If omitted, all repositories defined in the manifests are targeted.
+
 ## Flags
 
 | Flag | Description |
@@ -35,8 +37,11 @@ gh infra import babarot/my-project babarot/my-cli
 # Import and review
 gh infra import babarot/my-project
 
-# Pull GitHub state into existing manifests
+# Pull GitHub state into existing manifests (specific repo)
 gh infra import babarot/my-project --into=repos/my-project.yaml
+
+# Pull GitHub state for all repos defined in manifests
+gh infra import --into=repos/
 ```
 
 The output is a complete `Repository` YAML manifest reflecting the current state of the repository on GitHub.
@@ -46,16 +51,22 @@ The output is a complete `Repository` YAML manifest reflecting the current state
 With `--into`, import works in the reverse direction of `plan`/`apply`: it fetches the current GitHub state and updates your existing local YAML manifests to match.
 
 ```bash
-gh infra import <owner/repo> --into=<path>
+# Import specific repos into manifests
+gh infra import <owner/repo> [owner/repo ...] --into=<path>
+
+# Import all repos defined in manifests
+gh infra import --into=<path>
 ```
 
 The path can be a single YAML file or a directory containing manifests.
 
+When no `owner/repo` arguments are given, all repositories defined in the manifests (from Repository, RepositorySet, and FileSet resources) are targeted automatically.
+
 ### How It Works
 
 1. **Parse** local manifests at the given path
-2. **Match** each `owner/repo` argument to resources in the manifests (Repository, RepositorySet, FileSet)
-3. **Fetch** the current state from GitHub
+2. **Match** targets to resources in the manifests — either from arguments or all repos in manifests when no arguments are given
+3. **Fetch** the current state from GitHub (in parallel)
 4. **Diff** local vs GitHub, field by field
 5. **Display** the plan (repo setting changes + file changes with diff stats)
 6. **Confirm** with interactive diff viewer (for file changes) or simple prompt (repo-only changes)
@@ -64,6 +75,9 @@ The path can be a single YAML file or a directory containing manifests.
 ### Examples
 
 ```bash
+# Pull GitHub state for all repos defined in manifests
+gh infra import --into=repos/
+
 # Pull GitHub state into a specific manifest file
 gh infra import babarot/my-project --into=repos/my-project.yaml
 
