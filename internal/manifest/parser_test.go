@@ -1558,12 +1558,197 @@ repositories:
 		t.Errorf("inherits-labels: expected 2 labels, got %d", len(repos[0].Spec.Labels))
 	}
 
-	// Second repo overrides with its own labels (full replacement)
-	if len(repos[1].Spec.Labels) != 1 {
-		t.Fatalf("overrides-labels: expected 1 label, got %d", len(repos[1].Spec.Labels))
+	// Second repo merges defaults + its own labels (3 total)
+	if len(repos[1].Spec.Labels) != 3 {
+		t.Fatalf("overrides-labels: expected 3 labels, got %d", len(repos[1].Spec.Labels))
 	}
-	if repos[1].Spec.Labels[0].Name != "custom-label" {
-		t.Errorf("expected custom-label, got %q", repos[1].Spec.Labels[0].Name)
+	labelNames := make(map[string]bool)
+	for _, l := range repos[1].Spec.Labels {
+		labelNames[l.Name] = true
+	}
+	for _, want := range []string{"kind/bug", "kind/feature", "custom-label"} {
+		if !labelNames[want] {
+			t.Errorf("overrides-labels: missing label %q", want)
+		}
+	}
+}
+
+func TestRepositorySet_LabelsMerge_OverrideByName(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: kind/bug
+        color: d73a4a
+        description: A bug
+      - name: kind/feature
+        color: "425df5"
+        description: A feature
+repositories:
+  - name: repo-a
+    spec:
+      labels:
+        - name: kind/bug
+          color: "FF0000"
+          description: Updated bug description
+        - name: custom
+          color: "00FF00"
+`
+	path := filepath.Join(dir, "labels.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+
+	labels := repos[0].Spec.Labels
+	if len(labels) != 3 {
+		t.Fatalf("expected 3 labels, got %d", len(labels))
+	}
+
+	// kind/bug should be overridden by repo
+	if labels[0].Name != "kind/bug" || labels[0].Color != "FF0000" {
+		t.Errorf("kind/bug not overridden: got color=%q", labels[0].Color)
+	}
+	// kind/feature should be inherited from defaults
+	if labels[1].Name != "kind/feature" || labels[1].Color != "425df5" {
+		t.Errorf("kind/feature not inherited: got %+v", labels[1])
+	}
+	// custom should be appended
+	if labels[2].Name != "custom" || labels[2].Color != "00FF00" {
+		t.Errorf("custom not appended: got %+v", labels[2])
+	}
+}
+
+func TestRepositorySet_BranchProtectionMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    branch_protection:
+      - pattern: main
+        required_reviews: 1
+        dismiss_stale_reviews: true
+repositories:
+  - name: inherits-bp
+    spec:
+      description: "inherits default branch protection"
+  - name: overrides-bp
+    spec:
+      branch_protection:
+        - pattern: main
+          required_reviews: 2
+        - pattern: release/*
+          required_reviews: 1
+`
+	path := filepath.Join(dir, "bp.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+
+	// First repo inherits default branch protection
+	if len(repos[0].Spec.BranchProtection) != 1 {
+		t.Fatalf("inherits-bp: expected 1 rule, got %d", len(repos[0].Spec.BranchProtection))
+	}
+	if *repos[0].Spec.BranchProtection[0].RequiredReviews != 1 {
+		t.Errorf("inherits-bp: expected required_reviews=1, got %d", *repos[0].Spec.BranchProtection[0].RequiredReviews)
+	}
+
+	// Second repo: main rule merged (required_reviews overridden, dismiss_stale_reviews inherited)
+	bp := repos[1].Spec.BranchProtection
+	if len(bp) != 2 {
+		t.Fatalf("overrides-bp: expected 2 rules, got %d", len(bp))
+	}
+	if *bp[0].RequiredReviews != 2 {
+		t.Errorf("overrides-bp main: expected required_reviews=2, got %d", *bp[0].RequiredReviews)
+	}
+	if bp[0].DismissStaleReviews == nil || *bp[0].DismissStaleReviews != true {
+		t.Errorf("overrides-bp main: dismiss_stale_reviews should be inherited as true")
+	}
+	// release/* is new
+	if bp[1].Pattern != "release/*" {
+		t.Errorf("overrides-bp: expected release/*, got %q", bp[1].Pattern)
+	}
+}
+
+func TestRepositorySet_RulesetsMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    rulesets:
+      - name: default-ruleset
+        target: branch
+        enforcement: active
+repositories:
+  - name: inherits-rs
+    spec:
+      description: "inherits default rulesets"
+  - name: overrides-rs
+    spec:
+      rulesets:
+        - name: default-ruleset
+          target: branch
+          enforcement: evaluate
+        - name: custom-ruleset
+          target: tag
+          enforcement: active
+`
+	path := filepath.Join(dir, "rs.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+
+	// First repo inherits default rulesets
+	if len(repos[0].Spec.Rulesets) != 1 {
+		t.Fatalf("inherits-rs: expected 1 ruleset, got %d", len(repos[0].Spec.Rulesets))
+	}
+
+	// Second repo: default-ruleset overridden, custom-ruleset appended
+	rs := repos[1].Spec.Rulesets
+	if len(rs) != 2 {
+		t.Fatalf("overrides-rs: expected 2 rulesets, got %d", len(rs))
+	}
+	if rs[0].Name != "default-ruleset" || *rs[0].Enforcement != "evaluate" {
+		t.Errorf("overrides-rs: default-ruleset should have enforcement=evaluate, got %v", rs[0].Enforcement)
+	}
+	if rs[1].Name != "custom-ruleset" {
+		t.Errorf("overrides-rs: expected custom-ruleset, got %q", rs[1].Name)
 	}
 }
 

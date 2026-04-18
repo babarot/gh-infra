@@ -386,10 +386,10 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 		result.Actions = mergeActions(result.Actions, override.Actions)
 	}
 	if len(override.BranchProtection) > 0 {
-		result.BranchProtection = override.BranchProtection
+		result.BranchProtection = mergeBranchProtection(result.BranchProtection, override.BranchProtection)
 	}
 	if len(override.Rulesets) > 0 {
-		result.Rulesets = override.Rulesets
+		result.Rulesets = mergeRulesets(result.Rulesets, override.Rulesets)
 	}
 	if len(override.Secrets) > 0 {
 		result.Secrets = override.Secrets
@@ -398,7 +398,7 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 		result.Variables = override.Variables
 	}
 	if len(override.Labels) > 0 {
-		result.Labels = override.Labels
+		result.Labels = mergeLabels(result.Labels, override.Labels)
 	}
 	if override.LabelSync != nil {
 		result.LabelSync = override.LabelSync
@@ -520,6 +520,119 @@ func mergeActions(base, override *Actions) *Actions {
 		result.SelectedActions = mergeSelectedActions(result.SelectedActions, override.SelectedActions)
 	}
 	return &result
+}
+
+// mergeLabels merges two label slices by name. Override labels take precedence
+// for entries with the same name; new labels are appended.
+func mergeLabels(base, override []Label) []Label {
+	if len(base) == 0 {
+		return override
+	}
+	if len(override) == 0 {
+		return base
+	}
+
+	index := make(map[string]int, len(base))
+	result := make([]Label, len(base))
+	copy(result, base)
+	for i, l := range result {
+		index[l.Name] = i
+	}
+
+	for _, l := range override {
+		if i, ok := index[l.Name]; ok {
+			result[i] = l
+		} else {
+			index[l.Name] = len(result)
+			result = append(result, l)
+		}
+	}
+	return result
+}
+
+// mergeBranchProtection merges two branch protection slices by pattern.
+// Same-pattern entries are merged at the field level; new patterns are appended.
+func mergeBranchProtection(base, override []BranchProtection) []BranchProtection {
+	if len(base) == 0 {
+		return override
+	}
+	if len(override) == 0 {
+		return base
+	}
+
+	index := make(map[string]int, len(base))
+	result := make([]BranchProtection, len(base))
+	copy(result, base)
+	for i, bp := range result {
+		index[bp.Pattern] = i
+	}
+
+	for _, bp := range override {
+		if i, ok := index[bp.Pattern]; ok {
+			result[i] = mergeBranchProtectionEntry(result[i], bp)
+		} else {
+			index[bp.Pattern] = len(result)
+			result = append(result, bp)
+		}
+	}
+	return result
+}
+
+func mergeBranchProtectionEntry(base, override BranchProtection) BranchProtection {
+	result := base
+	if override.RequiredReviews != nil {
+		result.RequiredReviews = override.RequiredReviews
+	}
+	if override.DismissStaleReviews != nil {
+		result.DismissStaleReviews = override.DismissStaleReviews
+	}
+	if override.RequireCodeOwnerReviews != nil {
+		result.RequireCodeOwnerReviews = override.RequireCodeOwnerReviews
+	}
+	if override.RequireStatusChecks != nil {
+		result.RequireStatusChecks = override.RequireStatusChecks
+	}
+	if override.EnforceAdmins != nil {
+		result.EnforceAdmins = override.EnforceAdmins
+	}
+	if override.RestrictPushes != nil {
+		result.RestrictPushes = override.RestrictPushes
+	}
+	if override.AllowForcePushes != nil {
+		result.AllowForcePushes = override.AllowForcePushes
+	}
+	if override.AllowDeletions != nil {
+		result.AllowDeletions = override.AllowDeletions
+	}
+	return result
+}
+
+// mergeRulesets merges two ruleset slices by name. Override rulesets take precedence
+// for entries with the same name; new rulesets are appended.
+func mergeRulesets(base, override []Ruleset) []Ruleset {
+	if len(base) == 0 {
+		return override
+	}
+	if len(override) == 0 {
+		return base
+	}
+
+	index := make(map[string]int, len(base))
+	result := make([]Ruleset, len(base))
+	copy(result, base)
+	for i, rs := range result {
+		index[rs.Name] = i
+	}
+
+	for _, rs := range override {
+		if i, ok := index[rs.Name]; ok {
+			result[i] = rs
+		} else {
+			index[rs.Name] = len(result)
+			result = append(result, rs)
+		}
+	}
+	return result
 }
 
 func mergeSelectedActions(base, override *SelectedActions) *SelectedActions {
