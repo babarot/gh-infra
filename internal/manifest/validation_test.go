@@ -693,6 +693,28 @@ func TestValidateActions_SelectedActionsWithSelected(t *testing.T) {
 	}
 }
 
+func TestValidateActions_ForkPRApprovalUnsupportedForPrivateRepo(t *testing.T) {
+	repo := &Repository{
+		APIVersion: APIVersion,
+		Kind:       KindRepository,
+		Metadata:   RepositoryMetadata{Owner: "org", Name: "repo"},
+		Spec: RepositorySpec{
+			Visibility: Ptr(VisibilityPrivate),
+			Actions: &Actions{
+				Enabled:        Ptr(true),
+				ForkPRApproval: Ptr("first_time_contributors"),
+			},
+		},
+	}
+	err := repo.Validate()
+	if err == nil {
+		t.Fatal("expected error for fork_pr_approval on private repo")
+	}
+	if !strings.Contains(err.Error(), "fork_pr_approval") || !strings.Contains(err.Error(), "private") {
+		t.Errorf("error = %q, expected mention of fork_pr_approval and private", err)
+	}
+}
+
 func TestValidateActions_InvalidAllowedActions(t *testing.T) {
 	repo := &Repository{
 		APIVersion: APIVersion,

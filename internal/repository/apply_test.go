@@ -1269,7 +1269,7 @@ func TestApplyActionsForkPR(t *testing.T) {
 
 	err := proc.applyActionsForkPR(context.Background(), "myorg", "myrepo", &manifest.Actions{
 		ForkPRApproval: manifest.Ptr("first_time_contributors"),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1286,12 +1286,30 @@ func TestApplyActionsForkPR_Nil(t *testing.T) {
 	mock := &gh.MockRunner{}
 	proc := NewProcessor(mock, nil)
 
-	err := proc.applyActionsForkPR(context.Background(), "myorg", "myrepo", &manifest.Actions{})
+	err := proc.applyActionsForkPR(context.Background(), "myorg", "myrepo", &manifest.Actions{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(mock.Called) != 0 {
 		t.Errorf("expected no calls for nil ForkPRApproval, got %d", len(mock.Called))
+	}
+}
+
+func TestApplyActionsForkPR_RejectsPrivateRepo(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	err := proc.applyActionsForkPR(context.Background(), "myorg", "myrepo", &manifest.Actions{
+		ForkPRApproval: manifest.Ptr("first_time_contributors"),
+	}, manifest.Ptr(manifest.VisibilityPrivate))
+	if err == nil {
+		t.Fatal("expected error for private repo ForkPRApproval")
+	}
+	if !strings.Contains(err.Error(), "fork_pr_approval") || !strings.Contains(err.Error(), "private") {
+		t.Errorf("expected fork_pr_approval/private error, got: %v", err)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected no calls for private repo ForkPRApproval, got %d", len(mock.Called))
 	}
 }
 

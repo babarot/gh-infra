@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -19,6 +20,7 @@ type repoResult struct {
 	repo    *manifest.Repository
 	changes []Change
 	err     error
+	fatal   bool
 }
 
 // PlanTargetRepoNames returns the list of repo full names that would be fetched (after filtering).
@@ -70,14 +72,10 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		tracker.Checkpoint(fullName, "fetched repository state")
 
 		// Cross-field dependencies that need current state to evaluate.
-		// Only relevant for existing repos; for new repos these are validated
-		// implicitly by ordering during create+apply.
-		if !current.IsNew {
-			if err := ValidateDependencies(r, current); err != nil {
-				logger.Error("dependency validation failed", "repo", fullName, "err", err)
-				tracker.Error(fullName, err)
-				return repoResult{index: idx, repo: r, err: err}
-			}
+		if err := ValidateDependencies(r, current); err != nil {
+			logger.Error("dependency validation failed", "repo", fullName, "err", err)
+			tracker.Error(fullName, err)
+			return repoResult{index: idx, repo: r, err: err, fatal: true}
 		}
 
 		changes := Diff(ctx, r, current, diffOpts)
@@ -98,17 +96,23 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 	var allChanges []Change
 	var targetRepos []*manifest.Repository
 	var skipped int
+	var firstFatal error
 	for _, res := range results {
 		if res.err != nil {
 			// Fetch/validate errors are already surfaced via the tracker
 			// (live inline on the spinner, then collected for post-spinner
-			// reporting in RefreshTracker.PrintErrors). Skip the failed repo
-			// so the remaining plan can proceed.
+			// reporting in RefreshTracker.PrintErrors).
+			if res.fatal && firstFatal == nil {
+				firstFatal = fmt.Errorf("%s: %w", res.repo.Metadata.FullName(), res.err)
+			}
 			skipped++
 			continue
 		}
 		allChanges = append(allChanges, res.changes...)
 		targetRepos = append(targetRepos, res.repo)
+	}
+	if firstFatal != nil {
+		return nil, nil, firstFatal
 	}
 
 	logger.Info("plan complete", "total_changes", len(allChanges), "skipped", skipped)

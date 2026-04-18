@@ -1383,6 +1383,63 @@ func TestCompareRulesets_CreateFields(t *testing.T) {
 	}
 }
 
+func TestCompareRulesets_ConditionsNilAndEmptyExcludeAreEqual(t *testing.T) {
+	local := []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Conditions: &manifest.RulesetConditions{
+				RefName: &manifest.RulesetRefCondition{
+					Include: []string{"~DEFAULT_BRANCH"},
+				},
+			},
+		},
+	}
+	imported := []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Conditions: &manifest.RulesetConditions{
+				RefName: &manifest.RulesetRefCondition{
+					Include: []string{"~DEFAULT_BRANCH"},
+					Exclude: []string{},
+				},
+			},
+		},
+	}
+
+	diffs := compareRulesets(local, imported)
+	if len(diffs) != 0 {
+		t.Fatalf("expected no diffs for nil vs empty exclude, got %d: %+v", len(diffs), diffs)
+	}
+}
+
+func TestCompareRulesets_ConditionsOrderInsensitive(t *testing.T) {
+	local := []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Conditions: &manifest.RulesetConditions{
+				RefName: &manifest.RulesetRefCondition{
+					Include: []string{"refs/heads/main", "refs/heads/release"},
+				},
+			},
+		},
+	}
+	imported := []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Conditions: &manifest.RulesetConditions{
+				RefName: &manifest.RulesetRefCondition{
+					Include: []string{"refs/heads/release", "refs/heads/main"},
+				},
+			},
+		},
+	}
+
+	diffs := compareRulesets(local, imported)
+	if len(diffs) != 0 {
+		t.Fatalf("expected no diffs for reordered conditions, got %d: %+v", len(diffs), diffs)
+	}
+}
+
 func TestCompareRulesets_Empty(t *testing.T) {
 	diffs := compareRulesets(nil, nil)
 	if len(diffs) != 0 {

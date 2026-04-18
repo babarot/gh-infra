@@ -417,6 +417,68 @@ func TestValidateDependencies(t *testing.T) {
 	}
 }
 
+func TestValidateDependencies_ForkPRApprovalUnsupportedForPrivateRepo(t *testing.T) {
+	tests := []struct {
+		name       string
+		visibility *string
+		current    CurrentState
+		wantErr    bool
+	}{
+		{
+			name:       "explicit private",
+			visibility: manifest.Ptr(manifest.VisibilityPrivate),
+			current:    CurrentState{Visibility: manifest.VisibilityPublic},
+			wantErr:    true,
+		},
+		{
+			name:    "current private with omitted visibility",
+			current: CurrentState{Visibility: manifest.VisibilityPrivate},
+			wantErr: true,
+		},
+		{
+			name:    "new repo defaults to private",
+			current: CurrentState{IsNew: true},
+			wantErr: true,
+		},
+		{
+			name:       "explicit public on current private",
+			visibility: manifest.Ptr(manifest.VisibilityPublic),
+			current:    CurrentState{Visibility: manifest.VisibilityPrivate},
+			wantErr:    false,
+		},
+		{
+			name:    "current public with omitted visibility",
+			current: CurrentState{Visibility: manifest.VisibilityPublic},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &manifest.Repository{
+				Spec: manifest.RepositorySpec{
+					Visibility: tt.visibility,
+					Actions: &manifest.Actions{
+						ForkPRApproval: manifest.Ptr("first_time_contributors"),
+					},
+				},
+			}
+
+			err := ValidateDependencies(d, &tt.current)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), "fork_pr_approval") || !strings.Contains(err.Error(), "private") {
+					t.Errorf("expected fork_pr_approval/private error, got: %v", err)
+				}
+			} else if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestDiff_Security(t *testing.T) {
 	t.Run("nil security is noop", func(t *testing.T) {
 		d := baseDesired()

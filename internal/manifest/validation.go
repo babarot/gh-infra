@@ -76,6 +76,9 @@ func (r *Repository) Validate() error {
 	}
 	// Actions: cross-field checks
 	if a := r.Spec.Actions; a != nil {
+		if a.ForkPRApproval != nil && r.Spec.Visibility != nil && *r.Spec.Visibility == VisibilityPrivate {
+			return fmt.Errorf("%s: actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or set visibility to public/internal)", name)
+		}
 		// GitHub API requires "enabled" in every PUT to /actions/permissions.
 		// To avoid silently changing the enabled state, require it whenever
 		// any other actions field is specified.

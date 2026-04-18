@@ -266,6 +266,10 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 
 	// Actions (permissions, workflow defaults, selected actions, fork PR)
 	if a := repo.Spec.Actions; a != nil && a.Enabled != nil {
+		visibility := repo.Spec.Visibility
+		if visibility == nil {
+			visibility = manifest.Ptr(manifest.VisibilityPrivate)
+		}
 		if err := p.applyActionsPermissions(ctx, owner, name, a); err != nil {
 			return err
 		}
@@ -278,7 +282,7 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 			}
 		}
 		if a.ForkPRApproval != nil {
-			if err := p.applyActionsForkPR(ctx, owner, name, a); err != nil {
+			if err := p.applyActionsForkPR(ctx, owner, name, a, visibility); err != nil {
 				return err
 			}
 		}
@@ -1072,7 +1076,7 @@ func (p *Processor) applyActions(ctx context.Context, c Change, repo *manifest.R
 	case c.Field == "workflow_permissions" || c.Field == "can_approve_pull_requests":
 		return p.applyActionsWorkflow(ctx, owner, name, a)
 	case c.Field == "fork_pr_approval":
-		return p.applyActionsForkPR(ctx, owner, name, a)
+		return p.applyActionsForkPR(ctx, owner, name, a, repo.Spec.Visibility)
 	case strings.HasPrefix(c.Field, "selected_actions."):
 		return p.applyActionsSelectedActions(ctx, owner, name, a)
 	}
@@ -1159,9 +1163,12 @@ func (p *Processor) applyActionsSelectedActions(ctx context.Context, owner, name
 	return wrapError(err, owner+"/"+name, "actions.selected_actions")
 }
 
-func (p *Processor) applyActionsForkPR(ctx context.Context, owner, name string, a *manifest.Actions) error {
+func (p *Processor) applyActionsForkPR(ctx context.Context, owner, name string, a *manifest.Actions, visibility *string) error {
 	if a.ForkPRApproval == nil {
 		return nil
+	}
+	if visibility != nil && *visibility == manifest.VisibilityPrivate {
+		return fmt.Errorf("actions.fork_pr_approval is not supported for private repositories")
 	}
 	payload := map[string]any{
 		"approval_policy": *a.ForkPRApproval,

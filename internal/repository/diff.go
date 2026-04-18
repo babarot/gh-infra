@@ -82,9 +82,18 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 // when the effective state of a dependent field is incompatible.
 //
 // Currently checks:
+//   - actions.fork_pr_approval is unsupported for private repositories.
 //   - security.automated_security_fixes requires security.vulnerability_alerts
 //     to be effectively true. Required by the GitHub API.
 func ValidateDependencies(desired *manifest.Repository, current *CurrentState) error {
+	if desired.Spec.Actions != nil && desired.Spec.Actions.ForkPRApproval != nil && effectiveVisibility(desired, current) == manifest.VisibilityPrivate {
+		return fmt.Errorf("actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or make the repository public/internal)")
+	}
+
+	if current.IsNew {
+		return nil
+	}
+
 	s := desired.Spec.Security
 	if s == nil || s.AutomatedSecurityFixes == nil || !*s.AutomatedSecurityFixes {
 		return nil
@@ -97,6 +106,16 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 		return fmt.Errorf("security.automated_security_fixes: true requires security.vulnerability_alerts to be enabled (current state is disabled and the manifest does not enable it)")
 	}
 	return nil
+}
+
+func effectiveVisibility(desired *manifest.Repository, current *CurrentState) string {
+	if desired.Spec.Visibility != nil {
+		return *desired.Spec.Visibility
+	}
+	if current.IsNew {
+		return manifest.VisibilityPrivate
+	}
+	return current.Visibility
 }
 
 // Diff compares desired state with current state and returns changes.

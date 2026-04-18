@@ -1173,7 +1173,7 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 			New:   fmt.Sprintf("%d actors", len(imported.BypassActors)),
 		})
 	}
-	if !reflect.DeepEqual(local.Conditions, imported.Conditions) {
+	if !rulesetConditionsEqual(local.Conditions, imported.Conditions) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.conditions", name),
 			Old:   formatRulesetConditions(local.Conditions),
@@ -1181,6 +1181,25 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 		})
 	}
 	return diffs
+}
+
+func rulesetConditionsEqual(a, b *manifest.RulesetConditions) bool {
+	return stringSliceEqual(rulesetConditionInclude(a), rulesetConditionInclude(b)) &&
+		stringSliceEqual(rulesetConditionExclude(a), rulesetConditionExclude(b))
+}
+
+func rulesetConditionInclude(c *manifest.RulesetConditions) []string {
+	if c == nil || c.RefName == nil {
+		return nil
+	}
+	return c.RefName.Include
+}
+
+func rulesetConditionExclude(c *manifest.RulesetConditions) []string {
+	if c == nil || c.RefName == nil {
+		return nil
+	}
+	return c.RefName.Exclude
 }
 
 // compareVariables compares variable lists.
