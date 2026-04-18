@@ -116,6 +116,25 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		if !ok {
 			return plan, fmt.Errorf("no manifest bytes for %s", doc.SourcePath)
 		}
+		specExists, err := repositorySetEntrySpecExists(data, doc.DocIndex, doc.SetEntryIndex)
+		if err != nil {
+			return plan, fmt.Errorf("check repositoryset spec for %s doc %d path %s: %w",
+				doc.SourcePath, doc.DocIndex, yamlPath, err)
+		}
+		if !specExists {
+			entryPath := fmt.Sprintf("$.repositories[%d]", doc.SetEntryIndex)
+			updated, err := yamledit.Merge(data, doc.DocIndex, entryPath, map[string]any{
+				"spec": newOverride,
+			})
+			if err != nil {
+				return plan, fmt.Errorf("yamledit patch for %s doc %d path %s: %w",
+					doc.SourcePath, doc.DocIndex, yamlPath, err)
+			}
+			input.ManifestBytes[doc.SourcePath] = updated
+			plan.ManifestEdits[doc.SourcePath] = updated
+			plan.UpdatedDocs++
+			continue
+		}
 
 		updated, err := patchRepositorySpec(repositoryPatchInput{
 			Data:     data,
@@ -135,6 +154,11 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 	}
 
 	return plan, nil
+}
+
+func repositorySetEntrySpecExists(data []byte, docIndex, entryIndex int) (bool, error) {
+	specPath := fmt.Sprintf("$.repositories[%d].spec", entryIndex)
+	return yamledit.Exists(data, docIndex, specPath)
 }
 
 type repositoryPatchInput struct {

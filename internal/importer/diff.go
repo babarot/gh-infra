@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -39,6 +40,50 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 	if tracker == nil {
 		tracker = noopRefreshTracker{}
 	}
+	var completedMu sync.Mutex
+	completed := make(map[string]bool, len(opts.Targets))
+	completeDone := func(name string) {
+		completedMu.Lock()
+		if completed[name] {
+			completedMu.Unlock()
+			return
+		}
+		completed[name] = true
+		completedMu.Unlock()
+		tracker.Done(name)
+	}
+	completeError := func(name string, err error) {
+		completedMu.Lock()
+		if completed[name] {
+			completedMu.Unlock()
+			return
+		}
+		completed[name] = true
+		completedMu.Unlock()
+		tracker.Error(name, err)
+	}
+	completeFail := func(name string) {
+		completedMu.Lock()
+		if completed[name] {
+			completedMu.Unlock()
+			return
+		}
+		completed[name] = true
+		completedMu.Unlock()
+		tracker.Fail(name)
+	}
+	completeRemaining := func() {
+		for _, tm := range opts.Targets {
+			fullName := tm.Target.FullName()
+			completedMu.Lock()
+			if completed[fullName] {
+				completedMu.Unlock()
+				continue
+			}
+			completedMu.Unlock()
+			completeFail(fullName)
+		}
+	}
 
 	// Determine resolver owner from first target.
 	var resolverOwner string
@@ -65,14 +110,14 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 				return fetchResult{tm: tm, fatal: context.Canceled}
 			}
 			if errors.Is(err, gh.ErrUnauthorized) || errors.Is(err, gh.ErrForbidden) {
-				tracker.Fail(fullName)
+				completeFail(fullName)
 				return fetchResult{tm: tm, fatal: fmt.Errorf("fetch %s: %w", fullName, err)}
 			}
-			tracker.Error(fullName, fmt.Errorf("fetch failed: %w", err))
+			completeError(fullName, fmt.Errorf("fetch failed: %w", err))
 			return fetchResult{tm: tm, skip: true}
 		}
 		if current.IsNew {
-			tracker.Error(fullName, fmt.Errorf("repository not found on GitHub"))
+			completeError(fullName, fmt.Errorf("repository not found on GitHub"))
 			return fetchResult{tm: tm, skip: true}
 		}
 
@@ -83,10 +128,12 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 	// Abort on fatal errors (auth failure, context canceled).
 	for _, f := range fetched {
 		if f.fatal != nil {
+			completeRemaining()
 			return nil, f.fatal
 		}
 	}
 	if ctx.Err() != nil {
+		completeRemaining()
 		return nil, context.Canceled
 	}
 
@@ -107,6 +154,8 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 
 		// Ensure manifest bytes are loaded for all relevant source paths.
 		if err := ensureManifestBytes(manifestBytes, f.tm.Matches); err != nil {
+			completeError(fullName, err)
+			completeRemaining()
 			return nil, err
 		}
 
@@ -118,7 +167,10 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 				ManifestBytes: manifestBytes,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("plan repository %s: %w", fullName, err)
+				err := fmt.Errorf("plan repository %s: %w", fullName, err)
+				completeError(fullName, err)
+				completeRemaining()
+				return nil, err
 			}
 			plan.AddRepoResult(rp)
 		}
@@ -131,7 +183,10 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 				ManifestBytes: manifestBytes,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("plan repositoryset %s: %w", fullName, err)
+				err := fmt.Errorf("plan repositoryset %s: %w", fullName, err)
+				completeError(fullName, err)
+				completeRemaining()
+				return nil, err
 			}
 			plan.AddRepoResult(rp)
 		}
@@ -147,14 +202,19 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 			})
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
+					completeError(fullName, context.Canceled)
+					completeRemaining()
 					return nil, context.Canceled
 				}
-				return nil, fmt.Errorf("plan files %s: %w", fullName, err)
+				err := fmt.Errorf("plan files %s: %w", fullName, err)
+				completeError(fullName, err)
+				completeRemaining()
+				return nil, err
 			}
 			plan.FileChanges = append(plan.FileChanges, fileChanges...)
 		}
 
-		tracker.Done(fullName)
+		completeDone(fullName)
 	}
 
 	return plan, nil
