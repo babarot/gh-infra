@@ -122,6 +122,7 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 		}
 
 		imported := repository.ToManifest(ctx, current, resolver)
+		tracker.Checkpoint(fullName, "fetched repository state")
 		return fetchResult{tm: tm, imported: imported}
 	})
 

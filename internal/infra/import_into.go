@@ -188,6 +188,7 @@ func ImportInto(args []string, into string) (*ImportDiff, error) {
 	for _, tm := range matched {
 		tasks = append(tasks, ui.RefreshTask{
 			Name:      tm.Target.FullName(),
+			DoneLabel: "fetched repository state",
 			FailLabel: tm.Target.FullName(),
 		})
 	}

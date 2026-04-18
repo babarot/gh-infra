@@ -41,6 +41,7 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 		start := time.Now()
 		var results []ApplyResult
 		for _, c := range g.changes {
+			reporter.UpdateStatus(g.name, "applying "+c.Field+"...")
 			result := p.applyChange(ctx, c, repoMap[c.Name])
 			results = append(results, result)
 		}

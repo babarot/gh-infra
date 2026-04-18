@@ -67,6 +67,7 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 			tracker.Error(fullName, err)
 			return repoResult{index: idx, repo: r, err: err}
 		}
+		tracker.Checkpoint(fullName, "fetched repository state")
 
 		// Cross-field dependencies that need current state to evaluate.
 		// Only relevant for existing repos; for new repos these are validated

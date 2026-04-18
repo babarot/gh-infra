@@ -137,6 +137,26 @@ func TestRefreshModel_StatusUpdate(t *testing.T) {
 	}
 }
 
+func TestRefreshModel_CheckpointRemainsRunning(t *testing.T) {
+	m := makeModel(task("a", 1))
+	m = update(t, m, taskCheckpointMsg{name: "a", status: "fetched repository state"})
+
+	if m.items[0].status != taskRunning {
+		t.Errorf("status = %v, want taskRunning", m.items[0].status)
+	}
+	if !m.items[0].checkpoint {
+		t.Fatal("checkpoint should be set")
+	}
+	if m.remaining != 1 {
+		t.Errorf("remaining = %d, want 1", m.remaining)
+	}
+
+	m = update(t, m, taskErrorMsg{name: "a", err: fmt.Errorf("validation failed")})
+	if m.items[0].status != taskError {
+		t.Errorf("status after error = %v, want taskError", m.items[0].status)
+	}
+}
+
 func TestRefreshModel_StatusIgnoredAfterError(t *testing.T) {
 	m := makeModel(task("a", 1))
 
@@ -261,6 +281,16 @@ func TestView_StatusTextRendered(t *testing.T) {
 	}
 }
 
+func TestView_CheckpointRenderedWithCheckmark(t *testing.T) {
+	m := makeModel(task("repo", 1))
+	m = update(t, m, taskCheckpointMsg{name: "repo", status: "fetched repository state"})
+
+	view := stripANSIForTest(m.View().Content)
+	if !strings.Contains(view, "repo  fetched repository state") {
+		t.Errorf("view missing checkpoint text, got:\n%s", view)
+	}
+}
+
 func TestView_DoneHidesStatusText(t *testing.T) {
 	m := makeModel(task("repo", 1))
 	m = update(t, m, taskStatusMsg{name: "repo", status: "fetching..."})
@@ -269,6 +299,19 @@ func TestView_DoneHidesStatusText(t *testing.T) {
 	view := m.View().Content
 	if strings.Contains(view, "fetching...") {
 		t.Errorf("view should not contain status text after Done, got:\n%s", view)
+	}
+}
+
+func TestView_DoneLabelRenderedAsStatus(t *testing.T) {
+	m := newRefreshModel([]RefreshTask{
+		{Name: "short", DoneLabel: "fetched repository state"},
+		{Name: "much-longer-name"},
+	})
+	m = update(t, m, taskDoneMsg{name: "short"})
+
+	view := stripANSIForTest(m.View().Content)
+	if !strings.Contains(view, "short             fetched repository state") {
+		t.Errorf("view missing aligned done label, got:\n%s", view)
 	}
 }
 

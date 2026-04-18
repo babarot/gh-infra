@@ -96,8 +96,9 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 			}
 			seen[n] = true
 			allTasks = append(allTasks, ui.RefreshTask{
-				Name:    n,
-				Pending: taskMap[n],
+				Name:      n,
+				DoneLabel: "applied changes",
+				Pending:   taskMap[n],
 			})
 		}
 		tracker := ui.RunRefresh(allTasks)
