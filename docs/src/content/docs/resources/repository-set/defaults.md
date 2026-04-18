@@ -44,7 +44,7 @@ repositories:
 
 ### Lists — replaced entirely
 
-Lists like `topics`, `labels`, and `branch_protection` are **not merged** — the per-repo list replaces the default list entirely.
+Lists like `topics` are **not merged** — the per-repo list replaces the default list entirely.
 
 ```yaml
 defaults:
@@ -60,9 +60,85 @@ repositories:
       description: "A CLI tool"     # topics stays [go, cli] (not specified)
 ```
 
+### Collections — merged by key
+
+Collections with a natural key field are merged. Entries with the same key are merged or overridden; new entries are appended. Omitting the collection entirely inherits the full default.
+
+| Collection | Key field | Same-key behavior |
+|---|---|---|
+| `labels` | `name` | Entry replaced |
+| `branch_protection` | `pattern` | Fields merged (unspecified fields inherit default) |
+| `rulesets` | `name` | Entry replaced |
+
+#### Labels
+
+```yaml
+defaults:
+  spec:
+    labels:
+      - name: kind/bug
+        color: d73a4a
+        description: A bug
+      - name: kind/feature
+        color: "425df5"
+
+repositories:
+  - name: my-repo
+    spec:
+      labels:
+        - name: kind/bug
+          color: "FF0000"       # overrides default kind/bug
+        - name: custom
+          color: "00FF00"       # appended
+      # result: kind/bug (FF0000) + kind/feature (425df5) + custom (00FF00)
+```
+
+#### Branch protection
+
+Same-pattern rules are merged at the field level — only specify the fields you want to override.
+
+```yaml
+defaults:
+  spec:
+    branch_protection:
+      - pattern: main
+        required_reviews: 1
+        dismiss_stale_reviews: true
+
+repositories:
+  - name: my-repo
+    spec:
+      branch_protection:
+        - pattern: main
+          required_reviews: 2       # overrides → 2; dismiss_stale_reviews stays true
+        - pattern: release/*
+          required_reviews: 1       # appended
+```
+
+#### Rulesets
+
+Same-name rulesets are replaced entirely.
+
+```yaml
+defaults:
+  spec:
+    rulesets:
+      - name: protect-main
+        target: branch
+        enforcement: active
+
+repositories:
+  - name: my-repo
+    spec:
+      rulesets:
+        - name: protect-main
+          target: branch
+          enforcement: evaluate   # replaces the entire default ruleset entry
+```
+
 ### Maps — merged by key
 
-Maps like `features` and `merge_strategy` are merged. Only specified keys are overridden; unspecified keys retain the default value.
+Maps like `features`, `merge_strategy`, and `actions` are merged. Only specified keys are overridden; unspecified keys retain the default value.
 
 ```yaml
 defaults:

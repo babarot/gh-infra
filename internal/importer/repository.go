@@ -1136,26 +1136,22 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	// MergeStrategy: key-level comparison
 	override.MergeStrategy = minimalMergeStrategy(defaults.MergeStrategy, imported.MergeStrategy)
 
-	// Complex fields: override if different from defaults
-	if !reflect.DeepEqual(defaults.BranchProtection, imported.BranchProtection) {
-		override.BranchProtection = imported.BranchProtection
-	}
-	if !reflect.DeepEqual(defaults.Rulesets, imported.Rulesets) {
-		override.Rulesets = imported.Rulesets
-	}
-	if !reflect.DeepEqual(defaults.Actions, imported.Actions) {
-		override.Actions = imported.Actions
-	}
+	// BranchProtection: only include rules that differ from defaults (by pattern, field-level).
+	override.BranchProtection = minimalBranchProtection(defaults.BranchProtection, imported.BranchProtection)
+
+	// Rulesets: only include rulesets that differ from or are absent in defaults.
+	override.Rulesets = minimalRulesets(defaults.Rulesets, imported.Rulesets)
+
+	// Actions: key-level comparison (matches mergeActions behavior).
+	override.Actions = minimalActions(defaults.Actions, imported.Actions)
 
 	// Variables: override if different
 	if !reflect.DeepEqual(defaults.Variables, imported.Variables) {
 		override.Variables = imported.Variables
 	}
 
-	// Labels: override if different
-	if !reflect.DeepEqual(defaults.Labels, imported.Labels) {
-		override.Labels = imported.Labels
-	}
+	// Labels: only include labels that differ from or are absent in defaults.
+	override.Labels = minimalLabels(defaults.Labels, imported.Labels)
 
 	// Secrets: always preserve local override (not from import)
 	// The caller already sets imported.Secrets = local.Secrets,
@@ -1170,6 +1166,150 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	}
 
 	return override
+}
+
+// minimalLabels returns only the imported labels that are new or different from defaults.
+func minimalLabels(defaults, imported []manifest.Label) []manifest.Label {
+	if len(imported) == 0 {
+		return nil
+	}
+
+	defaultMap := make(map[string]manifest.Label, len(defaults))
+	for _, l := range defaults {
+		defaultMap[l.Name] = l
+	}
+
+	var result []manifest.Label
+	for _, l := range imported {
+		if dl, ok := defaultMap[l.Name]; !ok || dl != l {
+			result = append(result, l)
+		}
+	}
+	return result
+}
+
+// minimalBranchProtection returns only branch protection rules that are new or
+// have fields different from the default rule with the same pattern.
+func minimalBranchProtection(defaults, imported []manifest.BranchProtection) []manifest.BranchProtection {
+	if len(imported) == 0 {
+		return nil
+	}
+
+	defaultMap := make(map[string]manifest.BranchProtection, len(defaults))
+	for _, bp := range defaults {
+		defaultMap[bp.Pattern] = bp
+	}
+
+	var result []manifest.BranchProtection
+	for _, bp := range imported {
+		dbp, ok := defaultMap[bp.Pattern]
+		if !ok {
+			result = append(result, bp)
+			continue
+		}
+		// Same pattern exists in defaults — emit only differing fields.
+		minimal := manifest.BranchProtection{Pattern: bp.Pattern}
+		any := false
+		if !intPtrEqual(dbp.RequiredReviews, bp.RequiredReviews) {
+			minimal.RequiredReviews = bp.RequiredReviews
+			any = true
+		}
+		if !boolPtrEqual(dbp.DismissStaleReviews, bp.DismissStaleReviews) {
+			minimal.DismissStaleReviews = bp.DismissStaleReviews
+			any = true
+		}
+		if !boolPtrEqual(dbp.RequireCodeOwnerReviews, bp.RequireCodeOwnerReviews) {
+			minimal.RequireCodeOwnerReviews = bp.RequireCodeOwnerReviews
+			any = true
+		}
+		if !reflect.DeepEqual(dbp.RequireStatusChecks, bp.RequireStatusChecks) {
+			minimal.RequireStatusChecks = bp.RequireStatusChecks
+			any = true
+		}
+		if !boolPtrEqual(dbp.EnforceAdmins, bp.EnforceAdmins) {
+			minimal.EnforceAdmins = bp.EnforceAdmins
+			any = true
+		}
+		if !boolPtrEqual(dbp.RestrictPushes, bp.RestrictPushes) {
+			minimal.RestrictPushes = bp.RestrictPushes
+			any = true
+		}
+		if !boolPtrEqual(dbp.AllowForcePushes, bp.AllowForcePushes) {
+			minimal.AllowForcePushes = bp.AllowForcePushes
+			any = true
+		}
+		if !boolPtrEqual(dbp.AllowDeletions, bp.AllowDeletions) {
+			minimal.AllowDeletions = bp.AllowDeletions
+			any = true
+		}
+		if any {
+			result = append(result, minimal)
+		}
+	}
+	return result
+}
+
+// minimalRulesets returns only rulesets that are new or different from defaults.
+func minimalRulesets(defaults, imported []manifest.Ruleset) []manifest.Ruleset {
+	if len(imported) == 0 {
+		return nil
+	}
+
+	defaultMap := make(map[string]manifest.Ruleset, len(defaults))
+	for _, rs := range defaults {
+		defaultMap[rs.Name] = rs
+	}
+
+	var result []manifest.Ruleset
+	for _, rs := range imported {
+		if drs, ok := defaultMap[rs.Name]; !ok || !reflect.DeepEqual(drs, rs) {
+			result = append(result, rs)
+		}
+	}
+	return result
+}
+
+// minimalActions returns only action fields that differ from defaults.
+func minimalActions(defaults, imported *manifest.Actions) *manifest.Actions {
+	if imported == nil {
+		return nil
+	}
+	d := derefActions(defaults)
+	i := *imported
+	var a manifest.Actions
+	any := false
+	if !boolPtrEqual(d.Enabled, i.Enabled) {
+		a.Enabled = i.Enabled
+		any = true
+	}
+	if !ptrEqual(d.AllowedActions, i.AllowedActions) {
+		a.AllowedActions = i.AllowedActions
+		any = true
+	}
+	if !boolPtrEqual(d.SHAPinningRequired, i.SHAPinningRequired) {
+		a.SHAPinningRequired = i.SHAPinningRequired
+		any = true
+	}
+	if !ptrEqual(d.WorkflowPermissions, i.WorkflowPermissions) {
+		a.WorkflowPermissions = i.WorkflowPermissions
+		any = true
+	}
+	if !boolPtrEqual(d.CanApprovePullRequests, i.CanApprovePullRequests) {
+		a.CanApprovePullRequests = i.CanApprovePullRequests
+		any = true
+	}
+	if !reflect.DeepEqual(d.SelectedActions, i.SelectedActions) {
+		a.SelectedActions = i.SelectedActions
+		any = true
+	}
+	if !ptrEqual(d.ForkPRApproval, i.ForkPRApproval) {
+		a.ForkPRApproval = i.ForkPRApproval
+		any = true
+	}
+	if !any {
+		return nil
+	}
+	return &a
 }
 
 func minimalFeatures(defaults, imported *manifest.Features) *manifest.Features {
@@ -1274,6 +1414,17 @@ func ptrEqual(a, b *string) bool {
 
 func boolPtrEqual(a, b *bool) bool {
 	return derefBool(a) == derefBool(b)
+}
+
+func intPtrEqual(a, b *int) bool {
+	return derefInt(a) == derefInt(b)
+}
+
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 func derefStr(p *string) string {

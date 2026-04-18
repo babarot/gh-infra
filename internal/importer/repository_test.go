@@ -671,6 +671,181 @@ func TestMinimalOverride_TopicsOverride(t *testing.T) {
 	}
 }
 
+func TestMinimalOverride_LabelsOnlyDiff(t *testing.T) {
+	defaults := manifest.RepositorySpec{
+		Labels: []manifest.Label{
+			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
+			{Name: "kind/feature", Color: "425df5", Description: "A feature"},
+		},
+	}
+
+	imported := manifest.RepositorySpec{
+		Labels: []manifest.Label{
+			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},         // same
+			{Name: "kind/feature", Color: "FF0000", Description: "A feature"}, // color changed
+			{Name: "custom", Color: "00FF00", Description: "Custom label"},    // new
+		},
+	}
+
+	override := minimalOverride(defaults, imported)
+
+	if len(override.Labels) != 2 {
+		t.Fatalf("expected 2 labels in override, got %d: %+v", len(override.Labels), override.Labels)
+	}
+	if override.Labels[0].Name != "kind/feature" || override.Labels[0].Color != "FF0000" {
+		t.Errorf("expected kind/feature override, got %+v", override.Labels[0])
+	}
+	if override.Labels[1].Name != "custom" {
+		t.Errorf("expected custom label, got %+v", override.Labels[1])
+	}
+}
+
+func TestMinimalOverride_LabelsAllSame(t *testing.T) {
+	labels := []manifest.Label{
+		{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
+	}
+	defaults := manifest.RepositorySpec{Labels: labels}
+	imported := manifest.RepositorySpec{Labels: labels}
+
+	override := minimalOverride(defaults, imported)
+
+	if len(override.Labels) != 0 {
+		t.Errorf("expected no label overrides, got %d: %+v", len(override.Labels), override.Labels)
+	}
+}
+
+func TestMinimalOverride_BranchProtection(t *testing.T) {
+	defaults := manifest.RepositorySpec{
+		BranchProtection: []manifest.BranchProtection{
+			{
+				Pattern:         "main",
+				RequiredReviews: manifest.Ptr(1),
+				EnforceAdmins:   manifest.Ptr(true),
+			},
+		},
+	}
+
+	imported := manifest.RepositorySpec{
+		BranchProtection: []manifest.BranchProtection{
+			{
+				Pattern:         "main",
+				RequiredReviews: manifest.Ptr(2),    // changed
+				EnforceAdmins:   manifest.Ptr(true), // same
+			},
+			{
+				Pattern:         "release/*",
+				RequiredReviews: manifest.Ptr(1), // new
+			},
+		},
+	}
+
+	override := minimalOverride(defaults, imported)
+
+	if len(override.BranchProtection) != 2 {
+		t.Fatalf("expected 2 bp rules, got %d: %+v", len(override.BranchProtection), override.BranchProtection)
+	}
+	// main: only required_reviews differs
+	mainBP := override.BranchProtection[0]
+	if mainBP.Pattern != "main" {
+		t.Errorf("expected main, got %q", mainBP.Pattern)
+	}
+	if mainBP.RequiredReviews == nil || *mainBP.RequiredReviews != 2 {
+		t.Errorf("main required_reviews should be 2")
+	}
+	if mainBP.EnforceAdmins != nil {
+		t.Errorf("main enforce_admins should be nil (same as defaults)")
+	}
+	// release/* is new, included as-is
+	if override.BranchProtection[1].Pattern != "release/*" {
+		t.Errorf("expected release/*, got %q", override.BranchProtection[1].Pattern)
+	}
+}
+
+func TestMinimalOverride_BranchProtectionAllSame(t *testing.T) {
+	bp := []manifest.BranchProtection{
+		{Pattern: "main", RequiredReviews: manifest.Ptr(1)},
+	}
+	defaults := manifest.RepositorySpec{BranchProtection: bp}
+	imported := manifest.RepositorySpec{BranchProtection: bp}
+
+	override := minimalOverride(defaults, imported)
+
+	if len(override.BranchProtection) != 0 {
+		t.Errorf("expected no bp overrides, got %d", len(override.BranchProtection))
+	}
+}
+
+func TestMinimalOverride_Rulesets(t *testing.T) {
+	defaults := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{
+			{Name: "default-rs", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")},
+		},
+	}
+
+	imported := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{
+			{Name: "default-rs", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")}, // same
+			{Name: "custom-rs", Target: manifest.Ptr("tag"), Enforcement: manifest.Ptr("active")},     // new
+		},
+	}
+
+	override := minimalOverride(defaults, imported)
+
+	if len(override.Rulesets) != 1 {
+		t.Fatalf("expected 1 ruleset override, got %d: %+v", len(override.Rulesets), override.Rulesets)
+	}
+	if override.Rulesets[0].Name != "custom-rs" {
+		t.Errorf("expected custom-rs, got %q", override.Rulesets[0].Name)
+	}
+}
+
+func TestMinimalOverride_Actions(t *testing.T) {
+	defaults := manifest.RepositorySpec{
+		Actions: &manifest.Actions{
+			Enabled:        manifest.Ptr(true),
+			AllowedActions: manifest.Ptr("all"),
+		},
+	}
+
+	imported := manifest.RepositorySpec{
+		Actions: &manifest.Actions{
+			Enabled:             manifest.Ptr(true),   // same
+			AllowedActions:      manifest.Ptr("all"),  // same
+			WorkflowPermissions: manifest.Ptr("read"), // new
+		},
+	}
+
+	override := minimalOverride(defaults, imported)
+
+	if override.Actions == nil {
+		t.Fatal("actions should not be nil")
+	}
+	if override.Actions.Enabled != nil {
+		t.Errorf("enabled should be nil (same as defaults)")
+	}
+	if override.Actions.AllowedActions != nil {
+		t.Errorf("allowed_actions should be nil (same as defaults)")
+	}
+	if override.Actions.WorkflowPermissions == nil || *override.Actions.WorkflowPermissions != "read" {
+		t.Errorf("workflow_permissions should be read")
+	}
+}
+
+func TestMinimalOverride_ActionsAllSame(t *testing.T) {
+	actions := &manifest.Actions{
+		Enabled:        manifest.Ptr(true),
+		AllowedActions: manifest.Ptr("all"),
+	}
+	defaults := manifest.RepositorySpec{Actions: actions}
+	imported := manifest.RepositorySpec{Actions: actions}
+
+	override := minimalOverride(defaults, imported)
+
+	if override.Actions != nil {
+		t.Errorf("actions should be nil (same as defaults), got %+v", override.Actions)
+	}
+}
+
 func TestCompareSpecs_NoDiff(t *testing.T) {
 	spec := manifest.RepositorySpec{
 		Description: manifest.Ptr("test"),
