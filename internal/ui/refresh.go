@@ -39,6 +39,7 @@ type refreshItem struct {
 	status     taskStatus
 	errMsg     string
 	statusText string // right-side live status (e.g. "secrets...", ".github/ci.yml...")
+	checkpoint bool   // true when a sub-phase completed but the task is still running
 	pending    int    // expected Done() calls before marking complete (default 1)
 	spinner    spinner.Model
 }
@@ -56,6 +57,10 @@ type taskErrorMsg struct {
 	err  error
 }
 type taskFailMsg struct{ name string }
+type taskCheckpointMsg struct {
+	name   string
+	status string
+}
 type taskStatusMsg struct {
 	name   string
 	status string
@@ -115,6 +120,17 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.items {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
 				m.items[i].statusText = msg.status
+				m.items[i].checkpoint = false
+				break
+			}
+		}
+		return m, nil
+
+	case taskCheckpointMsg:
+		for i := range m.items {
+			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+				m.items[i].statusText = msg.status
+				m.items[i].checkpoint = true
 				break
 			}
 		}
@@ -130,6 +146,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.items[i].pending <= 0 {
 					m.items[i].status = taskDone
 					m.items[i].statusText = ""
+					m.items[i].checkpoint = false
 					m.remaining--
 				}
 			} else if m.items[i].pending > 0 {
@@ -152,6 +169,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].status = taskError
 				m.items[i].errMsg = msg.err.Error()
 				m.items[i].statusText = ""
+				m.items[i].checkpoint = false
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
@@ -169,6 +187,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
 				m.items[i].status = taskFailed
 				m.items[i].statusText = ""
+				m.items[i].checkpoint = false
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
@@ -222,11 +241,11 @@ func (m refreshModel) View() tea.View {
 		padded := fmt.Sprintf("%-*s", maxName, item.name)
 		switch item.status {
 		case taskDone:
-			label := item.doneLabel
-			if label == item.name {
-				label = padded
+			if item.doneLabel != "" && item.doneLabel != item.name {
+				fmt.Fprintf(&b, "  %s %s  %s\n", Green.Render(IconSuccess), padded, Dim.Render(item.doneLabel))
+			} else {
+				fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), padded)
 			}
-			fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), label)
 		case taskError:
 			// Show only a brief, single-line error; full details are printed after the spinner.
 			prefix := 2 + 1 + 1 + maxName + 2 // "  " + icon + " " + padded + "  "
@@ -243,7 +262,9 @@ func (m refreshModel) View() tea.View {
 		case taskCanceled:
 			fmt.Fprintf(&b, "  %s %s\n", Dim.Render(IconError), Dim.Render(padded+" (canceled)"))
 		case taskRunning:
-			if item.statusText != "" {
+			if item.checkpoint {
+				fmt.Fprintf(&b, "  %s %s  %s\n", Green.Render(IconSuccess), padded, Dim.Render(item.statusText))
+			} else if item.statusText != "" {
 				fmt.Fprintf(&b, "  %s %s  %s\n", item.spinner.View(), padded, Dim.Render(item.statusText))
 			} else {
 				fmt.Fprintf(&b, "  %s %s\n", item.spinner.View(), padded)
@@ -326,6 +347,21 @@ func (t *RefreshTracker) UpdateStatus(name, status string) {
 	defer t.mu.Unlock()
 	if t.program != nil {
 		t.program.Send(taskStatusMsg{name: name, status: status})
+	}
+}
+
+// Checkpoint marks a sub-phase as completed while the task remains running.
+func (t *RefreshTracker) Checkpoint(name, status string) {
+	if t == nil {
+		return
+	}
+	if t.fallback {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.program != nil {
+		t.program.Send(taskCheckpointMsg{name: name, status: status})
 	}
 }
 

@@ -14,6 +14,7 @@ type ProgressReporter interface {
 // RefreshTracker reports plan-time refresh progress.
 type RefreshTracker interface {
 	UpdateStatus(name, status string)
+	Checkpoint(name, status string)
 	Done(name string)
 	Error(name string, err error)
 }
@@ -29,5 +30,6 @@ func (noopProgressReporter) Wait()                              {}
 type noopRefreshTracker struct{}
 
 func (noopRefreshTracker) UpdateStatus(string, string) {}
+func (noopRefreshTracker) Checkpoint(string, string)   {}
 func (noopRefreshTracker) Done(string)                 {}
 func (noopRefreshTracker) Error(string, error)         {}
