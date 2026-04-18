@@ -42,6 +42,16 @@ func TestApplyStatusTarget(t *testing.T) {
 			c:    Change{Resource: manifest.ResourceRepository, Field: "description"},
 			want: "repository description",
 		},
+		{
+			name: "ruleset resource key",
+			c:    Change{Resource: `Ruleset[main-protection]`, Field: "ruleset"},
+			want: `ruleset "main-protection"`,
+		},
+		{
+			name: "branch protection resource key",
+			c:    Change{Resource: `BranchProtection[main]`, Field: "branch_protection"},
+			want: `branch protection "main"`,
+		},
 	}
 
 	for _, tt := range tests {

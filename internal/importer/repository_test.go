@@ -1269,8 +1269,8 @@ func TestCompareBranchProtection_Update(t *testing.T) {
 	if len(diffs) != 1 {
 		t.Fatalf("expected 1 diff, got %d: %+v", len(diffs), diffs)
 	}
-	if diffs[0].Field != "branch_protection.main" {
-		t.Errorf("Field = %q, want %q", diffs[0].Field, "branch_protection.main")
+	if diffs[0].Field != "branch_protection.main.required_reviews" {
+		t.Errorf("Field = %q, want %q", diffs[0].Field, "branch_protection.main.required_reviews")
 	}
 }
 
@@ -1304,22 +1304,22 @@ func TestCompareBranchProtection_DeletedOnGitHub(t *testing.T) {
 	}
 }
 
-func TestCompareBranchProtection_SummaryFormat(t *testing.T) {
+func TestCompareBranchProtection_CreateFields(t *testing.T) {
 	local := []manifest.BranchProtection{}
 	imported := []manifest.BranchProtection{
 		{Pattern: "main", RequiredReviews: manifest.Ptr(2), EnforceAdmins: manifest.Ptr(true)},
 	}
 
 	diffs := compareBranchProtection(local, imported)
-	if len(diffs) != 1 {
-		t.Fatalf("expected 1 diff, got %d", len(diffs))
+	if len(diffs) != 2 {
+		t.Fatalf("expected 2 diffs, got %d", len(diffs))
 	}
-	newStr, ok := diffs[0].New.(string)
-	if !ok {
-		t.Fatalf("New should be string, got %T", diffs[0].New)
+	fields := map[string]bool{}
+	for _, d := range diffs {
+		fields[d.Field] = true
 	}
-	if !strings.Contains(newStr, "reviews: 2") || !strings.Contains(newStr, "enforce_admins: true") {
-		t.Errorf("unexpected summary: %q", newStr)
+	if !fields["branch_protection.main.required_reviews"] || !fields["branch_protection.main.enforce_admins"] {
+		t.Errorf("unexpected fields: %+v", diffs)
 	}
 }
 
@@ -1344,8 +1344,8 @@ func TestCompareRulesets_Update(t *testing.T) {
 	if len(diffs) != 1 {
 		t.Fatalf("expected 1 diff, got %d: %+v", len(diffs), diffs)
 	}
-	if diffs[0].Field != "rulesets.protect-main" {
-		t.Errorf("Field = %q, want %q", diffs[0].Field, "rulesets.protect-main")
+	if diffs[0].Field != "rulesets.protect-main.enforcement" {
+		t.Errorf("Field = %q, want %q", diffs[0].Field, "rulesets.protect-main.enforcement")
 	}
 }
 
@@ -1364,22 +1364,22 @@ func TestCompareRulesets_NewOnGitHub(t *testing.T) {
 	}
 }
 
-func TestCompareRulesets_SummaryFormat(t *testing.T) {
+func TestCompareRulesets_CreateFields(t *testing.T) {
 	local := []manifest.Ruleset{}
 	imported := []manifest.Ruleset{
 		{Name: "protect-main", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")},
 	}
 
 	diffs := compareRulesets(local, imported)
-	if len(diffs) != 1 {
-		t.Fatalf("expected 1 diff, got %d", len(diffs))
+	if len(diffs) != 2 {
+		t.Fatalf("expected 2 diffs, got %d", len(diffs))
 	}
-	newStr, ok := diffs[0].New.(string)
-	if !ok {
-		t.Fatalf("New should be string, got %T", diffs[0].New)
+	fields := map[string]bool{}
+	for _, d := range diffs {
+		fields[d.Field] = true
 	}
-	if !strings.Contains(newStr, "target: branch") || !strings.Contains(newStr, "enforcement: active") {
-		t.Errorf("unexpected summary: %q", newStr)
+	if !fields["rulesets.protect-main.target"] || !fields["rulesets.protect-main.enforcement"] {
+		t.Errorf("unexpected fields: %+v", diffs)
 	}
 }
 

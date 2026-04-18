@@ -73,6 +73,14 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 }
 
 func applyStatusTarget(c Change) string {
+	if resource, key, ok := splitApplyResource(c.Resource); ok {
+		switch resource {
+		case manifest.ResourceRuleset:
+			return fmt.Sprintf("ruleset %q", key)
+		case manifest.ResourceBranchProtection:
+			return fmt.Sprintf("branch protection %q", key)
+		}
+	}
 	switch c.Resource {
 	case manifest.ResourceLabel:
 		return fmt.Sprintf("label %q", c.Field)
@@ -99,6 +107,18 @@ func applyStatusTarget(c Change) string {
 		}
 		return c.Field
 	}
+}
+
+func splitApplyResource(resource string) (name, key string, ok bool) {
+	prefix, rest, found := strings.Cut(resource, "[")
+	if !found || !strings.HasSuffix(rest, "]") {
+		return "", "", false
+	}
+	key = strings.TrimSuffix(rest, "]")
+	if prefix == "" || key == "" {
+		return "", "", false
+	}
+	return prefix, key, true
 }
 
 type ApplyResult struct {

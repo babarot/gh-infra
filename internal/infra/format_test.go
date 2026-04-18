@@ -543,3 +543,44 @@ func TestPrintPlan_GroupedLabelUpdate(t *testing.T) {
 		t.Errorf("expected 'bug.color' flattened field, got:\n%s", out)
 	}
 }
+
+func TestPrintPlan_RulesetAndBranchProtectionHeaders(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	repoChanges := []repository.Change{
+		{
+			Type:     repository.ChangeUpdate,
+			Resource: `Ruleset[main-protection]`,
+			Name:     "org/repo",
+			Field:    "ruleset",
+			NewValue: "main-protection",
+			Children: []repository.Change{
+				{Type: repository.ChangeUpdate, Field: "enforcement", OldValue: "evaluate", NewValue: "active"},
+			},
+		},
+		{
+			Type:     repository.ChangeUpdate,
+			Resource: `BranchProtection[main]`,
+			Name:     "org/repo",
+			Field:    "branch_protection",
+			NewValue: "main",
+			Children: []repository.Change{
+				{Type: repository.ChangeUpdate, Field: "required_reviews", OldValue: 0, NewValue: 1},
+			},
+		},
+	}
+
+	printPlan(p, repoChanges, nil)
+	out := buf.String()
+
+	if !strings.Contains(out, `ruleset "main-protection"`) {
+		t.Errorf("expected human ruleset header, got:\n%s", out)
+	}
+	if !strings.Contains(out, `branch protection "main"`) {
+		t.Errorf("expected human branch protection header, got:\n%s", out)
+	}
+	if strings.Contains(out, "ruleset[") || strings.Contains(out, "branch_protection[") {
+		t.Errorf("output contains raw collection header:\n%s", out)
+	}
+}

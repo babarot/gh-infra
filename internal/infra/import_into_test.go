@@ -155,18 +155,21 @@ func TestFieldDiffsToDiffGroups_NestedObject(t *testing.T) {
 
 func TestFieldDiffsToDiffGroups_KeyedCollection(t *testing.T) {
 	diffs := []importer.FieldDiff{
-		{Field: "branch_protection.main", Old: nil, New: "reviews: 1"},
-		{Field: "branch_protection.develop", Old: nil, New: "reviews: 2"},
+		{Field: "branch_protection.main.required_reviews", Old: nil, New: 1},
+		{Field: "branch_protection.develop.required_reviews", Old: nil, New: 2},
 	}
 	groups := fieldDiffsToDiffGroups(diffs)
 	if len(groups) != 2 {
 		t.Fatalf("expected 2 groups (one per key), got %d", len(groups))
 	}
-	if groups[0].Header != "branch_protection[main]" {
-		t.Errorf("expected 'branch_protection[main]', got %q", groups[0].Header)
+	if groups[0].Header != `branch protection "main"` {
+		t.Errorf("expected human branch protection header, got %q", groups[0].Header)
 	}
-	if groups[1].Header != "branch_protection[develop]" {
-		t.Errorf("expected 'branch_protection[develop]', got %q", groups[1].Header)
+	if groups[0].Items[0].Field != "required_reviews" {
+		t.Errorf("expected child field required_reviews, got %q", groups[0].Items[0].Field)
+	}
+	if groups[1].Header != `branch protection "develop"` {
+		t.Errorf("expected human branch protection header, got %q", groups[1].Header)
 	}
 }
 
@@ -218,7 +221,7 @@ func TestFieldDiffsToDiffGroups_Mixed(t *testing.T) {
 	if len(groups) != 4 {
 		t.Fatalf("expected 4 groups, got %d", len(groups))
 	}
-	headers := []string{"", "features", "branch_protection[main]", "labels"}
+	headers := []string{"", "features", `branch protection "main"`, "labels"}
 	for i, want := range headers {
 		if groups[i].Header != want {
 			t.Errorf("group[%d] header = %q, want %q", i, groups[i].Header, want)
@@ -267,6 +270,12 @@ func TestFieldDiffsToDiffGroups_Icons(t *testing.T) {
 	}
 	if groups[0].Items[1].Icon != ui.IconRemove {
 		t.Errorf("removed label should be IconRemove, got %q", groups[0].Items[1].Icon)
+	}
+	if groups[0].Items[0].Value != "#FF0000" {
+		t.Errorf("new label Value = %v, want #FF0000", groups[0].Items[0].Value)
+	}
+	if groups[0].Items[1].Value != "#00FF00" {
+		t.Errorf("removed label Value = %v, want #00FF00", groups[0].Items[1].Value)
 	}
 }
 

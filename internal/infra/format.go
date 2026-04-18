@@ -326,10 +326,7 @@ func repoChangesToDiffGroups(changes []repository.Change) []ui.DiffGroup {
 				default:
 					icon = ui.IconChange
 				}
-				header := c.Field
-				if s, ok := c.NewValue.(string); ok && s != "" {
-					header = fmt.Sprintf("%s[%s]", c.Field, s)
-				}
+				header := repoChangeGroupHeader(c)
 				dg := ui.DiffGroup{Header: header, Icon: icon}
 				for _, child := range c.Children {
 					dg.Items = append(dg.Items, changeToDiffItem(child))
@@ -343,6 +340,34 @@ func repoChangesToDiffGroups(changes []repository.Change) []ui.DiffGroup {
 		}
 	}
 	return result
+}
+
+func repoChangeGroupHeader(c repository.Change) string {
+	if resource, key, ok := splitBracketResource(c.Resource); ok {
+		switch resource {
+		case manifest.ResourceRuleset:
+			return fmt.Sprintf("ruleset %q", key)
+		case manifest.ResourceBranchProtection:
+			return fmt.Sprintf("branch protection %q", key)
+		}
+	}
+	header := c.Field
+	if s, ok := c.NewValue.(string); ok && s != "" {
+		header = fmt.Sprintf("%s[%s]", c.Field, s)
+	}
+	return header
+}
+
+func splitBracketResource(resource string) (name, key string, ok bool) {
+	prefix, rest, found := strings.Cut(resource, "[")
+	if !found || !strings.HasSuffix(rest, "]") {
+		return "", "", false
+	}
+	key = strings.TrimSuffix(rest, "]")
+	if prefix == "" || key == "" {
+		return "", "", false
+	}
+	return prefix, key, true
 }
 
 func changeToDiffItem(c repository.Change) ui.DiffItem {

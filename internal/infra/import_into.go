@@ -430,13 +430,33 @@ func fieldDiffsToDiffGroups(diffs []importer.FieldDiff) []ui.DiffGroup {
 
 		if keyedCollection[prefix] {
 			// Each unique key becomes its own group: prefix[key]
-			key := rest
-			header := fmt.Sprintf("%s[%s]", prefix, key)
+			key, child, _ := strings.Cut(rest, ".")
+			header := keyedCollectionHeader(prefix, key)
 			dg := ui.DiffGroup{Header: header}
-			dg.Items = append(dg.Items, fieldDiffToItem(d, key))
+			for i < len(diffs) {
+				p, r, ok := splitField(diffs[i].Field)
+				if !ok || p != prefix {
+					break
+				}
+				k, ch, _ := strings.Cut(r, ".")
+				if k != key {
+					break
+				}
+				if ch == "" {
+					ch = "settings"
+				}
+				dg.Items = append(dg.Items, fieldDiffToItem(diffs[i], ch))
+				i++
+			}
+			if len(dg.Items) == 0 {
+				if child == "" {
+					child = "settings"
+				}
+				dg.Items = append(dg.Items, fieldDiffToItem(d, child))
+				i++
+			}
 			dg.Icon = aggregateIcon(dg.Items)
 			result = append(result, dg)
-			i++
 			continue
 		}
 
@@ -478,18 +498,30 @@ func splitField(field string) (prefix, rest string, hasDot bool) {
 	return
 }
 
-func fieldDiffToItem(d importer.FieldDiff, field string) ui.DiffItem {
-	icon := ui.IconChange
-	if d.Old == nil && d.New != nil {
-		icon = ui.IconAdd
-	} else if d.Old != nil && d.New == nil {
-		icon = ui.IconRemove
+func keyedCollectionHeader(prefix, key string) string {
+	switch prefix {
+	case "rulesets":
+		return fmt.Sprintf("ruleset %q", key)
+	case "branch_protection":
+		return fmt.Sprintf("branch protection %q", key)
+	default:
+		return fmt.Sprintf("%s[%s]", prefix, key)
 	}
-	return ui.DiffItem{
-		Icon:  icon,
-		Field: field,
-		Old:   ui.FormatValue(d.Old),
-		New:   ui.FormatValue(d.New),
+}
+
+func fieldDiffToItem(d importer.FieldDiff, field string) ui.DiffItem {
+	switch {
+	case d.Old == nil && d.New != nil:
+		return ui.DiffItem{Icon: ui.IconAdd, Field: field, Value: d.New}
+	case d.Old != nil && d.New == nil:
+		return ui.DiffItem{Icon: ui.IconRemove, Field: field, Value: d.Old}
+	default:
+		return ui.DiffItem{
+			Icon:  ui.IconChange,
+			Field: field,
+			Old:   ui.FormatValue(d.Old),
+			New:   ui.FormatValue(d.New),
+		}
 	}
 }
 

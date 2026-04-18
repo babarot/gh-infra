@@ -954,33 +954,105 @@ func compareBranchProtection(local, imported []manifest.BranchProtection) []Fiel
 	for pattern, ibp := range importedMap {
 		lbp, exists := localMap[pattern]
 		if !exists {
-			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("branch_protection.%s", pattern),
-				Old:   nil,
-				New:   formatBranchProtectionSummary(ibp),
-			})
+			diffs = append(diffs, branchProtectionCreateDiffs(pattern, ibp)...)
 			continue
 		}
-		if !reflect.DeepEqual(lbp, ibp) {
-			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("branch_protection.%s", pattern),
-				Old:   formatBranchProtectionSummary(lbp),
-				New:   formatBranchProtectionSummary(ibp),
-			})
-		}
+		diffs = append(diffs, branchProtectionUpdateDiffs(pattern, lbp, ibp)...)
 	}
 
 	// Check for deletions (local has, GitHub doesn't)
 	for pattern, lbp := range localMap {
 		if _, exists := importedMap[pattern]; !exists {
 			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("branch_protection.%s", pattern),
+				Field: fmt.Sprintf("branch_protection.%s.settings", pattern),
 				Old:   formatBranchProtectionSummary(lbp),
 				New:   nil,
 			})
 		}
 	}
 
+	return diffs
+}
+
+func branchProtectionCreateDiffs(pattern string, bp manifest.BranchProtection) []FieldDiff {
+	var diffs []FieldDiff
+	appendFieldCreate(&diffs, fmt.Sprintf("branch_protection.%s.required_reviews", pattern), bp.RequiredReviews)
+	appendFieldCreate(&diffs, fmt.Sprintf("branch_protection.%s.dismiss_stale_reviews", pattern), bp.DismissStaleReviews)
+	appendFieldCreate(&diffs, fmt.Sprintf("branch_protection.%s.require_code_owner_reviews", pattern), bp.RequireCodeOwnerReviews)
+	appendFieldCreate(&diffs, fmt.Sprintf("branch_protection.%s.enforce_admins", pattern), bp.EnforceAdmins)
+	appendFieldCreate(&diffs, fmt.Sprintf("branch_protection.%s.restrict_pushes", pattern), bp.RestrictPushes)
+	appendFieldCreate(&diffs, fmt.Sprintf("branch_protection.%s.allow_force_pushes", pattern), bp.AllowForcePushes)
+	appendFieldCreate(&diffs, fmt.Sprintf("branch_protection.%s.allow_deletions", pattern), bp.AllowDeletions)
+	if bp.RequireStatusChecks != nil {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("branch_protection.%s.require_status_checks.strict", pattern),
+			Old:   nil,
+			New:   bp.RequireStatusChecks.Strict,
+		})
+		if len(bp.RequireStatusChecks.Contexts) > 0 {
+			diffs = append(diffs, FieldDiff{
+				Field: fmt.Sprintf("branch_protection.%s.require_status_checks.contexts", pattern),
+				Old:   nil,
+				New:   bp.RequireStatusChecks.Contexts,
+			})
+		}
+	}
+	if len(diffs) == 0 {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("branch_protection.%s.settings", pattern),
+			Old:   nil,
+			New:   formatBranchProtectionSummary(bp),
+		})
+	}
+	return diffs
+}
+
+func branchProtectionUpdateDiffs(pattern string, local, imported manifest.BranchProtection) []FieldDiff {
+	var diffs []FieldDiff
+	appendFieldUpdate(&diffs, fmt.Sprintf("branch_protection.%s.required_reviews", pattern), local.RequiredReviews, imported.RequiredReviews)
+	appendFieldUpdate(&diffs, fmt.Sprintf("branch_protection.%s.dismiss_stale_reviews", pattern), local.DismissStaleReviews, imported.DismissStaleReviews)
+	appendFieldUpdate(&diffs, fmt.Sprintf("branch_protection.%s.require_code_owner_reviews", pattern), local.RequireCodeOwnerReviews, imported.RequireCodeOwnerReviews)
+	appendFieldUpdate(&diffs, fmt.Sprintf("branch_protection.%s.enforce_admins", pattern), local.EnforceAdmins, imported.EnforceAdmins)
+	appendFieldUpdate(&diffs, fmt.Sprintf("branch_protection.%s.restrict_pushes", pattern), local.RestrictPushes, imported.RestrictPushes)
+	appendFieldUpdate(&diffs, fmt.Sprintf("branch_protection.%s.allow_force_pushes", pattern), local.AllowForcePushes, imported.AllowForcePushes)
+	appendFieldUpdate(&diffs, fmt.Sprintf("branch_protection.%s.allow_deletions", pattern), local.AllowDeletions, imported.AllowDeletions)
+
+	switch {
+	case local.RequireStatusChecks == nil && imported.RequireStatusChecks != nil:
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("branch_protection.%s.require_status_checks.strict", pattern),
+			Old:   nil,
+			New:   imported.RequireStatusChecks.Strict,
+		})
+		if len(imported.RequireStatusChecks.Contexts) > 0 {
+			diffs = append(diffs, FieldDiff{
+				Field: fmt.Sprintf("branch_protection.%s.require_status_checks.contexts", pattern),
+				Old:   nil,
+				New:   imported.RequireStatusChecks.Contexts,
+			})
+		}
+	case local.RequireStatusChecks != nil && imported.RequireStatusChecks == nil:
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("branch_protection.%s.require_status_checks", pattern),
+			Old:   formatStatusChecksSummary(local.RequireStatusChecks),
+			New:   nil,
+		})
+	case local.RequireStatusChecks != nil && imported.RequireStatusChecks != nil:
+		if local.RequireStatusChecks.Strict != imported.RequireStatusChecks.Strict {
+			diffs = append(diffs, FieldDiff{
+				Field: fmt.Sprintf("branch_protection.%s.require_status_checks.strict", pattern),
+				Old:   local.RequireStatusChecks.Strict,
+				New:   imported.RequireStatusChecks.Strict,
+			})
+		}
+		if !reflect.DeepEqual(local.RequireStatusChecks.Contexts, imported.RequireStatusChecks.Contexts) {
+			diffs = append(diffs, FieldDiff{
+				Field: fmt.Sprintf("branch_protection.%s.require_status_checks.contexts", pattern),
+				Old:   local.RequireStatusChecks.Contexts,
+				New:   imported.RequireStatusChecks.Contexts,
+			})
+		}
+	}
 	return diffs
 }
 
@@ -1004,32 +1076,110 @@ func compareRulesets(local, imported []manifest.Ruleset) []FieldDiff {
 	for name, irs := range importedMap {
 		lrs, exists := localMap[name]
 		if !exists {
-			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("rulesets.%s", name),
-				Old:   nil,
-				New:   formatRulesetSummary(irs),
-			})
+			diffs = append(diffs, rulesetCreateDiffs(name, irs)...)
 			continue
 		}
-		if !reflect.DeepEqual(lrs, irs) {
-			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("rulesets.%s", name),
-				Old:   formatRulesetSummary(lrs),
-				New:   formatRulesetSummary(irs),
-			})
-		}
+		diffs = append(diffs, rulesetUpdateDiffs(name, lrs, irs)...)
 	}
 
 	for name, lrs := range localMap {
 		if _, exists := importedMap[name]; !exists {
 			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("rulesets.%s", name),
+				Field: fmt.Sprintf("rulesets.%s.settings", name),
 				Old:   formatRulesetSummary(lrs),
 				New:   nil,
 			})
 		}
 	}
 
+	return diffs
+}
+
+func rulesetCreateDiffs(name string, rs manifest.Ruleset) []FieldDiff {
+	var diffs []FieldDiff
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.target", name), rs.Target)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.enforcement", name), rs.Enforcement)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.non_fast_forward", name), rs.Rules.NonFastForward)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.deletion", name), rs.Rules.Deletion)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), rs.Rules.Creation)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), rs.Rules.RequiredLinearHistory)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_signatures", name), rs.Rules.RequiredSignatures)
+	if rs.Rules.PullRequest != nil {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.rules.pull_request", name),
+			Old:   nil,
+			New:   "enabled",
+		})
+	}
+	if rs.Rules.RequiredStatusChecks != nil {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.rules.required_status_checks", name),
+			Old:   nil,
+			New:   "enabled",
+		})
+	}
+	if len(rs.BypassActors) > 0 {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.bypass_actors", name),
+			Old:   nil,
+			New:   fmt.Sprintf("%d actors", len(rs.BypassActors)),
+		})
+	}
+	if rs.Conditions != nil && rs.Conditions.RefName != nil {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.conditions", name),
+			Old:   nil,
+			New:   formatRulesetConditions(rs.Conditions),
+		})
+	}
+	if len(diffs) == 0 {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.settings", name),
+			Old:   nil,
+			New:   formatRulesetSummary(rs),
+		})
+	}
+	return diffs
+}
+
+func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDiff {
+	var diffs []FieldDiff
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.target", name), local.Target, imported.Target)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.enforcement", name), local.Enforcement, imported.Enforcement)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.non_fast_forward", name), local.Rules.NonFastForward, imported.Rules.NonFastForward)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.deletion", name), local.Rules.Deletion, imported.Rules.Deletion)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), local.Rules.Creation, imported.Rules.Creation)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), local.Rules.RequiredLinearHistory, imported.Rules.RequiredLinearHistory)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_signatures", name), local.Rules.RequiredSignatures, imported.Rules.RequiredSignatures)
+
+	if !reflect.DeepEqual(local.Rules.PullRequest, imported.Rules.PullRequest) {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.rules.pull_request", name),
+			Old:   enabledSummary(local.Rules.PullRequest != nil),
+			New:   enabledSummary(imported.Rules.PullRequest != nil),
+		})
+	}
+	if !reflect.DeepEqual(local.Rules.RequiredStatusChecks, imported.Rules.RequiredStatusChecks) {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.rules.required_status_checks", name),
+			Old:   enabledSummary(local.Rules.RequiredStatusChecks != nil),
+			New:   enabledSummary(imported.Rules.RequiredStatusChecks != nil),
+		})
+	}
+	if !reflect.DeepEqual(local.BypassActors, imported.BypassActors) {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.bypass_actors", name),
+			Old:   fmt.Sprintf("%d actors", len(local.BypassActors)),
+			New:   fmt.Sprintf("%d actors", len(imported.BypassActors)),
+		})
+	}
+	if !reflect.DeepEqual(local.Conditions, imported.Conditions) {
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("rulesets.%s.conditions", name),
+			Old:   formatRulesetConditions(local.Conditions),
+			New:   formatRulesetConditions(imported.Conditions),
+		})
+	}
 	return diffs
 }
 
@@ -1175,6 +1325,73 @@ func formatRulesetSummary(rs manifest.Ruleset) string {
 		return rs.Name
 	}
 	return strings.Join(parts, ", ")
+}
+
+func appendFieldCreate[T any](diffs *[]FieldDiff, field string, value *T) {
+	if value == nil {
+		return
+	}
+	*diffs = append(*diffs, FieldDiff{Field: field, Old: nil, New: *value})
+}
+
+func appendFieldUpdate[T comparable](diffs *[]FieldDiff, field string, local, imported *T) {
+	if ptrEqualValue(local, imported) {
+		return
+	}
+	*diffs = append(*diffs, FieldDiff{
+		Field: field,
+		Old:   valueOfPtr(local),
+		New:   valueOfPtr(imported),
+	})
+}
+
+func ptrEqualValue[T comparable](a, b *T) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return *a == *b
+	}
+}
+
+func valueOfPtr[T any](v *T) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+func formatStatusChecksSummary(s *manifest.StatusChecks) string {
+	if s == nil {
+		return "(none)"
+	}
+	return fmt.Sprintf("strict: %t, contexts: %d", s.Strict, len(s.Contexts))
+}
+
+func enabledSummary(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
+}
+
+func formatRulesetConditions(c *manifest.RulesetConditions) string {
+	if c == nil || c.RefName == nil {
+		return "(none)"
+	}
+	var parts []string
+	if len(c.RefName.Include) > 0 {
+		parts = append(parts, "include: "+strings.Join(c.RefName.Include, ","))
+	}
+	if len(c.RefName.Exclude) > 0 {
+		parts = append(parts, "exclude: "+strings.Join(c.RefName.Exclude, ","))
+	}
+	if len(parts) == 0 {
+		return "(none)"
+	}
+	return strings.Join(parts, "; ")
 }
 
 // minimalOverride returns the minimal spec override relative to defaults.
