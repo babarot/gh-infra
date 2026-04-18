@@ -1212,6 +1212,25 @@ func TestCompareBranchProtection_DeletedOnGitHub(t *testing.T) {
 	}
 }
 
+func TestCompareBranchProtection_SummaryFormat(t *testing.T) {
+	local := []manifest.BranchProtection{}
+	imported := []manifest.BranchProtection{
+		{Pattern: "main", RequiredReviews: manifest.Ptr(2), EnforceAdmins: manifest.Ptr(true)},
+	}
+
+	diffs := compareBranchProtection(local, imported)
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %d", len(diffs))
+	}
+	newStr, ok := diffs[0].New.(string)
+	if !ok {
+		t.Fatalf("New should be string, got %T", diffs[0].New)
+	}
+	if !strings.Contains(newStr, "reviews: 2") || !strings.Contains(newStr, "enforce_admins: true") {
+		t.Errorf("unexpected summary: %q", newStr)
+	}
+}
+
 func TestCompareBranchProtection_Empty(t *testing.T) {
 	diffs := compareBranchProtection(nil, nil)
 	if len(diffs) != 0 {
@@ -1250,6 +1269,25 @@ func TestCompareRulesets_NewOnGitHub(t *testing.T) {
 	}
 	if diffs[0].Old != nil {
 		t.Error("Old should be nil for new ruleset")
+	}
+}
+
+func TestCompareRulesets_SummaryFormat(t *testing.T) {
+	local := []manifest.Ruleset{}
+	imported := []manifest.Ruleset{
+		{Name: "protect-main", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")},
+	}
+
+	diffs := compareRulesets(local, imported)
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %d", len(diffs))
+	}
+	newStr, ok := diffs[0].New.(string)
+	if !ok {
+		t.Fatalf("New should be string, got %T", diffs[0].New)
+	}
+	if !strings.Contains(newStr, "target: branch") || !strings.Contains(newStr, "enforcement: active") {
+		t.Errorf("unexpected summary: %q", newStr)
 	}
 }
 

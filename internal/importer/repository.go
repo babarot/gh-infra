@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/yamledit"
@@ -932,15 +933,15 @@ func compareBranchProtection(local, imported []manifest.BranchProtection) []Fiel
 			diffs = append(diffs, FieldDiff{
 				Field: fmt.Sprintf("branch_protection.%s", pattern),
 				Old:   nil,
-				New:   ibp,
+				New:   formatBranchProtectionSummary(ibp),
 			})
 			continue
 		}
 		if !reflect.DeepEqual(lbp, ibp) {
 			diffs = append(diffs, FieldDiff{
 				Field: fmt.Sprintf("branch_protection.%s", pattern),
-				Old:   lbp,
-				New:   ibp,
+				Old:   formatBranchProtectionSummary(lbp),
+				New:   formatBranchProtectionSummary(ibp),
 			})
 		}
 	}
@@ -950,7 +951,7 @@ func compareBranchProtection(local, imported []manifest.BranchProtection) []Fiel
 		if _, exists := importedMap[pattern]; !exists {
 			diffs = append(diffs, FieldDiff{
 				Field: fmt.Sprintf("branch_protection.%s", pattern),
-				Old:   lbp,
+				Old:   formatBranchProtectionSummary(lbp),
 				New:   nil,
 			})
 		}
@@ -982,15 +983,15 @@ func compareRulesets(local, imported []manifest.Ruleset) []FieldDiff {
 			diffs = append(diffs, FieldDiff{
 				Field: fmt.Sprintf("rulesets.%s", name),
 				Old:   nil,
-				New:   irs,
+				New:   formatRulesetSummary(irs),
 			})
 			continue
 		}
 		if !reflect.DeepEqual(lrs, irs) {
 			diffs = append(diffs, FieldDiff{
 				Field: fmt.Sprintf("rulesets.%s", name),
-				Old:   lrs,
-				New:   irs,
+				Old:   formatRulesetSummary(lrs),
+				New:   formatRulesetSummary(irs),
 			})
 		}
 	}
@@ -999,7 +1000,7 @@ func compareRulesets(local, imported []manifest.Ruleset) []FieldDiff {
 		if _, exists := importedMap[name]; !exists {
 			diffs = append(diffs, FieldDiff{
 				Field: fmt.Sprintf("rulesets.%s", name),
-				Old:   lrs,
+				Old:   formatRulesetSummary(lrs),
 				New:   nil,
 			})
 		}
@@ -1104,6 +1105,52 @@ func formatLabelSummary(color, description string) string {
 		return fmt.Sprintf("#%s %q", color, description)
 	}
 	return "#" + color
+}
+
+func formatBranchProtectionSummary(bp manifest.BranchProtection) string {
+	var parts []string
+	if bp.RequiredReviews != nil {
+		parts = append(parts, fmt.Sprintf("reviews: %d", *bp.RequiredReviews))
+	}
+	if bp.DismissStaleReviews != nil {
+		parts = append(parts, fmt.Sprintf("dismiss_stale: %t", *bp.DismissStaleReviews))
+	}
+	if bp.RequireCodeOwnerReviews != nil {
+		parts = append(parts, fmt.Sprintf("codeowners: %t", *bp.RequireCodeOwnerReviews))
+	}
+	if bp.RequireStatusChecks != nil {
+		parts = append(parts, "status_checks: yes")
+	}
+	if bp.EnforceAdmins != nil {
+		parts = append(parts, fmt.Sprintf("enforce_admins: %t", *bp.EnforceAdmins))
+	}
+	if bp.AllowForcePushes != nil {
+		parts = append(parts, fmt.Sprintf("force_push: %t", *bp.AllowForcePushes))
+	}
+	if bp.AllowDeletions != nil {
+		parts = append(parts, fmt.Sprintf("deletions: %t", *bp.AllowDeletions))
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("pattern: %s", bp.Pattern)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatRulesetSummary(rs manifest.Ruleset) string {
+	var parts []string
+	if rs.Target != nil {
+		parts = append(parts, fmt.Sprintf("target: %s", *rs.Target))
+	}
+	if rs.Enforcement != nil {
+		parts = append(parts, fmt.Sprintf("enforcement: %s", *rs.Enforcement))
+	}
+	if len(rs.BypassActors) > 0 {
+		parts = append(parts, fmt.Sprintf("bypass_actors: %d", len(rs.BypassActors)))
+	}
+	if len(parts) == 0 {
+		return rs.Name
+	}
+	return strings.Join(parts, ", ")
 }
 
 // minimalOverride returns the minimal spec override relative to defaults.
