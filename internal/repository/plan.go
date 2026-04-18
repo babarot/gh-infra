@@ -81,6 +81,10 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		}
 
 		changes := Diff(ctx, r, current, diffOpts)
+		if hasLabelDeleteChanges(changes) {
+			tracker.UpdateStatus(fullName, "checking label usage...")
+			p.enrichLabelDeleteInfo(ctx, changes)
+		}
 		logger.Debug("diff done", "repo", fullName, "changes", len(changes))
 		tracker.Done(fullName)
 		return repoResult{index: idx, repo: r, changes: changes}
@@ -107,9 +111,15 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		targetRepos = append(targetRepos, res.repo)
 	}
 
-	// Enrich label delete changes with usage stats (issue/PR count, last used)
-	p.enrichLabelDeleteInfo(ctx, allChanges)
-
 	logger.Info("plan complete", "total_changes", len(allChanges), "skipped", skipped)
 	return allChanges, targetRepos, nil
+}
+
+func hasLabelDeleteChanges(changes []Change) bool {
+	for _, c := range changes {
+		if c.Resource == manifest.ResourceLabel && c.Type == ChangeDelete {
+			return true
+		}
+	}
+	return false
 }
