@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/manifest"
+
 	"github.com/goccy/go-yaml/parser"
 )
 
