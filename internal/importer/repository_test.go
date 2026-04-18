@@ -681,7 +681,7 @@ func TestMinimalOverride_LabelsOnlyDiff(t *testing.T) {
 
 	imported := manifest.RepositorySpec{
 		Labels: []manifest.Label{
-			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},       // same
+			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},         // same
 			{Name: "kind/feature", Color: "FF0000", Description: "A feature"}, // color changed
 			{Name: "custom", Color: "00FF00", Description: "Custom label"},    // new
 		},
@@ -729,7 +729,7 @@ func TestMinimalOverride_BranchProtection(t *testing.T) {
 		BranchProtection: []manifest.BranchProtection{
 			{
 				Pattern:         "main",
-				RequiredReviews: manifest.Ptr(2), // changed
+				RequiredReviews: manifest.Ptr(2),    // changed
 				EnforceAdmins:   manifest.Ptr(true), // same
 			},
 			{
@@ -810,7 +810,7 @@ func TestMinimalOverride_Actions(t *testing.T) {
 	imported := manifest.RepositorySpec{
 		Actions: &manifest.Actions{
 			Enabled:             manifest.Ptr(true),   // same
-			AllowedActions:      manifest.Ptr("all"),   // same
+			AllowedActions:      manifest.Ptr("all"),  // same
 			WorkflowPermissions: manifest.Ptr("read"), // new
 		},
 	}
