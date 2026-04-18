@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/goccy/go-yaml/parser"
 )
 
 func TestPlanRepository_NoDiff(t *testing.T) {
@@ -985,6 +986,96 @@ repositories:
 	}
 	if !found["description"] {
 		t.Error("expected diff for description")
+	}
+}
+
+func TestDiffRepositorySet_MissingSpecCreatesOverride(t *testing.T) {
+	active := manifest.RulesetEnforcementActive
+	branch := manifest.RulesetTargetBranch
+	defaults := &manifest.RepositorySetDefaults{
+		Spec: manifest.RepositorySpec{
+			Visibility: manifest.Ptr("private"),
+		},
+	}
+	originalEntry := &manifest.RepositorySpec{}
+
+	doc := &manifest.RepositoryDocument{
+		Resource: &manifest.Repository{
+			Metadata: manifest.RepositoryMetadata{Name: "repo", Owner: "org"},
+			Spec: manifest.RepositorySpec{
+				Visibility: manifest.Ptr("private"),
+			},
+		},
+		SourcePath:        "/tmp/set.yaml",
+		DocIndex:          0,
+		FromSet:           true,
+		SetEntryIndex:     0,
+		DefaultsSpec:      defaults,
+		OriginalEntrySpec: originalEntry,
+	}
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    visibility: private
+repositories:
+  - name: repo
+`)
+
+	imported := &manifest.Repository{
+		Spec: manifest.RepositorySpec{
+			Visibility:  manifest.Ptr("private"),
+			Description: manifest.Ptr("hello"),
+			Rulesets: []manifest.Ruleset{
+				{
+					Name:        "main",
+					Target:      &branch,
+					Enforcement: &active,
+					Rules: manifest.RulesetRules{
+						NonFastForward:        manifest.Ptr(true),
+						Deletion:              manifest.Ptr(true),
+						Creation:              manifest.Ptr(false),
+						RequiredLinearHistory: manifest.Ptr(false),
+					},
+				},
+			},
+		},
+	}
+
+	mb := map[string][]byte{"/tmp/set.yaml": yamlData}
+	rp, err := DiffRepositorySet(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepositorySet error: %v", err)
+	}
+	if !rp.HasChanges() {
+		t.Fatal("expected changes")
+	}
+
+	updated := string(mb["/tmp/set.yaml"])
+	if !strings.Contains(updated, "spec:") {
+		t.Fatalf("expected missing spec to be created:\n%s", updated)
+	}
+	if !strings.Contains(updated, "description: hello") {
+		t.Fatalf("expected description override to be written:\n%s", updated)
+	}
+	if !strings.Contains(updated, "rulesets:") {
+		t.Fatalf("expected rulesets override to be written:\n%s", updated)
+	}
+	if !strings.Contains(updated, "non_fast_forward: true") {
+		t.Fatalf("expected ruleset rules to be written:\n%s", updated)
+	}
+	if strings.Contains(updated, "spec: {") {
+		t.Fatalf("expected spec to be block style, got flow style:\n%s", updated)
+	}
+	if _, err := parser.ParseBytes([]byte(updated), 0); err != nil {
+		t.Fatalf("expected updated YAML to parse: %v\n%s", err, updated)
 	}
 }
 
