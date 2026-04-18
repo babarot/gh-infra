@@ -21,6 +21,38 @@ func newTestRepo(owner, name string) *manifest.Repository {
 	}
 }
 
+func TestApplyStatusTarget(t *testing.T) {
+	tests := []struct {
+		name string
+		c    Change
+		want string
+	}{
+		{
+			name: "label",
+			c:    Change{Resource: manifest.ResourceLabel, Field: "bug"},
+			want: `label "bug"`,
+		},
+		{
+			name: "milestone",
+			c:    Change{Resource: manifest.ResourceMilestone, Field: "v1.0"},
+			want: `milestone "v1.0"`,
+		},
+		{
+			name: "repository field",
+			c:    Change{Resource: manifest.ResourceRepository, Field: "description"},
+			want: "repository description",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := applyStatusTarget(tt.c); got != tt.want {
+				t.Fatalf("applyStatusTarget() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyRepoDescription(t *testing.T) {
 	mock := &gh.MockRunner{}
 	proc := NewProcessor(mock, nil)

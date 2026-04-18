@@ -41,7 +41,7 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 		start := time.Now()
 		var results []ApplyResult
 		for _, c := range g.changes {
-			reporter.UpdateStatus(g.name, "applying "+c.Field+"...")
+			reporter.UpdateStatus(g.name, "applying "+applyStatusTarget(c)+"...")
 			result := p.applyChange(ctx, c, repoMap[c.Name])
 			results = append(results, result)
 		}
@@ -70,6 +70,35 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 		results = append(results, r...)
 	}
 	return results
+}
+
+func applyStatusTarget(c Change) string {
+	switch c.Resource {
+	case manifest.ResourceLabel:
+		return fmt.Sprintf("label %q", c.Field)
+	case manifest.ResourceMilestone:
+		return fmt.Sprintf("milestone %q", c.Field)
+	case manifest.ResourceSecret:
+		return fmt.Sprintf("secret %q", c.Field)
+	case manifest.ResourceVariable:
+		return fmt.Sprintf("variable %q", c.Field)
+	case manifest.ResourceRuleset:
+		return fmt.Sprintf("ruleset %q", c.Field)
+	case manifest.ResourceBranchProtection:
+		return fmt.Sprintf("branch protection %q", c.Field)
+	case manifest.ResourceActions:
+		return "actions settings"
+	case manifest.ResourceRepository:
+		if c.Field == "" {
+			return "repository settings"
+		}
+		return "repository " + c.Field
+	default:
+		if c.Field == "" {
+			return strings.ToLower(c.Resource)
+		}
+		return c.Field
+	}
 }
 
 type ApplyResult struct {
