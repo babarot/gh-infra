@@ -4,8 +4,8 @@
 
 Modes:
 
-- `patch`: create and update only
-- `mirror`: create, update, and delete orphans under the managed directory
+- `additive`: create and update only
+- `authoritative`: create, update, and delete orphans under the managed directory
 - `create_only`: create if missing, never update on apply
 
 Examples:
@@ -20,7 +20,7 @@ files:
 files:
   - path: .github/workflows
     source: ./templates/workflows/
-    reconcile: mirror
+    reconcile: authoritative
 ```
 
 ```yaml

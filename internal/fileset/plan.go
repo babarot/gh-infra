@@ -132,18 +132,18 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			change := p.planFile(ctx, u.fileSetName, fullName, file)
 			out = append(out, change)
 		}
-		// Mirror mode: detect orphaned files in target repo
+		// Authoritative mode: detect orphaned files in target repo
 		allPlannedPaths := make(map[string]bool)
 		for _, change := range out {
 			allPlannedPaths[change.Path] = true
 		}
-		mirrorDirs := make(map[string]bool)
+		authoritativeDirs := make(map[string]bool)
 		for _, file := range u.files {
-			if file.Reconcile == manifest.ReconcileMirror && file.DirScope != "" {
-				mirrorDirs[file.DirScope] = true
+			if file.Reconcile == manifest.ReconcileAuthoritative && file.DirScope != "" {
+				authoritativeDirs[file.DirScope] = true
 			}
 		}
-		for dirScope := range mirrorDirs {
+		for dirScope := range authoritativeDirs {
 			updateStatus("scanning " + dirScope + "...")
 			repoFiles, err := p.fetchDirectoryContents(ctx, fullName, dirScope)
 			if err != nil {
@@ -187,7 +187,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 	return changes, nil
 }
 
-// planCreateOnly handles sync_mode: create_only — create if missing, NoOp if exists.
+// planCreateOnly handles reconcile: create_only — create if missing, NoOp if exists.
 func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) Change {
 	current, err := p.fetchFileContent(ctx, repo, file.Path)
 	if err != nil || !current.Exists {

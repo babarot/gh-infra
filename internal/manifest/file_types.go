@@ -17,14 +17,24 @@ const (
 	CommitStrategyPullRequest = ViaPullRequest
 
 	// Reconcile values for FileEntry reconcile behavior.
-	ReconcilePatch      = "patch"       // default: add/update only
-	ReconcileMirror     = "mirror"      // add/update + delete orphans
-	ReconcileCreateOnly = "create_only" // create if missing, never update
+	ReconcileAdditive      = "additive"      // default: add/update only
+	ReconcileAuthoritative = "authoritative" // add/update + delete orphans in scope
+	ReconcileCreateOnly    = "create_only"   // create if missing, never update
+
+	// Deprecated: use ReconcileAdditive.
+	ReconcilePatch = ReconcileAdditive
+	// Deprecated: use ReconcileAuthoritative.
+	ReconcileMirror = ReconcileAuthoritative
 
 	// Deprecated: use Reconcile* constants instead.
-	SyncModePatch      = ReconcilePatch
-	SyncModeMirror     = ReconcileMirror
+	SyncModePatch      = ReconcileAdditive
+	SyncModeMirror     = ReconcileAuthoritative
 	SyncModeCreateOnly = ReconcileCreateOnly
+)
+
+const (
+	legacyReconcilePatch  = "patch"
+	legacyReconcileMirror = "mirror"
 )
 
 // File represents files to manage in a single repository.
@@ -82,7 +92,7 @@ type FileEntry struct {
 	Source         string            `yaml:"source,omitempty"`
 	Patches        []string          `yaml:"patches,omitempty"`
 	Vars           map[string]string `yaml:"vars,omitempty"`
-	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=patch mirror create_only"`
+	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=additive authoritative create_only"`
 	DirScope       string            `yaml:"-"`
 	OriginalSource string            `yaml:"-"` // local file path set during source resolution (import --into)
 
@@ -107,6 +117,14 @@ func (fe *FileEntry) UnmarshalYAML(unmarshal func(any) error) error {
 		}
 		return err
 	}
+	reconcileWarnings, err := normalizeFileReconcile(fe)
+	if err != nil {
+		if fe.Path != "" {
+			return fmt.Errorf("%s: %w", fe.Path, err)
+		}
+		return err
+	}
+	warnings = append(warnings, reconcileWarnings...)
 	// Prefix warnings with path for context
 	for i, w := range warnings {
 		if fe.Path != "" {
@@ -115,6 +133,21 @@ func (fe *FileEntry) UnmarshalYAML(unmarshal func(any) error) error {
 	}
 	fe.DeprecationWarnings = warnings
 	return nil
+}
+
+func normalizeFileReconcile(fe *FileEntry) ([]string, error) {
+	switch fe.Reconcile {
+	case "", ReconcileAdditive, ReconcileAuthoritative, ReconcileCreateOnly:
+		return nil, nil
+	case legacyReconcilePatch:
+		fe.Reconcile = ReconcileAdditive
+		return []string{`"reconcile" value "patch" is deprecated, use "additive" instead`}, nil
+	case legacyReconcileMirror:
+		fe.Reconcile = ReconcileAuthoritative
+		return []string{`"reconcile" value "mirror" is deprecated, use "authoritative" instead`}, nil
+	default:
+		return nil, nil
+	}
 }
 
 // validateAndMigrateVia validates that commit_strategy and on_apply are not both set,

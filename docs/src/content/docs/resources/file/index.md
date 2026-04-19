@@ -61,7 +61,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 |---|---|---|
 | `files` | *(required)* | List of files to manage — see [File Sources](./sources/) |
 | `files[].patches` | *(none)* | List of unified diff patches (file paths or inline) applied after template expansion — see [Patches](./patches/). |
-| `files[].reconcile` | `patch` | Per-entry reconcile mode: `patch` (add/update), `mirror` (add/update/delete), or `create_only` (create if missing, never update) — see [Reconcile](./reconcile/). |
+| `files[].reconcile` | `additive` | Per-entry reconcile mode: `additive` (add/update), `authoritative` (add/update/delete), or `create_only` (create if missing, never update) — see [Reconcile](./reconcile/). |
 | `via` | `push` | Delivery method: `push` or `pull_request` — see [Delivery Method](./delivery/). |
 | `commit_message` | auto | Custom commit message |
 | `branch` | auto | Branch name for `pull_request` mode |

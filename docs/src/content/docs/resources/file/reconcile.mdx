@@ -10,11 +10,11 @@ import { FileTree } from '@astrojs/starlight/components';
 
 | Mode | Creates | Updates | Deletes orphans |
 |------|---------|---------|-----------------|
-| `patch` (default) | Yes | Yes | No |
-| `mirror` | Yes | Yes | Yes |
+| `additive` (default) | Yes | Yes | No |
+| `authoritative` | Yes | Yes | Yes |
 | `create_only` | Yes | No | No |
 
-## `patch` (default)
+## `additive` (default)
 
 Manages the declared files without touching anything else in the target directory.
 
@@ -22,7 +22,7 @@ Manages the declared files without touching anything else in the target director
 files:
   - path: .github/CODEOWNERS
     content: "* @platform-team"
-    # reconcile: patch  ← default, can be omitted
+    # reconcile: additive  ← default, can be omitted
 ```
 
 **What happens:**
@@ -33,7 +33,7 @@ files:
 
 Use this for config files, security policies, or any file where you want gh-infra to keep it up to date but leave other files in the same directory alone.
 
-## `mirror`
+## `authoritative`
 
 Makes the target directory an **exact copy** of the source. Any file in the target that is not in the source is **deleted**.
 
@@ -41,7 +41,7 @@ Makes the target directory an **exact copy** of the source. Any file in the targ
 files:
   - path: .github/workflows
     source: ./templates/workflows/
-    reconcile: mirror
+    reconcile: authoritative
 ```
 
 **What happens:**
@@ -51,18 +51,18 @@ files:
 - File in target, not in source → **deleted**
 - File in source, content matches → **no action**
 
-Mirror only affects the directory specified by `path`. Files outside that directory are never touched:
+Authoritative mode only affects the directory specified by `path`. Files outside that directory are never touched:
 
 ```yaml
 files:
   - path: .github/workflows
     source: ./templates/workflows/
-    reconcile: mirror
+    reconcile: authoritative
     # ↑ only deletes orphans inside .github/workflows/
 
   - path: README.md
     content: "# My Project"
-    # ↑ unaffected by the mirror above
+    # ↑ unaffected by the authoritative entry above
 ```
 
 **Example:** source has `ci.yml` and `release.yml`. Target repo also has `repo-dedicated.yml`:
@@ -100,13 +100,17 @@ Different files can use different modes in the same manifest:
 files:
   - path: .github/workflows
     source: ./templates/workflows/
-    reconcile: mirror
+    reconcile: authoritative
 
   - path: .github/CODEOWNERS
     content: "* @platform-team"
-    # reconcile: patch (default)
+    # reconcile: additive (default)
 
   - path: README.md
     source: ./templates/README.md.tmpl
     reconcile: create_only
 ```
+
+:::note[Compatibility]
+`reconcile: patch` and `reconcile: mirror` are still accepted for existing manifests, but they are deprecated. Use `additive` and `authoritative` for new manifests.
+:::

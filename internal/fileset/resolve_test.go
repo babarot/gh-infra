@@ -71,14 +71,14 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 					Path:      "config/a.yml",
 					Content:   "original-a",
 					DirScope:  "config",
-					Reconcile: manifest.ReconcileMirror,
+					Reconcile: manifest.ReconcileAuthoritative,
 					Vars:      map[string]string{"env": "prod"},
 				},
 				{
 					Path:      "config/b.yml",
 					Content:   "original-b",
 					DirScope:  "config",
-					Reconcile: manifest.ReconcileMirror,
+					Reconcile: manifest.ReconcileAuthoritative,
 				},
 			},
 		},
@@ -104,8 +104,8 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 	if result[0].DirScope != "config" {
 		t.Errorf("result[0].DirScope = %q, want %q (should inherit from original)", result[0].DirScope, "config")
 	}
-	if result[0].Reconcile != manifest.ReconcileMirror {
-		t.Errorf("result[0].Reconcile = %q, want %q (should inherit from original)", result[0].Reconcile, manifest.ReconcileMirror)
+	if result[0].Reconcile != manifest.ReconcileAuthoritative {
+		t.Errorf("result[0].Reconcile = %q, want %q (should inherit from original)", result[0].Reconcile, manifest.ReconcileAuthoritative)
 	}
 	// Vars should also be inherited
 	if result[0].Vars == nil || result[0].Vars["env"] != "prod" {
@@ -116,8 +116,8 @@ func TestResolveFiles_InheritsDirScopeAndReconcile(t *testing.T) {
 	if result[1].DirScope != "config" {
 		t.Errorf("result[1].DirScope = %q, want %q", result[1].DirScope, "config")
 	}
-	if result[1].Reconcile != manifest.ReconcileMirror {
-		t.Errorf("result[1].Reconcile = %q, want %q", result[1].Reconcile, manifest.ReconcileMirror)
+	if result[1].Reconcile != manifest.ReconcileAuthoritative {
+		t.Errorf("result[1].Reconcile = %q, want %q", result[1].Reconcile, manifest.ReconcileAuthoritative)
 	}
 }
 
