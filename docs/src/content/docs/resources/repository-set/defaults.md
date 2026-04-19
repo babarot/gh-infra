@@ -69,7 +69,7 @@ repositories:
       rulesets: additive    # overrides only rulesets
 ```
 
-If a reconcile policy is set, the corresponding collection must be present after defaults and overrides are merged. For example, `reconcile.rulesets: authoritative` requires `spec.rulesets` to exist. Use `spec.rulesets: []` or `spec.labels: []` for an explicitly empty managed collection.
+If a reconcile policy is set but the corresponding collection is omitted after defaults and overrides are merged, that collection is unmanaged for that repository. Use `spec.rulesets: []` or `spec.labels: []` for an explicitly empty managed collection.
 
 ### Lists — replaced entirely
 

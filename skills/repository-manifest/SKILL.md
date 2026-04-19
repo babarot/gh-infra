@@ -106,7 +106,7 @@ Read [references/repository-set.md](./references/repository-set.md) for the exac
 - `actions.enabled` is required when setting any other `actions.*` field
 - `actions.selected_actions` is valid only with `allowed_actions: selected`
 - `reconcile.labels: authoritative`, `reconcile.rulesets: authoritative`, and `reconcile.branch_protection: authoritative` delete undeclared remote entries; review `plan` carefully
-- `reconcile` without a corresponding `spec` collection is a parse error
+- `reconcile` without a corresponding `spec` collection is no-op; a collection is managed only when it appears in `spec`
 - `label_sync: mirror` is deprecated; use `reconcile.labels: authoritative`
 - for `gh infra import --into`, use the dedicated `import-into` skill
 - Repository deletion is not supported

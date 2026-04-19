@@ -253,6 +253,10 @@ func diffMergeStrategy(name string, desired *manifest.Repository, current *Curre
 }
 
 func diffBranchProtection(name string, desired *manifest.Repository, current *CurrentState) []Change {
+	if !desired.Spec.BranchProtectionSet && len(desired.Spec.BranchProtection) == 0 {
+		return nil
+	}
+
 	var changes []Change
 	desiredPatterns := make(map[string]struct{}, len(desired.Spec.BranchProtection))
 
@@ -361,6 +365,10 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 }
 
 func diffRulesets(ctx context.Context, name string, desired *manifest.Repository, current *CurrentState, resolver *manifest.Resolver) []Change {
+	if !desired.Spec.RulesetsSet && len(desired.Spec.Rulesets) == 0 {
+		return nil
+	}
+
 	var changes []Change
 	desiredNames := make(map[string]struct{}, len(desired.Spec.Rulesets))
 
@@ -777,6 +785,10 @@ func diffVariables(name string, desired *manifest.Repository, current *CurrentSt
 }
 
 func diffLabels(name string, desired *manifest.Repository, current *CurrentState, reconcileMode string) []Change {
+	if !desired.Spec.LabelsSet && len(desired.Spec.Labels) == 0 && desired.Spec.LabelSync == nil {
+		return nil
+	}
+
 	var changes []Change
 
 	desiredSet := make(map[string]bool)

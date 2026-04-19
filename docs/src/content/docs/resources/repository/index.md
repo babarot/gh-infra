@@ -130,7 +130,9 @@ spec:
 | `reconcile.rulesets` | `additive`, `authoritative` | Controls how `spec.rulesets` is compared with existing GitHub rulesets |
 | `reconcile.branch_protection` | `additive`, `authoritative` | Controls how `spec.branch_protection` is compared with existing classic branch protection rules |
 
-`additive` is the default. `authoritative` deletes remote entries that are not declared in YAML. To delete all labels, rulesets, or branch protection rules, use `authoritative` with an empty list:
+`additive` is the default. `authoritative` deletes remote entries that are not declared in YAML, but only when the corresponding `spec` collection is present. If `spec.rulesets`, `spec.branch_protection`, or `spec.labels` is omitted, that collection is unmanaged even when `reconcile` has a policy for it.
+
+To delete all labels, rulesets, or branch protection rules, use `authoritative` with an empty list:
 
 ```yaml
 reconcile:

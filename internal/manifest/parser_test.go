@@ -1899,21 +1899,6 @@ func TestRepositoryReconcileValidation(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "reconcile without spec collection",
-			content: `
-apiVersion: v1
-kind: Repository
-metadata:
-  owner: org
-  name: repo
-reconcile:
-  rulesets: authoritative
-spec:
-  description: repo
-`,
-			wantErr: "reconcile.rulesets requires spec.rulesets",
-		},
-		{
 			name: "invalid reconcile mode",
 			content: `
 apiVersion: v1
@@ -1953,21 +1938,6 @@ spec:
   branch_protection: null
 `,
 			wantErr: "branch_protection must be a sequence",
-		},
-		{
-			name: "reconcile labels without spec labels",
-			content: `
-apiVersion: v1
-kind: Repository
-metadata:
-  owner: org
-  name: repo
-reconcile:
-  labels: authoritative
-spec:
-  description: repo
-`,
-			wantErr: "reconcile.labels requires spec.labels",
 		},
 		{
 			name: "reconcile labels conflicts with label_sync",
@@ -2016,6 +1986,38 @@ spec:
 				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestRepositoryReconcileWithoutSpecCollectionAllowed(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+reconcile:
+  labels: authoritative
+  rulesets: authoritative
+  branch_protection: authoritative
+spec:
+  description: repo
+`
+	path := filepath.Join(dir, "repo.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+	if repos[0].Spec.LabelsSet || repos[0].Spec.RulesetsSet || repos[0].Spec.BranchProtectionSet {
+		t.Fatalf("omitted collections should remain unset: %+v", repos[0].Spec)
 	}
 }
 

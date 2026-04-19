@@ -109,15 +109,16 @@ do not specify `reconcile`.
 | YAML | Meaning |
 |---|---|
 | `spec.rulesets` omitted | rulesets unmanaged |
+| `reconcile.rulesets: authoritative` + `spec.rulesets` omitted | rulesets unmanaged |
 | `spec.rulesets` present, `reconcile.rulesets` omitted | additive management |
 | `reconcile.rulesets: additive` + non-empty `spec.rulesets` | create/update listed rulesets only |
 | `reconcile.rulesets: authoritative` + non-empty `spec.rulesets` | exact-set management; delete remote rulesets not listed |
 | `reconcile.rulesets: authoritative` + `spec.rulesets: []` | managed empty collection; delete all remote rulesets |
 | `rulesets:` / `rulesets: null` | invalid |
 
-If `reconcile.rulesets` is set but `spec.rulesets` is omitted, parsing should
-fail. A reconciliation policy without a corresponding desired collection is
-ambiguous and likely a mistake.
+If `reconcile.rulesets` is set but `spec.rulesets` is omitted, no ruleset
+changes are planned. `reconcile` is a policy for managed collections, not an
+ownership declaration by itself.
 
 The same rules apply to `labels` and `branch_protection`.
 
@@ -207,8 +208,8 @@ Merge behavior:
 - `defaults.reconcile` provides default reconciliation policy.
 - `repositories[].reconcile` overrides defaults per collection.
 - `defaults.spec` and `repositories[].spec` continue to merge as today.
-- After merge, any reconcile policy that targets an omitted collection is an
-  error.
+- After merge, any omitted collection remains unmanaged even if a reconcile
+  policy exists for that collection.
 
 This lets an organization use `authoritative` by default while allowing individual
 repositories to opt back into `additive`.
@@ -354,8 +355,9 @@ be represented as data, not comments.
 - The schema becomes larger: `Repository`, `RepositorySet.defaults`, and
   `RepositorySet.repositories[]` need `reconcile` blocks.
 - Users must learn a new top-level concept.
-- `reconcile` and `spec` can become inconsistent, so validation must catch
-  policies targeting omitted collections.
+- `reconcile` can specify default policies for collections that some
+  repositories omit. This is useful for `RepositorySet`, but users must
+  understand that omitted collections remain unmanaged.
 - Authoritative mode can delete remote resources created manually or by other tools.
   Plan output must make that reason explicit.
 - `label_sync` remains accepted as a deprecated compatibility alias for labels,
