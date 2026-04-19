@@ -227,8 +227,8 @@ func (m *WildcardMockRunner) Run(_ context.Context, args ...string) ([]byte, err
 	return m.DefaultResponse, nil
 }
 
-// setupGitDataAPIMock creates a WildcardMockRunner with Git Data API responses.
-func setupGitDataAPIMock(repo string) *WildcardMockRunner {
+// setupGraphQLMock creates a WildcardMockRunner for the GraphQL-based commit path.
+func setupGraphQLMock(repo string) *WildcardMockRunner {
 	mock := &WildcardMockRunner{
 		MockRunner: gh.MockRunner{
 			Responses: map[string][]byte{
@@ -236,28 +236,18 @@ func setupGitDataAPIMock(repo string) *WildcardMockRunner {
 				fmt.Sprintf("repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", repo): []byte("main"),
 				// Get HEAD SHA
 				fmt.Sprintf("api repos/%s/git/ref/heads/main --jq .object.sha", repo): []byte("head123"),
-				// Get authenticated user (PAT path; not a bot)
-				`api /user --jq .login+"|"+(.name // .login)`: []byte("testuser|Test User"),
-				// Get primary email
-				`api /user/emails --jq [.[] | select(.primary == true)] | .[0].email`: []byte("test@example.com"),
 			},
 			Errors: map[string]error{},
 		},
-		// Default response for blob/tree/commit/ref calls
-		DefaultResponse: []byte(`{"sha":"mock-sha-123"}`),
+		// Default response for GraphQL mutation and other dynamic calls
+		DefaultResponse: []byte(`{"data":{"createCommitOnBranch":{"commit":{"oid":"new-sha-456"}}}}`),
 	}
 	return mock
 }
 
-// stubSign is a no-op GPG signer for tests.
-func stubSign(_ string) (string, error) {
-	return "-----BEGIN PGP SIGNATURE-----\nstub\n-----END PGP SIGNATURE-----", nil
-}
-
 func TestApply_CreateFile(t *testing.T) {
-	mock := setupGitDataAPIMock("owner/repo")
+	mock := setupGraphQLMock("owner/repo")
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	p.sign = stubSign
 
 	changes := []Change{
 		{
@@ -278,19 +268,16 @@ func TestApply_CreateFile(t *testing.T) {
 		t.Errorf("unexpected error: %v", results[0].Err)
 	}
 
-	// Verify Git Data API calls were made: get branch, get HEAD, blob, tree, commit, ref update
+	// Verify GraphQL mutation was called
 	callLog := strings.Join(flattenCalls(mock.Called), " | ")
-	for _, expected := range []string{"git/ref/heads/main", "git/blobs", "git/trees", "git/commits", "git/refs/heads/main"} {
-		if !strings.Contains(callLog, expected) {
-			t.Errorf("expected call containing %q, got: %s", expected, callLog)
-		}
+	if !strings.Contains(callLog, "api graphql") {
+		t.Errorf("expected GraphQL mutation call, got: %s", callLog)
 	}
 }
 
 func TestApply_UpdateFile(t *testing.T) {
-	mock := setupGitDataAPIMock("owner/repo")
+	mock := setupGraphQLMock("owner/repo")
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	p.sign = stubSign
 
 	changes := []Change{
 		{

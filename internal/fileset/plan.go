@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -15,19 +14,15 @@ import (
 
 // Processor handles FileSet plan and apply operations.
 type Processor struct {
-	runner   gh.Runner
-	writer   ProgressWriter
-	sign     func(payload string) (string, error) // defaults to gpgSign
-	userOnce sync.Once
-	userInfo githubUser
-	userErr  error
+	runner gh.Runner
+	writer ProgressWriter
 }
 
 func NewProcessor(runner gh.Runner, writer ProgressWriter) *Processor {
 	if writer == nil {
 		writer = noopProgressWriter{}
 	}
-	return &Processor{runner: runner, writer: writer, sign: gpgSign}
+	return &Processor{runner: runner, writer: writer}
 }
 
 // planUnit represents one (fileSet, repository) pair to process.
