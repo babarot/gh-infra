@@ -11,18 +11,9 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
-// treeEntry represents a file entry in a Git tree.
-// SHA is a pointer: non-nil for create/update, nil for delete (GitHub removes the file).
-type treeEntry struct {
-	Path string  `json:"path"`
-	Mode string  `json:"mode"`
-	Type string  `json:"type"`
-	SHA  *string `json:"sha"` // nil = delete file from tree
-}
-
-// applyToRepo creates a single commit with all file changes using Git Data API.
-// Falls back to Contents API for empty repositories (no commits yet).
-// applyToRepo returns (prURL, error). prURL is non-empty only for pull_request strategy.
+// applyToRepo creates a verified commit for all file changes using the GitHub GraphQL
+// createCommitOnBranch mutation. Falls back to Contents API for empty repositories.
+// Returns (prURL, error); prURL is non-empty only for pull_request strategy.
 func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
@@ -31,73 +22,118 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		}
 		return "", fmt.Errorf("get HEAD: %w", err)
 	}
-
-	return p.applyViaGitDataAPI(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
+	return p.applyViaGraphQL(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
 }
 
-// applyViaGitDataAPI creates blobs, a tree, a commit, and updates the ref
-// (or creates a PR) in a single atomic operation. All files are included in
-// one commit regardless of count.
-func (p *Processor) applyViaGitDataAPI(ctx context.Context, repo, branch, headSHA string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
+// applyViaGraphQL creates a verified commit using the GitHub GraphQL createCommitOnBranch
+// mutation. All file changes are committed atomically in a single call.
+func (p *Processor) applyViaGraphQL(ctx context.Context, repo, defaultBranch, headSHA string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
 	message := resolveCommitMessage(opts)
+	targetBranch := defaultBranch
 
-	// 1. Create blobs
-	statusFn("creating blobs...")
-	entries, err := p.createBlobs(ctx, repo, changes)
-	if err != nil {
+	if opts.Via == manifest.ViaPullRequest {
+		prBranch := opts.Branch
+		if prBranch == "" {
+			prBranch = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
+		}
+		statusFn("creating PR branch...")
+		if err := p.createBranchAt(ctx, repo, prBranch, headSHA); err != nil {
+			return "", fmt.Errorf("create PR branch: %w", err)
+		}
+		targetBranch = prBranch
+	}
+
+	statusFn("committing changes...")
+	if err := p.commitViaGraphQL(ctx, repo, targetBranch, headSHA, message, changes); err != nil {
 		return "", err
 	}
 
-	// 2. Create tree
-	statusFn("creating tree...")
-	treeSHA, err := p.createTree(ctx, repo, headSHA, entries)
-	if err != nil {
-		return "", fmt.Errorf("create tree: %w", err)
-	}
-
-	// 3. Create commit
-	statusFn("creating commit...")
-	commitSHA, err := p.createCommit(ctx, repo, message, treeSHA, headSHA)
-	if err != nil {
-		return "", fmt.Errorf("create commit: %w", err)
-	}
-
-	// 4. Update ref or create PR
 	if opts.Via == manifest.ViaPullRequest {
 		statusFn("creating pull request...")
-		return p.createPR(ctx, repo, branch, commitSHA, opts)
+		return p.openPR(ctx, repo, defaultBranch, targetBranch, opts)
 	}
-	statusFn("updating ref...")
-	return "", p.updateRef(ctx, repo, branch, commitSHA)
+	return "", nil
 }
 
-// createBlobs creates a Git blob for each file change and returns tree entries.
-// ChangeDelete entries get a nil SHA which tells the Git Data API to remove the file.
-func (p *Processor) createBlobs(ctx context.Context, repo string, changes []Change) ([]treeEntry, error) {
-	var entries []treeEntry
+// commitViaGraphQL sends a createCommitOnBranch GraphQL mutation.
+// GitHub automatically marks these commits as Verified regardless of token type.
+func (p *Processor) commitViaGraphQL(ctx context.Context, repo, branch, headSHA, message string, changes []Change) error {
+	type addition struct {
+		Path     string `json:"path"`
+		Contents string `json:"contents"` // base64-encoded
+	}
+	type deletion struct {
+		Path string `json:"path"`
+	}
+	type fileChanges struct {
+		Additions []addition `json:"additions,omitempty"`
+		Deletions []deletion `json:"deletions,omitempty"`
+	}
+
+	var adds []addition
+	var dels []deletion
 	for _, c := range changes {
 		if c.Type == ChangeDelete {
-			entries = append(entries, treeEntry{
-				Path: c.Path,
-				Mode: "100644",
-				Type: "blob",
-				SHA:  nil, // nil SHA = delete from tree
+			dels = append(dels, deletion{Path: c.Path})
+		} else {
+			adds = append(adds, addition{
+				Path:     c.Path,
+				Contents: base64.StdEncoding.EncodeToString([]byte(c.Desired)),
 			})
-			continue
 		}
-		blobSHA, err := p.createBlob(ctx, repo, c.Desired)
-		if err != nil {
-			return nil, fmt.Errorf("create blob for %s: %w", c.Path, err)
-		}
-		sha := blobSHA
-		entries = append(entries, treeEntry{
-			Path: c.Path,
-			Mode: "100644",
-			Type: "blob",
-			SHA:  &sha,
-		})
 	}
-	return entries, nil
+
+	input := map[string]any{
+		"branch": map[string]string{
+			"repositoryNameWithOwner": repo,
+			"branchName":              branch,
+		},
+		"message":         map[string]string{"headline": message},
+		"expectedHeadOid": headSHA,
+		"fileChanges":     fileChanges{Additions: adds, Deletions: dels},
+	}
+
+	const mutation = `mutation($input: CreateCommitOnBranchInput!) {
+  createCommitOnBranch(input: $input) {
+    commit { oid }
+  }
+}`
+
+	body := map[string]any{
+		"query":     mutation,
+		"variables": map[string]any{"input": input},
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	tmpFile, err := os.CreateTemp("", "gh-infra-graphql-*.json")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(bodyJSON); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	out, err := p.runner.Run(ctx, "api", "graphql", "--input", tmpFile.Name())
+	if err != nil {
+		return fmt.Errorf("graphql mutation: %w", err)
+	}
+
+	var resp struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(out, &resp); err == nil && len(resp.Errors) > 0 {
+		return fmt.Errorf("graphql: %s", resp.Errors[0].Message)
+	}
+	return nil
 }
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
@@ -109,7 +145,7 @@ func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes [
 	}
 	for _, c := range changes {
 		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
-		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg); err != nil {
+		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg, ""); err != nil {
 			return err
 		}
 	}
@@ -117,9 +153,8 @@ func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes [
 }
 
 // putFileViaContentsAPI creates or updates a single file using the Contents API.
-// This results in one commit per call. Use for empty repos or when Git Data API
-// is not available. Pass sha="" for new files, or the current blob SHA for updates.
-func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, content, sha, message string) error {
+// Pass sha="" for new files. Pass branch="" to use the repository's default branch.
+func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, content, sha, message, branch string) error {
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
 	endpoint := fmt.Sprintf("repos/%s/contents/%s", repo, path)
 
@@ -132,6 +167,9 @@ func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, conte
 	if sha != "" {
 		args = append(args, "-f", fmt.Sprintf("sha=%s", sha))
 	}
+	if branch != "" {
+		args = append(args, "-f", fmt.Sprintf("branch=%s", branch))
+	}
 
 	_, err := p.runner.Run(ctx, args...)
 	if err != nil {
@@ -141,7 +179,6 @@ func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, conte
 }
 
 func (p *Processor) getHeadSHA(ctx context.Context, repo string) (sha, branch string, err error) {
-	// Get default branch name
 	out, err := p.runner.Run(ctx, "repo", "view", repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name")
 	if err != nil {
 		return "", "", err
@@ -151,7 +188,6 @@ func (p *Processor) getHeadSHA(ctx context.Context, repo string) (sha, branch st
 		return "", "", fmt.Errorf("repository is empty (no default branch)")
 	}
 
-	// Get HEAD SHA
 	out, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/ref/heads/%s", repo, branch), "--jq", ".object.sha")
 	if err != nil {
 		return "", "", err
@@ -160,138 +196,30 @@ func (p *Processor) getHeadSHA(ctx context.Context, repo string) (sha, branch st
 	return sha, branch, nil
 }
 
-func (p *Processor) createBlob(ctx context.Context, repo, content string) (string, error) {
-	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/blobs", repo),
-		"--method", "POST",
-		"-f", fmt.Sprintf("content=%s", encoded),
-		"-f", "encoding=base64",
-	)
-	if err != nil {
-		return "", err
-	}
-	var resp struct {
-		SHA string `json:"sha"`
-	}
-	if err := json.Unmarshal(out, &resp); err != nil {
-		return "", err
-	}
-	return resp.SHA, nil
-}
-
-func (p *Processor) createTree(ctx context.Context, repo, baseTree string, entries any) (string, error) {
-	body := map[string]any{
-		"base_tree": baseTree,
-		"tree":      entries,
-	}
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return "", err
-	}
-
-	// Write JSON body to a temp file for --input
-	tmpFile, err := os.CreateTemp("", "gh-infra-tree-*.json")
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write(bodyJSON); err != nil {
-		tmpFile.Close()
-		return "", fmt.Errorf("write temp file: %w", err)
-	}
-	tmpFile.Close()
-
-	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/trees", repo),
-		"--method", "POST",
-		"--input", tmpFile.Name(),
-	)
-	if err != nil {
-		return "", err
-	}
-	var resp struct {
-		SHA string `json:"sha"`
-	}
-	if err := json.Unmarshal(out, &resp); err != nil {
-		return "", err
-	}
-	return resp.SHA, nil
-}
-
-func (p *Processor) createCommit(ctx context.Context, repo, message, treeSHA, parentSHA string) (string, error) {
-	body := map[string]any{
-		"message": message,
-		"tree":    treeSHA,
-		"parents": []string{parentSHA},
-	}
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return "", err
-	}
-
-	tmpFile, err := os.CreateTemp("", "gh-infra-commit-*.json")
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write(bodyJSON); err != nil {
-		tmpFile.Close()
-		return "", fmt.Errorf("write temp file: %w", err)
-	}
-	tmpFile.Close()
-
-	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/commits", repo),
-		"--method", "POST",
-		"--input", tmpFile.Name(),
-	)
-	if err != nil {
-		return "", err
-	}
-	var resp struct {
-		SHA string `json:"sha"`
-	}
-	if err := json.Unmarshal(out, &resp); err != nil {
-		return "", err
-	}
-	return resp.SHA, nil
-}
-
-func (p *Processor) updateRef(ctx context.Context, repo, branch, commitSHA string) error {
-	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
-		"--method", "PATCH",
-		"-f", fmt.Sprintf("sha=%s", commitSHA),
-	)
-	return err
-}
-
-// createPR creates a pull request and returns its URL.
-func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA string, opts ApplyOptions) (string, error) {
-	branchName := opts.Branch
-	if branchName == "" {
-		branchName = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
-	}
-
-	// Create branch pointing to the new commit; if it already exists, force-update it.
+// createBranchAt creates or force-updates a branch pointing to the given SHA.
+func (p *Processor) createBranchAt(ctx context.Context, repo, branch, sha string) error {
 	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs", repo),
 		"--method", "POST",
-		"-f", fmt.Sprintf("ref=refs/heads/%s", branchName),
-		"-f", fmt.Sprintf("sha=%s", commitSHA),
+		"-f", fmt.Sprintf("ref=refs/heads/%s", branch),
+		"-f", fmt.Sprintf("sha=%s", sha),
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "Reference already exists") {
-			_, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branchName),
+			_, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
 				"--method", "PATCH",
-				"-f", fmt.Sprintf("sha=%s", commitSHA),
+				"-f", fmt.Sprintf("sha=%s", sha),
 				"-F", "force=true",
 			)
 		}
 		if err != nil {
-			return "", fmt.Errorf("create branch %s: %w", branchName, err)
+			return err
 		}
 	}
+	return nil
+}
 
-	// Create PR (skip if one already exists for this head branch)
+// openPR opens a pull request from head into base. The head branch must already exist.
+func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts ApplyOptions) (string, error) {
 	prTitle := opts.PRTitle
 	if prTitle == "" {
 		prTitle = resolveCommitMessage(opts)
@@ -302,22 +230,21 @@ func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA
 	}
 	out, err := p.runner.Run(ctx, "pr", "create",
 		"--repo", repo,
-		"--base", defaultBranch,
-		"--head", branchName,
+		"--base", base,
+		"--head", head,
 		"--title", prTitle,
 		"--body", prBody,
 	)
 	if err != nil && strings.Contains(err.Error(), "already exists") {
-		// Retrieve existing PR URL
 		existing, lookupErr := p.runner.Run(ctx, "pr", "view",
 			"--repo", repo,
-			branchName,
+			head,
 			"--json", "url", "--jq", ".url",
 		)
 		if lookupErr == nil {
 			return strings.TrimSpace(string(existing)), nil
 		}
-		return "", nil // PR already open but couldn't get URL
+		return "", nil
 	}
 	if err != nil {
 		return "", err
