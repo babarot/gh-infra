@@ -111,10 +111,10 @@ func TestToManifest(t *testing.T) {
 	assertStringPtr(t, "SquashMergeCommitMessage", ms.SquashMergeCommitMessage, "COMMIT_MESSAGES")
 
 	// Branch protection
-	if len(repo.Spec.BranchProtection) != 1 {
-		t.Fatalf("BranchProtection count = %d, want 1", len(repo.Spec.BranchProtection))
+	if len(repo.Spec.BranchProtection.Value) != 1 {
+		t.Fatalf("BranchProtection count = %d, want 1", len(repo.Spec.BranchProtection.Value))
 	}
-	bp := repo.Spec.BranchProtection[0]
+	bp := repo.Spec.BranchProtection.Value[0]
 	if bp.Pattern != "main" {
 		t.Errorf("BP Pattern = %q, want main", bp.Pattern)
 	}
@@ -170,8 +170,8 @@ func TestToManifest_NoBranchProtection(t *testing.T) {
 
 	repo := ToManifest(context.Background(), state, nil)
 
-	if len(repo.Spec.BranchProtection) != 0 {
-		t.Errorf("expected 0 branch protections, got %d", len(repo.Spec.BranchProtection))
+	if len(repo.Spec.BranchProtection.Value) != 0 {
+		t.Errorf("expected 0 branch protections, got %d", len(repo.Spec.BranchProtection.Value))
 	}
 	if len(repo.Spec.Variables) != 0 {
 		t.Errorf("expected 0 variables, got %d", len(repo.Spec.Variables))
@@ -213,10 +213,10 @@ func TestToManifest_NilStatusChecks(t *testing.T) {
 
 	repo := ToManifest(context.Background(), state, nil)
 
-	if len(repo.Spec.BranchProtection) != 1 {
-		t.Fatalf("expected 1 branch protection, got %d", len(repo.Spec.BranchProtection))
+	if len(repo.Spec.BranchProtection.Value) != 1 {
+		t.Fatalf("expected 1 branch protection, got %d", len(repo.Spec.BranchProtection.Value))
 	}
-	if repo.Spec.BranchProtection[0].RequireStatusChecks != nil {
+	if repo.Spec.BranchProtection.Value[0].RequireStatusChecks != nil {
 		t.Error("expected nil RequireStatusChecks in manifest")
 	}
 }
@@ -260,11 +260,11 @@ func TestToManifest_Rulesets(t *testing.T) {
 
 	repo := ToManifest(context.Background(), state, nil)
 
-	if len(repo.Spec.Rulesets) != 1 {
-		t.Fatalf("expected 1 ruleset, got %d", len(repo.Spec.Rulesets))
+	if len(repo.Spec.Rulesets.Value) != 1 {
+		t.Fatalf("expected 1 ruleset, got %d", len(repo.Spec.Rulesets.Value))
 	}
 
-	rs := repo.Spec.Rulesets[0]
+	rs := repo.Spec.Rulesets.Value[0]
 	if rs.Name != "protect-main" {
 		t.Errorf("name: got %q, want %q", rs.Name, "protect-main")
 	}

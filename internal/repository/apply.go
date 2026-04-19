@@ -142,7 +142,8 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 	// Generic: if this change has children, expand and apply each child.
 	// Label and Milestone updates carry children for display (e.g. color, description)
 	// but should be applied as a single API call using the parent's Field (the name/title).
-	if len(c.Children) > 0 && c.Resource != manifest.ResourceLabel && c.Resource != manifest.ResourceMilestone {
+	// Delete changes also carry children for display only — the parent handles the API call.
+	if len(c.Children) > 0 && c.Type != ChangeDelete && c.Resource != manifest.ResourceLabel && c.Resource != manifest.ResourceMilestone {
 		for _, child := range c.Children {
 			child.Resource = c.Resource
 			child.Name = c.Name
@@ -628,6 +629,16 @@ func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *m
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 
+	if c.Type == ChangeDelete {
+		var pattern string
+		if after, ok := strings.CutPrefix(c.Resource, manifest.ResourceBranchProtection+"["); ok {
+			pattern = strings.TrimSuffix(after, "]")
+		}
+		endpoint := fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, pattern)
+		_, err := p.runner.Run(ctx, "api", endpoint, "--method", "DELETE")
+		return wrapError(err, owner+"/"+name, "branch_protection:"+pattern)
+	}
+
 	// Find the matching branch protection rule from desired state
 	var pattern string
 	// Extract pattern from resource name like "BranchProtection[main]"
@@ -636,9 +647,9 @@ func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *m
 	}
 
 	var bp *manifest.BranchProtection
-	for i := range repo.Spec.BranchProtection {
-		if repo.Spec.BranchProtection[i].Pattern == pattern {
-			bp = &repo.Spec.BranchProtection[i]
+	for i := range repo.Spec.BranchProtection.Value {
+		if repo.Spec.BranchProtection.Value[i].Pattern == pattern {
+			bp = &repo.Spec.BranchProtection.Value[i]
 			break
 		}
 	}
@@ -709,13 +720,23 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 	owner := repo.Metadata.Owner
 	name := repo.Metadata.Name
 
+	if c.Type == ChangeDelete {
+		info, ok := c.OldValue.(rulesetDeleteInfo)
+		if !ok {
+			return fmt.Errorf("unexpected OldValue type for ruleset delete: %T", c.OldValue)
+		}
+		endpoint := fmt.Sprintf("repos/%s/%s/rulesets/%d", owner, name, info.ID)
+		_, err := p.runner.Run(ctx, "api", endpoint, "--method", "DELETE")
+		return wrapError(err, owner+"/"+name, "ruleset:"+info.Name)
+	}
+
 	// Extract ruleset name from resource like "Ruleset[protect-main]"
 	rulesetName := strings.TrimSuffix(strings.TrimPrefix(c.Resource, manifest.ResourceRuleset+"["), "]")
 
 	var rs *manifest.Ruleset
-	for i := range repo.Spec.Rulesets {
-		if repo.Spec.Rulesets[i].Name == rulesetName {
-			rs = &repo.Spec.Rulesets[i]
+	for i := range repo.Spec.Rulesets.Value {
+		if repo.Spec.Rulesets.Value[i].Name == rulesetName {
+			rs = &repo.Spec.Rulesets.Value[i]
 			break
 		}
 	}

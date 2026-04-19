@@ -518,7 +518,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		key:    "branch_protection",
 		kind:   fieldCollection,
 		valueVal: func(spec manifest.RepositorySpec) any {
-			return spec.BranchProtection
+			return spec.BranchProtection.Value
 		},
 	},
 	{
@@ -526,7 +526,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		key:    "rulesets",
 		kind:   fieldCollection,
 		valueVal: func(spec manifest.RepositorySpec) any {
-			return spec.Rulesets
+			return spec.Rulesets.Value
 		},
 	},
 	{
@@ -821,10 +821,10 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	diffs = append(diffs, compareSecurity(local.Security, imported.Security)...)
 
 	// Branch protection (Phase 2c)
-	diffs = append(diffs, compareBranchProtection(local.BranchProtection, imported.BranchProtection)...)
+	diffs = append(diffs, compareBranchProtection(local.BranchProtection.Value, imported.BranchProtection.Value)...)
 
 	// Rulesets (Phase 2c)
-	diffs = append(diffs, compareRulesets(local.Rulesets, imported.Rulesets)...)
+	diffs = append(diffs, compareRulesets(local.Rulesets.Value, imported.Rulesets.Value)...)
 
 	// Variables (Phase 2d)
 	diffs = append(diffs, compareVariables(local.Variables, imported.Variables)...)
@@ -1457,10 +1457,14 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	override.MergeStrategy = minimalMergeStrategy(defaults.MergeStrategy, imported.MergeStrategy)
 
 	// BranchProtection: only include rules that differ from defaults (by pattern, field-level).
-	override.BranchProtection = minimalBranchProtection(defaults.BranchProtection, imported.BranchProtection)
+	if bp := minimalBranchProtection(defaults.BranchProtection.Value, imported.BranchProtection.Value); len(bp) > 0 {
+		override.BranchProtection = manifest.NewNullable(bp)
+	}
 
 	// Rulesets: only include rulesets that differ from or are absent in defaults.
-	override.Rulesets = minimalRulesets(defaults.Rulesets, imported.Rulesets)
+	if rs := minimalRulesets(defaults.Rulesets.Value, imported.Rulesets.Value); len(rs) > 0 {
+		override.Rulesets = manifest.NewNullable(rs)
+	}
 
 	// Actions: key-level comparison (matches mergeActions behavior).
 	override.Actions = minimalActions(defaults.Actions, imported.Actions)

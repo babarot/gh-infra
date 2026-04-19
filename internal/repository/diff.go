@@ -233,7 +233,24 @@ func diffMergeStrategy(name string, desired *manifest.Repository, current *Curre
 func diffBranchProtection(name string, desired *manifest.Repository, current *CurrentState) []Change {
 	var changes []Change
 
-	for _, dbp := range desired.Spec.BranchProtection {
+	// Explicit null → delete all existing branch protection rules
+	if desired.Spec.BranchProtection.IsNull() {
+		for pattern, cbp := range current.BranchProtection {
+			resource := fmt.Sprintf("%s[%s]", manifest.ResourceBranchProtection, pattern)
+			children := bpDeleteChildren(cbp)
+			changes = append(changes, Change{
+				Type:     ChangeDelete,
+				Resource: resource,
+				Name:     name,
+				Field:    "branch_protection",
+				OldValue: pattern,
+				Children: children,
+			})
+		}
+		return changes
+	}
+
+	for _, dbp := range desired.Spec.BranchProtection.Value {
 		cbp, exists := current.BranchProtection[dbp.Pattern]
 		resource := fmt.Sprintf("%s[%s]", manifest.ResourceBranchProtection, dbp.Pattern)
 
@@ -319,10 +336,37 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 	return changes
 }
 
+// rulesetDeleteInfo carries the information needed to delete a ruleset.
+// Stored in Change.OldValue to avoid using Children (which applyChange expands recursively).
+type rulesetDeleteInfo struct {
+	ID     int
+	Target string
+	Name   string
+}
+
+func (r rulesetDeleteInfo) String() string { return r.Name }
+
 func diffRulesets(ctx context.Context, name string, desired *manifest.Repository, current *CurrentState, resolver *manifest.Resolver) []Change {
 	var changes []Change
 
-	for _, drs := range desired.Spec.Rulesets {
+	// Explicit null → delete all existing rulesets
+	if desired.Spec.Rulesets.IsNull() {
+		for rsName, rs := range current.Rulesets {
+			resource := fmt.Sprintf("%s[%s]", manifest.ResourceRuleset, rsName)
+			children := rsDeleteChildren(rs)
+			changes = append(changes, Change{
+				Type:     ChangeDelete,
+				Resource: resource,
+				Name:     name,
+				Field:    "ruleset",
+				OldValue: rulesetDeleteInfo{ID: rs.ID, Target: rs.Target, Name: rsName},
+				Children: children,
+			})
+		}
+		return changes
+	}
+
+	for _, drs := range desired.Spec.Rulesets.Value {
 		crs, exists := current.Rulesets[drs.Name]
 		resource := fmt.Sprintf("%s[%s]", manifest.ResourceRuleset, drs.Name)
 
@@ -817,4 +861,69 @@ func stringSliceEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// bpDeleteChildren builds display-only children showing the current values
+// of a branch protection rule that is about to be deleted.
+func bpDeleteChildren(cbp *CurrentBranchProtection) []Change {
+	children := []Change{
+		{Type: ChangeDelete, Field: "required_reviews", OldValue: cbp.RequiredReviews},
+		{Type: ChangeDelete, Field: "dismiss_stale_reviews", OldValue: cbp.DismissStaleReviews},
+		{Type: ChangeDelete, Field: "require_code_owner_reviews", OldValue: cbp.RequireCodeOwnerReviews},
+		{Type: ChangeDelete, Field: "enforce_admins", OldValue: cbp.EnforceAdmins},
+		{Type: ChangeDelete, Field: "allow_force_pushes", OldValue: cbp.AllowForcePushes},
+		{Type: ChangeDelete, Field: "allow_deletions", OldValue: cbp.AllowDeletions},
+	}
+	if cbp.RequireStatusChecks != nil {
+		children = append(children,
+			Change{Type: ChangeDelete, Field: "require_status_checks.strict", OldValue: cbp.RequireStatusChecks.Strict},
+		)
+		if len(cbp.RequireStatusChecks.Contexts) > 0 {
+			children = append(children,
+				Change{Type: ChangeDelete, Field: "require_status_checks.contexts", OldValue: cbp.RequireStatusChecks.Contexts},
+			)
+		}
+	}
+	return children
+}
+
+// rsDeleteChildren builds display-only children showing the current values
+// of a ruleset that is about to be deleted.
+func rsDeleteChildren(rs *CurrentRuleset) []Change {
+	children := []Change{
+		{Type: ChangeDelete, Field: "target", OldValue: rs.Target},
+		{Type: ChangeDelete, Field: "enforcement", OldValue: rs.Enforcement},
+	}
+	if len(rs.BypassActors) > 0 {
+		children = append(children, Change{
+			Type: ChangeDelete, Field: "bypass_actors", OldValue: fmt.Sprintf("%d actors", len(rs.BypassActors)),
+		})
+	}
+	if rs.Conditions != nil && rs.Conditions.RefName != nil {
+		children = append(children, Change{
+			Type: ChangeDelete, Field: "conditions", OldValue: formatConditions(rs.Conditions.RefName.Include, rs.Conditions.RefName.Exclude),
+		})
+	}
+	if rs.Rules.NonFastForward {
+		children = append(children, Change{Type: ChangeDelete, Field: "rules.non_fast_forward", OldValue: true})
+	}
+	if rs.Rules.Deletion {
+		children = append(children, Change{Type: ChangeDelete, Field: "rules.deletion", OldValue: true})
+	}
+	if rs.Rules.Creation {
+		children = append(children, Change{Type: ChangeDelete, Field: "rules.creation", OldValue: true})
+	}
+	if rs.Rules.RequiredLinearHistory {
+		children = append(children, Change{Type: ChangeDelete, Field: "rules.required_linear_history", OldValue: true})
+	}
+	if rs.Rules.RequiredSignatures {
+		children = append(children, Change{Type: ChangeDelete, Field: "rules.required_signatures", OldValue: true})
+	}
+	if rs.Rules.PullRequest != nil {
+		children = append(children, Change{Type: ChangeDelete, Field: "rules.pull_request", OldValue: "enabled"})
+	}
+	if rs.Rules.RequiredStatusChecks != nil {
+		children = append(children, Change{Type: ChangeDelete, Field: "rules.required_status_checks", OldValue: "enabled"})
+	}
+	return children
 }

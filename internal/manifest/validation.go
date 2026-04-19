@@ -12,17 +12,30 @@ func (r *Repository) Validate() error {
 		return err
 	}
 	name := r.Metadata.Name
-	// Branch protection: element tag validation
-	for i, bp := range r.Spec.BranchProtection {
-		if err := ValidateStruct(fmt.Sprintf("%s: spec.branch_protection[%d]", name, i), &bp); err != nil {
-			return err
+	// Branch protection: element tag validation + uniqueness check
+	if !r.Spec.BranchProtection.IsNull() {
+		bpPatterns := make(map[string]bool)
+		for i, bp := range r.Spec.BranchProtection.Value {
+			if bpPatterns[bp.Pattern] {
+				return fmt.Errorf("%s: duplicate branch_protection pattern %q", name, bp.Pattern)
+			}
+			bpPatterns[bp.Pattern] = true
+			if err := ValidateStruct(fmt.Sprintf("%s: spec.branch_protection[%d]", name, i), &bp); err != nil {
+				return err
+			}
 		}
 	}
-	// Rulesets: element tag validation + cross-field checks
-	for i, rs := range r.Spec.Rulesets {
-		if err := ValidateStruct(fmt.Sprintf("%s: spec.rulesets[%d]", name, i), &rs); err != nil {
-			return err
-		}
+	// Rulesets: element tag validation + cross-field checks + uniqueness check
+	if !r.Spec.Rulesets.IsNull() {
+		rsNames := make(map[string]bool)
+		for i, rs := range r.Spec.Rulesets.Value {
+			if rsNames[rs.Name] {
+				return fmt.Errorf("%s: duplicate ruleset name %q", name, rs.Name)
+			}
+			rsNames[rs.Name] = true
+			if err := ValidateStruct(fmt.Sprintf("%s: spec.rulesets[%d]", name, i), &rs); err != nil {
+				return err
+			}
 		for j, ba := range rs.BypassActors {
 			// Exactly one actor type must be specified
 			count := 0
@@ -55,6 +68,7 @@ func (r *Repository) Validate() error {
 			if len(rs.Conditions.RefName.Include) == 0 {
 				return fmt.Errorf("%s: rulesets[%s].conditions.ref_name.include must not be empty", name, rs.Name)
 			}
+		}
 		}
 	}
 	// Secrets/Variables: element tag validation (unique handled by tags)

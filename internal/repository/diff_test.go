@@ -715,9 +715,9 @@ func TestDiff_MergeStrategy_CommitStrings(t *testing.T) {
 func TestDiff_BranchProtection(t *testing.T) {
 	t.Run("create new branch protection", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", RequiredReviews: manifest.Ptr(2)},
-		}
+		})
 		c := baseState()
 
 		changes := diffBranchProtection("org/repo", d, c)
@@ -768,9 +768,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("update required_reviews", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", RequiredReviews: manifest.Ptr(3)},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern:         "main",
@@ -789,9 +789,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("update dismiss_stale_reviews", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", DismissStaleReviews: manifest.Ptr(true)},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", DismissStaleReviews: false}
 
@@ -804,9 +804,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("update enforce_admins", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", EnforceAdmins: manifest.Ptr(true)},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", EnforceAdmins: false}
 
@@ -819,9 +819,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("update allow_force_pushes", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", AllowForcePushes: manifest.Ptr(true)},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", AllowForcePushes: false}
 
@@ -834,9 +834,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("update allow_deletions", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", AllowDeletions: manifest.Ptr(true)},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main", AllowDeletions: false}
 
@@ -849,7 +849,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("create status checks when current has none", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{
 				Pattern: "main",
 				RequireStatusChecks: &manifest.StatusChecks{
@@ -857,7 +857,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 					Contexts: []string{"ci/test"},
 				},
 			},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern:             "main",
@@ -873,7 +873,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("update status checks strict", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{
 				Pattern: "main",
 				RequireStatusChecks: &manifest.StatusChecks{
@@ -881,7 +881,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 					Contexts: []string{"ci/test"},
 				},
 			},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern: "main",
@@ -900,7 +900,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("update status checks contexts", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{
 				Pattern: "main",
 				RequireStatusChecks: &manifest.StatusChecks{
@@ -908,7 +908,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 					Contexts: []string{"ci/test", "ci/lint"},
 				},
 			},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern: "main",
@@ -927,9 +927,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 
 	t.Run("no change when existing protection matches", func(t *testing.T) {
 		d := baseDesired()
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", RequiredReviews: manifest.Ptr(2), EnforceAdmins: manifest.Ptr(true)},
-		}
+		})
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{
 			Pattern:         "main",
@@ -940,6 +940,89 @@ func TestDiff_BranchProtection(t *testing.T) {
 		changes := diffBranchProtection("org/repo", d, c)
 		if len(changes) != 0 {
 			t.Errorf("expected no changes, got %d: %v", len(changes), changes)
+		}
+	})
+
+	t.Run("null deletes all existing branch protection", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.BranchProtection = manifest.NullValue[[]manifest.BranchProtection]()
+		c := baseState()
+		c.BranchProtection["main"] = &CurrentBranchProtection{
+			Pattern:         "main",
+			RequiredReviews: 1,
+		}
+		c.BranchProtection["develop"] = &CurrentBranchProtection{
+			Pattern:         "develop",
+			RequiredReviews: 2,
+		}
+
+		changes := diffBranchProtection("org/repo", d, c)
+		if len(changes) != 2 {
+			t.Fatalf("expected 2 delete changes, got %d: %v", len(changes), changes)
+		}
+		for _, ch := range changes {
+			if ch.Type != ChangeDelete {
+				t.Errorf("expected delete, got %q", ch.Type)
+			}
+		}
+	})
+
+	t.Run("null with no existing protection produces no changes", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.BranchProtection = manifest.NullValue[[]manifest.BranchProtection]()
+		c := baseState()
+
+		changes := diffBranchProtection("org/repo", d, c)
+		if len(changes) != 0 {
+			t.Errorf("expected no changes, got %d: %v", len(changes), changes)
+		}
+	})
+
+	t.Run("unset branch protection produces no changes", func(t *testing.T) {
+		d := baseDesired()
+		// BranchProtection is zero value (unset)
+		c := baseState()
+		c.BranchProtection["main"] = &CurrentBranchProtection{
+			Pattern:         "main",
+			RequiredReviews: 1,
+		}
+
+		changes := diffBranchProtection("org/repo", d, c)
+		if len(changes) != 0 {
+			t.Errorf("expected no changes for unset field, got %d: %v", len(changes), changes)
+		}
+	})
+}
+
+func TestDiff_Rulesets_Null(t *testing.T) {
+	t.Run("null deletes all existing rulesets", func(t *testing.T) {
+		d := baseDesired()
+		d.Spec.Rulesets = manifest.NullValue[[]manifest.Ruleset]()
+		c := baseState()
+		c.Rulesets["protect-main"] = &CurrentRuleset{
+			ID:          42,
+			Name:        "protect-main",
+			Target:      "branch",
+			Enforcement: "active",
+		}
+
+		changes := diffRulesets(t.Context(), "org/repo", d, c, nil)
+		if len(changes) != 1 {
+			t.Fatalf("expected 1 delete change, got %d: %v", len(changes), changes)
+		}
+		ch := changes[0]
+		if ch.Type != ChangeDelete {
+			t.Errorf("expected delete, got %q", ch.Type)
+		}
+		info, ok := ch.OldValue.(rulesetDeleteInfo)
+		if !ok {
+			t.Fatalf("expected rulesetDeleteInfo, got %T", ch.OldValue)
+		}
+		if info.ID != 42 {
+			t.Errorf("expected ID 42, got %d", info.ID)
+		}
+		if info.Target != "branch" {
+			t.Errorf("expected target branch, got %q", info.Target)
 		}
 	})
 }
@@ -1331,9 +1414,9 @@ func TestDiff_FullIntegration(t *testing.T) {
 		d.Spec.Features = &manifest.Features{
 			Issues: manifest.Ptr(false),
 		}
-		d.Spec.BranchProtection = []manifest.BranchProtection{
+		d.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 			{Pattern: "main", RequiredReviews: manifest.Ptr(2)},
-		}
+		})
 		d.Spec.Secrets = []manifest.Secret{
 			{Name: "TOKEN", Value: "val"},
 		}
@@ -1506,7 +1589,7 @@ func collectChildFields(changes []Change) map[string]bool {
 
 func TestDiff_Rulesets_Create(t *testing.T) {
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -1514,7 +1597,7 @@ func TestDiff_Rulesets_Create(t *testing.T) {
 				NonFastForward: manifest.Ptr(true),
 			},
 		},
-	}
+	})
 	current := baseState()
 
 	changes := Diff(context.Background(), desired, current)
@@ -1541,7 +1624,7 @@ func TestDiff_Rulesets_Create(t *testing.T) {
 
 func TestDiff_Rulesets_Noop(t *testing.T) {
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -1551,7 +1634,7 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 				Deletion:       manifest.Ptr(false),
 			},
 		},
-	}
+	})
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
 		ID:          1,
@@ -1572,13 +1655,13 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 
 func TestDiff_Rulesets_UpdateEnforcement(t *testing.T) {
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("evaluate"),
 			Rules:       manifest.RulesetRules{},
 		},
-	}
+	})
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
 		ID:          1,
@@ -1605,7 +1688,7 @@ func TestDiff_Rulesets_UpdateEnforcement(t *testing.T) {
 
 func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name: "protect-main",
 			Rules: manifest.RulesetRules{
@@ -1614,7 +1697,7 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 				RequiredLinearHistory: manifest.Ptr(true),
 			},
 		},
-	}
+	})
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
 		ID:   1,
@@ -1640,7 +1723,7 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 
 func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name: "protect-main",
 			Rules: manifest.RulesetRules{
@@ -1650,7 +1733,7 @@ func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 				},
 			},
 		},
-	}
+	})
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
 		ID:   1,
@@ -1680,7 +1763,7 @@ func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
 	resolver := manifest.NewResolver(mock, "org")
 
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -1690,7 +1773,7 @@ func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
 			},
 			Rules: manifest.RulesetRules{},
 		},
-	}
+	})
 
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
@@ -1715,7 +1798,7 @@ func TestDiff_Rulesets_BypassActorsChanged(t *testing.T) {
 	resolver := manifest.NewResolver(mock, "org")
 
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -1725,7 +1808,7 @@ func TestDiff_Rulesets_BypassActorsChanged(t *testing.T) {
 			},
 			Rules: manifest.RulesetRules{},
 		},
-	}
+	})
 
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
@@ -1755,7 +1838,7 @@ func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
 	resolver := manifest.NewResolver(mock, "org")
 
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -1768,7 +1851,7 @@ func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
 				},
 			},
 		},
-	}
+	})
 
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
@@ -1797,7 +1880,7 @@ func TestDiff_Rulesets_StatusChecksNoApp(t *testing.T) {
 	resolver := manifest.NewResolver(mock, "org")
 
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -1810,7 +1893,7 @@ func TestDiff_Rulesets_StatusChecksNoApp(t *testing.T) {
 				},
 			},
 		},
-	}
+	})
 
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{
@@ -1843,7 +1926,7 @@ func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
 	resolver := manifest.NewResolver(mock, "org")
 
 	desired := baseDesired()
-	desired.Spec.Rulesets = []manifest.Ruleset{
+	desired.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -1856,7 +1939,7 @@ func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
 				},
 			},
 		},
-	}
+	})
 
 	current := baseState()
 	current.Rulesets["protect-main"] = &CurrentRuleset{

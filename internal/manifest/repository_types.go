@@ -85,8 +85,8 @@ type RepositorySpec struct {
 	MergeStrategy       *MergeStrategy     `yaml:"merge_strategy,omitempty"`
 	ReleaseImmutability *bool              `yaml:"release_immutability,omitempty"`
 	Security            *Security          `yaml:"security,omitempty"`
-	BranchProtection    []BranchProtection `yaml:"branch_protection,omitempty" validate:"unique=pattern"`
-	Rulesets            []Ruleset          `yaml:"rulesets,omitempty"          validate:"unique=name"`
+	BranchProtection    Nullable[[]BranchProtection] `yaml:"branch_protection,omitempty"`
+	Rulesets            Nullable[[]Ruleset]          `yaml:"rulesets,omitempty"`
 	Secrets             []Secret           `yaml:"secrets,omitempty"           validate:"unique=name"`
 	Variables           []Variable         `yaml:"variables,omitempty"         validate:"unique=name"`
 	Actions             *Actions           `yaml:"actions,omitempty"`

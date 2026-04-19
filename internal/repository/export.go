@@ -47,6 +47,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		repo.Spec.Homepage = manifest.Ptr(r.Homepage)
 	}
 
+	var bps []manifest.BranchProtection
 	for _, bp := range r.BranchProtection {
 		mbp := manifest.BranchProtection{
 			Pattern:                 bp.Pattern,
@@ -63,9 +64,13 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 				Contexts: bp.RequireStatusChecks.Contexts,
 			}
 		}
-		repo.Spec.BranchProtection = append(repo.Spec.BranchProtection, mbp)
+		bps = append(bps, mbp)
+	}
+	if len(bps) > 0 {
+		repo.Spec.BranchProtection = manifest.NewNullable(bps)
 	}
 
+	var rss []manifest.Ruleset
 	for _, rs := range r.Rulesets {
 		mrs := manifest.Ruleset{
 			Name:        rs.Name,
@@ -120,7 +125,10 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			}
 			mrs.Rules.RequiredStatusChecks = sc
 		}
-		repo.Spec.Rulesets = append(repo.Spec.Rulesets, mrs)
+		rss = append(rss, mrs)
+	}
+	if len(rss) > 0 {
+		repo.Spec.Rulesets = manifest.NewNullable(rss)
 	}
 
 	varNames := make([]string, 0, len(r.Variables))

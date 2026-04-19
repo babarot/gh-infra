@@ -514,7 +514,7 @@ func TestApplyBranchProtection(t *testing.T) {
 	reviews := 2
 	enforceAdmins := true
 	repo := newTestRepo("myorg", "myrepo")
-	repo.Spec.BranchProtection = []manifest.BranchProtection{
+	repo.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
 		{
 			Pattern:         "main",
 			RequiredReviews: &reviews,
@@ -524,7 +524,7 @@ func TestApplyBranchProtection(t *testing.T) {
 				Contexts: []string{"ci/test"},
 			},
 		},
-	}
+	})
 
 	changes := []Change{
 		{
@@ -553,6 +553,81 @@ func TestApplyBranchProtection(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected API call to branch protection endpoint with PUT, got calls: %v", mock.Called)
+	}
+}
+
+func TestApplyBranchProtection_Delete(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	// Spec has null branch protection (delete intent)
+	repo.Spec.BranchProtection = manifest.NullValue[[]manifest.BranchProtection]()
+
+	changes := []Change{
+		{
+			Type:     ChangeDelete,
+			Resource: "BranchProtection[main]",
+			Name:     "myorg/myrepo",
+			Field:    "branch_protection",
+			OldValue: "main",
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	found := false
+	for _, call := range mock.Called {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "repos/myorg/myrepo/branches/main/protection") &&
+			strings.Contains(joined, "DELETE") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected DELETE API call to branch protection endpoint, got calls: %v", mock.Called)
+	}
+}
+
+func TestApplyRuleset_Delete(t *testing.T) {
+	mock := &gh.MockRunner{
+		// resolveRulesetID won't be called — ID is in OldValue
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	repo.Spec.Rulesets = manifest.NullValue[[]manifest.Ruleset]()
+
+	changes := []Change{
+		{
+			Type:     ChangeDelete,
+			Resource: "Ruleset[protect-main]",
+			Name:     "myorg/myrepo",
+			Field:    "ruleset",
+			OldValue: rulesetDeleteInfo{ID: 42, Target: "branch", Name: "protect-main"},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	found := false
+	for _, call := range mock.Called {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "repos/myorg/myrepo/rulesets/42") &&
+			strings.Contains(joined, "DELETE") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected DELETE API call to rulesets/42 endpoint, got calls: %v", mock.Called)
 	}
 }
 
@@ -681,7 +756,7 @@ func TestApplyRuleset_Create(t *testing.T) {
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
-	repo.Spec.Rulesets = []manifest.Ruleset{
+	repo.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -696,7 +771,7 @@ func TestApplyRuleset_Create(t *testing.T) {
 				Deletion:       manifest.Ptr(true),
 			},
 		},
-	}
+	})
 
 	changes := []Change{
 		{
@@ -741,14 +816,14 @@ func TestApplyRuleset_Update(t *testing.T) {
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
-	repo.Spec.Rulesets = []manifest.Ruleset{
+	repo.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("evaluate"),
 			Target:      manifest.Ptr("branch"),
 			Rules:       manifest.RulesetRules{},
 		},
-	}
+	})
 
 	changes := []Change{
 		{

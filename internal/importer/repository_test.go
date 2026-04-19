@@ -718,17 +718,17 @@ func TestMinimalOverride_LabelsAllSame(t *testing.T) {
 
 func TestMinimalOverride_BranchProtection(t *testing.T) {
 	defaults := manifest.RepositorySpec{
-		BranchProtection: []manifest.BranchProtection{
+		BranchProtection: manifest.NewNullable([]manifest.BranchProtection{
 			{
 				Pattern:         "main",
 				RequiredReviews: manifest.Ptr(1),
 				EnforceAdmins:   manifest.Ptr(true),
 			},
-		},
+		}),
 	}
 
 	imported := manifest.RepositorySpec{
-		BranchProtection: []manifest.BranchProtection{
+		BranchProtection: manifest.NewNullable([]manifest.BranchProtection{
 			{
 				Pattern:         "main",
 				RequiredReviews: manifest.Ptr(2),    // changed
@@ -738,16 +738,16 @@ func TestMinimalOverride_BranchProtection(t *testing.T) {
 				Pattern:         "release/*",
 				RequiredReviews: manifest.Ptr(1), // new
 			},
-		},
+		}),
 	}
 
 	override := minimalOverride(defaults, imported)
 
-	if len(override.BranchProtection) != 2 {
-		t.Fatalf("expected 2 bp rules, got %d: %+v", len(override.BranchProtection), override.BranchProtection)
+	if len(override.BranchProtection.Value) != 2 {
+		t.Fatalf("expected 2 bp rules, got %d: %+v", len(override.BranchProtection.Value), override.BranchProtection.Value)
 	}
 	// main: only required_reviews differs
-	mainBP := override.BranchProtection[0]
+	mainBP := override.BranchProtection.Value[0]
 	if mainBP.Pattern != "main" {
 		t.Errorf("expected main, got %q", mainBP.Pattern)
 	}
@@ -758,46 +758,46 @@ func TestMinimalOverride_BranchProtection(t *testing.T) {
 		t.Errorf("main enforce_admins should be nil (same as defaults)")
 	}
 	// release/* is new, included as-is
-	if override.BranchProtection[1].Pattern != "release/*" {
-		t.Errorf("expected release/*, got %q", override.BranchProtection[1].Pattern)
+	if override.BranchProtection.Value[1].Pattern != "release/*" {
+		t.Errorf("expected release/*, got %q", override.BranchProtection.Value[1].Pattern)
 	}
 }
 
 func TestMinimalOverride_BranchProtectionAllSame(t *testing.T) {
-	bp := []manifest.BranchProtection{
+	bp := manifest.NewNullable([]manifest.BranchProtection{
 		{Pattern: "main", RequiredReviews: manifest.Ptr(1)},
-	}
+	})
 	defaults := manifest.RepositorySpec{BranchProtection: bp}
 	imported := manifest.RepositorySpec{BranchProtection: bp}
 
 	override := minimalOverride(defaults, imported)
 
-	if len(override.BranchProtection) != 0 {
-		t.Errorf("expected no bp overrides, got %d", len(override.BranchProtection))
+	if len(override.BranchProtection.Value) != 0 {
+		t.Errorf("expected no bp overrides, got %d", len(override.BranchProtection.Value))
 	}
 }
 
 func TestMinimalOverride_Rulesets(t *testing.T) {
 	defaults := manifest.RepositorySpec{
-		Rulesets: []manifest.Ruleset{
+		Rulesets: manifest.NewNullable([]manifest.Ruleset{
 			{Name: "default-rs", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")},
-		},
+		}),
 	}
 
 	imported := manifest.RepositorySpec{
-		Rulesets: []manifest.Ruleset{
+		Rulesets: manifest.NewNullable([]manifest.Ruleset{
 			{Name: "default-rs", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")}, // same
 			{Name: "custom-rs", Target: manifest.Ptr("tag"), Enforcement: manifest.Ptr("active")},     // new
-		},
+		}),
 	}
 
 	override := minimalOverride(defaults, imported)
 
-	if len(override.Rulesets) != 1 {
-		t.Fatalf("expected 1 ruleset override, got %d: %+v", len(override.Rulesets), override.Rulesets)
+	if len(override.Rulesets.Value) != 1 {
+		t.Fatalf("expected 1 ruleset override, got %d: %+v", len(override.Rulesets.Value), override.Rulesets.Value)
 	}
-	if override.Rulesets[0].Name != "custom-rs" {
-		t.Errorf("expected custom-rs, got %q", override.Rulesets[0].Name)
+	if override.Rulesets.Value[0].Name != "custom-rs" {
+		t.Errorf("expected custom-rs, got %q", override.Rulesets.Value[0].Name)
 	}
 }
 
@@ -1030,7 +1030,7 @@ repositories:
 		Spec: manifest.RepositorySpec{
 			Visibility:  manifest.Ptr("private"),
 			Description: manifest.Ptr("hello"),
-			Rulesets: []manifest.Ruleset{
+			Rulesets: manifest.NewNullable([]manifest.Ruleset{
 				{
 					Name:        "main",
 					Target:      &branch,
@@ -1042,7 +1042,7 @@ repositories:
 						RequiredLinearHistory: manifest.Ptr(false),
 					},
 				},
-			},
+			}),
 		},
 	}
 

@@ -17,9 +17,9 @@ func TestValidateRepository(t *testing.T) {
 				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
 				Spec: RepositorySpec{
 					Visibility: Ptr("public"),
-					BranchProtection: []BranchProtection{
+					BranchProtection: NewNullable([]BranchProtection{
 						{Pattern: "main"},
-					},
+					}),
 				},
 			},
 		},
@@ -79,7 +79,7 @@ func TestValidateRepository(t *testing.T) {
 			repo: &Repository{
 				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
 				Spec: RepositorySpec{
-					BranchProtection: []BranchProtection{{Pattern: ""}},
+					BranchProtection: NewNullable([]BranchProtection{{Pattern: ""}}),
 				},
 			},
 			wantErr: "pattern is required",
@@ -89,10 +89,10 @@ func TestValidateRepository(t *testing.T) {
 			repo: &Repository{
 				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
 				Spec: RepositorySpec{
-					BranchProtection: []BranchProtection{
+					BranchProtection: NewNullable([]BranchProtection{
 						{Pattern: "main"},
 						{Pattern: "release/*"},
-					},
+					}),
 				},
 			},
 		},
@@ -402,136 +402,136 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "valid ruleset",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{
 						Name:        "protect-main",
 						Enforcement: Ptr("active"),
 						Target:      Ptr("branch"),
 						Rules:       RulesetRules{NonFastForward: Ptr(true)},
 					},
-				}
+				})
 			},
 		},
 		{
 			name: "empty name",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{{Name: ""}}
+				r.Spec.Rulesets = NewNullable([]Ruleset{{Name: ""}})
 			},
 			wantErr: "name is required",
 		},
 		{
 			name: "duplicate name",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "dup", Rules: RulesetRules{}},
 					{Name: "dup", Rules: RulesetRules{}},
-				}
+				})
 			},
-			wantErr: "duplicate name",
+			wantErr: "duplicate ruleset name",
 		},
 		{
 			name: "invalid enforcement",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", Enforcement: Ptr("invalid")},
-				}
+				})
 			},
 			wantErr: "must be one of",
 		},
 		{
 			name: "invalid target",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", Target: Ptr("push")},
-				}
+				})
 			},
 			wantErr: "must be one of",
 		},
 		{
 			name: "no actor type specified",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{BypassMode: "always"},
 					}},
-				}
+				})
 			},
 			wantErr: "must specify one of",
 		},
 		{
 			name: "multiple actor types specified",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", Team: "maintainers", BypassMode: "always"},
 					}},
-				}
+				})
 			},
 			wantErr: "exactly one",
 		},
 		{
 			name: "invalid role",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "invalid", BypassMode: "always"},
 					}},
-				}
+				})
 			},
 			wantErr: "must be one of",
 		},
 		{
 			name: "valid bypass_mode always",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "always"},
 					}},
-				}
+				})
 			},
 		},
 		{
 			name: "valid bypass_mode pull_request",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "pull_request"},
 					}},
-				}
+				})
 			},
 		},
 		{
 			name: "valid bypass_mode exempt",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "exempt"},
 					}},
-				}
+				})
 			},
 		},
 		{
 			name: "invalid bypass_mode",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "invalid"},
 					}},
-				}
+				})
 			},
 			wantErr: "bypass_mode",
 		},
 		{
 			name: "empty ref_name include",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = []Ruleset{
+				r.Spec.Rulesets = NewNullable([]Ruleset{
 					{
 						Name: "rs",
 						Conditions: &RulesetConditions{
 							RefName: &RulesetRefCondition{Include: []string{}},
 						},
 					},
-				}
+				})
 			},
 			wantErr: "include must not be empty",
 		},
