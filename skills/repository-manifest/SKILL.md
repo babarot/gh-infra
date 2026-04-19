@@ -28,6 +28,7 @@ metadata:
   name: my-repo
 reconcile:           # optional; controls collection reconciliation
   rulesets: additive # additive (default) | authoritative
+  labels: additive
 spec:
   # declare only managed fields
 ```
@@ -35,7 +36,7 @@ spec:
 Read these references as needed:
 
 - General settings and lifecycle: [references/general.md](./references/general.md)
-- Labels and label sync: [references/labels.md](./references/labels.md)
+- Labels and reconcile mode: [references/labels.md](./references/labels.md)
 - Actions settings and validation traps: [references/actions.md](./references/actions.md)
 - Rulesets and branch protection: [references/protection.md](./references/protection.md)
 - Secrets and variables: [references/secrets-variables.md](./references/secrets-variables.md)
@@ -54,6 +55,7 @@ metadata:
 defaults:
   reconcile:
     rulesets: authoritative
+    labels: additive
   spec:
     visibility: public
     features:
@@ -91,10 +93,11 @@ repositories:
 Override behavior matters:
 
 - Scalars are replaced
-- Lists are replaced entirely
+- Simple lists are replaced entirely
+- Keyed collections are merged by key
 - Maps are merged by key
 
-This means `labels` replace the default list, while `label_sync` replaces as a scalar.
+This means `topics` replace the default list, while `labels` and `reconcile.labels` are merged by key/collection.
 
 Read [references/repository-set.md](./references/repository-set.md) for the exact merge rules.
 
@@ -102,9 +105,9 @@ Read [references/repository-set.md](./references/repository-set.md) for the exac
 
 - `actions.enabled` is required when setting any other `actions.*` field
 - `actions.selected_actions` is valid only with `allowed_actions: selected`
-- `reconcile.rulesets: authoritative` and `reconcile.branch_protection: authoritative` delete undeclared remote entries; review `plan` carefully
-- `reconcile` without a corresponding `spec` collection is a parse error
-- `label_sync: mirror` deletes unmanaged labels; review `plan` carefully
+- `reconcile.labels: authoritative`, `reconcile.rulesets: authoritative`, and `reconcile.branch_protection: authoritative` delete undeclared remote entries; review `plan` carefully
+- `reconcile` without a corresponding `spec` collection is no-op; a collection is managed only when it appears in `spec`
+- `label_sync: mirror` is deprecated; use `reconcile.labels: authoritative`
 - for `gh infra import --into`, use the dedicated `import-into` skill
 - Repository deletion is not supported
 

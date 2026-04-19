@@ -13,11 +13,10 @@ func (r *Repository) Validate() error {
 	}
 	name := r.Metadata.Name
 	if r.Reconcile != nil {
-		if r.Reconcile.BranchProtection != nil && !r.Spec.BranchProtectionSet {
-			return fmt.Errorf("%s: reconcile.branch_protection requires spec.branch_protection to be present", name)
-		}
-		if r.Reconcile.Rulesets != nil && !r.Spec.RulesetsSet {
-			return fmt.Errorf("%s: reconcile.rulesets requires spec.rulesets to be present", name)
+		if r.Reconcile.Labels != nil {
+			if r.Spec.LabelSync != nil {
+				return fmt.Errorf("%s: cannot specify both reconcile.labels and spec.label_sync (use reconcile.labels)", name)
+			}
 		}
 	}
 	// Branch protection: element tag validation

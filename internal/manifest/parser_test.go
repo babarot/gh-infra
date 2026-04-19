@@ -1818,6 +1818,29 @@ func TestLabelSyncMode(t *testing.T) {
 	}
 }
 
+func TestLabelsReconcileMode(t *testing.T) {
+	tests := []struct {
+		name      string
+		reconcile *RepositoryReconcile
+		labelSync *string
+		want      string
+	}{
+		{"nil defaults to additive", nil, nil, CollectionReconcileAdditive},
+		{"legacy additive maps to additive", nil, Ptr(LabelSyncAdditive), CollectionReconcileAdditive},
+		{"legacy mirror maps to authoritative", nil, Ptr(LabelSyncMirror), CollectionReconcileAuthoritative},
+		{"reconcile additive wins", &RepositoryReconcile{Labels: Ptr(CollectionReconcileAdditive)}, Ptr(LabelSyncMirror), CollectionReconcileAdditive},
+		{"reconcile authoritative wins", &RepositoryReconcile{Labels: Ptr(CollectionReconcileAuthoritative)}, Ptr(LabelSyncAdditive), CollectionReconcileAuthoritative},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := LabelsReconcileMode(tt.reconcile, tt.labelSync)
+			if got != tt.want {
+				t.Errorf("LabelsReconcileMode() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLabelSyncValidation(t *testing.T) {
 	dir := t.TempDir()
 	content := `
@@ -1840,27 +1863,41 @@ spec:
 	}
 }
 
+func TestLabelSyncDeprecationWarning(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  label_sync: mirror
+  labels: []
+`
+	path := filepath.Join(dir, "repo.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll error: %v", err)
+	}
+	if len(result.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+	if !strings.Contains(result.Warnings[0], `"label_sync" is deprecated`) {
+		t.Fatalf("warning = %q, want label_sync deprecation", result.Warnings[0])
+	}
+}
+
 func TestRepositoryReconcileValidation(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
 		wantErr string
 	}{
-		{
-			name: "reconcile without spec collection",
-			content: `
-apiVersion: v1
-kind: Repository
-metadata:
-  owner: org
-  name: repo
-reconcile:
-  rulesets: authoritative
-spec:
-  description: repo
-`,
-			wantErr: "reconcile.rulesets requires spec.rulesets",
-		},
 		{
 			name: "invalid reconcile mode",
 			content: `
@@ -1902,6 +1939,35 @@ spec:
 `,
 			wantErr: "branch_protection must be a sequence",
 		},
+		{
+			name: "reconcile labels conflicts with label_sync",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+reconcile:
+  labels: authoritative
+spec:
+  label_sync: mirror
+  labels: []
+`,
+			wantErr: "cannot specify both reconcile.labels and spec.label_sync",
+		},
+		{
+			name: "null labels rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  labels:
+`,
+			wantErr: "labels must be a sequence",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1920,6 +1986,38 @@ spec:
 				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestRepositoryReconcileWithoutSpecCollectionAllowed(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+reconcile:
+  labels: authoritative
+  rulesets: authoritative
+  branch_protection: authoritative
+spec:
+  description: repo
+`
+	path := filepath.Join(dir, "repo.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+	if repos[0].Spec.LabelsSet || repos[0].Spec.RulesetsSet || repos[0].Spec.BranchProtectionSet {
+		t.Fatalf("omitted collections should remain unset: %+v", repos[0].Spec)
 	}
 }
 
@@ -1959,6 +2057,42 @@ spec:
 	}
 }
 
+func TestRepositoryReconcileLabelsAuthoritativeEmptyCollection(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+reconcile:
+  labels: authoritative
+spec:
+  labels: []
+`
+	path := filepath.Join(dir, "repo.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+	if !repos[0].Spec.LabelsSet {
+		t.Fatal("labels presence was not tracked")
+	}
+	if got := LabelsReconcileMode(repos[0].Reconcile, repos[0].Spec.LabelSync); got != CollectionReconcileAuthoritative {
+		t.Fatalf("labels reconcile mode = %q, want %q", got, CollectionReconcileAuthoritative)
+	}
+	if len(repos[0].Spec.Labels) != 0 {
+		t.Fatalf("labels length = %d, want 0", len(repos[0].Spec.Labels))
+	}
+}
+
 func TestRepositorySet_ReconcileMerge(t *testing.T) {
 	dir := t.TempDir()
 	content := `
@@ -1968,14 +2102,19 @@ metadata:
   owner: org
 defaults:
   reconcile:
+    labels: authoritative
     rulesets: authoritative
   spec:
+    labels:
+      - name: kind/bug
+        color: d73a4a
     rulesets:
       - name: protect-main
 repositories:
   - name: inherits-reconcile
   - name: overrides-reconcile
     reconcile:
+      labels: additive
       rulesets: additive
 `
 	path := filepath.Join(dir, "reposet.yaml")
@@ -1995,6 +2134,12 @@ repositories:
 	}
 	if got := RulesetsReconcileMode(repos[1].Reconcile); got != CollectionReconcileAdditive {
 		t.Fatalf("repo[1] rulesets reconcile mode = %q, want %q", got, CollectionReconcileAdditive)
+	}
+	if got := LabelsReconcileMode(repos[0].Reconcile, repos[0].Spec.LabelSync); got != CollectionReconcileAuthoritative {
+		t.Fatalf("repo[0] labels reconcile mode = %q, want %q", got, CollectionReconcileAuthoritative)
+	}
+	if got := LabelsReconcileMode(repos[1].Reconcile, repos[1].Spec.LabelSync); got != CollectionReconcileAdditive {
+		t.Fatalf("repo[1] labels reconcile mode = %q, want %q", got, CollectionReconcileAdditive)
 	}
 }
 

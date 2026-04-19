@@ -88,6 +88,7 @@ Initial supported collections:
 
 | Reconcile field | Applies to |
 |---|---|
+| `labels` | `spec.labels` |
 | `rulesets` | `spec.rulesets` |
 | `branch_protection` | `spec.branch_protection` |
 
@@ -108,17 +109,18 @@ do not specify `reconcile`.
 | YAML | Meaning |
 |---|---|
 | `spec.rulesets` omitted | rulesets unmanaged |
+| `reconcile.rulesets: authoritative` + `spec.rulesets` omitted | rulesets unmanaged |
 | `spec.rulesets` present, `reconcile.rulesets` omitted | additive management |
 | `reconcile.rulesets: additive` + non-empty `spec.rulesets` | create/update listed rulesets only |
 | `reconcile.rulesets: authoritative` + non-empty `spec.rulesets` | exact-set management; delete remote rulesets not listed |
 | `reconcile.rulesets: authoritative` + `spec.rulesets: []` | managed empty collection; delete all remote rulesets |
 | `rulesets:` / `rulesets: null` | invalid |
 
-If `reconcile.rulesets` is set but `spec.rulesets` is omitted, parsing should
-fail. A reconciliation policy without a corresponding desired collection is
-ambiguous and likely a mistake.
+If `reconcile.rulesets` is set but `spec.rulesets` is omitted, no ruleset
+changes are planned. `reconcile` is a policy for managed collections, not an
+ownership declaration by itself.
 
-The same rules apply to `branch_protection`.
+The same rules apply to `labels` and `branch_protection`.
 
 ### Empty sequences
 
@@ -206,8 +208,8 @@ Merge behavior:
 - `defaults.reconcile` provides default reconciliation policy.
 - `repositories[].reconcile` overrides defaults per collection.
 - `defaults.spec` and `repositories[].spec` continue to merge as today.
-- After merge, any reconcile policy that targets an omitted collection is an
-  error.
+- After merge, any omitted collection remains unmanaged even if a reconcile
+  policy exists for that collection.
 
 This lets an organization use `authoritative` by default while allowing individual
 repositories to opt back into `additive`.
@@ -353,18 +355,18 @@ be represented as data, not comments.
 - The schema becomes larger: `Repository`, `RepositorySet.defaults`, and
   `RepositorySet.repositories[]` need `reconcile` blocks.
 - Users must learn a new top-level concept.
-- `reconcile` and `spec` can become inconsistent, so validation must catch
-  policies targeting omitted collections.
+- `reconcile` can specify default policies for collections that some
+  repositories omit. This is useful for `RepositorySet`, but users must
+  understand that omitted collections remain unmanaged.
 - Authoritative mode can delete remote resources created manually or by other tools.
   Plan output must make that reason explicit.
-- `label_sync` remains a pre-existing special case. A later ADR may decide
-  whether to keep it, deprecate it, or migrate labels into the same `reconcile`
-  model.
+- `label_sync` remains accepted as a deprecated compatibility alias for labels,
+  so the implementation needs a migration path and warning.
 
 ### Implementation Notes
 
-- Start with `rulesets` and `branch_protection` only.
-- Keep `additive` as the default for both collections.
+- Start with `labels`, `rulesets`, and `branch_protection`.
+- Keep `additive` as the default for all supported collections.
 - Reject explicit null for these collection fields.
 - Track field presence during parsing so `omitted`, `[]`, and non-empty lists
   remain distinguishable.
@@ -372,5 +374,7 @@ be represented as data, not comments.
   entries not present in the desired collection.
 - In additive mode, diff should not generate deletes for undeclared remote
   entries.
+- Map legacy `spec.label_sync: mirror` to `reconcile.labels: authoritative`
+  for compatibility, but warn and reject manifests that specify both fields.
 - `plan` should include the reconcile policy in delete reasons.
 - `apply` can reuse existing delete APIs once diff emits delete changes.

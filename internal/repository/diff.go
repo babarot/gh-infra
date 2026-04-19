@@ -168,7 +168,7 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffRulesets(ctx, name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
-	changes = append(changes, diffLabels(name, desired, current, manifest.LabelSyncMode(desired.Spec.LabelSync))...)
+	changes = append(changes, diffLabels(name, desired, current, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
 	changes = append(changes, diffSecurity(name, desired, current)...)
@@ -253,6 +253,10 @@ func diffMergeStrategy(name string, desired *manifest.Repository, current *Curre
 }
 
 func diffBranchProtection(name string, desired *manifest.Repository, current *CurrentState) []Change {
+	if !desired.Spec.BranchProtectionSet && len(desired.Spec.BranchProtection) == 0 {
+		return nil
+	}
+
 	var changes []Change
 	desiredPatterns := make(map[string]struct{}, len(desired.Spec.BranchProtection))
 
@@ -361,6 +365,10 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 }
 
 func diffRulesets(ctx context.Context, name string, desired *manifest.Repository, current *CurrentState, resolver *manifest.Resolver) []Change {
+	if !desired.Spec.RulesetsSet && len(desired.Spec.Rulesets) == 0 {
+		return nil
+	}
+
 	var changes []Change
 	desiredNames := make(map[string]struct{}, len(desired.Spec.Rulesets))
 
@@ -776,7 +784,11 @@ func diffVariables(name string, desired *manifest.Repository, current *CurrentSt
 	return changes
 }
 
-func diffLabels(name string, desired *manifest.Repository, current *CurrentState, labelSync string) []Change {
+func diffLabels(name string, desired *manifest.Repository, current *CurrentState, reconcileMode string) []Change {
+	if !desired.Spec.LabelsSet && len(desired.Spec.Labels) == 0 && desired.Spec.LabelSync == nil {
+		return nil
+	}
+
 	var changes []Change
 
 	desiredSet := make(map[string]bool)
@@ -822,8 +834,8 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 		}
 	}
 
-	// Mirror mode: delete labels not in the manifest
-	if labelSync == manifest.LabelSyncMirror {
+	// Authoritative mode: delete labels not in the manifest
+	if reconcileMode == manifest.CollectionReconcileAuthoritative {
 		for labelName, cl := range current.Labels {
 			if !desiredSet[labelName] {
 				changes = append(changes, Change{

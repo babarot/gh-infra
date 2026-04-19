@@ -10,6 +10,7 @@ metadata:
 defaults:
   reconcile:
     rulesets: authoritative
+    labels: additive
   spec:
     visibility: public
     features:
@@ -28,14 +29,17 @@ repositories:
 ## Merge Rules
 
 - Scalars: replaced
-- Lists: replaced entirely
+- Simple lists: replaced entirely
+- Keyed collections: merged by key
 - Maps: merged by key
 - Reconcile: merged by collection (per-repo overrides individual collections without resetting others)
 
 Examples:
 
-- `visibility`, `label_sync`: scalar replace
-- `topics`, `labels`, `branch_protection`, `rulesets`, `secrets`, `variables`: list replace
+- `visibility`: scalar replace
+- `reconcile.labels`, `reconcile.rulesets`, `reconcile.branch_protection`: merged by collection
+- `topics`, `secrets`, `variables`: list replace
+- `labels`, `branch_protection`, `rulesets`: merged by key
 - `features`, `merge_strategy`, `actions`: map merge by key (individual fields like `enabled`, `allowed_actions` are independently overridable)
 - `features.pull_requests`: map merge by key (`enabled` and `creation` are independently overridable)
 - `actions.selected_actions`: map merge by key

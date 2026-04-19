@@ -38,12 +38,12 @@ spec:
 ```
 
 :::note
-Unlike labels, there is no `mirror` sync mode for milestones. If you remove a milestone from the manifest, it remains on GitHub unchanged.
+Unlike labels, there is no `reconcile.milestones: authoritative` mode. If you remove a milestone from the manifest, it remains on GitHub unchanged.
 :::
 
 ## Defaults Inheritance
 
-When using `RepositorySet`, milestones follow the same merge behavior as labels — per-repo milestones fully replace the defaults:
+When using `RepositorySet`, per-repo milestones replace the default milestone list:
 
 ```yaml
 apiVersion: gh-infra/v1

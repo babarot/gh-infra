@@ -99,11 +99,13 @@ type RepositorySpec struct {
 	Actions             *Actions           `yaml:"actions,omitempty"`
 
 	BranchProtectionSet bool `yaml:"-"`
+	LabelsSet           bool `yaml:"-"`
 	RulesetsSet         bool `yaml:"-"`
 }
 
 type RepositoryReconcile struct {
 	BranchProtection *string `yaml:"branch_protection,omitempty" validate:"omitempty,oneof=additive authoritative"`
+	Labels           *string `yaml:"labels,omitempty"            validate:"omitempty,oneof=additive authoritative"`
 	Rulesets         *string `yaml:"rulesets,omitempty"           validate:"omitempty,oneof=additive authoritative"`
 }
 
@@ -127,6 +129,12 @@ func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
 		s.BranchProtectionSet = true
 		if v == nil {
 			return fmt.Errorf("branch_protection must be a sequence; use [] with reconcile.branch_protection=authoritative to delete all branch protection rules")
+		}
+	}
+	if v, ok := fields["labels"]; ok {
+		s.LabelsSet = true
+		if v == nil {
+			return fmt.Errorf("labels must be a sequence; use [] with reconcile.labels=authoritative to delete all labels")
 		}
 	}
 	if v, ok := fields["rulesets"]; ok {
@@ -338,6 +346,18 @@ func LabelSyncMode(s *string) string {
 		return LabelSyncAdditive
 	}
 	return *s
+}
+
+func LabelsReconcileMode(r *RepositoryReconcile, legacyLabelSync *string) string {
+	if r != nil && r.Labels != nil {
+		return *r.Labels
+	}
+	switch LabelSyncMode(legacyLabelSync) {
+	case LabelSyncMirror:
+		return CollectionReconcileAuthoritative
+	default:
+		return CollectionReconcileAdditive
+	}
 }
 
 func BranchProtectionReconcileMode(r *RepositoryReconcile) string {

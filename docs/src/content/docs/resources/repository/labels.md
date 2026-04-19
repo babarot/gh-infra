@@ -25,13 +25,15 @@ spec:
 | `color` | string | yes | Hex color code without `#` prefix (e.g., `d73a4a`) |
 | `description` | string | no | Short description of the label's purpose |
 
-## Sync Mode
+## Reconcile Mode
 
-By default, gh-infra only creates and updates labels. Labels on GitHub that are not in the manifest are left untouched. To delete unmanaged labels, set `label_sync` to `mirror`:
+By default, gh-infra only creates and updates labels. Labels on GitHub that are not in the manifest are left untouched. To delete unmanaged labels, set `reconcile.labels` to `authoritative`:
 
 ```yaml
+reconcile:
+  labels: authoritative  # additive (default) | authoritative
+
 spec:
-  label_sync: mirror      # additive (default) | mirror
   labels:
     - name: kind/bug
       color: d73a4a
@@ -41,10 +43,10 @@ spec:
 
 | Value | Behavior |
 |-------|----------|
-| `additive` | Create and update only. Unmanaged labels are left in place. This is the default when `label_sync` is omitted. |
-| `mirror` | Create, update, and **delete**. Labels on GitHub that are not in the manifest are removed. |
+| `additive` | Create and update only. Unmanaged labels are left in place. This is the default when `reconcile.labels` is omitted. |
+| `authoritative` | Create, update, and **delete**. Labels on GitHub that are not in the manifest are removed. |
 
-When `mirror` mode marks labels for deletion, `plan` shows usage information (issue/PR count and when the label was last used) so you can verify before applying:
+When `authoritative` mode marks labels for deletion, `plan` shows usage information (issue/PR count and when the label was last used) so you can verify before applying:
 
 ```
   ~ org/my-repo
@@ -54,16 +56,29 @@ When `mirror` mode marks labels for deletion, `plan` shows usage information (is
 ```
 
 :::caution
-Mirror mode deletes labels that are not in the manifest. Issues and PRs with deleted labels will lose those labels. Use `plan` to review before applying.
+Authoritative mode deletes labels that are not in the manifest. Issues and PRs with deleted labels will lose those labels. Use `plan` to review before applying.
+:::
+
+To delete all labels, use `authoritative` with an empty label list:
+
+```yaml
+reconcile:
+  labels: authoritative
+spec:
+  labels: []
+```
+
+:::note[Compatibility]
+`spec.label_sync: mirror` is still accepted for existing manifests, but it is deprecated. Use top-level `reconcile.labels: authoritative` for new manifests.
 :::
 
 :::note[Planned]
-**Aliases** (rename labels while preserving issue/PR associations) and **exclude patterns** (protect specific labels from mirror deletion, e.g., `tagpr*`) are not yet available.
+**Aliases** (rename labels while preserving issue/PR associations) and **exclude patterns** (protect specific labels from authoritative deletion, e.g., `tagpr*`) are not yet available.
 :::
 
 ## Replacing Label-Sync Actions
 
-With `label_sync: mirror`, gh-infra can replace dedicated label synchronization GitHub Actions such as [EndBug/label-sync](https://github.com/EndBug/label-sync) and [crazy-max/ghaction-github-labeler](https://github.com/crazy-max/ghaction-github-labeler).
+With `reconcile.labels: authoritative`, gh-infra can replace dedicated label synchronization GitHub Actions such as [EndBug/label-sync](https://github.com/EndBug/label-sync) and [crazy-max/ghaction-github-labeler](https://github.com/crazy-max/ghaction-github-labeler).
 
 Instead of maintaining a separate workflow and label config file, define labels directly in your gh-infra manifest alongside other repository settings:
 
@@ -75,8 +90,9 @@ kind: Repository
 metadata:
   name: my-repo
   owner: my-org
+reconcile:
+  labels: authoritative
 spec:
-  label_sync: mirror
   labels:
     - name: kind/bug
       color: d73a4a

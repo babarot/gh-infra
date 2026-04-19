@@ -809,6 +809,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 		d := baseDesired()
 		mode := manifest.CollectionReconcileAuthoritative
 		d.Reconcile = &manifest.RepositoryReconcile{BranchProtection: &mode}
+		d.Spec.BranchProtectionSet = true
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main"}
 
@@ -827,6 +828,19 @@ func TestDiff_BranchProtection(t *testing.T) {
 		}
 		if len(changes[0].Details) == 0 {
 			t.Fatal("expected display-only delete children")
+		}
+	})
+
+	t.Run("authoritative no-op when branch protection omitted", func(t *testing.T) {
+		d := baseDesired()
+		mode := manifest.CollectionReconcileAuthoritative
+		d.Reconcile = &manifest.RepositoryReconcile{BranchProtection: &mode}
+		c := baseState()
+		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main"}
+
+		changes := diffBranchProtection("org/repo", d, c)
+		if len(changes) != 0 {
+			t.Fatalf("expected no changes for omitted branch_protection, got %d: %v", len(changes), changes)
 		}
 	})
 
@@ -1123,7 +1137,7 @@ func TestDiff_Labels(t *testing.T) {
 		}
 		c := baseState()
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
@@ -1143,7 +1157,7 @@ func TestDiff_Labels(t *testing.T) {
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
@@ -1166,7 +1180,7 @@ func TestDiff_Labels(t *testing.T) {
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "Old desc"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
@@ -1186,14 +1200,14 @@ func TestDiff_Labels(t *testing.T) {
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 0 {
 			t.Errorf("expected no changes, got %d", len(changes))
 		}
 	})
 }
 
-func TestDiff_Labels_Mirror(t *testing.T) {
+func TestDiff_Labels_Authoritative(t *testing.T) {
 	t.Run("deletes unmanaged labels", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
@@ -1203,7 +1217,7 @@ func TestDiff_Labels_Mirror(t *testing.T) {
 		c.Labels["keep"] = &CurrentLabel{Name: "keep", Color: "00ff00"}
 		c.Labels["remove-me"] = &CurrentLabel{Name: "remove-me", Color: "ff0000", Description: "Old label"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncMirror)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAuthoritative)
 
 		var deletes []Change
 		for _, ch := range changes {
@@ -1228,13 +1242,39 @@ func TestDiff_Labels_Mirror(t *testing.T) {
 		c.Labels["keep"] = &CurrentLabel{Name: "keep", Color: "00ff00"}
 		c.Labels["extra"] = &CurrentLabel{Name: "extra", Color: "aaaaaa"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		for _, ch := range changes {
 			if ch.Type == ChangeDelete {
 				t.Errorf("unexpected delete in additive mode: %v", ch)
 			}
 		}
 	})
+
+	t.Run("no-op when labels omitted", func(t *testing.T) {
+		d := baseDesired()
+		c := baseState()
+		c.Labels["remove-me"] = &CurrentLabel{Name: "remove-me", Color: "ff0000", Description: "Old label"}
+
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAuthoritative)
+		if len(changes) != 0 {
+			t.Fatalf("expected no changes for omitted labels, got %d: %v", len(changes), changes)
+		}
+	})
+}
+
+func TestDiff_Labels_LegacyLabelSyncMirrorMapsToAuthoritative(t *testing.T) {
+	d := baseDesired()
+	d.Spec.LabelSync = manifest.Ptr(manifest.LabelSyncMirror)
+	c := baseState()
+	c.Labels["remove-me"] = &CurrentLabel{Name: "remove-me", Color: "ff0000", Description: "Old label"}
+
+	changes := Diff(context.Background(), d, c)
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
+	}
+	if changes[0].Type != ChangeDelete || changes[0].Resource != manifest.ResourceLabel || changes[0].Field != "remove-me" {
+		t.Fatalf("unexpected change: %+v", changes[0])
+	}
 }
 
 func TestLabelSummary(t *testing.T) {
@@ -1617,6 +1657,7 @@ func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
 	desired := baseDesired()
 	mode := manifest.CollectionReconcileAuthoritative
 	desired.Reconcile = &manifest.RepositoryReconcile{Rulesets: &mode}
+	desired.Spec.RulesetsSet = true
 
 	current := baseState()
 	current.Rulesets["old-ruleset"] = &CurrentRuleset{
@@ -1644,6 +1685,25 @@ func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
 	}
 	if len(changes[0].Details) == 0 {
 		t.Fatal("expected display-only delete children")
+	}
+}
+
+func TestDiff_Rulesets_ReconcileAuthoritativeNoopWhenOmitted(t *testing.T) {
+	desired := baseDesired()
+	mode := manifest.CollectionReconcileAuthoritative
+	desired.Reconcile = &manifest.RepositoryReconcile{Rulesets: &mode}
+
+	current := baseState()
+	current.Rulesets["old-ruleset"] = &CurrentRuleset{
+		ID:          42,
+		Name:        "old-ruleset",
+		Target:      "branch",
+		Enforcement: "active",
+	}
+
+	changes := Diff(context.Background(), desired, current)
+	if len(changes) != 0 {
+		t.Fatalf("expected no changes for omitted rulesets, got %d: %v", len(changes), changes)
 	}
 }
 

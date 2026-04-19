@@ -22,7 +22,7 @@ Modes:
 
 Rules:
 
-- `reconcile` without the corresponding `spec` collection is a parse error (e.g., `reconcile.rulesets: authoritative` requires `spec.rulesets`)
+- `reconcile` without the corresponding `spec` collection is no-op; a collection is managed only when it appears in `spec`
 - Use `spec.rulesets: []` with `reconcile.rulesets: authoritative` to delete all remote rulesets
 - `rulesets: null` / `rulesets:` (explicit null) is invalid; use `[]` for empty managed collections
 - `plan` output shows delete reason with the reconcile policy (e.g., `not declared; reconcile.rulesets=authoritative`)
