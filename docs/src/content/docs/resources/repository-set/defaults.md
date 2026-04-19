@@ -70,6 +70,8 @@ Collections with a natural key field are merged. Entries with the same key are m
 | `branch_protection` | `pattern` | Fields merged (unspecified fields inherit default) |
 | `rulesets` | `name` | Entry replaced |
 
+`branch_protection` and `rulesets` also support `null` as an explicit deletion marker. A default-level `null` is inherited by repositories unless a repository provides concrete values. A repository-level `null` overrides defaults and deletes all existing resources of that type for that repository.
+
 #### Labels
 
 ```yaml

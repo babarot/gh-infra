@@ -35,6 +35,21 @@ spec:
 
 Multiple patterns can be defined. Each entry creates a separate branch protection rule.
 
+## Deleting All Branch Protection Rules
+
+Set `branch_protection` to `null` to delete all existing classic branch protection rules for the repository:
+
+```yaml
+spec:
+  branch_protection: null
+```
+
+Omitting `branch_protection` is different: it leaves existing branch protection rules untouched and unmanaged by gh-infra.
+
+:::caution
+This deletes every classic branch protection rule on the repository. Run `gh infra plan` before `apply` to review the rules that will be removed.
+:::
+
 ## Fields
 
 | Field | Type | Description |

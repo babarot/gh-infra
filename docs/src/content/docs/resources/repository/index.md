@@ -100,6 +100,25 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 All fields are optional — declare only what you want to manage. Fields not present in the YAML are left unchanged on GitHub.
 The one exception is `spec.actions.enabled`: when managing any other Actions setting, GitHub requires `enabled` to be sent too. See [Actions](./actions/).
 
+## Omitting vs Deleting
+
+gh-infra is stateless. Removing a field from YAML does not mean "delete it from GitHub" — it means gh-infra stops managing that field.
+
+For selected collection fields, you can write `null` to explicitly delete existing remote resources:
+
+| YAML | Meaning |
+|---|---|
+| Field omitted | Leave existing GitHub state unmanaged |
+| `branch_protection: null` | Delete all classic branch protection rules |
+| `rulesets: null` | Delete all repository rulesets |
+| Field with values | Manage the listed resources |
+
+`null` is only supported for `branch_protection` and `rulesets`. Using `null` on other fields is a parse error. Omit a field if you want gh-infra to leave it unchanged.
+
+:::caution
+`branch_protection: null` and `rulesets: null` are destructive. Always run `gh infra plan` and review the delete changes before applying.
+:::
+
 ## When to Use
 
 Use `Repository` when you want to manage one repo's settings in a dedicated YAML file. This is the simplest resource kind and the starting point for most users.

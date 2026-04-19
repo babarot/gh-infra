@@ -66,6 +66,21 @@ spec:
         non_fast_forward: true
 ```
 
+## Deleting All Rulesets
+
+Set `rulesets` to `null` to delete all existing repository rulesets:
+
+```yaml
+spec:
+  rulesets: null
+```
+
+Omitting `rulesets` is different: it leaves existing rulesets untouched and unmanaged by gh-infra.
+
+:::caution
+This deletes every ruleset on the repository. Run `gh infra plan` before `apply` to review the rulesets that will be removed.
+:::
+
 ## Top-level Fields
 
 | Field | Type | Default | Description |
