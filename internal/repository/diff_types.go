@@ -11,15 +11,23 @@ const (
 	ChangeNoOp   ChangeType = "noop"
 )
 
-// Change represents a single field-level change.
+// Change represents a single planned change.
 type Change struct {
-	Type     ChangeType
-	Resource string // "Repository", "BranchProtection", "Secret", "Variable"
-	Name     string // "babarot/my-project"
-	Field    string // "description", "topics", etc.
+	Type     ChangeType // create, update, delete, noop
+	Resource string     // "Repository", "BranchProtection", "Secret", "Variable"
+	Name     string     // "babarot/my-project"
+	Field    string     // "description", "topics", etc.
 	OldValue any
 	NewValue any
-	Children []Change // Sub-field details for hierarchical display
+
+	// Details are display-only plan rendering details. They must not be
+	// interpreted as apply units.
+	Details []Change
+
+	// Children are the concrete child changes to apply for grouped
+	// changes. Most resource-level changes should leave this empty and apply
+	// via the parent change.
+	Children []Change
 }
 
 func (c Change) String() string {

@@ -230,12 +230,19 @@ func TestDiff_Features_BoolFlags(t *testing.T) {
 			if parent.Field != "features" {
 				t.Fatalf("expected parent field features, got %q", parent.Field)
 			}
-			if len(parent.Children) != 1 {
-				t.Fatalf("expected 1 child, got %d", len(parent.Children))
+			if len(parent.Details) != 1 {
+				t.Fatalf("expected 1 child, got %d", len(parent.Details))
 			}
-			child := parent.Children[0]
+			if len(parent.Children) != 1 {
+				t.Fatalf("expected 1 apply child, got %d", len(parent.Children))
+			}
+			child := parent.Details[0]
+			applyChild := parent.Children[0]
 			if child.Field != tt.wantField {
 				t.Errorf("expected field %q, got %q", tt.wantField, child.Field)
+			}
+			if applyChild.Field != tt.wantField {
+				t.Errorf("expected apply field %q, got %q", tt.wantField, applyChild.Field)
 			}
 			if child.Type != ChangeUpdate {
 				t.Errorf("expected update, got %q", child.Type)
@@ -318,10 +325,10 @@ func TestDiff_MergeStrategy_BoolFlags(t *testing.T) {
 			if parent.Field != "merge_strategy" {
 				t.Fatalf("expected parent field merge_strategy, got %q", parent.Field)
 			}
-			if len(parent.Children) != 1 {
-				t.Fatalf("expected 1 child, got %d", len(parent.Children))
+			if len(parent.Details) != 1 {
+				t.Fatalf("expected 1 child, got %d", len(parent.Details))
 			}
-			child := parent.Children[0]
+			child := parent.Details[0]
 			if child.Field != tt.wantField {
 				t.Errorf("expected field %q, got %q", tt.wantField, child.Field)
 			}
@@ -530,10 +537,10 @@ func TestDiff_Security(t *testing.T) {
 			if changes[0].Field != "security" {
 				t.Errorf("expected parent field 'security', got %q", changes[0].Field)
 			}
-			if len(changes[0].Children) != 1 {
-				t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
+			if len(changes[0].Details) != 1 {
+				t.Fatalf("expected 1 child, got %d", len(changes[0].Details))
 			}
-			child := changes[0].Children[0]
+			child := changes[0].Details[0]
 			if child.Field != f.field {
 				t.Errorf("expected child field %q, got %q", f.field, child.Field)
 			}
@@ -556,7 +563,7 @@ func TestDiff_Security(t *testing.T) {
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 parent change, got %d", len(changes))
 		}
-		if got := len(changes[0].Children); got != 3 {
+		if got := len(changes[0].Details); got != 3 {
 			t.Errorf("expected 3 children, got %d", got)
 		}
 	})
@@ -588,7 +595,7 @@ func TestDiff_Features_PullRequests(t *testing.T) {
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
 	}
-	child := changes[0].Children
+	child := changes[0].Details
 	if len(child) != 1 || child[0].Field != "pull_requests" {
 		t.Errorf("expected pull_requests child change, got %+v", child)
 	}
@@ -610,7 +617,7 @@ func TestDiff_Features_PullRequestsCreation(t *testing.T) {
 	if len(changes) != 1 {
 		t.Fatalf("expected 1 change, got %d", len(changes))
 	}
-	child := changes[0].Children
+	child := changes[0].Details
 	if len(child) != 1 || child[0].Field != "pull_requests.creation" {
 		t.Errorf("expected pull_requests.creation child change, got %+v", child)
 	}
@@ -695,10 +702,10 @@ func TestDiff_MergeStrategy_CommitStrings(t *testing.T) {
 			if parent.Field != "merge_strategy" {
 				t.Fatalf("expected parent field merge_strategy, got %q", parent.Field)
 			}
-			if len(parent.Children) != 1 {
-				t.Fatalf("expected 1 child, got %d", len(parent.Children))
+			if len(parent.Details) != 1 {
+				t.Fatalf("expected 1 child, got %d", len(parent.Details))
 			}
-			ch := parent.Children[0]
+			ch := parent.Details[0]
 			if ch.Field != tt.wantField {
 				t.Errorf("expected field %q, got %q", tt.wantField, ch.Field)
 			}
@@ -730,20 +737,20 @@ func TestDiff_BranchProtection(t *testing.T) {
 		if changes[0].Resource != "BranchProtection[main]" {
 			t.Errorf("expected resource BranchProtection[main], got %q", changes[0].Resource)
 		}
-		if len(changes[0].Children) != 2 {
-			t.Fatalf("expected 2 children (pattern + required_reviews), got %d", len(changes[0].Children))
+		if len(changes[0].Details) != 2 {
+			t.Fatalf("expected 2 children (pattern + required_reviews), got %d", len(changes[0].Details))
 		}
-		if changes[0].Children[0].Field != "pattern" {
-			t.Errorf("expected first child field pattern, got %q", changes[0].Children[0].Field)
+		if changes[0].Details[0].Field != "pattern" {
+			t.Errorf("expected first child field pattern, got %q", changes[0].Details[0].Field)
 		}
-		if changes[0].Children[0].NewValue != "main" {
-			t.Errorf("expected pattern value main, got %v", changes[0].Children[0].NewValue)
+		if changes[0].Details[0].NewValue != "main" {
+			t.Errorf("expected pattern value main, got %v", changes[0].Details[0].NewValue)
 		}
-		if changes[0].Children[1].Field != "required_reviews" {
-			t.Errorf("expected second child field required_reviews, got %q", changes[0].Children[1].Field)
+		if changes[0].Details[1].Field != "required_reviews" {
+			t.Errorf("expected second child field required_reviews, got %q", changes[0].Details[1].Field)
 		}
-		if changes[0].Children[1].NewValue != 2 {
-			t.Errorf("expected child new value 2, got %v", changes[0].Children[1].NewValue)
+		if changes[0].Details[1].NewValue != 2 {
+			t.Errorf("expected child new value 2, got %v", changes[0].Details[1].NewValue)
 		}
 	})
 
@@ -757,12 +764,12 @@ func TestDiff_BranchProtection(t *testing.T) {
 		if parent.Field != "branch_protection" {
 			t.Fatalf("expected parent field branch_protection, got %q", parent.Field)
 		}
-		for _, child := range parent.Children {
+		for _, child := range parent.Details {
 			if child.Field == field {
 				return child
 			}
 		}
-		t.Fatalf("child field %q not found in %d children", field, len(parent.Children))
+		t.Fatalf("child field %q not found in %d children", field, len(parent.Details))
 		return Change{}
 	}
 
@@ -818,7 +825,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 		if changes[0].NewValue != "not declared; reconcile.branch_protection=authoritative" {
 			t.Fatalf("delete reason = %v", changes[0].NewValue)
 		}
-		if len(changes[0].Children) == 0 {
+		if len(changes[0].Details) == 0 {
 			t.Fatal("expected display-only delete children")
 		}
 	})
@@ -1143,11 +1150,11 @@ func TestDiff_Labels(t *testing.T) {
 		if changes[0].Type != ChangeUpdate {
 			t.Errorf("expected update, got %q", changes[0].Type)
 		}
-		if len(changes[0].Children) != 1 {
-			t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
+		if len(changes[0].Details) != 1 {
+			t.Fatalf("expected 1 child, got %d", len(changes[0].Details))
 		}
-		if changes[0].Children[0].Field != "color" {
-			t.Errorf("expected child field color, got %q", changes[0].Children[0].Field)
+		if changes[0].Details[0].Field != "color" {
+			t.Errorf("expected child field color, got %q", changes[0].Details[0].Field)
 		}
 	})
 
@@ -1163,11 +1170,11 @@ func TestDiff_Labels(t *testing.T) {
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
-		if len(changes[0].Children) != 1 {
-			t.Fatalf("expected 1 child, got %d", len(changes[0].Children))
+		if len(changes[0].Details) != 1 {
+			t.Fatalf("expected 1 child, got %d", len(changes[0].Details))
 		}
-		if changes[0].Children[0].Field != "description" {
-			t.Errorf("expected child field description, got %q", changes[0].Children[0].Field)
+		if changes[0].Details[0].Field != "description" {
+			t.Errorf("expected child field description, got %q", changes[0].Details[0].Field)
 		}
 	})
 
@@ -1308,8 +1315,8 @@ func TestDiff_Milestones(t *testing.T) {
 		if changes[0].Type != ChangeUpdate {
 			t.Errorf("expected update, got %s", changes[0].Type)
 		}
-		if len(changes[0].Children) != 1 || changes[0].Children[0].Field != "state" {
-			t.Errorf("expected state child change, got %v", changes[0].Children)
+		if len(changes[0].Details) != 1 || changes[0].Details[0].Field != "state" {
+			t.Errorf("expected state child change, got %v", changes[0].Details)
 		}
 	})
 
@@ -1325,8 +1332,8 @@ func TestDiff_Milestones(t *testing.T) {
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
-		if len(changes[0].Children) != 1 || changes[0].Children[0].Field != "due_on" {
-			t.Errorf("expected due_on child change, got %v", changes[0].Children)
+		if len(changes[0].Details) != 1 || changes[0].Details[0].Field != "due_on" {
+			t.Errorf("expected due_on child change, got %v", changes[0].Details)
 		}
 	})
 
@@ -1533,7 +1540,7 @@ func TestStringSliceEqual(t *testing.T) {
 func collectChildFields(changes []Change) map[string]bool {
 	fields := make(map[string]bool)
 	for _, c := range changes {
-		for _, child := range c.Children {
+		for _, child := range c.Details {
 			fields[child.Field] = true
 		}
 	}
@@ -1635,7 +1642,7 @@ func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
 	if changes[0].NewValue != "not declared; reconcile.rulesets=authoritative" {
 		t.Fatalf("delete reason = %v", changes[0].NewValue)
 	}
-	if len(changes[0].Children) == 0 {
+	if len(changes[0].Details) == 0 {
 		t.Fatal("expected display-only delete children")
 	}
 }
@@ -1679,7 +1686,7 @@ func TestDiff_Rulesets_UpdateEnforcement(t *testing.T) {
 	}
 	// Verify values
 	for _, c := range changes {
-		for _, child := range c.Children {
+		for _, child := range c.Details {
 			if child.Field == "enforcement" {
 				if child.OldValue != "active" || child.NewValue != "evaluate" {
 					t.Errorf("enforcement: old=%v new=%v", child.OldValue, child.NewValue)
@@ -2043,7 +2050,7 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 	}
 
 	fields := make(map[string]bool)
-	for _, c := range actionsChange.Children {
+	for _, c := range actionsChange.Details {
 		fields[c.Field] = true
 	}
 
@@ -2096,7 +2103,7 @@ func TestDiffActions_ChildOrder(t *testing.T) {
 
 	// enabled and allowed_actions should appear before selected_actions.*
 	sawSelected := false
-	for _, c := range actionsChange.Children {
+	for _, c := range actionsChange.Details {
 		if c.Field == "enabled" || c.Field == "allowed_actions" {
 			if sawSelected {
 				t.Errorf("field %q appeared after selected_actions.*", c.Field)

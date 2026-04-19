@@ -127,7 +127,7 @@ func TestPrintPlan_ChildChanges(t *testing.T) {
 			Type:  repository.ChangeUpdate,
 			Name:  "org/repo",
 			Field: "features",
-			Children: []repository.Change{
+			Details: []repository.Change{
 				{Type: repository.ChangeUpdate, Field: "issues", OldValue: true, NewValue: false},
 				{Type: repository.ChangeUpdate, Field: "wiki", OldValue: false, NewValue: true},
 			},
@@ -229,7 +229,7 @@ func TestRepoFieldWidth_Children(t *testing.T) {
 	changes := []repository.Change{
 		{
 			Field: "features",
-			Children: []repository.Change{
+			Details: []repository.Change{
 				{Field: "short"},
 				{Field: "very_long_child_field_name"},
 			},
@@ -392,7 +392,7 @@ func TestGroupRepoChanges_PreservesOrder(t *testing.T) {
 		{Resource: manifest.ResourceLabel, Field: "bug"},
 		{Resource: manifest.ResourceLabel, Field: "feature"},
 		{Resource: manifest.ResourceMilestone, Field: "v1.0"},
-		{Resource: "Actions", Field: "actions", Children: []repository.Change{{Field: "enabled"}}},
+		{Resource: "Actions", Field: "actions", Details: []repository.Change{{Field: "enabled"}}},
 	}
 	groups := groupRepoChanges(changes)
 	if len(groups) != 4 {
@@ -526,7 +526,7 @@ func TestPrintPlan_GroupedLabelUpdate(t *testing.T) {
 			Resource: manifest.ResourceLabel,
 			Name:     "org/repo",
 			Field:    "bug",
-			Children: []repository.Change{
+			Details: []repository.Change{
 				{Type: repository.ChangeUpdate, Field: "color", OldValue: "d73a4a", NewValue: "FF0000"},
 			},
 		},
@@ -555,7 +555,7 @@ func TestPrintPlan_RulesetAndBranchProtectionHeaders(t *testing.T) {
 			Name:     "org/repo",
 			Field:    "ruleset",
 			NewValue: "main-protection",
-			Children: []repository.Change{
+			Details: []repository.Change{
 				{Type: repository.ChangeUpdate, Field: "enforcement", OldValue: "evaluate", NewValue: "active"},
 			},
 		},
@@ -565,7 +565,7 @@ func TestPrintPlan_RulesetAndBranchProtectionHeaders(t *testing.T) {
 			Name:     "org/repo",
 			Field:    "branch_protection",
 			NewValue: "main",
-			Children: []repository.Change{
+			Details: []repository.Change{
 				{Type: repository.ChangeUpdate, Field: "required_reviews", OldValue: 0, NewValue: 1},
 			},
 		},
@@ -596,7 +596,7 @@ func TestPrintPlan_DeleteRulesetAndBranchProtectionWithChildren(t *testing.T) {
 			Name:     "org/repo",
 			Field:    "ruleset",
 			OldValue: 42,
-			Children: []repository.Change{
+			Details: []repository.Change{
 				{Type: repository.ChangeDelete, Field: "target", OldValue: "branch"},
 				{Type: repository.ChangeDelete, Field: "enforcement", OldValue: "active"},
 			},
@@ -607,7 +607,7 @@ func TestPrintPlan_DeleteRulesetAndBranchProtectionWithChildren(t *testing.T) {
 			Name:     "org/repo",
 			Field:    "branch_protection",
 			OldValue: "main",
-			Children: []repository.Change{
+			Details: []repository.Change{
 				{Type: repository.ChangeDelete, Field: "required_reviews", OldValue: 1},
 				{Type: repository.ChangeDelete, Field: "enforce_admins", OldValue: false},
 			},
