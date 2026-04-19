@@ -250,7 +250,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 		return changes
 	}
 
-	for _, dbp := range desired.Spec.BranchProtection.Value {
+	for _, dbp := range desired.Spec.BranchProtection.Get() {
 		cbp, exists := current.BranchProtection[dbp.Pattern]
 		resource := fmt.Sprintf("%s[%s]", manifest.ResourceBranchProtection, dbp.Pattern)
 
@@ -366,7 +366,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		return changes
 	}
 
-	for _, drs := range desired.Spec.Rulesets.Value {
+	for _, drs := range desired.Spec.Rulesets.Get() {
 		crs, exists := current.Rulesets[drs.Name]
 		resource := fmt.Sprintf("%s[%s]", manifest.ResourceRuleset, drs.Name)
 

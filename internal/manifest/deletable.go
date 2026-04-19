@@ -12,7 +12,7 @@ import (
 //   - Explicit null in YAML               → IsSet()=true,  IsDelete()=true
 //   - Value present in YAML               → IsSet()=true,  IsDelete()=false
 type Deletable[T any] struct {
-	Value    T
+	value    T
 	isSet    bool
 	isDelete bool
 }
@@ -23,14 +23,47 @@ func (n Deletable[T]) IsSet() bool { return n.isSet }
 // IsDelete reports whether the field was explicitly set to null.
 func (n Deletable[T]) IsDelete() bool { return n.isSet && n.isDelete }
 
+// HasValue reports whether the field has a concrete value.
+func (n Deletable[T]) HasValue() bool { return n.isSet && !n.isDelete }
+
+// Get returns the wrapped value.
+func (n Deletable[T]) Get() T { return n.value }
+
+// GetOK returns the wrapped value and whether it is a concrete value.
+func (n Deletable[T]) GetOK() (T, bool) {
+	return n.value, n.HasValue()
+}
+
 // NewDeletable creates a Deletable with a value (isSet=true, isDelete=false).
 func NewDeletable[T any](v T) Deletable[T] {
-	return Deletable[T]{Value: v, isSet: true}
+	return Deletable[T]{value: v, isSet: true}
 }
 
 // DeleteValue creates a null-marked Deletable (isSet=true, isDelete=true).
 func DeleteValue[T any]() Deletable[T] {
 	return Deletable[T]{isSet: true, isDelete: true}
+}
+
+// HasItems reports whether a deletable slice has one or more concrete items.
+func HasItems[T any](d Deletable[[]T]) bool {
+	return d.HasValue() && len(d.value) > 0
+}
+
+// MergeDeletableSlice applies RepositorySet-style merge semantics to a
+// deletable slice: delete overrides everything, non-empty values merge, and
+// omitted or empty overrides leave the base unchanged.
+func MergeDeletableSlice[T any](
+	base Deletable[[]T],
+	override Deletable[[]T],
+	merge func([]T, []T) []T,
+) Deletable[[]T] {
+	if override.IsDelete() {
+		return DeleteValue[[]T]()
+	}
+	if HasItems(override) {
+		return NewDeletable(merge(base.Get(), override.Get()))
+	}
+	return base
 }
 
 type deletableMarker interface {
@@ -39,7 +72,7 @@ type deletableMarker interface {
 
 func (n *Deletable[T]) markDelete() {
 	var zero T
-	n.Value = zero
+	n.value = zero
 	n.isSet = true
 	n.isDelete = true
 }
@@ -54,7 +87,7 @@ func (n *Deletable[T]) UnmarshalYAML(data []byte) error {
 		n.markDelete()
 		return nil
 	}
-	return yaml.Unmarshal(data, &n.Value)
+	return yaml.Unmarshal(data, &n.value)
 }
 
 // MarshalYAML serializes the Deletable value to YAML.
@@ -65,7 +98,7 @@ func (n Deletable[T]) MarshalYAML() (any, error) {
 	if n.isDelete {
 		return nil, nil
 	}
-	return n.Value, nil
+	return n.value, nil
 }
 
 // IsZero supports the omitempty tag. Returns true when the field was not set,

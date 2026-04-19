@@ -647,9 +647,10 @@ func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *m
 	}
 
 	var bp *manifest.BranchProtection
-	for i := range repo.Spec.BranchProtection.Value {
-		if repo.Spec.BranchProtection.Value[i].Pattern == pattern {
-			bp = &repo.Spec.BranchProtection.Value[i]
+	branchProtection := repo.Spec.BranchProtection.Get()
+	for i := range branchProtection {
+		if branchProtection[i].Pattern == pattern {
+			bp = &branchProtection[i]
 			break
 		}
 	}
@@ -734,9 +735,10 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 	rulesetName := strings.TrimSuffix(strings.TrimPrefix(c.Resource, manifest.ResourceRuleset+"["), "]")
 
 	var rs *manifest.Ruleset
-	for i := range repo.Spec.Rulesets.Value {
-		if repo.Spec.Rulesets.Value[i].Name == rulesetName {
-			rs = &repo.Spec.Rulesets.Value[i]
+	rulesets := repo.Spec.Rulesets.Get()
+	for i := range rulesets {
+		if rulesets[i].Name == rulesetName {
+			rs = &rulesets[i]
 			break
 		}
 	}

@@ -743,11 +743,11 @@ func TestMinimalOverride_BranchProtection(t *testing.T) {
 
 	override := minimalOverride(defaults, imported)
 
-	if len(override.BranchProtection.Value) != 2 {
-		t.Fatalf("expected 2 bp rules, got %d: %+v", len(override.BranchProtection.Value), override.BranchProtection.Value)
+	if len(override.BranchProtection.Get()) != 2 {
+		t.Fatalf("expected 2 bp rules, got %d: %+v", len(override.BranchProtection.Get()), override.BranchProtection.Get())
 	}
 	// main: only required_reviews differs
-	mainBP := override.BranchProtection.Value[0]
+	mainBP := override.BranchProtection.Get()[0]
 	if mainBP.Pattern != "main" {
 		t.Errorf("expected main, got %q", mainBP.Pattern)
 	}
@@ -758,8 +758,8 @@ func TestMinimalOverride_BranchProtection(t *testing.T) {
 		t.Errorf("main enforce_admins should be nil (same as defaults)")
 	}
 	// release/* is new, included as-is
-	if override.BranchProtection.Value[1].Pattern != "release/*" {
-		t.Errorf("expected release/*, got %q", override.BranchProtection.Value[1].Pattern)
+	if override.BranchProtection.Get()[1].Pattern != "release/*" {
+		t.Errorf("expected release/*, got %q", override.BranchProtection.Get()[1].Pattern)
 	}
 }
 
@@ -772,8 +772,8 @@ func TestMinimalOverride_BranchProtectionAllSame(t *testing.T) {
 
 	override := minimalOverride(defaults, imported)
 
-	if len(override.BranchProtection.Value) != 0 {
-		t.Errorf("expected no bp overrides, got %d", len(override.BranchProtection.Value))
+	if len(override.BranchProtection.Get()) != 0 {
+		t.Errorf("expected no bp overrides, got %d", len(override.BranchProtection.Get()))
 	}
 }
 
@@ -793,11 +793,11 @@ func TestMinimalOverride_Rulesets(t *testing.T) {
 
 	override := minimalOverride(defaults, imported)
 
-	if len(override.Rulesets.Value) != 1 {
-		t.Fatalf("expected 1 ruleset override, got %d: %+v", len(override.Rulesets.Value), override.Rulesets.Value)
+	if len(override.Rulesets.Get()) != 1 {
+		t.Fatalf("expected 1 ruleset override, got %d: %+v", len(override.Rulesets.Get()), override.Rulesets.Get())
 	}
-	if override.Rulesets.Value[0].Name != "custom-rs" {
-		t.Errorf("expected custom-rs, got %q", override.Rulesets.Value[0].Name)
+	if override.Rulesets.Get()[0].Name != "custom-rs" {
+		t.Errorf("expected custom-rs, got %q", override.Rulesets.Get()[0].Name)
 	}
 }
 

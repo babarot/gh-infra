@@ -13,9 +13,9 @@ func (r *Repository) Validate() error {
 	}
 	name := r.Metadata.Name
 	// Branch protection: element tag validation + uniqueness check
-	if !r.Spec.BranchProtection.IsDelete() {
+	if branchProtection, ok := r.Spec.BranchProtection.GetOK(); ok {
 		bpPatterns := make(map[string]bool)
-		for i, bp := range r.Spec.BranchProtection.Value {
+		for i, bp := range branchProtection {
 			if bpPatterns[bp.Pattern] {
 				return fmt.Errorf("%s: duplicate branch_protection pattern %q", name, bp.Pattern)
 			}
@@ -26,9 +26,9 @@ func (r *Repository) Validate() error {
 		}
 	}
 	// Rulesets: element tag validation + cross-field checks + uniqueness check
-	if !r.Spec.Rulesets.IsDelete() {
+	if rulesets, ok := r.Spec.Rulesets.GetOK(); ok {
 		rsNames := make(map[string]bool)
-		for i, rs := range r.Spec.Rulesets.Value {
+		for i, rs := range rulesets {
 			if rsNames[rs.Name] {
 				return fmt.Errorf("%s: duplicate ruleset name %q", name, rs.Name)
 			}

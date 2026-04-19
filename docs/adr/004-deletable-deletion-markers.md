@@ -27,7 +27,7 @@ Use a `Deletable[T]` manifest wrapper for fields where `null` means remote resou
 
 ```go
 type Deletable[T any] struct {
-    Value    T
+    value    T
     isSet    bool
     isDelete bool
 }
@@ -46,19 +46,40 @@ type RepositorySpec struct {
 
 - zero value: field omitted, so gh-infra does not manage that resource family
 - delete marker: user wrote `field: null`, so gh-infra deletes existing remote resources
-- populated value: user provided desired resources in `Value`
+- populated value: user provided desired resources
 
-The public API reflects the domain behavior:
+The wrapped value is intentionally private. Callers must use constructors and
+accessors so the three-state invariant cannot be bypassed by direct field
+mutation:
 
 ```go
 func NewDeletable[T any](v T) Deletable[T]
 func DeleteValue[T any]() Deletable[T]
 func (d Deletable[T]) IsSet() bool
 func (d Deletable[T]) IsDelete() bool
+func (d Deletable[T]) HasValue() bool
+func (d Deletable[T]) Get() T
+func (d Deletable[T]) GetOK() (T, bool)
 func (d Deletable[T]) IsZero() bool
 ```
 
 `IsNull()` is deliberately not used. Callers should ask whether a field is a delete marker, not whether it is syntactically null.
+
+`Get()` returns the wrapped zero value when the field is unset or marked for
+delete. This is useful for collection fields where a nil slice naturally means
+"nothing to iterate". Callers that need to distinguish concrete values from
+unset/delete states should use `GetOK()` or `HasValue()`.
+
+Slice fields also use helper functions to keep merge logic out of call sites:
+
+```go
+func HasItems[T any](d Deletable[[]T]) bool
+func MergeDeletableSlice[T any](
+    base Deletable[[]T],
+    override Deletable[[]T],
+    merge func([]T, []T) []T,
+) Deletable[[]T]
+```
 
 ### Parser-side null marker detection
 
@@ -94,7 +115,7 @@ type deletableMarker interface {
 
 func (d *Deletable[T]) markDelete() {
     var zero T
-    d.Value = zero
+    d.value = zero
     d.isSet = true
     d.isDelete = true
 }
@@ -124,6 +145,10 @@ Diff checks delete intent first:
 ```go
 if desired.Spec.BranchProtection.IsDelete() {
     // Generate ChangeDelete for each current branch protection rule.
+}
+
+for _, bp := range desired.Spec.BranchProtection.Get() {
+    // Diff concrete desired rules. If the field is omitted, Get() returns nil.
 }
 ```
 
@@ -179,6 +204,8 @@ Rejected as too broad. A generic engine could collect null paths such as `$.repo
 - Future deletion-capable fields can use `Deletable[T]` without changing parser field-name lists.
 - Tag-missing failures are avoided because the type itself carries the semantics.
 - `field: null` remains explicit, stateless, and reviewable in plan output.
+- The wrapped value is private, so callers cannot accidentally construct
+  inconsistent states such as "delete marker with a non-zero value".
 
 ### Negative / Tradeoffs
 
@@ -189,9 +216,11 @@ Rejected as too broad. A generic engine could collect null paths such as `$.repo
 
 ### Implementation Notes
 
-- `MarshalYAML` returns `nil` for delete markers and the inner `Value` for populated values.
+- `MarshalYAML` returns `nil` for delete markers and the inner `value` for populated values.
 - `IsZero()` returns true only for the omitted/unset state so `omitempty` drops unmanaged fields.
 - `UnmarshalYAML` still handles non-null values and direct unit-test null calls, but normal manifest null recovery is parser-side because upstream go-yaml skips unmarshaler hooks for null nodes.
+- `GetOK()` returns `ok=false` for both omitted and delete states. Use `IsSet()` and `IsDelete()` when those states must be distinguished.
+- `MergeDeletableSlice` centralizes RepositorySet semantics: delete overrides all, non-empty override values merge, and omitted or empty overrides leave defaults unchanged.
 - Export/import flows do not generate delete markers from GitHub state. They emit values or omit fields.
 
 ## Decision Outcome

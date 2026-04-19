@@ -495,16 +495,8 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.Actions != nil {
 		result.Actions = mergeActions(result.Actions, override.Actions)
 	}
-	if override.BranchProtection.IsDelete() {
-		result.BranchProtection = DeleteValue[[]BranchProtection]()
-	} else if len(override.BranchProtection.Value) > 0 {
-		result.BranchProtection = NewDeletable(mergeBranchProtection(result.BranchProtection.Value, override.BranchProtection.Value))
-	}
-	if override.Rulesets.IsDelete() {
-		result.Rulesets = DeleteValue[[]Ruleset]()
-	} else if len(override.Rulesets.Value) > 0 {
-		result.Rulesets = NewDeletable(mergeRulesets(result.Rulesets.Value, override.Rulesets.Value))
-	}
+	result.BranchProtection = MergeDeletableSlice(result.BranchProtection, override.BranchProtection, mergeBranchProtection)
+	result.Rulesets = MergeDeletableSlice(result.Rulesets, override.Rulesets, mergeRulesets)
 	if len(override.Secrets) > 0 {
 		result.Secrets = override.Secrets
 	}

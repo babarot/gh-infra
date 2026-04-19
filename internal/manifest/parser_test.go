@@ -74,14 +74,14 @@ spec:
 	if repo.Spec.Features.Wiki == nil || *repo.Spec.Features.Wiki != false {
 		t.Errorf("features.wiki = %v, want false", repo.Spec.Features.Wiki)
 	}
-	if len(repo.Spec.BranchProtection.Value) != 1 {
-		t.Fatalf("branch_protection count = %d, want 1", len(repo.Spec.BranchProtection.Value))
+	if len(repo.Spec.BranchProtection.Get()) != 1 {
+		t.Fatalf("branch_protection count = %d, want 1", len(repo.Spec.BranchProtection.Get()))
 	}
-	if repo.Spec.BranchProtection.Value[0].Pattern != "main" {
-		t.Errorf("branch_protection[0].pattern = %q, want %q", repo.Spec.BranchProtection.Value[0].Pattern, "main")
+	if repo.Spec.BranchProtection.Get()[0].Pattern != "main" {
+		t.Errorf("branch_protection[0].pattern = %q, want %q", repo.Spec.BranchProtection.Get()[0].Pattern, "main")
 	}
-	if repo.Spec.BranchProtection.Value[0].RequiredReviews == nil || *repo.Spec.BranchProtection.Value[0].RequiredReviews != 2 {
-		t.Errorf("branch_protection[0].required_reviews = %v, want 2", repo.Spec.BranchProtection.Value[0].RequiredReviews)
+	if repo.Spec.BranchProtection.Get()[0].RequiredReviews == nil || *repo.Spec.BranchProtection.Get()[0].RequiredReviews != 2 {
+		t.Errorf("branch_protection[0].required_reviews = %v, want 2", repo.Spec.BranchProtection.Get()[0].RequiredReviews)
 	}
 }
 
@@ -1670,15 +1670,15 @@ repositories:
 	}
 
 	// First repo inherits default branch protection
-	if len(repos[0].Spec.BranchProtection.Value) != 1 {
-		t.Fatalf("inherits-bp: expected 1 rule, got %d", len(repos[0].Spec.BranchProtection.Value))
+	if len(repos[0].Spec.BranchProtection.Get()) != 1 {
+		t.Fatalf("inherits-bp: expected 1 rule, got %d", len(repos[0].Spec.BranchProtection.Get()))
 	}
-	if *repos[0].Spec.BranchProtection.Value[0].RequiredReviews != 1 {
-		t.Errorf("inherits-bp: expected required_reviews=1, got %d", *repos[0].Spec.BranchProtection.Value[0].RequiredReviews)
+	if *repos[0].Spec.BranchProtection.Get()[0].RequiredReviews != 1 {
+		t.Errorf("inherits-bp: expected required_reviews=1, got %d", *repos[0].Spec.BranchProtection.Get()[0].RequiredReviews)
 	}
 
 	// Second repo: main rule merged (required_reviews overridden, dismiss_stale_reviews inherited)
-	bp := repos[1].Spec.BranchProtection.Value
+	bp := repos[1].Spec.BranchProtection.Get()
 	if len(bp) != 2 {
 		t.Fatalf("overrides-bp: expected 2 rules, got %d", len(bp))
 	}
@@ -1735,12 +1735,12 @@ repositories:
 	}
 
 	// First repo inherits default rulesets
-	if len(repos[0].Spec.Rulesets.Value) != 1 {
-		t.Fatalf("inherits-rs: expected 1 ruleset, got %d", len(repos[0].Spec.Rulesets.Value))
+	if len(repos[0].Spec.Rulesets.Get()) != 1 {
+		t.Fatalf("inherits-rs: expected 1 ruleset, got %d", len(repos[0].Spec.Rulesets.Get()))
 	}
 
 	// Second repo: default-ruleset overridden, custom-ruleset appended
-	rs := repos[1].Spec.Rulesets.Value
+	rs := repos[1].Spec.Rulesets.Get()
 	if len(rs) != 2 {
 		t.Fatalf("overrides-rs: expected 2 rulesets, got %d", len(rs))
 	}
@@ -1787,8 +1787,8 @@ func TestMergeSpecs_NullOverride(t *testing.T) {
 		if result.BranchProtection.IsDelete() {
 			t.Error("expected non-null BranchProtection when override has values")
 		}
-		if len(result.BranchProtection.Value) != 1 {
-			t.Errorf("expected 1 branch protection rule, got %d", len(result.BranchProtection.Value))
+		if len(result.BranchProtection.Get()) != 1 {
+			t.Errorf("expected 1 branch protection rule, got %d", len(result.BranchProtection.Get()))
 		}
 	})
 
@@ -1808,8 +1808,8 @@ func TestMergeSpecs_NullOverride(t *testing.T) {
 		if result.BranchProtection.IsDelete() {
 			t.Error("expected non-null BranchProtection inherited from defaults")
 		}
-		if len(result.BranchProtection.Value) != 1 {
-			t.Errorf("expected 1 branch protection rule from defaults, got %d", len(result.BranchProtection.Value))
+		if len(result.BranchProtection.Get()) != 1 {
+			t.Errorf("expected 1 branch protection rule from defaults, got %d", len(result.BranchProtection.Get()))
 		}
 	})
 }
@@ -1889,8 +1889,8 @@ repositories:
 	if repos[1].Spec.BranchProtection.IsDelete() {
 		t.Error("clears-default-null should replace branch_protection null marker with values")
 	}
-	if len(repos[1].Spec.BranchProtection.Value) != 1 {
-		t.Fatalf("clears-default-null branch protection count = %d, want 1", len(repos[1].Spec.BranchProtection.Value))
+	if len(repos[1].Spec.BranchProtection.Get()) != 1 {
+		t.Fatalf("clears-default-null branch protection count = %d, want 1", len(repos[1].Spec.BranchProtection.Get()))
 	}
 	if !repos[2].Spec.Rulesets.IsDelete() {
 		t.Error("overrides-with-null should override default rulesets with null marker")

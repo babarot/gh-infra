@@ -518,7 +518,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		key:    "branch_protection",
 		kind:   fieldCollection,
 		valueVal: func(spec manifest.RepositorySpec) any {
-			return spec.BranchProtection.Value
+			return spec.BranchProtection.Get()
 		},
 	},
 	{
@@ -526,7 +526,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		key:    "rulesets",
 		kind:   fieldCollection,
 		valueVal: func(spec manifest.RepositorySpec) any {
-			return spec.Rulesets.Value
+			return spec.Rulesets.Get()
 		},
 	},
 	{
@@ -821,10 +821,10 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	diffs = append(diffs, compareSecurity(local.Security, imported.Security)...)
 
 	// Branch protection (Phase 2c)
-	diffs = append(diffs, compareBranchProtection(local.BranchProtection.Value, imported.BranchProtection.Value)...)
+	diffs = append(diffs, compareBranchProtection(local.BranchProtection.Get(), imported.BranchProtection.Get())...)
 
 	// Rulesets (Phase 2c)
-	diffs = append(diffs, compareRulesets(local.Rulesets.Value, imported.Rulesets.Value)...)
+	diffs = append(diffs, compareRulesets(local.Rulesets.Get(), imported.Rulesets.Get())...)
 
 	// Variables (Phase 2d)
 	diffs = append(diffs, compareVariables(local.Variables, imported.Variables)...)
@@ -1457,12 +1457,12 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	override.MergeStrategy = minimalMergeStrategy(defaults.MergeStrategy, imported.MergeStrategy)
 
 	// BranchProtection: only include rules that differ from defaults (by pattern, field-level).
-	if bp := minimalBranchProtection(defaults.BranchProtection.Value, imported.BranchProtection.Value); len(bp) > 0 {
+	if bp := minimalBranchProtection(defaults.BranchProtection.Get(), imported.BranchProtection.Get()); len(bp) > 0 {
 		override.BranchProtection = manifest.NewDeletable(bp)
 	}
 
 	// Rulesets: only include rulesets that differ from or are absent in defaults.
-	if rs := minimalRulesets(defaults.Rulesets.Value, imported.Rulesets.Value); len(rs) > 0 {
+	if rs := minimalRulesets(defaults.Rulesets.Get(), imported.Rulesets.Get()); len(rs) > 0 {
 		override.Rulesets = manifest.NewDeletable(rs)
 	}
 
