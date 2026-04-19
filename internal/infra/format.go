@@ -303,8 +303,8 @@ func repoChangesToDiffGroups(changes []repository.Change) []ui.DiffGroup {
 				Icon:   groupIcon(g.changes),
 			}
 			for _, c := range g.changes {
-				if len(c.Children) > 0 {
-					for _, child := range c.Children {
+				if len(c.Details) > 0 {
+					for _, child := range c.Details {
 						item := changeToDiffItem(child)
 						item.Field = c.Field + "." + child.Field
 						dg.Items = append(dg.Items, item)
@@ -316,7 +316,7 @@ func repoChangesToDiffGroups(changes []repository.Change) []ui.DiffGroup {
 			result = append(result, dg)
 		} else {
 			c := g.changes[0]
-			if len(c.Children) > 0 {
+			if len(c.Details) > 0 {
 				var icon string
 				switch c.Type {
 				case repository.ChangeCreate:
@@ -328,7 +328,7 @@ func repoChangesToDiffGroups(changes []repository.Change) []ui.DiffGroup {
 				}
 				header := repoChangeGroupHeader(c)
 				dg := ui.DiffGroup{Header: header, Icon: icon}
-				for _, child := range c.Children {
+				for _, child := range c.Details {
 					dg.Items = append(dg.Items, changeToDiffItem(child))
 				}
 				result = append(result, dg)
@@ -387,8 +387,8 @@ func changeToDiffItem(c repository.Change) ui.DiffItem {
 func repoFieldWidth(changes []repository.Change) int {
 	w := 0
 	for _, c := range changes {
-		if len(c.Children) > 0 {
-			for _, child := range c.Children {
+		if len(c.Details) > 0 {
+			for _, child := range c.Details {
 				if len(child.Field) > w {
 					w = len(child.Field)
 				}

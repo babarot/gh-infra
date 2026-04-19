@@ -592,6 +592,40 @@ func TestApplyBranchProtection_Delete(t *testing.T) {
 	}
 }
 
+func TestApplyBranchProtection_ChildrenAreDisplayOnly(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	reviews := 2
+	repo := newTestRepo("myorg", "myrepo")
+	repo.Spec.BranchProtection = []manifest.BranchProtection{
+		{Pattern: "main", RequiredReviews: &reviews},
+	}
+
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "BranchProtection[main]",
+			Name:     "myorg/myrepo",
+			Field:    "branch_protection",
+			Details: []Change{
+				{Type: ChangeUpdate, Field: "required_reviews", OldValue: 1, NewValue: 2},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected parent change to be applied once, got %d calls: %v", len(mock.Called), mock.Called)
+	}
+}
+
 func TestBuildBranchProtectionPayload(t *testing.T) {
 	reviews := 2
 	dismissStale := true
@@ -1178,6 +1212,11 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 			Resource: "Repository",
 			Name:     "myorg/myrepo",
 			Field:    "merge_strategy",
+			Details: []Change{
+				{Field: "allow_squash_merge", NewValue: true},
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "auto_delete_head_branches", NewValue: true},
+			},
 			Children: []Change{
 				{Field: "allow_squash_merge", NewValue: true},
 				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
@@ -1600,7 +1639,7 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 			Resource: manifest.ResourceLabel,
 			Name:     "myorg/myrepo",
 			Field:    "enhancement",
-			Children: []Change{
+			Details: []Change{
 				{Type: ChangeUpdate, Field: "color", OldValue: "a2eeef", NewValue: "eeeeee"},
 			},
 		},
@@ -1638,7 +1677,7 @@ func TestApplyMilestone_UpdateWithChildren(t *testing.T) {
 			Resource: manifest.ResourceMilestone,
 			Name:     "myorg/myrepo",
 			Field:    "v1.0",
-			Children: []Change{
+			Details: []Change{
 				{Type: ChangeUpdate, Field: "due_on", OldValue: "2026-05-31", NewValue: "2026-06-01"},
 			},
 		},

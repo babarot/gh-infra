@@ -57,6 +57,27 @@ func appendIfSet[T any](children *[]Change, field string, val *T) {
 	}
 }
 
+type deleteField[T any] struct {
+	Field string
+	Value func(T) (any, bool)
+}
+
+func deleteChildrenFromFields[T any](v T, fields []deleteField[T]) []Change {
+	children := make([]Change, 0, len(fields))
+	for _, field := range fields {
+		value, ok := field.Value(v)
+		if !ok {
+			continue
+		}
+		children = append(children, Change{
+			Type:     ChangeDelete,
+			Field:    field.Field,
+			OldValue: value,
+		})
+	}
+	return children
+}
+
 // group collects child changes and wraps them in a parent Change if non-empty.
 func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 	var children []Change
@@ -69,6 +90,7 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 		Resource: dc.resource,
 		Name:     dc.name,
 		Field:    field,
+		Details:  children,
 		Children: children,
 	}}
 }
@@ -265,7 +287,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 				Name:     name,
 				Field:    "branch_protection",
 				NewValue: dbp.Pattern,
-				Children: children,
+				Details:  children,
 			})
 			continue
 		}
@@ -313,7 +335,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 				Name:     name,
 				Field:    "branch_protection",
 				NewValue: dbp.Pattern,
-				Children: fieldChanges,
+				Details:  fieldChanges,
 			})
 		}
 	}
@@ -330,7 +352,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 				Field:    "branch_protection",
 				OldValue: pattern,
 				NewValue: "not declared; reconcile.branch_protection=authoritative",
-				Children: bpDeleteChildren(cbp),
+				Details:  bpDeleteChildren(cbp),
 			})
 		}
 	}
@@ -384,7 +406,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 				Name:     name,
 				Field:    "ruleset",
 				NewValue: drs.Name,
-				Children: children,
+				Details:  children,
 			})
 			continue
 		}
@@ -478,7 +500,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 				Name:     name,
 				Field:    "ruleset",
 				NewValue: drs.Name,
-				Children: fieldChanges,
+				Details:  fieldChanges,
 			})
 		}
 	}
@@ -495,7 +517,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 				Field:    "ruleset",
 				OldValue: crs.ID,
 				NewValue: "not declared; reconcile.rulesets=authoritative",
-				Children: rsDeleteChildren(crs),
+				Details:  rsDeleteChildren(crs),
 			})
 		}
 	}
@@ -585,75 +607,96 @@ func rulesetStatusChecksEqual(ctx context.Context, desired []manifest.RulesetSta
 // a branch protection rule that is about to be deleted. applyChange must not
 // expand these children into separate API calls.
 func bpDeleteChildren(cbp *CurrentBranchProtection) []Change {
-	children := []Change{
-		{Type: ChangeDelete, Field: "required_reviews", OldValue: cbp.RequiredReviews},
-		{Type: ChangeDelete, Field: "dismiss_stale_reviews", OldValue: cbp.DismissStaleReviews},
-		{Type: ChangeDelete, Field: "require_code_owner_reviews", OldValue: cbp.RequireCodeOwnerReviews},
-		{Type: ChangeDelete, Field: "enforce_admins", OldValue: cbp.EnforceAdmins},
-		{Type: ChangeDelete, Field: "allow_force_pushes", OldValue: cbp.AllowForcePushes},
-		{Type: ChangeDelete, Field: "allow_deletions", OldValue: cbp.AllowDeletions},
-	}
-	if cbp.RequireStatusChecks != nil {
-		children = append(children, Change{
-			Type:     ChangeDelete,
-			Field:    "require_status_checks.strict",
-			OldValue: cbp.RequireStatusChecks.Strict,
-		})
-		if len(cbp.RequireStatusChecks.Contexts) > 0 {
-			children = append(children, Change{
-				Type:     ChangeDelete,
-				Field:    "require_status_checks.contexts",
-				OldValue: cbp.RequireStatusChecks.Contexts,
-			})
-		}
-	}
-	return children
+	return deleteChildrenFromFields(cbp, branchProtectionDeleteFields)
 }
 
 // rsDeleteChildren builds display-only children showing the current values of
 // a ruleset that is about to be deleted. applyChange must not expand these
 // children into separate API calls.
 func rsDeleteChildren(rs *CurrentRuleset) []Change {
-	children := []Change{
-		{Type: ChangeDelete, Field: "target", OldValue: rs.Target},
-		{Type: ChangeDelete, Field: "enforcement", OldValue: rs.Enforcement},
-	}
-	if len(rs.BypassActors) > 0 {
-		children = append(children, Change{
-			Type:     ChangeDelete,
-			Field:    "bypass_actors",
-			OldValue: fmt.Sprintf("%d actors", len(rs.BypassActors)),
-		})
-	}
-	if rs.Conditions != nil && rs.Conditions.RefName != nil {
-		children = append(children, Change{
-			Type:     ChangeDelete,
-			Field:    "conditions",
-			OldValue: formatConditions(rs.Conditions.RefName.Include, rs.Conditions.RefName.Exclude),
-		})
-	}
-	if rs.Rules.NonFastForward {
-		children = append(children, Change{Type: ChangeDelete, Field: "rules.non_fast_forward", OldValue: true})
-	}
-	if rs.Rules.Deletion {
-		children = append(children, Change{Type: ChangeDelete, Field: "rules.deletion", OldValue: true})
-	}
-	if rs.Rules.Creation {
-		children = append(children, Change{Type: ChangeDelete, Field: "rules.creation", OldValue: true})
-	}
-	if rs.Rules.RequiredLinearHistory {
-		children = append(children, Change{Type: ChangeDelete, Field: "rules.required_linear_history", OldValue: true})
-	}
-	if rs.Rules.RequiredSignatures {
-		children = append(children, Change{Type: ChangeDelete, Field: "rules.required_signatures", OldValue: true})
-	}
-	if rs.Rules.PullRequest != nil {
-		children = append(children, Change{Type: ChangeDelete, Field: "rules.pull_request", OldValue: "enabled"})
-	}
-	if rs.Rules.RequiredStatusChecks != nil {
-		children = append(children, Change{Type: ChangeDelete, Field: "rules.required_status_checks", OldValue: "enabled"})
-	}
-	return children
+	return deleteChildrenFromFields(rs, rulesetDeleteFields)
+}
+
+var branchProtectionDeleteFields = []deleteField[*CurrentBranchProtection]{
+	{Field: "required_reviews", Value: func(bp *CurrentBranchProtection) (any, bool) { return bp.RequiredReviews, true }},
+	{Field: "dismiss_stale_reviews", Value: func(bp *CurrentBranchProtection) (any, bool) { return bp.DismissStaleReviews, true }},
+	{Field: "require_code_owner_reviews", Value: func(bp *CurrentBranchProtection) (any, bool) { return bp.RequireCodeOwnerReviews, true }},
+	{Field: "enforce_admins", Value: func(bp *CurrentBranchProtection) (any, bool) { return bp.EnforceAdmins, true }},
+	{Field: "allow_force_pushes", Value: func(bp *CurrentBranchProtection) (any, bool) { return bp.AllowForcePushes, true }},
+	{Field: "allow_deletions", Value: func(bp *CurrentBranchProtection) (any, bool) { return bp.AllowDeletions, true }},
+	{
+		Field: "require_status_checks.strict",
+		Value: func(bp *CurrentBranchProtection) (any, bool) {
+			if bp.RequireStatusChecks == nil {
+				return nil, false
+			}
+			return bp.RequireStatusChecks.Strict, true
+		},
+	},
+	{
+		Field: "require_status_checks.contexts",
+		Value: func(bp *CurrentBranchProtection) (any, bool) {
+			if bp.RequireStatusChecks == nil || len(bp.RequireStatusChecks.Contexts) == 0 {
+				return nil, false
+			}
+			return bp.RequireStatusChecks.Contexts, true
+		},
+	},
+}
+
+var rulesetDeleteFields = []deleteField[*CurrentRuleset]{
+	{Field: "target", Value: func(rs *CurrentRuleset) (any, bool) { return rs.Target, true }},
+	{Field: "enforcement", Value: func(rs *CurrentRuleset) (any, bool) { return rs.Enforcement, true }},
+	{
+		Field: "bypass_actors",
+		Value: func(rs *CurrentRuleset) (any, bool) {
+			if len(rs.BypassActors) == 0 {
+				return nil, false
+			}
+			return fmt.Sprintf("%d actors", len(rs.BypassActors)), true
+		},
+	},
+	{
+		Field: "conditions",
+		Value: func(rs *CurrentRuleset) (any, bool) {
+			if rs.Conditions == nil || rs.Conditions.RefName == nil {
+				return nil, false
+			}
+			return formatConditions(rs.Conditions.RefName.Include, rs.Conditions.RefName.Exclude), true
+		},
+	},
+	{
+		Field: "rules.non_fast_forward",
+		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.NonFastForward },
+	},
+	{
+		Field: "rules.deletion",
+		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.Deletion },
+	},
+	{
+		Field: "rules.creation",
+		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.Creation },
+	},
+	{
+		Field: "rules.required_linear_history",
+		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.RequiredLinearHistory },
+	},
+	{
+		Field: "rules.required_signatures",
+		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.RequiredSignatures },
+	},
+	{
+		Field: "rules.pull_request",
+		Value: func(rs *CurrentRuleset) (any, bool) {
+			return "enabled", rs.Rules.PullRequest != nil
+		},
+	},
+	{
+		Field: "rules.required_status_checks",
+		Value: func(rs *CurrentRuleset) (any, bool) {
+			return "enabled", rs.Rules.RequiredStatusChecks != nil
+		},
+	},
 }
 
 func statusCheckContexts(checks []CurrentRulesetStatusCheck) []string {
@@ -774,7 +817,7 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 				Resource: manifest.ResourceLabel,
 				Name:     name,
 				Field:    dl.Name,
-				Children: children,
+				Details:  children,
 			})
 		}
 	}
@@ -857,7 +900,7 @@ func diffMilestones(name string, desired *manifest.Repository, current *CurrentS
 				Resource: manifest.ResourceMilestone,
 				Name:     name,
 				Field:    dm.Title,
-				Children: children,
+				Details:  children,
 			})
 		}
 	}

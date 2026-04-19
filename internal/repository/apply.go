@@ -139,10 +139,9 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 		return p.applyMergeStrategyBatch(ctx, c)
 	}
 
-	// Generic: if this change has children, expand and apply each child.
-	// Label and Milestone updates carry children for display (e.g. color, description)
-	// but should be applied as a single API call using the parent's Field (the name/title).
-	if len(c.Children) > 0 && c.Type != ChangeDelete && c.Resource != manifest.ResourceLabel && c.Resource != manifest.ResourceMilestone {
+	// Generic: Children are concrete apply units. Details are display-only plan
+	// information and must not be interpreted as API work.
+	if len(c.Children) > 0 && c.Type != ChangeDelete {
 		for _, child := range c.Children {
 			child.Resource = c.Resource
 			child.Name = c.Name
