@@ -15,6 +15,9 @@ metadata:
   name: my-project
   owner: babarot
 
+reconcile:
+  rulesets: mirror
+
 spec:
   description: "My awesome project"
   homepage: "https://example.com"
@@ -99,6 +102,41 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 
 All fields are optional — declare only what you want to manage. Fields not present in the YAML are left unchanged on GitHub.
 The one exception is `spec.actions.enabled`: when managing any other Actions setting, GitHub requires `enabled` to be sent too. See [Actions](./actions/).
+
+## Reconcile
+
+By default, collection fields are managed additively: gh-infra creates or updates entries declared in YAML and leaves undeclared GitHub resources untouched.
+
+Use top-level `reconcile` to make selected collections match YAML exactly:
+
+```yaml
+reconcile:
+  rulesets: mirror
+  branch_protection: additive
+
+spec:
+  rulesets:
+    - name: protect-main
+      target: branch
+      rules:
+        non_fast_forward: true
+```
+
+| Field | Modes | Description |
+|---|---|---|
+| `reconcile.rulesets` | `additive`, `mirror` | Controls how `spec.rulesets` is compared with existing GitHub rulesets |
+| `reconcile.branch_protection` | `additive`, `mirror` | Controls how `spec.branch_protection` is compared with existing classic branch protection rules |
+
+`additive` is the default. `mirror` deletes remote entries that are not declared in YAML. To delete all rulesets or branch protection rules, use `mirror` with an empty list:
+
+```yaml
+reconcile:
+  rulesets: mirror
+spec:
+  rulesets: []
+```
+
+`rulesets: null`, `rulesets:`, `branch_protection: null`, and `branch_protection:` are invalid. Use an empty list when you mean an empty managed collection.
 
 ## When to Use
 

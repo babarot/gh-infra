@@ -1,5 +1,7 @@
 package manifest
 
+import "fmt"
+
 const (
 	// Visibility values for repository visibility.
 	VisibilityPublic   = "public"
@@ -19,6 +21,10 @@ const (
 	// Label sync mode values.
 	LabelSyncAdditive = "additive"
 	LabelSyncMirror   = "mirror"
+
+	// Collection reconcile mode values.
+	CollectionReconcileAdditive = "additive"
+	CollectionReconcileMirror   = "mirror"
 
 	// Ruleset enforcement values.
 	RulesetEnforcementActive   = "active"
@@ -57,10 +63,11 @@ const (
 
 // Repository represents a single repository declaration.
 type Repository struct {
-	APIVersion string             `yaml:"apiVersion"`
-	Kind       string             `yaml:"kind"`
-	Metadata   RepositoryMetadata `yaml:"metadata"`
-	Spec       RepositorySpec     `yaml:"spec"`
+	APIVersion string               `yaml:"apiVersion"`
+	Kind       string               `yaml:"kind"`
+	Metadata   RepositoryMetadata   `yaml:"metadata"`
+	Reconcile  *RepositoryReconcile `yaml:"reconcile,omitempty"`
+	Spec       RepositorySpec       `yaml:"spec"`
 }
 
 type RepositoryMetadata struct {
@@ -90,6 +97,46 @@ type RepositorySpec struct {
 	Secrets             []Secret           `yaml:"secrets,omitempty"           validate:"unique=name"`
 	Variables           []Variable         `yaml:"variables,omitempty"         validate:"unique=name"`
 	Actions             *Actions           `yaml:"actions,omitempty"`
+
+	BranchProtectionSet bool `yaml:"-"`
+	RulesetsSet         bool `yaml:"-"`
+}
+
+type RepositoryReconcile struct {
+	BranchProtection *string `yaml:"branch_protection,omitempty" validate:"omitempty,oneof=additive mirror"`
+	Rulesets         *string `yaml:"rulesets,omitempty"           validate:"omitempty,oneof=additive mirror"`
+}
+
+// UnmarshalYAML tracks whether collection fields were present in YAML. For
+// stateless reconciliation, omitted, empty, and non-empty collections have
+// different meanings; explicit null remains invalid.
+func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
+	type raw RepositorySpec
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	*s = RepositorySpec(r)
+
+	var fields map[string]any
+	if err := unmarshal(&fields); err != nil {
+		return err
+	}
+
+	if v, ok := fields["branch_protection"]; ok {
+		s.BranchProtectionSet = true
+		if v == nil {
+			return fmt.Errorf("branch_protection must be a sequence; use [] with reconcile.branch_protection=mirror to delete all branch protection rules")
+		}
+	}
+	if v, ok := fields["rulesets"]; ok {
+		s.RulesetsSet = true
+		if v == nil {
+			return fmt.Errorf("rulesets must be a sequence; use [] with reconcile.rulesets=mirror to delete all rulesets")
+		}
+	}
+
+	return nil
 }
 
 // Security groups GitHub Advanced Security related repository settings,
@@ -291,6 +338,20 @@ func LabelSyncMode(s *string) string {
 		return LabelSyncAdditive
 	}
 	return *s
+}
+
+func BranchProtectionReconcileMode(r *RepositoryReconcile) string {
+	if r == nil || r.BranchProtection == nil {
+		return CollectionReconcileAdditive
+	}
+	return *r.BranchProtection
+}
+
+func RulesetsReconcileMode(r *RepositoryReconcile) string {
+	if r == nil || r.Rulesets == nil {
+		return CollectionReconcileAdditive
+	}
+	return *r.Rulesets
 }
 
 type Milestone struct {

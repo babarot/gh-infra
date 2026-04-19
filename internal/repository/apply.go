@@ -142,7 +142,7 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 	// Generic: if this change has children, expand and apply each child.
 	// Label and Milestone updates carry children for display (e.g. color, description)
 	// but should be applied as a single API call using the parent's Field (the name/title).
-	if len(c.Children) > 0 && c.Resource != manifest.ResourceLabel && c.Resource != manifest.ResourceMilestone {
+	if len(c.Children) > 0 && c.Type != ChangeDelete && c.Resource != manifest.ResourceLabel && c.Resource != manifest.ResourceMilestone {
 		for _, child := range c.Children {
 			child.Resource = c.Resource
 			child.Name = c.Name
@@ -635,6 +635,12 @@ func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *m
 		pattern = strings.TrimSuffix(after, "]")
 	}
 
+	if c.Type == ChangeDelete {
+		endpoint := fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, pattern)
+		_, err := p.runner.Run(ctx, "api", endpoint, "--method", "DELETE")
+		return wrapError(err, owner+"/"+name, "branch_protection:"+pattern)
+	}
+
 	var bp *manifest.BranchProtection
 	for i := range repo.Spec.BranchProtection {
 		if repo.Spec.BranchProtection[i].Pattern == pattern {
@@ -711,6 +717,15 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 
 	// Extract ruleset name from resource like "Ruleset[protect-main]"
 	rulesetName := strings.TrimSuffix(strings.TrimPrefix(c.Resource, manifest.ResourceRuleset+"["), "]")
+
+	if c.Type == ChangeDelete {
+		rulesetID, ok := c.OldValue.(int)
+		if !ok || rulesetID == 0 {
+			return fmt.Errorf("ruleset %q delete change is missing ruleset ID", rulesetName)
+		}
+		_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/rulesets/%d", owner, name, rulesetID), "--method", "DELETE")
+		return wrapError(err, owner+"/"+name, "ruleset:"+rulesetName)
+	}
 
 	var rs *manifest.Ruleset
 	for i := range repo.Spec.Rulesets {
