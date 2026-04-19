@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -189,6 +190,9 @@ func parseRepository(data []byte, path string) ([]*Repository, error) {
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&repo); err != nil {
 		return nil, fmt.Errorf("parse Repository in %s: %w", path, err)
 	}
+	if err := applyRepositoryDeletionMarkers(data, &repo); err != nil {
+		return nil, fmt.Errorf("parse Repository null markers in %s: %w", path, err)
+	}
 	if err := repo.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -199,6 +203,9 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	var set RepositorySet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&set); err != nil {
 		return nil, nil, fmt.Errorf("parse RepositorySet in %s: %w", path, err)
+	}
+	if err := applyRepositorySetDeletionMarkers(data, &set); err != nil {
+		return nil, nil, fmt.Errorf("parse RepositorySet null markers in %s: %w", path, err)
 	}
 
 	var repos []*Repository
@@ -230,6 +237,109 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 		})
 	}
 	return repos, docs, nil
+}
+
+func applyRepositoryDeletionMarkers(data []byte, repo *Repository) error {
+	raw, err := decodeRawYAMLMap(data)
+	if err != nil {
+		return err
+	}
+	if specRaw, ok := rawChildMap(raw, "spec"); ok {
+		return applyDeletableMarkers(specRaw, &repo.Spec)
+	}
+	return nil
+}
+
+func applyRepositorySetDeletionMarkers(data []byte, set *RepositorySet) error {
+	raw, err := decodeRawYAMLMap(data)
+	if err != nil {
+		return err
+	}
+	if defaultsRaw, ok := rawChildMap(raw, "defaults"); ok && set.Defaults != nil {
+		if specRaw, ok := rawChildMap(defaultsRaw, "spec"); ok {
+			if err := applyDeletableMarkers(specRaw, &set.Defaults.Spec); err != nil {
+				return err
+			}
+		}
+	}
+	reposRaw, ok := raw["repositories"].([]any)
+	if !ok {
+		return nil
+	}
+	for i := range set.Repositories {
+		if i >= len(reposRaw) {
+			break
+		}
+		entryRaw, ok := asRawYAMLMap(reposRaw[i])
+		if !ok {
+			continue
+		}
+		if specRaw, ok := rawChildMap(entryRaw, "spec"); ok {
+			if err := applyDeletableMarkers(specRaw, &set.Repositories[i].Spec); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func applyDeletableMarkers(raw map[string]any, dst any) error {
+	rv := reflect.ValueOf(dst)
+	if rv.Kind() != reflect.Ptr || rv.IsNil() || rv.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("apply deletable markers: dst must be pointer to struct")
+	}
+
+	sv := rv.Elem()
+	st := sv.Type()
+	for i := 0; i < st.NumField(); i++ {
+		sf := st.Field(i)
+		if sf.PkgPath != "" {
+			continue
+		}
+		fv := sv.Field(i)
+		marker, ok := deletableMarkerForField(fv)
+		if !ok {
+			continue
+		}
+		yamlKey := yamlTagKey(sf.Tag.Get("yaml"))
+		if yamlKey == "" || yamlKey == "-" {
+			return fmt.Errorf("%s.%s: Deletable field must have a yaml key", st.Name(), sf.Name)
+		}
+		if v, ok := raw[yamlKey]; ok && v == nil {
+			marker.markDelete()
+		}
+	}
+	return nil
+}
+
+func deletableMarkerForField(fv reflect.Value) (deletableMarker, bool) {
+	if !fv.CanAddr() {
+		return nil, false
+	}
+	marker, ok := fv.Addr().Interface().(deletableMarker)
+	return marker, ok
+}
+
+func yamlTagKey(tag string) string {
+	key, _, _ := strings.Cut(tag, ",")
+	return key
+}
+
+func decodeRawYAMLMap(data []byte) (map[string]any, error) {
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func rawChildMap(raw map[string]any, key string) (map[string]any, bool) {
+	return asRawYAMLMap(raw[key])
+}
+
+func asRawYAMLMap(v any) (map[string]any, bool) {
+	m, ok := v.(map[string]any)
+	return m, ok
 }
 
 func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, error) {
@@ -385,15 +495,15 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.Actions != nil {
 		result.Actions = mergeActions(result.Actions, override.Actions)
 	}
-	if override.BranchProtection.IsNull() {
-		result.BranchProtection = NullValue[[]BranchProtection]()
+	if override.BranchProtection.IsDelete() {
+		result.BranchProtection = DeleteValue[[]BranchProtection]()
 	} else if len(override.BranchProtection.Value) > 0 {
-		result.BranchProtection = NewNullable(mergeBranchProtection(result.BranchProtection.Value, override.BranchProtection.Value))
+		result.BranchProtection = NewDeletable(mergeBranchProtection(result.BranchProtection.Value, override.BranchProtection.Value))
 	}
-	if override.Rulesets.IsNull() {
-		result.Rulesets = NullValue[[]Ruleset]()
+	if override.Rulesets.IsDelete() {
+		result.Rulesets = DeleteValue[[]Ruleset]()
 	} else if len(override.Rulesets.Value) > 0 {
-		result.Rulesets = NewNullable(mergeRulesets(result.Rulesets.Value, override.Rulesets.Value))
+		result.Rulesets = NewDeletable(mergeRulesets(result.Rulesets.Value, override.Rulesets.Value))
 	}
 	if len(override.Secrets) > 0 {
 		result.Secrets = override.Secrets

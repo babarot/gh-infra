@@ -1458,12 +1458,12 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 
 	// BranchProtection: only include rules that differ from defaults (by pattern, field-level).
 	if bp := minimalBranchProtection(defaults.BranchProtection.Value, imported.BranchProtection.Value); len(bp) > 0 {
-		override.BranchProtection = manifest.NewNullable(bp)
+		override.BranchProtection = manifest.NewDeletable(bp)
 	}
 
 	// Rulesets: only include rulesets that differ from or are absent in defaults.
 	if rs := minimalRulesets(defaults.Rulesets.Value, imported.Rulesets.Value); len(rs) > 0 {
-		override.Rulesets = manifest.NewNullable(rs)
+		override.Rulesets = manifest.NewDeletable(rs)
 	}
 
 	// Actions: key-level comparison (matches mergeActions behavior).

@@ -35,5 +35,3 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 )
-
-replace github.com/goccy/go-yaml => github.com/babarot/go-yaml v1.19.2-babarot.1

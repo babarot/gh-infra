@@ -67,7 +67,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		bps = append(bps, mbp)
 	}
 	if len(bps) > 0 {
-		repo.Spec.BranchProtection = manifest.NewNullable(bps)
+		repo.Spec.BranchProtection = manifest.NewDeletable(bps)
 	}
 
 	var rss []manifest.Ruleset
@@ -128,7 +128,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		rss = append(rss, mrs)
 	}
 	if len(rss) > 0 {
-		repo.Spec.Rulesets = manifest.NewNullable(rss)
+		repo.Spec.Rulesets = manifest.NewDeletable(rss)
 	}
 
 	varNames := make([]string, 0, len(r.Variables))

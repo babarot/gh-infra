@@ -17,7 +17,7 @@ func TestValidateRepository(t *testing.T) {
 				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
 				Spec: RepositorySpec{
 					Visibility: Ptr("public"),
-					BranchProtection: NewNullable([]BranchProtection{
+					BranchProtection: NewDeletable([]BranchProtection{
 						{Pattern: "main"},
 					}),
 				},
@@ -79,7 +79,7 @@ func TestValidateRepository(t *testing.T) {
 			repo: &Repository{
 				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
 				Spec: RepositorySpec{
-					BranchProtection: NewNullable([]BranchProtection{{Pattern: ""}}),
+					BranchProtection: NewDeletable([]BranchProtection{{Pattern: ""}}),
 				},
 			},
 			wantErr: "pattern is required",
@@ -89,7 +89,7 @@ func TestValidateRepository(t *testing.T) {
 			repo: &Repository{
 				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
 				Spec: RepositorySpec{
-					BranchProtection: NewNullable([]BranchProtection{
+					BranchProtection: NewDeletable([]BranchProtection{
 						{Pattern: "main"},
 						{Pattern: "release/*"},
 					}),
@@ -402,7 +402,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "valid ruleset",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{
 						Name:        "protect-main",
 						Enforcement: Ptr("active"),
@@ -415,14 +415,14 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "empty name",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{{Name: ""}})
+				r.Spec.Rulesets = NewDeletable([]Ruleset{{Name: ""}})
 			},
 			wantErr: "name is required",
 		},
 		{
 			name: "duplicate name",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "dup", Rules: RulesetRules{}},
 					{Name: "dup", Rules: RulesetRules{}},
 				})
@@ -432,7 +432,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "invalid enforcement",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", Enforcement: Ptr("invalid")},
 				})
 			},
@@ -441,7 +441,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "invalid target",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", Target: Ptr("push")},
 				})
 			},
@@ -450,7 +450,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "no actor type specified",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{BypassMode: "always"},
 					}},
@@ -461,7 +461,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "multiple actor types specified",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", Team: "maintainers", BypassMode: "always"},
 					}},
@@ -472,7 +472,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "invalid role",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "invalid", BypassMode: "always"},
 					}},
@@ -483,7 +483,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "valid bypass_mode always",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "always"},
 					}},
@@ -493,7 +493,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "valid bypass_mode pull_request",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "pull_request"},
 					}},
@@ -503,7 +503,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "valid bypass_mode exempt",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "exempt"},
 					}},
@@ -513,7 +513,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "invalid bypass_mode",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{Name: "rs", BypassActors: []RulesetBypassActor{
 						{Role: "admin", BypassMode: "invalid"},
 					}},
@@ -524,7 +524,7 @@ func TestValidateRulesets(t *testing.T) {
 		{
 			name: "empty ref_name include",
 			setup: func(r *Repository) {
-				r.Spec.Rulesets = NewNullable([]Ruleset{
+				r.Spec.Rulesets = NewDeletable([]Ruleset{
 					{
 						Name: "rs",
 						Conditions: &RulesetConditions{

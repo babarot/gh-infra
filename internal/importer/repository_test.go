@@ -718,7 +718,7 @@ func TestMinimalOverride_LabelsAllSame(t *testing.T) {
 
 func TestMinimalOverride_BranchProtection(t *testing.T) {
 	defaults := manifest.RepositorySpec{
-		BranchProtection: manifest.NewNullable([]manifest.BranchProtection{
+		BranchProtection: manifest.NewDeletable([]manifest.BranchProtection{
 			{
 				Pattern:         "main",
 				RequiredReviews: manifest.Ptr(1),
@@ -728,7 +728,7 @@ func TestMinimalOverride_BranchProtection(t *testing.T) {
 	}
 
 	imported := manifest.RepositorySpec{
-		BranchProtection: manifest.NewNullable([]manifest.BranchProtection{
+		BranchProtection: manifest.NewDeletable([]manifest.BranchProtection{
 			{
 				Pattern:         "main",
 				RequiredReviews: manifest.Ptr(2),    // changed
@@ -764,7 +764,7 @@ func TestMinimalOverride_BranchProtection(t *testing.T) {
 }
 
 func TestMinimalOverride_BranchProtectionAllSame(t *testing.T) {
-	bp := manifest.NewNullable([]manifest.BranchProtection{
+	bp := manifest.NewDeletable([]manifest.BranchProtection{
 		{Pattern: "main", RequiredReviews: manifest.Ptr(1)},
 	})
 	defaults := manifest.RepositorySpec{BranchProtection: bp}
@@ -779,13 +779,13 @@ func TestMinimalOverride_BranchProtectionAllSame(t *testing.T) {
 
 func TestMinimalOverride_Rulesets(t *testing.T) {
 	defaults := manifest.RepositorySpec{
-		Rulesets: manifest.NewNullable([]manifest.Ruleset{
+		Rulesets: manifest.NewDeletable([]manifest.Ruleset{
 			{Name: "default-rs", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")},
 		}),
 	}
 
 	imported := manifest.RepositorySpec{
-		Rulesets: manifest.NewNullable([]manifest.Ruleset{
+		Rulesets: manifest.NewDeletable([]manifest.Ruleset{
 			{Name: "default-rs", Target: manifest.Ptr("branch"), Enforcement: manifest.Ptr("active")}, // same
 			{Name: "custom-rs", Target: manifest.Ptr("tag"), Enforcement: manifest.Ptr("active")},     // new
 		}),
@@ -1030,7 +1030,7 @@ repositories:
 		Spec: manifest.RepositorySpec{
 			Visibility:  manifest.Ptr("private"),
 			Description: manifest.Ptr("hello"),
-			Rulesets: manifest.NewNullable([]manifest.Ruleset{
+			Rulesets: manifest.NewDeletable([]manifest.Ruleset{
 				{
 					Name:        "main",
 					Target:      &branch,

@@ -234,7 +234,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 	var changes []Change
 
 	// Explicit null → delete all existing branch protection rules
-	if desired.Spec.BranchProtection.IsNull() {
+	if desired.Spec.BranchProtection.IsDelete() {
 		for pattern, cbp := range current.BranchProtection {
 			resource := fmt.Sprintf("%s[%s]", manifest.ResourceBranchProtection, pattern)
 			children := bpDeleteChildren(cbp)
@@ -350,7 +350,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 	var changes []Change
 
 	// Explicit null → delete all existing rulesets
-	if desired.Spec.Rulesets.IsNull() {
+	if desired.Spec.Rulesets.IsDelete() {
 		for rsName, rs := range current.Rulesets {
 			resource := fmt.Sprintf("%s[%s]", manifest.ResourceRuleset, rsName)
 			children := rsDeleteChildren(rs)

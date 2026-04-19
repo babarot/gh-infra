@@ -514,7 +514,7 @@ func TestApplyBranchProtection(t *testing.T) {
 	reviews := 2
 	enforceAdmins := true
 	repo := newTestRepo("myorg", "myrepo")
-	repo.Spec.BranchProtection = manifest.NewNullable([]manifest.BranchProtection{
+	repo.Spec.BranchProtection = manifest.NewDeletable([]manifest.BranchProtection{
 		{
 			Pattern:         "main",
 			RequiredReviews: &reviews,
@@ -562,7 +562,7 @@ func TestApplyBranchProtection_Delete(t *testing.T) {
 
 	repo := newTestRepo("myorg", "myrepo")
 	// Spec has null branch protection (delete intent)
-	repo.Spec.BranchProtection = manifest.NullValue[[]manifest.BranchProtection]()
+	repo.Spec.BranchProtection = manifest.DeleteValue[[]manifest.BranchProtection]()
 
 	changes := []Change{
 		{
@@ -600,7 +600,7 @@ func TestApplyRuleset_Delete(t *testing.T) {
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
-	repo.Spec.Rulesets = manifest.NullValue[[]manifest.Ruleset]()
+	repo.Spec.Rulesets = manifest.DeleteValue[[]manifest.Ruleset]()
 
 	changes := []Change{
 		{
@@ -756,7 +756,7 @@ func TestApplyRuleset_Create(t *testing.T) {
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
-	repo.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
+	repo.Spec.Rulesets = manifest.NewDeletable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("active"),
@@ -816,7 +816,7 @@ func TestApplyRuleset_Update(t *testing.T) {
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
-	repo.Spec.Rulesets = manifest.NewNullable([]manifest.Ruleset{
+	repo.Spec.Rulesets = manifest.NewDeletable([]manifest.Ruleset{
 		{
 			Name:        "protect-main",
 			Enforcement: manifest.Ptr("evaluate"),

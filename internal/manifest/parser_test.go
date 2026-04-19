@@ -1756,17 +1756,17 @@ func TestMergeSpecs_NullOverride(t *testing.T) {
 	t.Run("null override overrides defaults", func(t *testing.T) {
 		defaults := &RepositorySetDefaults{
 			Spec: RepositorySpec{
-				BranchProtection: NewNullable([]BranchProtection{
+				BranchProtection: NewDeletable([]BranchProtection{
 					{Pattern: "main", RequiredReviews: Ptr(1)},
 				}),
 			},
 		}
 		override := RepositorySpec{
-			BranchProtection: NullValue[[]BranchProtection](),
+			BranchProtection: DeleteValue[[]BranchProtection](),
 		}
 
 		result := mergeSpecs(defaults, override)
-		if !result.BranchProtection.IsNull() {
+		if !result.BranchProtection.IsDelete() {
 			t.Error("expected null BranchProtection after null override")
 		}
 	})
@@ -1774,17 +1774,17 @@ func TestMergeSpecs_NullOverride(t *testing.T) {
 	t.Run("values override clears null from defaults", func(t *testing.T) {
 		defaults := &RepositorySetDefaults{
 			Spec: RepositorySpec{
-				BranchProtection: NullValue[[]BranchProtection](),
+				BranchProtection: DeleteValue[[]BranchProtection](),
 			},
 		}
 		override := RepositorySpec{
-			BranchProtection: NewNullable([]BranchProtection{
+			BranchProtection: NewDeletable([]BranchProtection{
 				{Pattern: "main", RequiredReviews: Ptr(2)},
 			}),
 		}
 
 		result := mergeSpecs(defaults, override)
-		if result.BranchProtection.IsNull() {
+		if result.BranchProtection.IsDelete() {
 			t.Error("expected non-null BranchProtection when override has values")
 		}
 		if len(result.BranchProtection.Value) != 1 {
@@ -1795,7 +1795,7 @@ func TestMergeSpecs_NullOverride(t *testing.T) {
 	t.Run("unset override inherits defaults", func(t *testing.T) {
 		defaults := &RepositorySetDefaults{
 			Spec: RepositorySpec{
-				BranchProtection: NewNullable([]BranchProtection{
+				BranchProtection: NewDeletable([]BranchProtection{
 					{Pattern: "main", RequiredReviews: Ptr(1)},
 				}),
 			},
@@ -1805,13 +1805,96 @@ func TestMergeSpecs_NullOverride(t *testing.T) {
 		}
 
 		result := mergeSpecs(defaults, override)
-		if result.BranchProtection.IsNull() {
+		if result.BranchProtection.IsDelete() {
 			t.Error("expected non-null BranchProtection inherited from defaults")
 		}
 		if len(result.BranchProtection.Value) != 1 {
 			t.Errorf("expected 1 branch protection rule from defaults, got %d", len(result.BranchProtection.Value))
 		}
 	})
+}
+
+func TestParseRepository_DeletableDeletionMarkers(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: Repository
+metadata:
+  name: my-repo
+  owner: my-org
+spec:
+  branch_protection: null
+  rulesets: ~
+`
+	path := filepath.Join(dir, "repo.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+	if !repos[0].Spec.BranchProtection.IsDelete() {
+		t.Error("expected branch_protection null marker")
+	}
+	if !repos[0].Spec.Rulesets.IsDelete() {
+		t.Error("expected rulesets null marker")
+	}
+}
+
+func TestParseRepositorySet_DeletableDeletionMarkers(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec:
+    branch_protection: null
+    rulesets:
+      - name: default-ruleset
+        rules:
+          non_fast_forward: true
+repositories:
+  - name: inherits-null
+  - name: clears-default-null
+    spec:
+      branch_protection:
+        - pattern: main
+          required_reviews: 2
+  - name: overrides-with-null
+    spec:
+      rulesets: null
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repos) != 3 {
+		t.Fatalf("expected 3 repos, got %d", len(repos))
+	}
+	if !repos[0].Spec.BranchProtection.IsDelete() {
+		t.Error("inherits-null should inherit branch_protection null marker")
+	}
+	if repos[1].Spec.BranchProtection.IsDelete() {
+		t.Error("clears-default-null should replace branch_protection null marker with values")
+	}
+	if len(repos[1].Spec.BranchProtection.Value) != 1 {
+		t.Fatalf("clears-default-null branch protection count = %d, want 1", len(repos[1].Spec.BranchProtection.Value))
+	}
+	if !repos[2].Spec.Rulesets.IsDelete() {
+		t.Error("overrides-with-null should override default rulesets with null marker")
+	}
 }
 
 func TestRepositorySet_LabelSyncMerge(t *testing.T) {

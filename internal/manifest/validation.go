@@ -13,7 +13,7 @@ func (r *Repository) Validate() error {
 	}
 	name := r.Metadata.Name
 	// Branch protection: element tag validation + uniqueness check
-	if !r.Spec.BranchProtection.IsNull() {
+	if !r.Spec.BranchProtection.IsDelete() {
 		bpPatterns := make(map[string]bool)
 		for i, bp := range r.Spec.BranchProtection.Value {
 			if bpPatterns[bp.Pattern] {
@@ -26,7 +26,7 @@ func (r *Repository) Validate() error {
 		}
 	}
 	// Rulesets: element tag validation + cross-field checks + uniqueness check
-	if !r.Spec.Rulesets.IsNull() {
+	if !r.Spec.Rulesets.IsDelete() {
 		rsNames := make(map[string]bool)
 		for i, rs := range r.Spec.Rulesets.Value {
 			if rsNames[rs.Name] {
@@ -36,39 +36,39 @@ func (r *Repository) Validate() error {
 			if err := ValidateStruct(fmt.Sprintf("%s: spec.rulesets[%d]", name, i), &rs); err != nil {
 				return err
 			}
-		for j, ba := range rs.BypassActors {
-			// Exactly one actor type must be specified
-			count := 0
-			if ba.Role != "" {
-				count++
+			for j, ba := range rs.BypassActors {
+				// Exactly one actor type must be specified
+				count := 0
+				if ba.Role != "" {
+					count++
+				}
+				if ba.Team != "" {
+					count++
+				}
+				if ba.App != "" {
+					count++
+				}
+				if ba.OrgAdmin != nil {
+					count++
+				}
+				if ba.CustomRole != "" {
+					count++
+				}
+				if count == 0 {
+					return fmt.Errorf("%s: rulesets[%s].bypass_actors[%d] must specify one of: role, team, app, org-admin, or custom-role", name, rs.Name, j)
+				}
+				if count > 1 {
+					return fmt.Errorf("%s: rulesets[%s].bypass_actors[%d] must specify exactly one of: role, team, app, org-admin, or custom-role", name, rs.Name, j)
+				}
+				if err := ValidateStruct(fmt.Sprintf("%s: spec.rulesets[%d].bypass_actors[%d]", name, i, j), &ba); err != nil {
+					return err
+				}
 			}
-			if ba.Team != "" {
-				count++
+			if rs.Conditions != nil && rs.Conditions.RefName != nil {
+				if len(rs.Conditions.RefName.Include) == 0 {
+					return fmt.Errorf("%s: rulesets[%s].conditions.ref_name.include must not be empty", name, rs.Name)
+				}
 			}
-			if ba.App != "" {
-				count++
-			}
-			if ba.OrgAdmin != nil {
-				count++
-			}
-			if ba.CustomRole != "" {
-				count++
-			}
-			if count == 0 {
-				return fmt.Errorf("%s: rulesets[%s].bypass_actors[%d] must specify one of: role, team, app, org-admin, or custom-role", name, rs.Name, j)
-			}
-			if count > 1 {
-				return fmt.Errorf("%s: rulesets[%s].bypass_actors[%d] must specify exactly one of: role, team, app, org-admin, or custom-role", name, rs.Name, j)
-			}
-			if err := ValidateStruct(fmt.Sprintf("%s: spec.rulesets[%d].bypass_actors[%d]", name, i, j), &ba); err != nil {
-				return err
-			}
-		}
-		if rs.Conditions != nil && rs.Conditions.RefName != nil {
-			if len(rs.Conditions.RefName.Include) == 0 {
-				return fmt.Errorf("%s: rulesets[%s].conditions.ref_name.include must not be empty", name, rs.Name)
-			}
-		}
 		}
 	}
 	// Secrets/Variables: element tag validation (unique handled by tags)

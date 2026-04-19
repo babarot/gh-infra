@@ -73,23 +73,23 @@ func (m RepositoryMetadata) FullName() string {
 }
 
 type RepositorySpec struct {
-	Description         *string            `yaml:"description,omitempty"`
-	Homepage            *string            `yaml:"homepage,omitempty"`
-	Visibility          *string            `yaml:"visibility,omitempty" validate:"omitempty,oneof=public private internal"`
-	Archived            *bool              `yaml:"archived,omitempty"`
-	Topics              []string           `yaml:"topics,omitempty"`
-	Labels              []Label            `yaml:"labels,omitempty"            validate:"unique=name"`
-	LabelSync           *string            `yaml:"label_sync,omitempty"        validate:"omitempty,oneof=additive mirror"`
-	Milestones          []Milestone        `yaml:"milestones,omitempty"        validate:"unique=title"`
-	Features            *Features          `yaml:"features,omitempty"`
-	MergeStrategy       *MergeStrategy     `yaml:"merge_strategy,omitempty"`
-	ReleaseImmutability *bool              `yaml:"release_immutability,omitempty"`
-	Security            *Security          `yaml:"security,omitempty"`
-	BranchProtection    Nullable[[]BranchProtection] `yaml:"branch_protection,omitempty"`
-	Rulesets            Nullable[[]Ruleset]          `yaml:"rulesets,omitempty"`
-	Secrets             []Secret           `yaml:"secrets,omitempty"           validate:"unique=name"`
-	Variables           []Variable         `yaml:"variables,omitempty"         validate:"unique=name"`
-	Actions             *Actions           `yaml:"actions,omitempty"`
+	Description         *string                       `yaml:"description,omitempty"`
+	Homepage            *string                       `yaml:"homepage,omitempty"`
+	Visibility          *string                       `yaml:"visibility,omitempty" validate:"omitempty,oneof=public private internal"`
+	Archived            *bool                         `yaml:"archived,omitempty"`
+	Topics              []string                      `yaml:"topics,omitempty"`
+	Labels              []Label                       `yaml:"labels,omitempty"            validate:"unique=name"`
+	LabelSync           *string                       `yaml:"label_sync,omitempty"        validate:"omitempty,oneof=additive mirror"`
+	Milestones          []Milestone                   `yaml:"milestones,omitempty"        validate:"unique=title"`
+	Features            *Features                     `yaml:"features,omitempty"`
+	MergeStrategy       *MergeStrategy                `yaml:"merge_strategy,omitempty"`
+	ReleaseImmutability *bool                         `yaml:"release_immutability,omitempty"`
+	Security            *Security                     `yaml:"security,omitempty"`
+	BranchProtection    Deletable[[]BranchProtection] `yaml:"branch_protection,omitempty"`
+	Rulesets            Deletable[[]Ruleset]          `yaml:"rulesets,omitempty"`
+	Secrets             []Secret                      `yaml:"secrets,omitempty"           validate:"unique=name"`
+	Variables           []Variable                    `yaml:"variables,omitempty"         validate:"unique=name"`
+	Actions             *Actions                      `yaml:"actions,omitempty"`
 }
 
 // Security groups GitHub Advanced Security related repository settings,
