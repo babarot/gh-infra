@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.12.1](https://github.com/babarot/gh-infra/compare/v0.12.0...v0.12.1) - 2026-04-19
+### Bug fixes
+- fix: add --accept-visibility-change-consequences flag when editing visibility by @yagihash in https://github.com/babarot/gh-infra/pull/140
+
 ## [v0.12.0](https://github.com/babarot/gh-infra/compare/v0.11.1...v0.12.0) - 2026-04-18
 ### New Features
 - Add pull_requests feature field with bool-or-object YAML support by @babarot in https://github.com/babarot/gh-infra/pull/137
