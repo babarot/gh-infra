@@ -1855,7 +1855,7 @@ metadata:
   owner: org
   name: repo
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 spec:
   description: repo
 `,
@@ -1923,7 +1923,7 @@ spec:
 	}
 }
 
-func TestRepositoryReconcileMirrorEmptyCollection(t *testing.T) {
+func TestRepositoryReconcileAuthoritativeEmptyCollection(t *testing.T) {
 	dir := t.TempDir()
 	content := `
 apiVersion: v1
@@ -1932,7 +1932,7 @@ metadata:
   owner: org
   name: repo
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 spec:
   rulesets: []
 `
@@ -1951,8 +1951,8 @@ spec:
 	if !repos[0].Spec.RulesetsSet {
 		t.Fatal("rulesets presence was not tracked")
 	}
-	if got := RulesetsReconcileMode(repos[0].Reconcile); got != CollectionReconcileMirror {
-		t.Fatalf("rulesets reconcile mode = %q, want %q", got, CollectionReconcileMirror)
+	if got := RulesetsReconcileMode(repos[0].Reconcile); got != CollectionReconcileAuthoritative {
+		t.Fatalf("rulesets reconcile mode = %q, want %q", got, CollectionReconcileAuthoritative)
 	}
 	if len(repos[0].Spec.Rulesets) != 0 {
 		t.Fatalf("rulesets length = %d, want 0", len(repos[0].Spec.Rulesets))
@@ -1968,7 +1968,7 @@ metadata:
   owner: org
 defaults:
   reconcile:
-    rulesets: mirror
+    rulesets: authoritative
   spec:
     rulesets:
       - name: protect-main
@@ -1990,8 +1990,8 @@ repositories:
 	if len(repos) != 2 {
 		t.Fatalf("expected 2 repos, got %d", len(repos))
 	}
-	if got := RulesetsReconcileMode(repos[0].Reconcile); got != CollectionReconcileMirror {
-		t.Fatalf("repo[0] rulesets reconcile mode = %q, want %q", got, CollectionReconcileMirror)
+	if got := RulesetsReconcileMode(repos[0].Reconcile); got != CollectionReconcileAuthoritative {
+		t.Fatalf("repo[0] rulesets reconcile mode = %q, want %q", got, CollectionReconcileAuthoritative)
 	}
 	if got := RulesetsReconcileMode(repos[1].Reconcile); got != CollectionReconcileAdditive {
 		t.Fatalf("repo[1] rulesets reconcile mode = %q, want %q", got, CollectionReconcileAdditive)

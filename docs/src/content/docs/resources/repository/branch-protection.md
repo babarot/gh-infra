@@ -42,22 +42,22 @@ Multiple patterns can be defined. Each entry creates a separate branch protectio
 
 Classic branch protection is additive by default. gh-infra creates and updates rules listed in `spec.branch_protection`, but it does not delete branch protection rules that exist on GitHub and are missing from YAML.
 
-Set `reconcile.branch_protection: mirror` to make GitHub branch protection rules match YAML exactly:
+Set `reconcile.branch_protection: authoritative` to make GitHub branch protection rules match YAML exactly:
 
 ```yaml
 reconcile:
-  branch_protection: mirror
+  branch_protection: authoritative
 spec:
   branch_protection:
     - pattern: main
       required_reviews: 1
 ```
 
-With `mirror`, any classic branch protection rule not declared in `spec.branch_protection` is planned for deletion. To delete all classic branch protection rules:
+With `authoritative`, any classic branch protection rule not declared in `spec.branch_protection` is planned for deletion. To delete all classic branch protection rules:
 
 ```yaml
 reconcile:
-  branch_protection: mirror
+  branch_protection: authoritative
 spec:
   branch_protection: []
 ```

@@ -26,6 +26,8 @@ kind: Repository
 metadata:
   owner: my-org
   name: my-repo
+reconcile:           # optional; controls collection reconciliation
+  rulesets: additive # additive (default) | authoritative
 spec:
   # declare only managed fields
 ```
@@ -50,6 +52,8 @@ metadata:
   owner: my-org
 
 defaults:
+  reconcile:
+    rulesets: authoritative
   spec:
     visibility: public
     features:
@@ -98,6 +102,8 @@ Read [references/repository-set.md](./references/repository-set.md) for the exac
 
 - `actions.enabled` is required when setting any other `actions.*` field
 - `actions.selected_actions` is valid only with `allowed_actions: selected`
+- `reconcile.rulesets: authoritative` and `reconcile.branch_protection: authoritative` delete undeclared remote entries; review `plan` carefully
+- `reconcile` without a corresponding `spec` collection is a parse error
 - `label_sync: mirror` deletes unmanaged labels; review `plan` carefully
 - for `gh infra import --into`, use the dedicated `import-into` skill
 - Repository deletion is not supported

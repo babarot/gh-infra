@@ -73,11 +73,11 @@ spec:
 
 Rulesets are additive by default. gh-infra creates and updates rulesets listed in `spec.rulesets`, but it does not delete rulesets that exist on GitHub and are missing from YAML.
 
-Set `reconcile.rulesets: mirror` to make GitHub rulesets match YAML exactly:
+Set `reconcile.rulesets: authoritative` to make GitHub rulesets match YAML exactly:
 
 ```yaml
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 spec:
   rulesets:
     - name: protect-main
@@ -86,11 +86,11 @@ spec:
         non_fast_forward: true
 ```
 
-With `mirror`, any repository ruleset not declared in `spec.rulesets` is planned for deletion. To delete all repository rulesets:
+With `authoritative`, any repository ruleset not declared in `spec.rulesets` is planned for deletion. To delete all repository rulesets:
 
 ```yaml
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 spec:
   rulesets: []
 ```

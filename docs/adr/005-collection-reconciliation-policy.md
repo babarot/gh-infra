@@ -22,7 +22,7 @@ were rejected before merge:
 The implementations proved that explicit deletion markers are possible, but
 the schema question remained unresolved. `field: null` can only express
 full-collection deletion. It does not address the broader problem of choosing
-whether a collection is managed additively or as an exact mirror of YAML.
+whether a collection is managed additively or authoritatively.
 
 YAML itself distinguishes the following states:
 
@@ -73,7 +73,7 @@ metadata:
   name: my-repo
 
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
   branch_protection: additive
 
 spec:
@@ -96,7 +96,7 @@ Initial supported modes:
 | Mode | Semantics |
 |---|---|
 | `additive` | Create/update entries declared in YAML. Leave undeclared remote entries untouched. |
-| `mirror` | Make the remote collection match YAML exactly. Delete undeclared remote entries. |
+| `authoritative` | Make the remote collection match YAML exactly. Delete undeclared remote entries. |
 
 Default mode is `additive`. This preserves existing behavior for manifests that
 do not specify `reconcile`.
@@ -110,8 +110,8 @@ do not specify `reconcile`.
 | `spec.rulesets` omitted | rulesets unmanaged |
 | `spec.rulesets` present, `reconcile.rulesets` omitted | additive management |
 | `reconcile.rulesets: additive` + non-empty `spec.rulesets` | create/update listed rulesets only |
-| `reconcile.rulesets: mirror` + non-empty `spec.rulesets` | exact-set management; delete remote rulesets not listed |
-| `reconcile.rulesets: mirror` + `spec.rulesets: []` | managed empty collection; delete all remote rulesets |
+| `reconcile.rulesets: authoritative` + non-empty `spec.rulesets` | exact-set management; delete remote rulesets not listed |
+| `reconcile.rulesets: authoritative` + `spec.rulesets: []` | managed empty collection; delete all remote rulesets |
 | `rulesets:` / `rulesets: null` | invalid |
 
 If `reconcile.rulesets` is set but `spec.rulesets` is omitted, parsing should
@@ -126,7 +126,7 @@ Empty sequences are meaningful only when the collection is managed.
 
 ```yaml
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 spec:
   rulesets: []
 ```
@@ -167,7 +167,7 @@ should be parse errors. Users should write:
 
 ```yaml
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 spec:
   rulesets: []
 ```
@@ -187,7 +187,7 @@ metadata:
 
 defaults:
   reconcile:
-    rulesets: mirror
+    rulesets: authoritative
   spec:
     rulesets:
       - name: protect-main
@@ -209,19 +209,19 @@ Merge behavior:
 - After merge, any reconcile policy that targets an omitted collection is an
   error.
 
-This lets an organization use `mirror` by default while allowing individual
+This lets an organization use `authoritative` by default while allowing individual
 repositories to opt back into `additive`.
 
 ### Plan and apply behavior
 
-Plan output should make mirror-driven deletes explicit. A delete caused by
-mirror reconciliation is not the same as an update to a listed item; it is the
+Plan output should make authoritative-driven deletes explicit. A delete caused by
+authoritative reconciliation is not the same as an update to a listed item; it is the
 removal of a remote item that is absent from YAML.
 
 Example wording:
 
 ```text
-- ruleset "old-ruleset" (not declared; reconcile.rulesets=mirror)
+- ruleset "old-ruleset" (not declared; reconcile.rulesets=authoritative)
 ```
 
 Apply should execute those deletes only after they appear in plan, using the
@@ -232,12 +232,12 @@ existing GitHub delete APIs:
 
 ### Import/export behavior
 
-`import` and export flows should not emit `reconcile: mirror` by default.
+`import` and export flows should not emit `reconcile: authoritative` by default.
 Exporting current GitHub state into YAML should remain conservative and
-non-destructive unless the user opts into mirror policy.
+non-destructive unless the user opts into authoritative policy.
 
 `import --into` should preserve an existing `reconcile` block. If a user already
-declared `reconcile.rulesets: mirror`, import-into should update the listed
+declared `reconcile.rulesets: authoritative`, import-into should update the listed
 rulesets without silently removing the reconciliation policy.
 
 ## Alternatives Considered
@@ -342,7 +342,7 @@ be represented as data, not comments.
 - Existing manifests remain additive by default.
 - Exact-set reconciliation becomes possible without state files.
 - Full-collection deletion can be expressed without `null` by using
-  `reconcile.<collection>: mirror` plus an empty list.
+  `reconcile.<collection>: authoritative` plus an empty list.
 - Destructive behavior is visible in the manifest and can be reviewed in PRs.
 - `spec` remains focused on desired GitHub resource values.
 - `reconcile` creates a single place for future reconciliation policy instead
@@ -355,7 +355,7 @@ be represented as data, not comments.
 - Users must learn a new top-level concept.
 - `reconcile` and `spec` can become inconsistent, so validation must catch
   policies targeting omitted collections.
-- Mirror mode can delete remote resources created manually or by other tools.
+- Authoritative mode can delete remote resources created manually or by other tools.
   Plan output must make that reason explicit.
 - `label_sync` remains a pre-existing special case. A later ADR may decide
   whether to keep it, deprecate it, or migrate labels into the same `reconcile`
@@ -368,8 +368,8 @@ be represented as data, not comments.
 - Reject explicit null for these collection fields.
 - Track field presence during parsing so `omitted`, `[]`, and non-empty lists
   remain distinguishable.
-- In mirror mode, diff should generate `ChangeDelete` for current remote entries
-  not present in the desired collection.
+- In authoritative mode, diff should generate `ChangeDelete` for current remote
+  entries not present in the desired collection.
 - In additive mode, diff should not generate deletes for undeclared remote
   entries.
 - `plan` should include the reconcile policy in delete reasons.

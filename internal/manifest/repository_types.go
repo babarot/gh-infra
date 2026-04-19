@@ -23,8 +23,8 @@ const (
 	LabelSyncMirror   = "mirror"
 
 	// Collection reconcile mode values.
-	CollectionReconcileAdditive = "additive"
-	CollectionReconcileMirror   = "mirror"
+	CollectionReconcileAdditive      = "additive"
+	CollectionReconcileAuthoritative = "authoritative"
 
 	// Ruleset enforcement values.
 	RulesetEnforcementActive   = "active"
@@ -103,8 +103,8 @@ type RepositorySpec struct {
 }
 
 type RepositoryReconcile struct {
-	BranchProtection *string `yaml:"branch_protection,omitempty" validate:"omitempty,oneof=additive mirror"`
-	Rulesets         *string `yaml:"rulesets,omitempty"           validate:"omitempty,oneof=additive mirror"`
+	BranchProtection *string `yaml:"branch_protection,omitempty" validate:"omitempty,oneof=additive authoritative"`
+	Rulesets         *string `yaml:"rulesets,omitempty"           validate:"omitempty,oneof=additive authoritative"`
 }
 
 // UnmarshalYAML tracks whether collection fields were present in YAML. For
@@ -126,13 +126,13 @@ func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
 	if v, ok := fields["branch_protection"]; ok {
 		s.BranchProtectionSet = true
 		if v == nil {
-			return fmt.Errorf("branch_protection must be a sequence; use [] with reconcile.branch_protection=mirror to delete all branch protection rules")
+			return fmt.Errorf("branch_protection must be a sequence; use [] with reconcile.branch_protection=authoritative to delete all branch protection rules")
 		}
 	}
 	if v, ok := fields["rulesets"]; ok {
 		s.RulesetsSet = true
 		if v == nil {
-			return fmt.Errorf("rulesets must be a sequence; use [] with reconcile.rulesets=mirror to delete all rulesets")
+			return fmt.Errorf("rulesets must be a sequence; use [] with reconcile.rulesets=authoritative to delete all rulesets")
 		}
 	}
 

@@ -7,7 +7,7 @@ The `defaults` block defines shared settings applied to all repositories in the 
 ```yaml
 defaults:
   reconcile:
-    rulesets: mirror
+    rulesets: authoritative
   spec:
     visibility: public
     features:
@@ -51,20 +51,20 @@ repositories:
 ```yaml
 defaults:
   reconcile:
-    rulesets: mirror
+    rulesets: authoritative
     branch_protection: additive
   spec:
     rulesets:
       - name: protect-main
 
 repositories:
-  - name: strict-repo       # rulesets mirror
+  - name: strict-repo       # rulesets authoritative
   - name: manual-repo
     reconcile:
       rulesets: additive    # overrides only rulesets
 ```
 
-If a reconcile policy is set, the corresponding collection must be present after defaults and overrides are merged. For example, `reconcile.rulesets: mirror` requires `spec.rulesets` to exist. Use `spec.rulesets: []` for an explicitly empty managed collection.
+If a reconcile policy is set, the corresponding collection must be present after defaults and overrides are merged. For example, `reconcile.rulesets: authoritative` requires `spec.rulesets` to exist. Use `spec.rulesets: []` for an explicitly empty managed collection.
 
 ### Lists — replaced entirely
 

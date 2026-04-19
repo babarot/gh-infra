@@ -16,7 +16,7 @@ metadata:
   owner: babarot
 
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 
 spec:
   description: "My awesome project"
@@ -111,7 +111,7 @@ Use top-level `reconcile` to make selected collections match YAML exactly:
 
 ```yaml
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
   branch_protection: additive
 
 spec:
@@ -124,14 +124,14 @@ spec:
 
 | Field | Modes | Description |
 |---|---|---|
-| `reconcile.rulesets` | `additive`, `mirror` | Controls how `spec.rulesets` is compared with existing GitHub rulesets |
-| `reconcile.branch_protection` | `additive`, `mirror` | Controls how `spec.branch_protection` is compared with existing classic branch protection rules |
+| `reconcile.rulesets` | `additive`, `authoritative` | Controls how `spec.rulesets` is compared with existing GitHub rulesets |
+| `reconcile.branch_protection` | `additive`, `authoritative` | Controls how `spec.branch_protection` is compared with existing classic branch protection rules |
 
-`additive` is the default. `mirror` deletes remote entries that are not declared in YAML. To delete all rulesets or branch protection rules, use `mirror` with an empty list:
+`additive` is the default. `authoritative` deletes remote entries that are not declared in YAML. To delete all rulesets or branch protection rules, use `authoritative` with an empty list:
 
 ```yaml
 reconcile:
-  rulesets: mirror
+  rulesets: authoritative
 spec:
   rulesets: []
 ```

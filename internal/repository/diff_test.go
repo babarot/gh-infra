@@ -798,9 +798,9 @@ func TestDiff_BranchProtection(t *testing.T) {
 		}
 	})
 
-	t.Run("mirror deletes undeclared branch protection", func(t *testing.T) {
+	t.Run("authoritative deletes undeclared branch protection", func(t *testing.T) {
 		d := baseDesired()
-		mode := manifest.CollectionReconcileMirror
+		mode := manifest.CollectionReconcileAuthoritative
 		d.Reconcile = &manifest.RepositoryReconcile{BranchProtection: &mode}
 		c := baseState()
 		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main"}
@@ -815,7 +815,7 @@ func TestDiff_BranchProtection(t *testing.T) {
 		if changes[0].Resource != "BranchProtection[main]" {
 			t.Fatalf("resource = %q, want BranchProtection[main]", changes[0].Resource)
 		}
-		if changes[0].NewValue != "not declared; reconcile.branch_protection=mirror" {
+		if changes[0].NewValue != "not declared; reconcile.branch_protection=authoritative" {
 			t.Fatalf("delete reason = %v", changes[0].NewValue)
 		}
 		if len(changes[0].Children) == 0 {
@@ -1606,9 +1606,9 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 	}
 }
 
-func TestDiff_Rulesets_ReconcileMirrorDeletesUndeclared(t *testing.T) {
+func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
 	desired := baseDesired()
-	mode := manifest.CollectionReconcileMirror
+	mode := manifest.CollectionReconcileAuthoritative
 	desired.Reconcile = &manifest.RepositoryReconcile{Rulesets: &mode}
 
 	current := baseState()
@@ -1632,7 +1632,7 @@ func TestDiff_Rulesets_ReconcileMirrorDeletesUndeclared(t *testing.T) {
 	if changes[0].OldValue != 42 {
 		t.Fatalf("old value = %v, want ruleset ID 42", changes[0].OldValue)
 	}
-	if changes[0].NewValue != "not declared; reconcile.rulesets=mirror" {
+	if changes[0].NewValue != "not declared; reconcile.rulesets=authoritative" {
 		t.Fatalf("delete reason = %v", changes[0].NewValue)
 	}
 	if len(changes[0].Children) == 0 {

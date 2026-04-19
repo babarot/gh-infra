@@ -318,7 +318,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 		}
 	}
 
-	if manifest.BranchProtectionReconcileMode(desired.Reconcile) == manifest.CollectionReconcileMirror {
+	if manifest.BranchProtectionReconcileMode(desired.Reconcile) == manifest.CollectionReconcileAuthoritative {
 		for pattern, cbp := range current.BranchProtection {
 			if _, ok := desiredPatterns[pattern]; ok {
 				continue
@@ -329,7 +329,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 				Name:     name,
 				Field:    "branch_protection",
 				OldValue: pattern,
-				NewValue: "not declared; reconcile.branch_protection=mirror",
+				NewValue: "not declared; reconcile.branch_protection=authoritative",
 				Children: bpDeleteChildren(cbp),
 			})
 		}
@@ -483,7 +483,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		}
 	}
 
-	if manifest.RulesetsReconcileMode(desired.Reconcile) == manifest.CollectionReconcileMirror {
+	if manifest.RulesetsReconcileMode(desired.Reconcile) == manifest.CollectionReconcileAuthoritative {
 		for rulesetName, crs := range current.Rulesets {
 			if _, ok := desiredNames[rulesetName]; ok {
 				continue
@@ -494,7 +494,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 				Name:     name,
 				Field:    "ruleset",
 				OldValue: crs.ID,
-				NewValue: "not declared; reconcile.rulesets=mirror",
+				NewValue: "not declared; reconcile.rulesets=authoritative",
 				Children: rsDeleteChildren(crs),
 			})
 		}
