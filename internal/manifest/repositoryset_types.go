@@ -14,10 +14,12 @@ type RepositorySetMetadata struct {
 }
 
 type RepositorySetDefaults struct {
-	Spec RepositorySpec `yaml:"spec"`
+	Reconcile *RepositoryReconcile `yaml:"reconcile,omitempty"`
+	Spec      RepositorySpec       `yaml:"spec"`
 }
 
 type RepositorySetEntry struct {
-	Name string         `yaml:"name"`
-	Spec RepositorySpec `yaml:"spec"`
+	Name      string               `yaml:"name"`
+	Reconcile *RepositoryReconcile `yaml:"reconcile,omitempty"`
+	Spec      RepositorySpec       `yaml:"spec"`
 }

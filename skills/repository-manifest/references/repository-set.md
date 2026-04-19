@@ -8,14 +8,21 @@ kind: RepositorySet
 metadata:
   owner: my-org
 defaults:
+  reconcile:
+    rulesets: authoritative
   spec:
     visibility: public
     features:
       wiki: false
+    rulesets:
+      - name: protect-main
 repositories:
   - name: repo-a
     spec:
       description: "Repo A"
+  - name: repo-b
+    reconcile:
+      rulesets: additive
 ```
 
 ## Merge Rules
@@ -23,6 +30,7 @@ repositories:
 - Scalars: replaced
 - Lists: replaced entirely
 - Maps: merged by key
+- Reconcile: merged by collection (per-repo overrides individual collections without resetting others)
 
 Examples:
 

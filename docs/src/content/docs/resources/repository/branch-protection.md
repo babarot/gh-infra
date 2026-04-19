@@ -13,6 +13,9 @@ Classic branch protection still works and is fully supported by gh-infra, but fo
 ## Example
 
 ```yaml
+reconcile:
+  branch_protection: additive
+
 spec:
   branch_protection:
     - pattern: main
@@ -34,6 +37,32 @@ spec:
 ```
 
 Multiple patterns can be defined. Each entry creates a separate branch protection rule.
+
+## Reconcile Mode
+
+Classic branch protection is additive by default. gh-infra creates and updates rules listed in `spec.branch_protection`, but it does not delete branch protection rules that exist on GitHub and are missing from YAML.
+
+Set `reconcile.branch_protection: authoritative` to make GitHub branch protection rules match YAML exactly:
+
+```yaml
+reconcile:
+  branch_protection: authoritative
+spec:
+  branch_protection:
+    - pattern: main
+      required_reviews: 1
+```
+
+With `authoritative`, any classic branch protection rule not declared in `spec.branch_protection` is planned for deletion. To delete all classic branch protection rules:
+
+```yaml
+reconcile:
+  branch_protection: authoritative
+spec:
+  branch_protection: []
+```
+
+`branch_protection: null` and `branch_protection:` are invalid. Use `[]` for an explicitly empty managed collection.
 
 ## Fields
 

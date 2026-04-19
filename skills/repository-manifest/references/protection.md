@@ -1,5 +1,32 @@
 # Protection
 
+## Reconcile
+
+Collections (`rulesets`, `branch_protection`) are additive by default. Use top-level `reconcile` to opt into authoritative mode, which deletes remote entries not declared in YAML.
+
+```yaml
+reconcile:
+  rulesets: authoritative
+  branch_protection: additive
+
+spec:
+  rulesets:
+    - name: protect-main
+      ...
+```
+
+Modes:
+
+- `additive` (default): create/update declared entries; undeclared remote entries are left untouched
+- `authoritative`: YAML is the source of truth; undeclared remote entries are deleted
+
+Rules:
+
+- `reconcile` without the corresponding `spec` collection is a parse error (e.g., `reconcile.rulesets: authoritative` requires `spec.rulesets`)
+- Use `spec.rulesets: []` with `reconcile.rulesets: authoritative` to delete all remote rulesets
+- `rulesets: null` / `rulesets:` (explicit null) is invalid; use `[]` for empty managed collections
+- `plan` output shows delete reason with the reconcile policy (e.g., `not declared; reconcile.rulesets=authoritative`)
+
 ## Rulesets
 
 Prefer `rulesets` for new configurations.

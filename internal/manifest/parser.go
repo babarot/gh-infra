@@ -213,7 +213,8 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 				Name:  entry.Name,
 				Owner: set.Metadata.Owner,
 			},
-			Spec: mergeSpecs(set.Defaults, entry.Spec),
+			Reconcile: mergeReconcile(set.Defaults, entry.Reconcile),
+			Spec:      mergeSpecs(set.Defaults, entry.Spec),
 		}
 		if err := repo.Validate(); err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", path, err)
@@ -385,11 +386,13 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.Actions != nil {
 		result.Actions = mergeActions(result.Actions, override.Actions)
 	}
-	if len(override.BranchProtection) > 0 {
+	if override.BranchProtectionSet {
 		result.BranchProtection = mergeBranchProtection(result.BranchProtection, override.BranchProtection)
+		result.BranchProtectionSet = true
 	}
-	if len(override.Rulesets) > 0 {
+	if override.RulesetsSet {
 		result.Rulesets = mergeRulesets(result.Rulesets, override.Rulesets)
+		result.RulesetsSet = true
 	}
 	if len(override.Secrets) > 0 {
 		result.Secrets = override.Secrets
@@ -408,6 +411,29 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	}
 
 	return result
+}
+
+func mergeReconcile(defaults *RepositorySetDefaults, override *RepositoryReconcile) *RepositoryReconcile {
+	var base *RepositoryReconcile
+	if defaults != nil {
+		base = defaults.Reconcile
+	}
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		result := *base
+		return &result
+	}
+
+	result := *base
+	if override.BranchProtection != nil {
+		result.BranchProtection = override.BranchProtection
+	}
+	if override.Rulesets != nil {
+		result.Rulesets = override.Rulesets
+	}
+	return &result
 }
 
 func mergeFeatures(base, override *Features) *Features {

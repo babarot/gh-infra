@@ -556,6 +556,42 @@ func TestApplyBranchProtection(t *testing.T) {
 	}
 }
 
+func TestApplyBranchProtection_Delete(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("myorg", "myrepo")
+
+	changes := []Change{
+		{
+			Type:     ChangeDelete,
+			Resource: "BranchProtection[main]",
+			Name:     "myorg/myrepo",
+			Field:    "branch_protection",
+			OldValue: "main",
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+	found := false
+	for _, call := range mock.Called {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "repos/myorg/myrepo/branches/main/protection") &&
+			strings.Contains(joined, "DELETE") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected DELETE to branch protection endpoint, got calls: %v", mock.Called)
+	}
+}
+
 func TestBuildBranchProtectionPayload(t *testing.T) {
 	reviews := 2
 	dismissStale := true
@@ -780,6 +816,43 @@ func TestApplyRuleset_Update(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected PUT to rulesets/42 endpoint, got calls: %v", mock.Called)
+	}
+}
+
+func TestApplyRuleset_Delete(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("myorg", "myrepo")
+
+	changes := []Change{
+		{
+			Type:     ChangeDelete,
+			Resource: "Ruleset[old-ruleset]",
+			Name:     "myorg/myrepo",
+			Field:    "ruleset",
+			OldValue: 42,
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	found := false
+	for _, call := range mock.Called {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "repos/myorg/myrepo/rulesets/42") &&
+			strings.Contains(joined, "DELETE") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected DELETE to rulesets/42 endpoint, got calls: %v", mock.Called)
 	}
 }
 

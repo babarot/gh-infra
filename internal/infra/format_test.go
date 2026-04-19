@@ -584,3 +584,52 @@ func TestPrintPlan_RulesetAndBranchProtectionHeaders(t *testing.T) {
 		t.Errorf("output contains raw collection header:\n%s", out)
 	}
 }
+
+func TestPrintPlan_DeleteRulesetAndBranchProtectionWithChildren(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	repoChanges := []repository.Change{
+		{
+			Type:     repository.ChangeDelete,
+			Resource: `Ruleset[old-ruleset]`,
+			Name:     "org/repo",
+			Field:    "ruleset",
+			OldValue: 42,
+			Children: []repository.Change{
+				{Type: repository.ChangeDelete, Field: "target", OldValue: "branch"},
+				{Type: repository.ChangeDelete, Field: "enforcement", OldValue: "active"},
+			},
+		},
+		{
+			Type:     repository.ChangeDelete,
+			Resource: `BranchProtection[main]`,
+			Name:     "org/repo",
+			Field:    "branch_protection",
+			OldValue: "main",
+			Children: []repository.Change{
+				{Type: repository.ChangeDelete, Field: "required_reviews", OldValue: 1},
+				{Type: repository.ChangeDelete, Field: "enforce_admins", OldValue: false},
+			},
+		},
+	}
+
+	printPlan(p, repoChanges, nil)
+	out := buf.String()
+
+	for _, want := range []string{
+		`ruleset "old-ruleset"`,
+		"target",
+		"enforcement",
+		`branch protection "main"`,
+		"required_reviews",
+		"enforce_admins",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "branch_protection      main") {
+		t.Errorf("expected grouped branch protection delete, got flat output:\n%s", out)
+	}
+}

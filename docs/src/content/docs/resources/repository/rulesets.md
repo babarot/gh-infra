@@ -22,6 +22,9 @@ To use rulesets on private repositories, upgrade to GitHub Pro, GitHub Team, or 
 ## Example
 
 ```yaml
+reconcile:
+  rulesets: additive
+
 spec:
   rulesets:
     - name: protect-main
@@ -65,6 +68,34 @@ spec:
         deletion: true
         non_fast_forward: true
 ```
+
+## Reconcile Mode
+
+Rulesets are additive by default. gh-infra creates and updates rulesets listed in `spec.rulesets`, but it does not delete rulesets that exist on GitHub and are missing from YAML.
+
+Set `reconcile.rulesets: authoritative` to make GitHub rulesets match YAML exactly:
+
+```yaml
+reconcile:
+  rulesets: authoritative
+spec:
+  rulesets:
+    - name: protect-main
+      target: branch
+      rules:
+        non_fast_forward: true
+```
+
+With `authoritative`, any repository ruleset not declared in `spec.rulesets` is planned for deletion. To delete all repository rulesets:
+
+```yaml
+reconcile:
+  rulesets: authoritative
+spec:
+  rulesets: []
+```
+
+`rulesets: null` and `rulesets:` are invalid. Use `[]` for an explicitly empty managed collection.
 
 ## Top-level Fields
 

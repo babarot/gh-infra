@@ -787,6 +787,42 @@ func TestDiff_BranchProtection(t *testing.T) {
 		}
 	})
 
+	t.Run("additive leaves undeclared branch protection untouched", func(t *testing.T) {
+		d := baseDesired()
+		c := baseState()
+		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main"}
+
+		changes := diffBranchProtection("org/repo", d, c)
+		if len(changes) != 0 {
+			t.Fatalf("expected no changes, got %d: %v", len(changes), changes)
+		}
+	})
+
+	t.Run("authoritative deletes undeclared branch protection", func(t *testing.T) {
+		d := baseDesired()
+		mode := manifest.CollectionReconcileAuthoritative
+		d.Reconcile = &manifest.RepositoryReconcile{BranchProtection: &mode}
+		c := baseState()
+		c.BranchProtection["main"] = &CurrentBranchProtection{Pattern: "main"}
+
+		changes := diffBranchProtection("org/repo", d, c)
+		if len(changes) != 1 {
+			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
+		}
+		if changes[0].Type != ChangeDelete {
+			t.Fatalf("change type = %q, want %q", changes[0].Type, ChangeDelete)
+		}
+		if changes[0].Resource != "BranchProtection[main]" {
+			t.Fatalf("resource = %q, want BranchProtection[main]", changes[0].Resource)
+		}
+		if changes[0].NewValue != "not declared; reconcile.branch_protection=authoritative" {
+			t.Fatalf("delete reason = %v", changes[0].NewValue)
+		}
+		if len(changes[0].Children) == 0 {
+			t.Fatal("expected display-only delete children")
+		}
+	})
+
 	t.Run("update dismiss_stale_reviews", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.BranchProtection = []manifest.BranchProtection{
@@ -1567,6 +1603,56 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 	changes := Diff(context.Background(), desired, current)
 	if len(changes) != 0 {
 		t.Errorf("expected no changes, got %d: %v", len(changes), changes)
+	}
+}
+
+func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
+	desired := baseDesired()
+	mode := manifest.CollectionReconcileAuthoritative
+	desired.Reconcile = &manifest.RepositoryReconcile{Rulesets: &mode}
+
+	current := baseState()
+	current.Rulesets["old-ruleset"] = &CurrentRuleset{
+		ID:          42,
+		Name:        "old-ruleset",
+		Target:      "branch",
+		Enforcement: "active",
+	}
+
+	changes := Diff(context.Background(), desired, current)
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
+	}
+	if changes[0].Type != ChangeDelete {
+		t.Fatalf("change type = %q, want %q", changes[0].Type, ChangeDelete)
+	}
+	if changes[0].Resource != "Ruleset[old-ruleset]" {
+		t.Fatalf("resource = %q, want Ruleset[old-ruleset]", changes[0].Resource)
+	}
+	if changes[0].OldValue != 42 {
+		t.Fatalf("old value = %v, want ruleset ID 42", changes[0].OldValue)
+	}
+	if changes[0].NewValue != "not declared; reconcile.rulesets=authoritative" {
+		t.Fatalf("delete reason = %v", changes[0].NewValue)
+	}
+	if len(changes[0].Children) == 0 {
+		t.Fatal("expected display-only delete children")
+	}
+}
+
+func TestDiff_Rulesets_AdditiveLeavesUndeclaredUntouched(t *testing.T) {
+	desired := baseDesired()
+	current := baseState()
+	current.Rulesets["old-ruleset"] = &CurrentRuleset{
+		ID:          42,
+		Name:        "old-ruleset",
+		Target:      "branch",
+		Enforcement: "active",
+	}
+
+	changes := Diff(context.Background(), desired, current)
+	if len(changes) != 0 {
+		t.Fatalf("expected no changes, got %d: %v", len(changes), changes)
 	}
 }
 
