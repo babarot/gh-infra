@@ -1,8 +1,12 @@
-# ADR-003: Nullable deletion markers for stateless resource removal
+# ADR-003: Nullable deletion markers with a YAML fork
 
 ## Status
 
-Accepted
+Rejected
+
+Superseded by [ADR-004: Deletable deletion markers without a YAML fork](004-deletable-deletion-markers.md).
+
+> This ADR records an implementation approach that was considered and implemented on the feature branch, but rejected before merging to main. The product decision to use `field: null` as an explicit deletion marker was kept. The implementation based on `Nullable[T]` and a forked `goccy/go-yaml` was replaced by ADR-004.
 
 ## Context
 
@@ -34,7 +38,7 @@ This was considered and rejected because:
 2. **Multi-user and CI/CD workflows** would need state sharing or regeneration, re-creating the coordination problems of remote state backends.
 3. **The problem scope is narrow** -- only a handful of collection-typed fields (branch protection, rulesets, and potentially secrets/variables) need deletion semantics. A per-field solution is simpler than a whole-system state layer.
 
-## Decision
+## Rejected Decision
 
 ### Use `null` as an explicit deletion marker
 
