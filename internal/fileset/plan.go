@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -14,8 +15,11 @@ import (
 
 // Processor handles FileSet plan and apply operations.
 type Processor struct {
-	runner gh.Runner
-	writer ProgressWriter
+	runner   gh.Runner
+	writer   ProgressWriter
+	userOnce sync.Once
+	userInfo githubUser
+	userErr  error
 }
 
 func NewProcessor(runner gh.Runner, writer ProgressWriter) *Processor {

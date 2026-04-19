@@ -1,12 +1,15 @@
 package fileset
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/babarot/gh-infra/internal/manifest"
 )
@@ -20,9 +23,52 @@ type treeEntry struct {
 	SHA  *string `json:"sha"` // nil = delete file from tree
 }
 
-// applyToRepo creates a single commit with all file changes using Git Data API.
+// githubUser holds information about the authenticated GitHub user.
+type githubUser struct {
+	name  string
+	email string
+	isBot bool // true when authenticated as a GitHub App (login ends with "[bot]")
+}
+
+// getGitHubUser returns the authenticated user, fetching it only once per Processor.
+func (p *Processor) getGitHubUser(ctx context.Context) (githubUser, error) {
+	p.userOnce.Do(func() {
+		p.userInfo, p.userErr = p.fetchGitHubUser(ctx)
+	})
+	return p.userInfo, p.userErr
+}
+
+func (p *Processor) fetchGitHubUser(ctx context.Context) (githubUser, error) {
+	out, err := p.runner.Run(ctx, "api", "/user", "--jq", ".login+\"|\"+(.name // .login)")
+	if err != nil {
+		return githubUser{}, err
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(out)), "|", 2)
+	login := parts[0]
+	name := parts[0]
+	if len(parts) == 2 {
+		name = parts[1]
+	}
+
+	isBot := strings.HasSuffix(login, "[bot]")
+
+	var email string
+	if !isBot {
+		out, err = p.runner.Run(ctx, "api", "/user/emails", "--jq", "[.[] | select(.primary == true)] | .[0].email")
+		if err != nil {
+			return githubUser{}, err
+		}
+		email = strings.TrimSpace(string(out))
+	}
+
+	return githubUser{name: name, email: email, isBot: isBot}, nil
+}
+
+// applyToRepo creates commits for all file changes in the given repo.
+// - GitHub App token (isBot): uses Contents API, which GitHub auto-signs as Verified.
+// - PAT: uses Git Data API with local GPG signing.
 // Falls back to Contents API for empty repositories (no commits yet).
-// applyToRepo returns (prURL, error). prURL is non-empty only for pull_request strategy.
+// Returns (prURL, error); prURL is non-empty only for pull_request strategy.
 func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
@@ -32,12 +78,19 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		return "", fmt.Errorf("get HEAD: %w", err)
 	}
 
+	user, err := p.getGitHubUser(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get GitHub user: %w", err)
+	}
+
+	if user.isBot {
+		return p.applyViaContentsAPI(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
+	}
 	return p.applyViaGitDataAPI(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
 }
 
-// applyViaGitDataAPI creates blobs, a tree, a commit, and updates the ref
-// (or creates a PR) in a single atomic operation. All files are included in
-// one commit regardless of count.
+// applyViaGitDataAPI creates blobs, a tree, a GPG-signed commit, and updates the ref
+// (or creates a PR) in a single atomic operation.
 func (p *Processor) applyViaGitDataAPI(ctx context.Context, repo, branch, headSHA string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
 	message := resolveCommitMessage(opts)
 
@@ -69,6 +122,45 @@ func (p *Processor) applyViaGitDataAPI(ctx context.Context, repo, branch, headSH
 	}
 	statusFn("updating ref...")
 	return "", p.updateRef(ctx, repo, branch, commitSHA)
+}
+
+// applyViaContentsAPI applies changes one file at a time using the Contents API.
+// GitHub automatically marks commits made with an App installation token as Verified.
+func (p *Processor) applyViaContentsAPI(ctx context.Context, repo, defaultBranch, headSHA string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
+	message := resolveCommitMessage(opts)
+	targetBranch := defaultBranch
+
+	if opts.Via == manifest.ViaPullRequest {
+		prBranch := opts.Branch
+		if prBranch == "" {
+			prBranch = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
+		}
+		statusFn("creating PR branch...")
+		if err := p.createBranchAt(ctx, repo, prBranch, headSHA); err != nil {
+			return "", fmt.Errorf("create PR branch: %w", err)
+		}
+		targetBranch = prBranch
+	}
+
+	for _, c := range changes {
+		statusFn(fmt.Sprintf("updating %s...", c.Path))
+		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
+		var err error
+		if c.Type == ChangeDelete {
+			err = p.deleteFileViaContentsAPI(ctx, repo, c.Path, c.SHA, commitMsg, targetBranch)
+		} else {
+			err = p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, c.SHA, commitMsg, targetBranch)
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if opts.Via == manifest.ViaPullRequest {
+		statusFn("creating pull request...")
+		return p.openPR(ctx, repo, defaultBranch, targetBranch, opts)
+	}
+	return "", nil
 }
 
 // createBlobs creates a Git blob for each file change and returns tree entries.
@@ -109,7 +201,7 @@ func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes [
 	}
 	for _, c := range changes {
 		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
-		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg); err != nil {
+		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg, ""); err != nil {
 			return err
 		}
 	}
@@ -117,9 +209,9 @@ func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes [
 }
 
 // putFileViaContentsAPI creates or updates a single file using the Contents API.
-// This results in one commit per call. Use for empty repos or when Git Data API
-// is not available. Pass sha="" for new files, or the current blob SHA for updates.
-func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, content, sha, message string) error {
+// One commit per call. Pass sha="" for new files, or the current blob SHA for updates.
+// Pass branch="" to use the repository's default branch.
+func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, content, sha, message, branch string) error {
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
 	endpoint := fmt.Sprintf("repos/%s/contents/%s", repo, path)
 
@@ -132,10 +224,36 @@ func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, conte
 	if sha != "" {
 		args = append(args, "-f", fmt.Sprintf("sha=%s", sha))
 	}
+	if branch != "" {
+		args = append(args, "-f", fmt.Sprintf("branch=%s", branch))
+	}
 
 	_, err := p.runner.Run(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("put %s: %w", path, err)
+	}
+	return nil
+}
+
+// deleteFileViaContentsAPI deletes a single file using the Contents API.
+// sha is the current blob SHA of the file (required by GitHub).
+// Pass branch="" to use the repository's default branch.
+func (p *Processor) deleteFileViaContentsAPI(ctx context.Context, repo, path, sha, message, branch string) error {
+	endpoint := fmt.Sprintf("repos/%s/contents/%s", repo, path)
+
+	args := []string{
+		"api", endpoint,
+		"--method", "DELETE",
+		"-f", fmt.Sprintf("message=%s", message),
+		"-f", fmt.Sprintf("sha=%s", sha),
+	}
+	if branch != "" {
+		args = append(args, "-f", fmt.Sprintf("branch=%s", branch))
+	}
+
+	_, err := p.runner.Run(ctx, args...)
+	if err != nil {
+		return fmt.Errorf("delete %s: %w", path, err)
 	}
 	return nil
 }
@@ -219,10 +337,35 @@ func (p *Processor) createTree(ctx context.Context, repo, baseTree string, entri
 }
 
 func (p *Processor) createCommit(ctx context.Context, repo, message, treeSHA, parentSHA string) (string, error) {
+	now := time.Now().UTC()
+
+	user, err := p.getGitHubUser(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get GitHub user: %w", err)
+	}
+
+	commitObj := buildCommitObject(message, treeSHA, parentSHA, user.name, user.email, now)
+	sig, err := gpgSign(commitObj)
+	if err != nil {
+		return "", fmt.Errorf("sign commit: %w", err)
+	}
+
+	dateStr := now.Format(time.RFC3339)
 	body := map[string]any{
 		"message": message,
 		"tree":    treeSHA,
 		"parents": []string{parentSHA},
+		"author": map[string]string{
+			"name":  user.name,
+			"email": user.email,
+			"date":  dateStr,
+		},
+		"committer": map[string]string{
+			"name":  user.name,
+			"email": user.email,
+			"date":  dateStr,
+		},
+		"signature": sig,
 	}
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
@@ -257,6 +400,42 @@ func (p *Processor) createCommit(ctx context.Context, repo, message, treeSHA, pa
 	return resp.SHA, nil
 }
 
+func buildCommitObject(message, treeSHA, parentSHA, name, email string, ts time.Time) string {
+	unix := ts.Unix()
+	tz := ts.Format("-0700")
+	return fmt.Sprintf("tree %s\nparent %s\nauthor %s <%s> %d %s\ncommitter %s <%s> %d %s\n\n%s\n",
+		treeSHA, parentSHA,
+		name, email, unix, tz,
+		name, email, unix, tz,
+		message,
+	)
+}
+
+func gpgSign(payload string) (string, error) {
+	// Respect git config user.signingkey; fall back to GPG default key.
+	args := []string{"--detach-sign", "--armor", "--batch"}
+	if keyID := gitSigningKey(); keyID != "" {
+		args = append(args, "-u", keyID)
+	}
+	cmd := exec.Command("gpg", args...)
+	cmd.Stdin = strings.NewReader(payload)
+	var out, errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("gpg: %w: %s", err, errOut.String())
+	}
+	return out.String(), nil
+}
+
+func gitSigningKey() string {
+	out, err := exec.Command("git", "config", "--get", "user.signingkey").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func (p *Processor) updateRef(ctx context.Context, repo, branch, commitSHA string) error {
 	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
 		"--method", "PATCH",
@@ -265,33 +444,30 @@ func (p *Processor) updateRef(ctx context.Context, repo, branch, commitSHA strin
 	return err
 }
 
-// createPR creates a pull request and returns its URL.
-func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA string, opts ApplyOptions) (string, error) {
-	branchName := opts.Branch
-	if branchName == "" {
-		branchName = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
-	}
-
-	// Create branch pointing to the new commit; if it already exists, force-update it.
+// createBranchAt creates or force-updates a branch pointing to the given SHA.
+func (p *Processor) createBranchAt(ctx context.Context, repo, branch, sha string) error {
 	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs", repo),
 		"--method", "POST",
-		"-f", fmt.Sprintf("ref=refs/heads/%s", branchName),
-		"-f", fmt.Sprintf("sha=%s", commitSHA),
+		"-f", fmt.Sprintf("ref=refs/heads/%s", branch),
+		"-f", fmt.Sprintf("sha=%s", sha),
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "Reference already exists") {
-			_, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branchName),
+			_, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
 				"--method", "PATCH",
-				"-f", fmt.Sprintf("sha=%s", commitSHA),
+				"-f", fmt.Sprintf("sha=%s", sha),
 				"-F", "force=true",
 			)
 		}
 		if err != nil {
-			return "", fmt.Errorf("create branch %s: %w", branchName, err)
+			return err
 		}
 	}
+	return nil
+}
 
-	// Create PR (skip if one already exists for this head branch)
+// openPR opens a pull request from head into base. The head branch must already exist.
+func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts ApplyOptions) (string, error) {
 	prTitle := opts.PRTitle
 	if prTitle == "" {
 		prTitle = resolveCommitMessage(opts)
@@ -302,27 +478,38 @@ func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA
 	}
 	out, err := p.runner.Run(ctx, "pr", "create",
 		"--repo", repo,
-		"--base", defaultBranch,
-		"--head", branchName,
+		"--base", base,
+		"--head", head,
 		"--title", prTitle,
 		"--body", prBody,
 	)
 	if err != nil && strings.Contains(err.Error(), "already exists") {
-		// Retrieve existing PR URL
 		existing, lookupErr := p.runner.Run(ctx, "pr", "view",
 			"--repo", repo,
-			branchName,
+			head,
 			"--json", "url", "--jq", ".url",
 		)
 		if lookupErr == nil {
 			return strings.TrimSpace(string(existing)), nil
 		}
-		return "", nil // PR already open but couldn't get URL
+		return "", nil
 	}
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// createPR creates a branch at commitSHA and opens a pull request.
+func (p *Processor) createPR(ctx context.Context, repo, defaultBranch, commitSHA string, opts ApplyOptions) (string, error) {
+	branchName := opts.Branch
+	if branchName == "" {
+		branchName = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
+	}
+	if err := p.createBranchAt(ctx, repo, branchName, commitSHA); err != nil {
+		return "", fmt.Errorf("create branch %s: %w", branchName, err)
+	}
+	return p.openPR(ctx, repo, defaultBranch, branchName, opts)
 }
 
 // sanitizeBranchName converts an identity string into a valid Git branch name component.
