@@ -411,7 +411,7 @@ func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manife
 		return wrapError(err, fullName, c.Field)
 
 	case "visibility":
-		_, err := p.runner.Run(ctx, "repo", "edit", fullName, "--visibility", fmt.Sprintf("%v", c.NewValue))
+		_, err := p.runner.Run(ctx, "repo", "edit", fullName, "--visibility", fmt.Sprintf("%v", c.NewValue), "--accept-visibility-change-consequences")
 		return wrapError(err, fullName, c.Field)
 
 	case "archived":
