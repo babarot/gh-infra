@@ -289,7 +289,10 @@ func applyDeletableMarkers(raw map[string]any, dst any) error {
 		return fmt.Errorf("apply deletable markers: dst must be pointer to struct")
 	}
 
-	sv := rv.Elem()
+	return applyDeletableMarkersAt(raw, rv.Elem(), "spec")
+}
+
+func applyDeletableMarkersAt(raw map[string]any, sv reflect.Value, path string) error {
 	st := sv.Type()
 	for i := 0; i < st.NumField(); i++ {
 		sf := st.Field(i)
@@ -298,15 +301,30 @@ func applyDeletableMarkers(raw map[string]any, dst any) error {
 		}
 		fv := sv.Field(i)
 		marker, ok := deletableMarkerForField(fv)
-		if !ok {
-			continue
-		}
 		yamlKey := yamlTagKey(sf.Tag.Get("yaml"))
-		if yamlKey == "" || yamlKey == "-" {
+		if ok && (yamlKey == "" || yamlKey == "-") {
 			return fmt.Errorf("%s.%s: Deletable field must have a yaml key", st.Name(), sf.Name)
 		}
-		if v, ok := raw[yamlKey]; ok && v == nil {
-			marker.markDelete()
+
+		rawValue, exists := raw[yamlKey]
+		if !exists {
+			continue
+		}
+
+		fieldPath := joinYAMLPath(path, yamlKey)
+		if rawValue == nil {
+			if ok {
+				marker.markDelete()
+				continue
+			}
+			return fmt.Errorf("%s: null is only supported for deletable fields", fieldPath)
+		}
+
+		if ok {
+			continue
+		}
+		if err := rejectNestedNulls(rawValue, fv, fieldPath); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -323,6 +341,100 @@ func deletableMarkerForField(fv reflect.Value) (deletableMarker, bool) {
 func yamlTagKey(tag string) string {
 	key, _, _ := strings.Cut(tag, ",")
 	return key
+}
+
+func rejectNestedNulls(raw any, fv reflect.Value, path string) error {
+	for fv.Kind() == reflect.Ptr {
+		if fv.IsNil() {
+			return nil
+		}
+		fv = fv.Elem()
+	}
+
+	switch fv.Kind() {
+	case reflect.Struct:
+		rawMap, ok := asRawYAMLMap(raw)
+		if !ok {
+			return nil
+		}
+		return applyDeletableMarkersAt(rawMap, fv, path)
+	case reflect.Slice:
+		rawSlice, ok := raw.([]any)
+		if !ok {
+			return nil
+		}
+		for i, item := range rawSlice {
+			itemPath := fmt.Sprintf("%s[%d]", path, i)
+			if item == nil {
+				return fmt.Errorf("%s: null is only supported for deletable fields", itemPath)
+			}
+			elem := sliceElementValue(fv, i)
+			if elem.IsValid() {
+				if err := rejectNestedNulls(item, elem, itemPath); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := rejectRawNulls(item, itemPath); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		rawMap, ok := asRawYAMLMap(raw)
+		if !ok {
+			return nil
+		}
+		for key, item := range rawMap {
+			itemPath := joinYAMLPath(path, key)
+			if item == nil {
+				return fmt.Errorf("%s: null is only supported for deletable fields", itemPath)
+			}
+			if err := rejectRawNulls(item, itemPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func sliceElementValue(fv reflect.Value, i int) reflect.Value {
+	if i >= fv.Len() {
+		return reflect.Value{}
+	}
+	return fv.Index(i)
+}
+
+func rejectRawNulls(raw any, path string) error {
+	switch v := raw.(type) {
+	case map[string]any:
+		for key, item := range v {
+			itemPath := joinYAMLPath(path, key)
+			if item == nil {
+				return fmt.Errorf("%s: null is only supported for deletable fields", itemPath)
+			}
+			if err := rejectRawNulls(item, itemPath); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for i, item := range v {
+			itemPath := fmt.Sprintf("%s[%d]", path, i)
+			if item == nil {
+				return fmt.Errorf("%s: null is only supported for deletable fields", itemPath)
+			}
+			if err := rejectRawNulls(item, itemPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func joinYAMLPath(parent, child string) string {
+	if parent == "" {
+		return child
+	}
+	return parent + "." + child
 }
 
 func decodeRawYAMLMap(data []byte) (map[string]any, error) {

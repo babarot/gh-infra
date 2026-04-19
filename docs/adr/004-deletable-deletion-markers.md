@@ -70,6 +70,19 @@ delete. This is useful for collection fields where a nil slice naturally means
 "nothing to iterate". Callers that need to distinguish concrete values from
 unset/delete states should use `GetOK()` or `HasValue()`.
 
+Explicit YAML null is reserved for `Deletable[T]` fields. If a known
+non-deletable field is written as `null`, parsing fails instead of silently
+treating it as omitted:
+
+```yaml
+spec:
+  labels: null # error: labels is not Deletable
+```
+
+Users should omit a field to leave it unmanaged. This prevents accidental
+misreads such as assuming `labels: null` deletes all labels when it would
+otherwise decode to the same state as an omitted field.
+
 Slice fields also use helper functions to keep merge logic out of call sites:
 
 ```go
@@ -103,6 +116,10 @@ func applyDeletableMarkers(raw map[string]any, dst any) error {
     //   if field address implements deletableMarker:
     //     read its yaml tag key
     //     if raw[key] exists and is nil, mark the field for delete
+    //   else if raw[key] exists and is nil:
+    //     return a schema error
+    //   else:
+    //     recursively reject nested nulls
 }
 ```
 
@@ -204,6 +221,7 @@ Rejected as too broad. A generic engine could collect null paths such as `$.repo
 - Future deletion-capable fields can use `Deletable[T]` without changing parser field-name lists.
 - Tag-missing failures are avoided because the type itself carries the semantics.
 - `field: null` remains explicit, stateless, and reviewable in plan output.
+- Non-deletable fields cannot silently treat explicit null as omission.
 - The wrapped value is private, so callers cannot accidentally construct
   inconsistent states such as "delete marker with a non-zero value".
 
@@ -212,6 +230,9 @@ Rejected as too broad. A generic engine could collect null paths such as `$.repo
 - The rename from `Nullable[T]` to `Deletable[T]` is a broad mechanical change across manifest, repository, importer, and tests.
 - `Deletable[T]` must not be reused for non-delete null semantics. If gh-infra later needs scalar clearing behavior, it should introduce a separate type such as `Clearable[T]`.
 - Parser code uses reflection to discover `Deletable[T]` fields. This is acceptable because it runs only during manifest parsing and over small schema structs.
+- Parser code also rejects explicit nulls on non-deletable fields, including
+  nested struct fields and slice elements. This makes `null` a reserved
+  deletion-marker syntax rather than a generic "unset" spelling.
 - `Deletable[T]` fields must have explicit YAML keys. The parser returns an internal schema error if a `Deletable[T]` field is tagged `yaml:"-"` or lacks a YAML key.
 
 ### Implementation Notes

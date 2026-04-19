@@ -1846,6 +1846,81 @@ spec:
 	}
 }
 
+func TestParseRepository_RejectsNullForNonDeletableFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    string
+		wantErr string
+	}{
+		{
+			name: "top-level scalar pointer",
+			spec: `
+  description: null
+`,
+			wantErr: "spec.description: null is only supported for deletable fields",
+		},
+		{
+			name: "top-level slice",
+			spec: `
+  labels: null
+`,
+			wantErr: "spec.labels: null is only supported for deletable fields",
+		},
+		{
+			name: "nested pointer field",
+			spec: `
+  features:
+    issues: null
+`,
+			wantErr: "spec.features.issues: null is only supported for deletable fields",
+		},
+		{
+			name: "slice item",
+			spec: `
+  topics:
+    - go
+    - null
+`,
+			wantErr: "spec.topics[1]: null is only supported for deletable fields",
+		},
+		{
+			name: "slice item field",
+			spec: `
+  secrets:
+    - name: TOKEN
+      value: null
+`,
+			wantErr: "spec.secrets[0].value: null is only supported for deletable fields",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			content := `
+apiVersion: v1
+kind: Repository
+metadata:
+  name: my-repo
+  owner: my-org
+spec:
+` + tt.spec
+			path := filepath.Join(dir, "repo.yaml")
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := ParsePath(path)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %q, want it to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestParseRepositorySet_DeletableDeletionMarkers(t *testing.T) {
 	dir := t.TempDir()
 	content := `
