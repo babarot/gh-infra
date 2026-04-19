@@ -134,11 +134,12 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 
 	switch doc.Kind {
 	case KindRepository:
-		repos, err := parseRepository(data, path)
+		repos, warnings, err := parseRepository(data, path)
 		if err != nil {
 			return nil, err
 		}
 		result.Repositories = repos
+		result.Warnings = append(result.Warnings, warnings...)
 		for _, r := range repos {
 			result.RepositoryDocs = append(result.RepositoryDocs, &RepositoryDocument{
 				Resource:   r,
@@ -147,12 +148,13 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 			})
 		}
 	case KindRepositorySet:
-		repos, docs, err := parseRepositorySet(data, path, docIndex)
+		repos, docs, warnings, err := parseRepositorySet(data, path, docIndex)
 		if err != nil {
 			return nil, err
 		}
 		result.Repositories = repos
 		result.RepositoryDocs = docs
+		result.Warnings = append(result.Warnings, warnings...)
 	case KindFile:
 		if opt.Resolver == nil {
 			return nil, fmt.Errorf("%s: ParseOptions.Resolver is required for File kind", path)
@@ -184,21 +186,29 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 	return result, nil
 }
 
-func parseRepository(data []byte, path string) ([]*Repository, error) {
+func parseRepository(data []byte, path string) ([]*Repository, []string, error) {
 	var repo Repository
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&repo); err != nil {
-		return nil, fmt.Errorf("parse Repository in %s: %w", path, err)
+		return nil, nil, fmt.Errorf("parse Repository in %s: %w", path, err)
 	}
 	if err := repo.Validate(); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	return []*Repository{&repo}, nil
+	return []*Repository{&repo}, repositoryWarnings(repo.Spec), nil
 }
 
-func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, []*RepositoryDocument, error) {
+func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, []*RepositoryDocument, []string, error) {
 	var set RepositorySet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&set); err != nil {
-		return nil, nil, fmt.Errorf("parse RepositorySet in %s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("parse RepositorySet in %s: %w", path, err)
+	}
+
+	var warnings []string
+	if set.Defaults != nil {
+		warnings = append(warnings, repositoryWarnings(set.Defaults.Spec)...)
+	}
+	for i := range set.Repositories {
+		warnings = append(warnings, repositoryWarnings(set.Repositories[i].Spec)...)
 	}
 
 	var repos []*Repository
@@ -217,7 +227,7 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 			Spec:      mergeSpecs(set.Defaults, entry.Spec),
 		}
 		if err := repo.Validate(); err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", path, err)
+			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 		}
 		repos = append(repos, repo)
 		docs = append(docs, &RepositoryDocument{
@@ -230,7 +240,7 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 			OriginalEntrySpec: &originalSpec,
 		})
 	}
-	return repos, docs, nil
+	return repos, docs, warnings, nil
 }
 
 func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, error) {
@@ -302,6 +312,13 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 	warnings = append(warnings, collectFileEntryWarnings(fs.Spec.Files)...)
 
 	return &fs, warnings, nil
+}
+
+func repositoryWarnings(spec RepositorySpec) []string {
+	if spec.LabelSync == nil {
+		return nil
+	}
+	return []string{`"label_sync" is deprecated, use top-level "reconcile.labels" instead`}
 }
 
 // collectFileEntryWarnings drains deprecation warnings from all FileEntry instances.
@@ -400,8 +417,9 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if len(override.Variables) > 0 {
 		result.Variables = override.Variables
 	}
-	if len(override.Labels) > 0 {
+	if override.LabelsSet {
 		result.Labels = mergeLabels(result.Labels, override.Labels)
+		result.LabelsSet = true
 	}
 	if override.LabelSync != nil {
 		result.LabelSync = override.LabelSync
@@ -429,6 +447,9 @@ func mergeReconcile(defaults *RepositorySetDefaults, override *RepositoryReconci
 	result := *base
 	if override.BranchProtection != nil {
 		result.BranchProtection = override.BranchProtection
+	}
+	if override.Labels != nil {
+		result.Labels = override.Labels
 	}
 	if override.Rulesets != nil {
 		result.Rulesets = override.Rulesets

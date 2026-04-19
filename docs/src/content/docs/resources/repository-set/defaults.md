@@ -8,6 +8,7 @@ The `defaults` block defines shared settings applied to all repositories in the 
 defaults:
   reconcile:
     rulesets: authoritative
+    labels: additive
   spec:
     visibility: public
     features:
@@ -28,7 +29,7 @@ How overrides are applied depends on the field type:
 
 ### Scalars — replaced
 
-Strings, booleans, and numbers (including `label_sync`) are simply replaced by the per-repo value.
+Strings, booleans, and numbers are simply replaced by the per-repo value.
 
 ```yaml
 defaults:
@@ -51,9 +52,13 @@ repositories:
 ```yaml
 defaults:
   reconcile:
+    labels: authoritative
     rulesets: authoritative
     branch_protection: additive
   spec:
+    labels:
+      - name: kind/bug
+        color: d73a4a
     rulesets:
       - name: protect-main
 
@@ -64,7 +69,7 @@ repositories:
       rulesets: additive    # overrides only rulesets
 ```
 
-If a reconcile policy is set, the corresponding collection must be present after defaults and overrides are merged. For example, `reconcile.rulesets: authoritative` requires `spec.rulesets` to exist. Use `spec.rulesets: []` for an explicitly empty managed collection.
+If a reconcile policy is set, the corresponding collection must be present after defaults and overrides are merged. For example, `reconcile.rulesets: authoritative` requires `spec.rulesets` to exist. Use `spec.rulesets: []` or `spec.labels: []` for an explicitly empty managed collection.
 
 ### Lists — replaced entirely
 

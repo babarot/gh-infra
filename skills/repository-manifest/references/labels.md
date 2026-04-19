@@ -13,11 +13,13 @@ spec:
 - `name` must be unique in the list
 - `color` is hex without `#`
 
-## Sync Mode
+## Reconcile Mode
 
 ```yaml
+reconcile:
+  labels: authoritative
+
 spec:
-  label_sync: mirror
   labels:
     - name: kind/bug
       color: d73a4a
@@ -26,6 +28,8 @@ spec:
 Modes:
 
 - `additive`: create/update only; unmanaged labels remain
-- `mirror`: create/update/delete; unmanaged labels are removed
+- `authoritative`: create/update/delete; unmanaged labels are removed
 
-Use `mirror` only when the manifest is authoritative. `plan` includes label usage info for pending deletions.
+Use `authoritative` only when the manifest is authoritative. `plan` includes label usage info for pending deletions.
+
+`spec.label_sync: mirror` is still accepted for compatibility, but it is deprecated.

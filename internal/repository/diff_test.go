@@ -1123,7 +1123,7 @@ func TestDiff_Labels(t *testing.T) {
 		}
 		c := baseState()
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
@@ -1143,7 +1143,7 @@ func TestDiff_Labels(t *testing.T) {
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
@@ -1166,7 +1166,7 @@ func TestDiff_Labels(t *testing.T) {
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "Old desc"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
 		}
@@ -1186,14 +1186,14 @@ func TestDiff_Labels(t *testing.T) {
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		if len(changes) != 0 {
 			t.Errorf("expected no changes, got %d", len(changes))
 		}
 	})
 }
 
-func TestDiff_Labels_Mirror(t *testing.T) {
+func TestDiff_Labels_Authoritative(t *testing.T) {
 	t.Run("deletes unmanaged labels", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
@@ -1203,7 +1203,7 @@ func TestDiff_Labels_Mirror(t *testing.T) {
 		c.Labels["keep"] = &CurrentLabel{Name: "keep", Color: "00ff00"}
 		c.Labels["remove-me"] = &CurrentLabel{Name: "remove-me", Color: "ff0000", Description: "Old label"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncMirror)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAuthoritative)
 
 		var deletes []Change
 		for _, ch := range changes {
@@ -1228,13 +1228,28 @@ func TestDiff_Labels_Mirror(t *testing.T) {
 		c.Labels["keep"] = &CurrentLabel{Name: "keep", Color: "00ff00"}
 		c.Labels["extra"] = &CurrentLabel{Name: "extra", Color: "aaaaaa"}
 
-		changes := diffLabels("org/repo", d, c, manifest.LabelSyncAdditive)
+		changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAdditive)
 		for _, ch := range changes {
 			if ch.Type == ChangeDelete {
 				t.Errorf("unexpected delete in additive mode: %v", ch)
 			}
 		}
 	})
+}
+
+func TestDiff_Labels_LegacyLabelSyncMirrorMapsToAuthoritative(t *testing.T) {
+	d := baseDesired()
+	d.Spec.LabelSync = manifest.Ptr(manifest.LabelSyncMirror)
+	c := baseState()
+	c.Labels["remove-me"] = &CurrentLabel{Name: "remove-me", Color: "ff0000", Description: "Old label"}
+
+	changes := Diff(context.Background(), d, c)
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
+	}
+	if changes[0].Type != ChangeDelete || changes[0].Resource != manifest.ResourceLabel || changes[0].Field != "remove-me" {
+		t.Fatalf("unexpected change: %+v", changes[0])
+	}
 }
 
 func TestLabelSummary(t *testing.T) {

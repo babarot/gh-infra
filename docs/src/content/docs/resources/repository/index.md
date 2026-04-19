@@ -17,6 +17,7 @@ metadata:
 
 reconcile:
   rulesets: authoritative
+  labels: authoritative
 
 spec:
   description: "My awesome project"
@@ -91,7 +92,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `archived` | Archive (read-only) or unarchive — see [General Settings](./general/#archiving) |
 | `topics` | GitHub topics for discoverability |
 | `labels` | Repository issue/PR labels — see [Labels](./labels/) |
-| `label_sync` | Label sync mode: `additive` (default) or `mirror` — see [Labels](./labels/#sync-mode) |
+| `label_sync` | Deprecated label sync mode: use `reconcile.labels` instead — see [Labels](./labels/#reconcile-mode) |
 | `features` | Toggle issues, projects, wiki, discussions, pull requests — see [General Settings](./general/) |
 | `merge_strategy` | Merge commit, squash, rebase options — see [General Settings](./general/) |
 | `branch_protection` | Classic branch protection rules — see [Branch Protection](./branch-protection/) |
@@ -112,6 +113,7 @@ Use top-level `reconcile` to make selected collections match YAML exactly:
 ```yaml
 reconcile:
   rulesets: authoritative
+  labels: additive
   branch_protection: additive
 
 spec:
@@ -124,10 +126,11 @@ spec:
 
 | Field | Modes | Description |
 |---|---|---|
+| `reconcile.labels` | `additive`, `authoritative` | Controls how `spec.labels` is compared with existing GitHub labels |
 | `reconcile.rulesets` | `additive`, `authoritative` | Controls how `spec.rulesets` is compared with existing GitHub rulesets |
 | `reconcile.branch_protection` | `additive`, `authoritative` | Controls how `spec.branch_protection` is compared with existing classic branch protection rules |
 
-`additive` is the default. `authoritative` deletes remote entries that are not declared in YAML. To delete all rulesets or branch protection rules, use `authoritative` with an empty list:
+`additive` is the default. `authoritative` deletes remote entries that are not declared in YAML. To delete all labels, rulesets, or branch protection rules, use `authoritative` with an empty list:
 
 ```yaml
 reconcile:
@@ -136,7 +139,7 @@ spec:
   rulesets: []
 ```
 
-`rulesets: null`, `rulesets:`, `branch_protection: null`, and `branch_protection:` are invalid. Use an empty list when you mean an empty managed collection.
+`labels: null`, `labels:`, `rulesets: null`, `rulesets:`, `branch_protection: null`, and `branch_protection:` are invalid. Use an empty list when you mean an empty managed collection.
 
 ## When to Use
 
