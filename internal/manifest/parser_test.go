@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -1836,6 +1837,164 @@ spec:
 	_, err := ParsePath(path)
 	if err == nil {
 		t.Fatal("expected validation error for invalid label_sync value")
+	}
+}
+
+func TestRepositoryReconcileValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantErr string
+	}{
+		{
+			name: "reconcile without spec collection",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+reconcile:
+  rulesets: mirror
+spec:
+  description: repo
+`,
+			wantErr: "reconcile.rulesets requires spec.rulesets",
+		},
+		{
+			name: "invalid reconcile mode",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+reconcile:
+  rulesets: replace
+spec:
+  rulesets: []
+`,
+			wantErr: "invalid reconcile.rulesets",
+		},
+		{
+			name: "null rulesets rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  rulesets:
+`,
+			wantErr: "rulesets must be a sequence",
+		},
+		{
+			name: "null branch protection rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  branch_protection: null
+`,
+			wantErr: "branch_protection must be a sequence",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "repo.yaml")
+			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := ParsePath(path)
+			if err == nil {
+				t.Fatal("expected parse error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRepositoryReconcileMirrorEmptyCollection(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+reconcile:
+  rulesets: mirror
+spec:
+  rulesets: []
+`
+	path := filepath.Join(dir, "repo.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+	if !repos[0].Spec.RulesetsSet {
+		t.Fatal("rulesets presence was not tracked")
+	}
+	if got := RulesetsReconcileMode(repos[0].Reconcile); got != CollectionReconcileMirror {
+		t.Fatalf("rulesets reconcile mode = %q, want %q", got, CollectionReconcileMirror)
+	}
+	if len(repos[0].Spec.Rulesets) != 0 {
+		t.Fatalf("rulesets length = %d, want 0", len(repos[0].Spec.Rulesets))
+	}
+}
+
+func TestRepositorySet_ReconcileMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  reconcile:
+    rulesets: mirror
+  spec:
+    rulesets:
+      - name: protect-main
+repositories:
+  - name: inherits-reconcile
+  - name: overrides-reconcile
+    reconcile:
+      rulesets: additive
+`
+	path := filepath.Join(dir, "reposet.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+	if got := RulesetsReconcileMode(repos[0].Reconcile); got != CollectionReconcileMirror {
+		t.Fatalf("repo[0] rulesets reconcile mode = %q, want %q", got, CollectionReconcileMirror)
+	}
+	if got := RulesetsReconcileMode(repos[1].Reconcile); got != CollectionReconcileAdditive {
+		t.Fatalf("repo[1] rulesets reconcile mode = %q, want %q", got, CollectionReconcileAdditive)
 	}
 }
 

@@ -12,6 +12,14 @@ func (r *Repository) Validate() error {
 		return err
 	}
 	name := r.Metadata.Name
+	if r.Reconcile != nil {
+		if r.Reconcile.BranchProtection != nil && !r.Spec.BranchProtectionSet {
+			return fmt.Errorf("%s: reconcile.branch_protection requires spec.branch_protection to be present", name)
+		}
+		if r.Reconcile.Rulesets != nil && !r.Spec.RulesetsSet {
+			return fmt.Errorf("%s: reconcile.rulesets requires spec.rulesets to be present", name)
+		}
+	}
 	// Branch protection: element tag validation
 	for i, bp := range r.Spec.BranchProtection {
 		if err := ValidateStruct(fmt.Sprintf("%s: spec.branch_protection[%d]", name, i), &bp); err != nil {
