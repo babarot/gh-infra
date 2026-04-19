@@ -142,7 +142,7 @@ func TestApplyVisibility(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 	args := mock.Called[0]
-	expected := []string{"repo", "edit", "myorg/myrepo", "--visibility", "private"}
+	expected := []string{"repo", "edit", "myorg/myrepo", "--visibility", "private", "--accept-visibility-change-consequences"}
 	if strings.Join(args, " ") != strings.Join(expected, " ") {
 		t.Errorf("args: got %v, want %v", args, expected)
 	}
