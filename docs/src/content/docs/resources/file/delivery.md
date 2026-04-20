@@ -48,4 +48,4 @@ If a pull request already exists for the branch, gh-infra updates it instead of 
 
 ## Empty repositories
 
-For repositories with no commits yet, gh-infra falls back to the Contents API regardless of the `via` setting. Each file becomes a separate commit. See [Git Data API vs Contents API](/internals/git-api/) for details.
+For repositories with no commits yet, gh-infra falls back to the Contents API regardless of the `via` setting. Each file becomes a separate commit. See [GraphQL Commit API vs Contents API](/internals/git-api/) for details.

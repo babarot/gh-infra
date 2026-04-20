@@ -145,18 +145,11 @@ flowchart TB
         direction TB
         subgraph ga["worker: repo-A (direct push)"]
             direction TB
-            a1[get HEAD SHA] --> a2[create blob file-1]
-            a2 --> a3[create blob file-2]
-            a3 --> a4[create tree]
-            a4 --> a5[create commit]
-            a5 --> a6[update ref]
+            a1[get HEAD SHA] --> a2[createCommitOnBranch]
         end
         subgraph gb["worker: repo-B (pull request)"]
             direction TB
-            b1[get HEAD SHA] --> b2[create blob file-1]
-            b2 --> b3[create tree]
-            b3 --> b4[create commit]
-            b4 --> b5[create pull request]
+            b1[get HEAD SHA] --> b2[create branch] --> b3[createCommitOnBranch] --> b4[open pull request]
         end
     end
     pool --> flat["Flatten results in order"]
@@ -166,13 +159,10 @@ flowchart TB
 
 - Changes are grouped by target repo using `groupChangesByTarget()`
 - **Repos run in parallel** — bounded by worker pool (max 10)
-- **Within each repo, all operations are sequential** — Git Data API requires:
+- **Within each repo, all operations are sequential** — the GraphQL `createCommitOnBranch` mutation requires:
   1. Get HEAD SHA (base commit)
-  2. Create blobs for each file
-  3. Create tree referencing the blobs
-  4. Create commit pointing to the tree
-  5. Update ref (direct push) or create pull request
-- A single commit bundles all file changes for one repo
+  2. Send mutation with all file additions/deletions (direct push), or create branch first then send mutation and open PR (pull request)
+- A single verified commit bundles all file changes for one repo
 - Spinner display shows per-repo progress
 
 ### Import — `importMultipleRepos`
@@ -270,7 +260,7 @@ Assuming 1 protected branch, 1 ruleset per repo:
 | 20 | ~38 | ~131 |
 
 :::caution
-These estimates cover the **plan phase only**. An `apply` run executes the plan fetch first, then makes additional API calls to mutate state (create/update settings, Git Data API for file commits, etc.). Budget accordingly.
+These estimates cover the **plan phase only**. An `apply` run executes the plan fetch first, then makes additional API calls to mutate state (create/update settings, GraphQL commit mutation for file commits, etc.). Budget accordingly.
 :::
 
 ### Strategies for Large-Scale Usage
@@ -290,4 +280,4 @@ If you manage hundreds of repositories and approach the 5,000/hr limit:
 | Plan output rendering | Must be sequential for readable terminal output |
 | Confirm prompt | Blocks on user input |
 | Settings within a repo | API ordering dependencies (create → configure) |
-| Git Data API within a repo | Each step depends on the previous (HEAD → blob → tree → commit → ref) |
+| GraphQL commit within a repo | Mutation requires HEAD SHA; for PRs the branch must be created first |
