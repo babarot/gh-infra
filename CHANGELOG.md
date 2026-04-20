@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.13.0](https://github.com/babarot/gh-infra/compare/v0.12.0...v0.13.0) - 2026-04-20
+### New Features
+- Add collection reconciliation policy (additive/authoritative modes) by @babarot in https://github.com/babarot/gh-infra/pull/143
+### Bug fixes
+- fix: add --accept-visibility-change-consequences flag when editing visibility by @yagihash in https://github.com/babarot/gh-infra/pull/140
+### Deprecated features
+- Migrate label_sync into reconcile block and relax validation by @babarot in https://github.com/babarot/gh-infra/pull/145
+- Unify file reconcile naming with repository conventions by @babarot in https://github.com/babarot/gh-infra/pull/146
+### Improvements
+- feat: make file distribution commits verified by @yagihash in https://github.com/babarot/gh-infra/pull/139
+### Refactorings
+- Split Change.Details from Change.Children by @babarot in https://github.com/babarot/gh-infra/pull/144
+
 ## [v0.12.0](https://github.com/babarot/gh-infra/compare/v0.11.1...v0.12.0) - 2026-04-18
 ### New Features
 - Add pull_requests feature field with bool-or-object YAML support by @babarot in https://github.com/babarot/gh-infra/pull/137
