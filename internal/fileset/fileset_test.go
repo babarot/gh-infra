@@ -405,7 +405,7 @@ func TestCountChanges(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Mirror mode tests
+// Authoritative mode tests
 // ---------------------------------------------------------------------------
 
 // dirContentsJSON builds a GitHub Contents API JSON response for a directory listing.
@@ -433,7 +433,7 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 		Responses: map[string][]byte{
 			// file1.yml exists in repo with same content → NoOp
 			contentsKey("owner/repo", "config/file1.yml"): contentsJSON("content1", "sha1"),
-			// directory listing for mirror orphan detection
+			// directory listing for authoritative orphan detection
 			contentsKey("owner/repo", "config"): dirContentsJSON(dirFiles),
 		},
 		Errors: map[string]error{},
@@ -449,7 +449,7 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 					{
 						Path:      "config/file1.yml",
 						Content:   "content1",
-						Reconcile: manifest.ReconcileMirror,
+						Reconcile: manifest.ReconcileAuthoritative,
 						DirScope:  "config",
 					},
 				},
@@ -478,8 +478,8 @@ func TestPlan_MirrorDetectsOrphans(t *testing.T) {
 	}
 }
 
-func TestPlan_PatchIgnoresOrphans(t *testing.T) {
-	// Same setup but with patch mode — no deletes should be generated
+func TestPlan_AdditiveIgnoresOrphans(t *testing.T) {
+	// Same setup but with additive mode — no deletes should be generated
 	dirFiles := []struct{ Path, Type string }{
 		{Path: "config/file1.yml", Type: "file"},
 		{Path: "config/file2.yml", Type: "file"},
@@ -488,7 +488,7 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
 			contentsKey("owner/repo", "config/file1.yml"): contentsJSON("content1", "sha1"),
-			// directory listing should NOT be called for patch mode, but include it to be safe
+			// directory listing should NOT be called for additive mode, but include it to be safe
 			contentsKey("owner/repo", "config"): dirContentsJSON(dirFiles),
 		},
 		Errors: map[string]error{},
@@ -504,7 +504,7 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 					{
 						Path:      "config/file1.yml",
 						Content:   "content1",
-						Reconcile: manifest.ReconcilePatch,
+						Reconcile: manifest.ReconcileAdditive,
 						DirScope:  "config",
 					},
 				},
@@ -519,7 +519,7 @@ func TestPlan_PatchIgnoresOrphans(t *testing.T) {
 
 	for _, c := range changes {
 		if c.Type == ChangeDelete {
-			t.Errorf("patch mode should not generate ChangeDelete, got delete for %s", c.Path)
+			t.Errorf("additive mode should not generate ChangeDelete, got delete for %s", c.Path)
 		}
 	}
 }

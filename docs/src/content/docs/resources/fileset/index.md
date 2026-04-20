@@ -58,7 +58,7 @@ All settings available in [File](../file/) — file sources, templating, reconci
 - [File Sources](../file/sources/) — Inline content, local files, directories, and `github://` references
 - [Templating](../file/templating/) — `<% %>` syntax, built-in variables, custom vars
 - [Patches](../file/patches/) — Unified diff patches for per-repo customization of shared templates
-- [Reconcile](../file/reconcile/) — `patch` (add/update) vs `mirror` (add/update/delete orphans)
+- [Reconcile](../file/reconcile/) — `additive` (add/update) vs `authoritative` (add/update/delete orphans)
 - [Delivery Method](../file/delivery/) — `push` vs `pull_request`
 
 ## When to Use FileSet
@@ -113,4 +113,3 @@ spec:
 | Changing a shared file | Edit one place | Edit every manifest |
 | Per-repo git blame | All changes in one file | Clean, one file per repo |
 | Team ownership | Single file, shared ownership | Each team owns their manifest |
-

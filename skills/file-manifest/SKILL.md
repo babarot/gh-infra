@@ -16,7 +16,7 @@ Use this skill for file-distribution manifests. Keep the main body small and ope
 - `File` is parsed as a one-repo `FileSet` internally, but you still author the simpler shape
 - Each file entry requires `path` and exactly one of `content` or `source`
 - `via` defaults to `push`
-- `reconcile` defaults to `patch`
+- `reconcile` defaults to `additive`
 - `patches` are applied after template expansion
 
 ## File
@@ -45,7 +45,7 @@ Key fields:
 - `commit_message`, `branch`, `pr_title`, `pr_body`: delivery controls
 - `files[].vars`: template variables
 - `files[].patches`: unified diff patches
-- `files[].reconcile`: `patch`, `mirror`, `create_only`
+- `files[].reconcile`: `additive`, `authoritative`, `create_only`
 
 Read these references as needed:
 
@@ -98,7 +98,7 @@ Overrides replace the matching base entry by `path` for that repository only.
 - Prefer patch files over inline patch blocks for files with tabs
 - Patch context must match template-expanded content, not raw template source
 - `github://` sources are import hard-skips because there is no local write target
-- Shared local source files in `FileSet` often default to `patch` in `import --into`
+- Shared local source files in `FileSet` often default to the `patch` write action in `import --into`
 - `create_only` affects apply behavior, but import can still update the local master template
 
 ## Verification

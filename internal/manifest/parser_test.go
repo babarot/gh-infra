@@ -780,6 +780,102 @@ spec:
 	}
 }
 
+func TestParseFileSet_LegacyReconcileValues(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - name: repo
+      overrides:
+        - path: override.txt
+          content: hello
+          reconcile: mirror
+  files:
+    - path: additive.txt
+      content: hello
+      reconcile: patch
+    - path: authoritative.txt
+      content: hello
+      reconcile: mirror
+`
+	path := filepath.Join(dir, "fileset.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path, fileOpts())
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+
+	files := result.FileSets[0].Spec.Files
+	if files[0].Reconcile != ReconcileAdditive {
+		t.Fatalf("reconcile patch normalized to %q, want %q", files[0].Reconcile, ReconcileAdditive)
+	}
+	if files[1].Reconcile != ReconcileAuthoritative {
+		t.Fatalf("reconcile mirror normalized to %q, want %q", files[1].Reconcile, ReconcileAuthoritative)
+	}
+	if result.FileSets[0].Spec.Repositories[0].Overrides[0].Reconcile != ReconcileAuthoritative {
+		t.Fatalf("override reconcile mirror normalized to %q, want %q", result.FileSets[0].Spec.Repositories[0].Overrides[0].Reconcile, ReconcileAuthoritative)
+	}
+	if len(result.Warnings) != 3 {
+		t.Fatalf("expected 3 warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+	if !strings.Contains(result.Warnings[0], `"reconcile" value "patch" is deprecated`) {
+		t.Fatalf("warning[0] = %q, want patch deprecation", result.Warnings[0])
+	}
+	if !strings.Contains(result.Warnings[1], `"reconcile" value "mirror" is deprecated`) {
+		t.Fatalf("warning[1] = %q, want mirror deprecation", result.Warnings[1])
+	}
+	if !strings.Contains(result.Warnings[2], `"reconcile" value "mirror" is deprecated`) {
+		t.Fatalf("warning[2] = %q, want override mirror deprecation", result.Warnings[2])
+	}
+}
+
+func TestParseFileSet_NewReconcileValues(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - repo
+  files:
+    - path: additive.txt
+      content: hello
+      reconcile: additive
+    - path: authoritative.txt
+      content: hello
+      reconcile: authoritative
+`
+	path := filepath.Join(dir, "fileset.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path, fileOpts())
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+
+	files := result.FileSets[0].Spec.Files
+	if files[0].Reconcile != ReconcileAdditive {
+		t.Fatalf("reconcile = %q, want %q", files[0].Reconcile, ReconcileAdditive)
+	}
+	if files[1].Reconcile != ReconcileAuthoritative {
+		t.Fatalf("reconcile = %q, want %q", files[1].Reconcile, ReconcileAuthoritative)
+	}
+	if len(result.Warnings) != 0 {
+		t.Fatalf("expected no warnings, got %v", result.Warnings)
+	}
+}
+
 func TestParseFileSet_MissingOwner(t *testing.T) {
 	dir := t.TempDir()
 	content := `

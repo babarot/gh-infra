@@ -283,8 +283,7 @@ func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []
 	// Collect deprecation warnings
 	var warnings []string
 	warnings = append(warnings, f.Spec.DeprecationWarnings...)
-	warnings = append(warnings, fs.Spec.DeprecationWarnings...)
-	warnings = append(warnings, collectFileEntryWarnings(fs.Spec.Files)...)
+	warnings = append(warnings, collectFileSetWarnings(fs.Spec)...)
 
 	return fs, warnings, nil
 }
@@ -307,9 +306,7 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 	fs.Spec.Files = resolved
 
 	// Collect deprecation warnings
-	var warnings []string
-	warnings = append(warnings, fs.Spec.DeprecationWarnings...)
-	warnings = append(warnings, collectFileEntryWarnings(fs.Spec.Files)...)
+	warnings := collectFileSetWarnings(fs.Spec)
 
 	return &fs, warnings, nil
 }
@@ -326,6 +323,16 @@ func collectFileEntryWarnings(files []FileEntry) []string {
 	var warnings []string
 	for _, f := range files {
 		warnings = append(warnings, f.DeprecationWarnings...)
+	}
+	return warnings
+}
+
+func collectFileSetWarnings(spec FileSetSpec) []string {
+	var warnings []string
+	warnings = append(warnings, spec.DeprecationWarnings...)
+	warnings = append(warnings, collectFileEntryWarnings(spec.Files)...)
+	for _, repo := range spec.Repositories {
+		warnings = append(warnings, collectFileEntryWarnings(repo.Overrides)...)
 	}
 	return warnings
 }

@@ -467,7 +467,7 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 		{
 			Path:      ".github/workflows",
 			Source:    "configs",
-			Reconcile: ReconcileMirror,
+			Reconcile: ReconcileAuthoritative,
 		},
 	}
 	result, err := r.ResolveFiles(context.Background(), files, dir)
@@ -484,8 +484,8 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 		if entry.DirScope != ".github/workflows" {
 			t.Errorf("result[%d].DirScope = %q, want %q", i, entry.DirScope, ".github/workflows")
 		}
-		if entry.Reconcile != ReconcileMirror {
-			t.Errorf("result[%d].Reconcile = %q, want %q", i, entry.Reconcile, ReconcileMirror)
+		if entry.Reconcile != ReconcileAuthoritative {
+			t.Errorf("result[%d].Reconcile = %q, want %q", i, entry.Reconcile, ReconcileAuthoritative)
 		}
 	}
 }

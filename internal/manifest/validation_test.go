@@ -570,15 +570,15 @@ func TestValidateFileSet_InvalidReconcile(t *testing.T) {
 			wantErr:  "invalid reconcile",
 		},
 		{
-			name:     "valid reconcile patch",
-			syncMode: ReconcilePatch,
+			name:     "valid reconcile additive",
+			syncMode: ReconcileAdditive,
 		},
 		{
-			name:     "valid reconcile mirror",
-			syncMode: ReconcileMirror,
+			name:     "valid reconcile authoritative",
+			syncMode: ReconcileAuthoritative,
 		},
 		{
-			name:     "empty reconcile is valid (defaults to patch)",
+			name:     "empty reconcile is valid (defaults to additive)",
 			syncMode: "",
 		},
 	}

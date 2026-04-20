@@ -51,13 +51,13 @@ files:
 
 For example, if `./templates/workflows/` contains `ci.yaml` and `release.yaml`, this creates `.github/workflows/ci.yaml` and `.github/workflows/release.yaml` in the target repo.
 
-Add `reconcile: mirror` to delete files in the target directory that don't exist in the source:
+Add `reconcile: authoritative` to delete files in the target directory that don't exist in the source:
 
 ```yaml
 files:
   - path: .github/workflows
     source: ./templates/workflows/
-    reconcile: mirror
+    reconcile: authoritative
 ```
 
 See [Reconcile](../reconcile/) for details.
@@ -107,7 +107,7 @@ workflows/
 
 This creates `.github/workflows/ci.yaml`, `.github/workflows/release.yaml`, and `.github/workflows/checks/lint.yaml` in the target repo.
 
-Like local directories, `reconcile: mirror` works with GitHub directory sources to delete orphan files. See [Reconcile](../reconcile/).
+Like local directories, `reconcile: authoritative` works with GitHub directory sources to delete orphan files. See [Reconcile](../reconcile/).
 
 ### Pinning to a version
 
