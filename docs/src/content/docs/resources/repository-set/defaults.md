@@ -45,32 +45,6 @@ repositories:
       description: "Internal"  # visibility stays private (not specified)
 ```
 
-### Reconcile — merged by collection
-
-`defaults.reconcile` sets default collection reconciliation policy for every repository in the set. A repository entry can override one collection without redefining the others.
-
-```yaml
-defaults:
-  reconcile:
-    labels: authoritative
-    rulesets: authoritative
-    branch_protection: additive
-  spec:
-    labels:
-      - name: kind/bug
-        color: d73a4a
-    rulesets:
-      - name: protect-main
-
-repositories:
-  - name: strict-repo       # rulesets authoritative
-  - name: manual-repo
-    reconcile:
-      rulesets: additive    # overrides only rulesets
-```
-
-If a reconcile policy is set but the corresponding collection is omitted after defaults and overrides are merged, that collection is unmanaged for that repository. Use `spec.rulesets: []` or `spec.labels: []` for an explicitly empty managed collection.
-
 ### Lists — replaced entirely
 
 Lists like `topics` are **not merged** — the per-repo list replaces the default list entirely.
@@ -202,3 +176,22 @@ repositories:
         pull_requests:
           creation: all      # overrides creation; PRs stay enabled
 ```
+
+#### Reconcile
+
+`reconcile` follows the same pattern — each collection key is independently overridable:
+
+```yaml
+defaults:
+  reconcile:
+    labels: authoritative
+    rulesets: authoritative
+    branch_protection: additive
+
+repositories:
+  - name: manual-repo
+    reconcile:
+      rulesets: additive    # overrides only rulesets; labels and branch_protection stay
+```
+
+If a reconcile policy is set but the corresponding collection is omitted after defaults and overrides are merged, that collection is unmanaged for that repository. Use `spec.rulesets: []` or `spec.labels: []` for an explicitly empty managed collection.
