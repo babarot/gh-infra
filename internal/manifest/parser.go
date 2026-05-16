@@ -760,23 +760,43 @@ func expandEnvVars(s string) (expanded string, disallowed, missing []string) {
 func ResolveSecrets(repos []*Repository) error {
 	var errs []error
 	for _, repo := range repos {
-		for i := range repo.Spec.Secrets {
-			secret := &repo.Spec.Secrets[i]
-			resolved, disallowed, missing := expandEnvVars(secret.Value)
-			secret.Value = resolved
-			for _, key := range disallowed {
-				errs = append(errs, fmt.Errorf(
-					"repo %s: secret %q references ${%s}: only ${ENV_*} variables are allowed",
-					repo.Metadata.Name, secret.Name, key,
-				))
-			}
-			for _, key := range missing {
-				errs = append(errs, fmt.Errorf(
-					"repo %s: secret %q references ${%s}, which is unset or empty",
-					repo.Metadata.Name, secret.Name, key,
-				))
-			}
+		var secretErrs []error
+		repo.Spec.Secrets, secretErrs = resolveSecretList(repo.Metadata.Name, repo.Spec.Secrets)
+		errs = append(errs, secretErrs...)
+		if repo.ConditionalSpec != nil {
+			repo.ConditionalSpec.Secrets, secretErrs = resolveSecretList(repo.Metadata.Name, repo.ConditionalSpec.Secrets)
+			errs = append(errs, secretErrs...)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// resolveSecretList returns a copy of secrets with ${ENV_*} references
+// expanded. It copies rather than expanding in place because repositories
+// in a RepositorySet share the defaults' slice, and expanding it once per
+// repository would re-expand already-resolved values.
+func resolveSecretList(repoName string, secrets []Secret) ([]Secret, []error) {
+	if len(secrets) == 0 {
+		return secrets, nil
+	}
+	var errs []error
+	resolved := make([]Secret, len(secrets))
+	for i, secret := range secrets {
+		value, disallowed, missing := expandEnvVars(secret.Value)
+		secret.Value = value
+		resolved[i] = secret
+		for _, key := range disallowed {
+			errs = append(errs, fmt.Errorf(
+				"repo %s: secret %q references ${%s}: only ${ENV_*} variables are allowed",
+				repoName, secret.Name, key,
+			))
+		}
+		for _, key := range missing {
+			errs = append(errs, fmt.Errorf(
+				"repo %s: secret %q references ${%s}, which is unset or empty",
+				repoName, secret.Name, key,
+			))
+		}
+	}
+	return resolved, errs
 }

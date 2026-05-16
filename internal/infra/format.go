@@ -440,3 +440,74 @@ func fileChangeToItem(c fileset.Change, added, removed int) ui.FileItem {
 		return ui.FileItem{Path: c.Path}
 	}
 }
+
+// printConditionalWarnings emits warnings for conditional_spec edge cases:
+// visibility changes that require a second apply, and overlapping entries
+// between spec and conditional_spec.
+func printConditionalWarnings(p ui.Printer, repos []*manifest.Repository, repoChanges []repository.Change) {
+	visibilityChanges := make(map[string]bool)
+	for _, c := range repoChanges {
+		if c.Resource == manifest.ResourceRepository && c.Field == "visibility" {
+			visibilityChanges[c.Name] = true
+		}
+	}
+
+	for _, repo := range repos {
+		if repo.Condition == nil || repo.ConditionalSpec == nil {
+			continue
+		}
+		name := repo.Metadata.FullName()
+
+		if repo.Spec.Visibility != nil && *repo.Spec.Visibility == repo.Condition.Visibility && visibilityChanges[name] {
+			p.Warning(name, fmt.Sprintf(
+				"spec.visibility=%s matches when.visibility — conditional_spec will apply on next run after visibility changes",
+				*repo.Spec.Visibility,
+			))
+		}
+
+		for _, w := range conditionalOverlaps(repo) {
+			p.Warning(name, w)
+		}
+	}
+}
+
+// conditionalOverlaps returns warnings for named entries that appear in both
+// spec and conditional_spec, where conditional values silently shadow spec values.
+func conditionalOverlaps(repo *manifest.Repository) []string {
+	if repo.ConditionalSpec == nil {
+		return nil
+	}
+	var warnings []string
+
+	specRulesets := make(map[string]bool)
+	for _, rs := range repo.Spec.Rulesets {
+		specRulesets[rs.Name] = true
+	}
+	for _, rs := range repo.ConditionalSpec.Rulesets {
+		if specRulesets[rs.Name] {
+			warnings = append(warnings, fmt.Sprintf("ruleset %q appears in both spec and conditional_spec — conditional value shadows spec when condition is met", rs.Name))
+		}
+	}
+
+	specBP := make(map[string]bool)
+	for _, bp := range repo.Spec.BranchProtection {
+		specBP[bp.Pattern] = true
+	}
+	for _, bp := range repo.ConditionalSpec.BranchProtection {
+		if specBP[bp.Pattern] {
+			warnings = append(warnings, fmt.Sprintf("branch_protection %q appears in both spec and conditional_spec — conditional value shadows spec when condition is met", bp.Pattern))
+		}
+	}
+
+	specLabels := make(map[string]bool)
+	for _, l := range repo.Spec.Labels {
+		specLabels[l.Name] = true
+	}
+	for _, l := range repo.ConditionalSpec.Labels {
+		if specLabels[l.Name] {
+			warnings = append(warnings, fmt.Sprintf("label %q appears in both spec and conditional_spec — conditional value shadows spec when condition is met", l.Name))
+		}
+	}
+
+	return warnings
+}

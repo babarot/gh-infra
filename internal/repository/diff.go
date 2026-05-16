@@ -140,6 +140,16 @@ func effectiveVisibility(desired *manifest.Repository, current *CurrentState) st
 	return current.Visibility
 }
 
+// changeKey returns a deduplication key for a Change. Resources with bracketed
+// names (e.g. "Ruleset[protect-main]") are keyed by resource alone; others are
+// keyed by resource + field.
+func changeKey(c Change) string {
+	if strings.Contains(c.Resource, "[") {
+		return c.Resource
+	}
+	return c.Resource + "/" + c.Field
+}
+
 // evaluateCondition returns true if the condition is satisfied by the current
 // state. A nil condition is always satisfied. An empty Visibility field is
 // treated as satisfied (future-proofing for multi-field conditions).
@@ -153,8 +163,9 @@ func evaluateCondition(cond *manifest.RepositoryCondition, current *CurrentState
 	return true
 }
 
-// conditionApplied returns a shallow copy of desired with conditionalSpec
-// merged on top of desired.Spec, for use in diffConditionalSpec only.
+// conditionApplied returns a copy of desired with conditionalSpec merged on
+// top of desired.Spec. Slice fields in the result share backing arrays with
+// desired.Spec — callers must not append to or mutate slice elements.
 func conditionApplied(desired *manifest.Repository, conditionalSpec *manifest.RepositorySpec) *manifest.Repository {
 	merged := *desired
 	base := &manifest.RepositorySetDefaults{Spec: desired.Spec}
@@ -164,19 +175,36 @@ func conditionApplied(desired *manifest.Repository, conditionalSpec *manifest.Re
 
 // diffConditionalSpec diffs only the fields declared in conditionalSpec against
 // current state. conditionalDesired has conditionalSpec merged on top of Spec,
-// so all diff helpers see the merged view.
-func diffConditionalSpec(ctx context.Context, name string, conditionalDesired *manifest.Repository, current *CurrentState, opt DiffOptions) []Change {
+// so diff helpers see the merged view for correct comparison. rawConditional
+// gates which helpers run — only categories explicitly declared in the
+// conditional_spec YAML block are diffed, preventing duplicate changes for
+// resources that already appeared in the base spec diff.
+func diffConditionalSpec(ctx context.Context, name string, conditionalDesired *manifest.Repository, rawConditional *manifest.RepositorySpec, current *CurrentState, opt DiffOptions) []Change {
 	var changes []Change
-	changes = append(changes, diffBranchProtection(name, conditionalDesired, current)...)
-	changes = append(changes, diffRulesets(ctx, name, conditionalDesired, current, opt.Resolver)...)
-	changes = append(changes, diffSecrets(name, conditionalDesired, current, opt.ForceSecrets)...)
-	changes = append(changes, diffVariables(name, conditionalDesired, current)...)
-	changes = append(changes, diffLabels(name, conditionalDesired, current, manifest.LabelsReconcileMode(conditionalDesired.Reconcile, conditionalDesired.Spec.LabelSync))...)
-	changes = append(changes, diffMilestones(name, conditionalDesired, current)...)
-	changes = append(changes, diffActions(name, conditionalDesired, current)...)
-	changes = append(changes, diffSecurity(name, conditionalDesired, current)...)
-	// diffRepoSettings, diffFeatures, diffMergeStrategy are intentionally
-	// excluded — scalar repo settings should be declared unconditionally in spec.
+	if rawConditional.BranchProtectionSet || len(rawConditional.BranchProtection) > 0 {
+		changes = append(changes, diffBranchProtection(name, conditionalDesired, current)...)
+	}
+	if rawConditional.RulesetsSet || len(rawConditional.Rulesets) > 0 {
+		changes = append(changes, diffRulesets(ctx, name, conditionalDesired, current, opt.Resolver)...)
+	}
+	if len(rawConditional.Secrets) > 0 {
+		changes = append(changes, diffSecrets(name, conditionalDesired, current, opt.ForceSecrets)...)
+	}
+	if len(rawConditional.Variables) > 0 {
+		changes = append(changes, diffVariables(name, conditionalDesired, current)...)
+	}
+	if rawConditional.LabelsSet || len(rawConditional.Labels) > 0 || rawConditional.LabelSync != nil {
+		changes = append(changes, diffLabels(name, conditionalDesired, current, manifest.LabelsReconcileMode(conditionalDesired.Reconcile, conditionalDesired.Spec.LabelSync))...)
+	}
+	if len(rawConditional.Milestones) > 0 {
+		changes = append(changes, diffMilestones(name, conditionalDesired, current)...)
+	}
+	if rawConditional.Actions != nil {
+		changes = append(changes, diffActions(name, conditionalDesired, current)...)
+	}
+	if rawConditional.Security != nil {
+		changes = append(changes, diffSecurity(name, conditionalDesired, current)...)
+	}
 	return changes
 }
 
@@ -217,7 +245,23 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	if desired.Condition != nil && desired.ConditionalSpec != nil {
 		if evaluateCondition(desired.Condition, current) {
 			conditionalDesired := conditionApplied(desired, desired.ConditionalSpec)
-			changes = append(changes, diffConditionalSpec(ctx, name, conditionalDesired, current, opt)...)
+			conditionalChanges := diffConditionalSpec(ctx, name, conditionalDesired, desired.ConditionalSpec, current, opt)
+			if len(conditionalChanges) > 0 {
+				// Conditional changes take precedence over base changes for
+				// the same resource (e.g. a ruleset declared in both spec
+				// and conditional_spec). Deduplicate by resource key.
+				condKeys := make(map[string]bool, len(conditionalChanges))
+				for _, c := range conditionalChanges {
+					condKeys[changeKey(c)] = true
+				}
+				filtered := changes[:0]
+				for _, c := range changes {
+					if !condKeys[changeKey(c)] {
+						filtered = append(filtered, c)
+					}
+				}
+				changes = append(filtered, conditionalChanges...)
+			}
 		}
 		// Condition not met: silently skip conditional_spec fields.
 	}
