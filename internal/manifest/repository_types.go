@@ -101,6 +101,8 @@ type RepositorySpec struct {
 	BranchProtectionSet bool `yaml:"-"`
 	LabelsSet           bool `yaml:"-"`
 	RulesetsSet         bool `yaml:"-"`
+	SecretsSet          bool `yaml:"-"`
+	VariablesSet        bool `yaml:"-"`
 }
 
 type RepositoryReconcile struct {
@@ -141,6 +143,18 @@ func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
 		s.RulesetsSet = true
 		if v == nil {
 			return fmt.Errorf("rulesets must be a sequence; use [] with reconcile.rulesets=authoritative to delete all rulesets")
+		}
+	}
+	if v, ok := fields["secrets"]; ok {
+		s.SecretsSet = true
+		if v == nil {
+			return fmt.Errorf("secrets must be a sequence; use [] to declare an empty secrets list")
+		}
+	}
+	if v, ok := fields["variables"]; ok {
+		s.VariablesSet = true
+		if v == nil {
+			return fmt.Errorf("variables must be a sequence; use [] to declare an empty variables list")
 		}
 	}
 

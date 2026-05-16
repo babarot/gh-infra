@@ -72,6 +72,8 @@ Collections with a natural key field are merged. Entries with the same key are m
 | `labels` | `name` | Entry replaced |
 | `branch_protection` | `pattern` | Fields merged (unspecified fields inherit default) |
 | `rulesets` | `name` | Entry replaced |
+| `secrets` | `name` | Entry replaced |
+| `variables` | `name` | Entry replaced |
 
 #### Labels
 
@@ -138,6 +140,32 @@ repositories:
           target: branch
           enforcement: evaluate   # replaces the entire default ruleset entry
 ```
+
+#### Secrets & Variables
+
+Same-name entries are replaced; new entries are appended; default entries not referenced are inherited.
+
+```yaml
+defaults:
+  spec:
+    secrets:
+      - name: DEPLOY_TOKEN
+        value: "${ENV_DEPLOY_TOKEN}"
+      - name: SLACK_WEBHOOK
+        value: "${ENV_SLACK_WEBHOOK}"
+
+repositories:
+  - name: my-repo
+    spec:
+      secrets:
+        - name: DEPLOY_TOKEN
+          value: "${ENV_CUSTOM_TOKEN}"   # overrides default DEPLOY_TOKEN
+        - name: EXTRA_TOKEN
+          value: "${ENV_EXTRA_TOKEN}"    # appended
+      # result: DEPLOY_TOKEN (custom) + SLACK_WEBHOOK (from defaults) + EXTRA_TOKEN (new)
+```
+
+Variables follow the same merge behavior.
 
 ### Maps — merged by key
 
