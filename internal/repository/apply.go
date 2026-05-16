@@ -392,7 +392,33 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 		"--header", "Content-Type: application/json",
 		"--input", "-",
 	)
-	return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
+	if err != nil {
+		return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
+	}
+
+	// Verify that the API actually applied the changes. GitHub silently ignores
+	// some settings (e.g. allow_auto_merge on private repos without branch
+	// protection), returning 200 but not updating the stored value. Only bool
+	// fields are verified for now — string fields have jq quoting differences
+	// that would cause false mismatches.
+	//
+	// Note: new repo creation via applyRepoPatch does not go through this path,
+	// so the verification gap for new repos is accepted for the initial fix.
+	for _, child := range c.Children {
+		desired, ok := child.NewValue.(bool)
+		if !ok {
+			// Skip non-bool fields until jq output normalisation is addressed.
+			continue
+		}
+		apiField := child.Field
+		if child.Field == "auto_delete_head_branches" {
+			apiField = "delete_branch_on_merge"
+		}
+		if verifyErr := p.verifyBoolField(ctx, fullName, apiField, desired); verifyErr != nil {
+			return ApplyResult{Change: c, Err: verifyErr}
+		}
+	}
+	return ApplyResult{Change: c}
 }
 
 func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manifest.Repository) error {
@@ -1242,4 +1268,35 @@ func derefBool(b *bool) bool {
 		return false
 	}
 	return *b
+}
+
+// verifyBoolField reads back a single boolean field from the GitHub repos REST
+// API and compares it to the desired value. Returns an error if the API
+// accepted the PATCH but the field was not updated, indicating a silent-ignore.
+//
+// Verification failure is non-fatal: if the read-back call fails or returns
+// empty output, the error is suppressed. The next plan will surface any real
+// drift.
+func (p *Processor) verifyBoolField(ctx context.Context, fullName, field string, desired bool) error {
+	out, err := p.runner.Run(ctx,
+		"api", fmt.Sprintf("repos/%s", fullName),
+		"--jq", "."+field,
+	)
+	if err != nil {
+		// Non-fatal: skip verification on read-back failure.
+		return nil
+	}
+	actual := strings.TrimSpace(string(out))
+	if actual == "" {
+		// Empty output means the field was absent in the response — skip.
+		return nil
+	}
+	desiredStr := fmt.Sprintf("%v", desired)
+	if actual != desiredStr {
+		return fmt.Errorf(
+			"applied %s=%v but GitHub reports %s=%s (setting may not be supported for this repository configuration)",
+			field, desired, field, actual,
+		)
+	}
+	return nil
 }
