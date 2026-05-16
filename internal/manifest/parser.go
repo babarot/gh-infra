@@ -751,5 +751,10 @@ func ResolveSecrets(repos []*Repository) {
 		for i := range repo.Spec.Secrets {
 			repo.Spec.Secrets[i].Value = expandEnvVars(repo.Spec.Secrets[i].Value)
 		}
+		if repo.ConditionalSpec != nil {
+			for i := range repo.ConditionalSpec.Secrets {
+				repo.ConditionalSpec.Secrets[i].Value = expandEnvVars(repo.ConditionalSpec.Secrets[i].Value)
+			}
+		}
 	}
 }

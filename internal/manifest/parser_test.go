@@ -2500,3 +2500,47 @@ repositories:
 		t.Errorf("expected ConditionalSpec == nil for entry without conditional_spec:, got %+v", repo.ConditionalSpec)
 	}
 }
+
+func TestResolveSecrets_ExpandsConditionalSpec(t *testing.T) {
+	t.Setenv("ENV_TEST_SECRET", "expanded-value")
+
+	repos := []*Repository{
+		{
+			Metadata: RepositoryMetadata{Name: "repo", Owner: "org"},
+			Spec: RepositorySpec{
+				Secrets: []Secret{{Name: "SPEC_SECRET", Value: "${ENV_TEST_SECRET}"}},
+			},
+			ConditionalSpec: &RepositorySpec{
+				Secrets: []Secret{{Name: "COND_SECRET", Value: "${ENV_TEST_SECRET}"}},
+			},
+		},
+	}
+
+	ResolveSecrets(repos)
+
+	if repos[0].Spec.Secrets[0].Value != "expanded-value" {
+		t.Errorf("spec secret not expanded: got %q", repos[0].Spec.Secrets[0].Value)
+	}
+	if repos[0].ConditionalSpec.Secrets[0].Value != "expanded-value" {
+		t.Errorf("conditional_spec secret not expanded: got %q", repos[0].ConditionalSpec.Secrets[0].Value)
+	}
+}
+
+func TestResolveSecrets_NilConditionalSpec(t *testing.T) {
+	t.Setenv("ENV_TEST_SECRET", "expanded-value")
+
+	repos := []*Repository{
+		{
+			Metadata: RepositoryMetadata{Name: "repo", Owner: "org"},
+			Spec: RepositorySpec{
+				Secrets: []Secret{{Name: "SPEC_SECRET", Value: "${ENV_TEST_SECRET}"}},
+			},
+		},
+	}
+
+	ResolveSecrets(repos)
+
+	if repos[0].Spec.Secrets[0].Value != "expanded-value" {
+		t.Errorf("spec secret not expanded: got %q", repos[0].Spec.Secrets[0].Value)
+	}
+}

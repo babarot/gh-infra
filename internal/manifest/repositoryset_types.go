@@ -18,13 +18,6 @@ type RepositorySetDefaults struct {
 	Spec      RepositorySpec       `yaml:"spec"`
 }
 
-// RepositoryCondition gates settings on a runtime-evaluated repo property.
-// All specified fields must match for the condition to be satisfied.
-// Currently only Visibility is supported.
-type RepositoryCondition struct {
-	Visibility string `yaml:"visibility"`
-}
-
 type RepositorySetEntry struct {
 	Name            string               `yaml:"name"`
 	Reconcile       *RepositoryReconcile `yaml:"reconcile,omitempty"`

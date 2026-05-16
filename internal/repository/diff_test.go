@@ -2403,3 +2403,116 @@ func TestDiff_ConditionalSpec_PublicCondition_PrivateCurrentVisibility_NoRuleset
 		t.Error("expected description change regardless of condition")
 	}
 }
+
+func TestDiff_ConditionalSpec_NoDuplicateChanges_OverlappingResources(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{makeRuleset("shared-ruleset")}
+	desired.Spec.RulesetsSet = true
+
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("shared-ruleset")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes := Diff(context.Background(), desired, current)
+
+	rulesetCount := 0
+	for _, c := range changes {
+		if c.Resource == "Ruleset[shared-ruleset]" {
+			rulesetCount++
+		}
+	}
+	if rulesetCount > 1 {
+		t.Errorf("expected at most 1 ruleset change for overlapping spec/conditional_spec, got %d", rulesetCount)
+	}
+}
+
+func TestDiff_ConditionalSpec_ActionsOnly(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Actions: &manifest.Actions{
+			Enabled: manifest.Ptr(true),
+		},
+	}
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+	current.Actions.Enabled = false
+
+	changes := Diff(context.Background(), desired, current)
+
+	foundActions := false
+	for _, c := range changes {
+		if c.Resource == manifest.ResourceActions {
+			foundActions = true
+		}
+	}
+	if !foundActions {
+		t.Error("expected actions change from conditional_spec when condition is met")
+	}
+}
+
+func TestDiff_ConditionalSpec_Idempotent(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("protect-main")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes1 := Diff(context.Background(), desired, current)
+	changes2 := Diff(context.Background(), desired, current)
+
+	if len(changes1) != len(changes2) {
+		t.Errorf("expected same number of changes on repeated Diff, got %d and %d", len(changes1), len(changes2))
+	}
+	for i := range changes1 {
+		if i >= len(changes2) {
+			break
+		}
+		if changes1[i].Resource != changes2[i].Resource || changes1[i].Field != changes2[i].Field || changes1[i].Type != changes2[i].Type {
+			t.Errorf("change[%d] differs between calls: %+v vs %+v", i, changes1[i], changes2[i])
+		}
+	}
+}
+
+func TestDiff_ConditionalSpec_BaseSpecNotRediffed(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.BranchProtection = []manifest.BranchProtection{
+		{Pattern: "main", EnforceAdmins: manifest.Ptr(true)},
+	}
+	desired.Spec.BranchProtectionSet = true
+
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("cond-only")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes := Diff(context.Background(), desired, current)
+
+	bpCount := 0
+	for _, c := range changes {
+		if strings.HasPrefix(c.Resource, manifest.ResourceBranchProtection) {
+			bpCount++
+		}
+	}
+	if bpCount != 1 {
+		t.Errorf("expected exactly 1 branch_protection change (from base spec only), got %d", bpCount)
+	}
+}

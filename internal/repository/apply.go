@@ -1148,6 +1148,9 @@ func (p *Processor) findMilestoneNumber(ctx context.Context, owner, name, title 
 
 func (p *Processor) applyActions(ctx context.Context, c Change, repo *manifest.Repository) error {
 	a := repo.Spec.Actions
+	if a == nil && repo.ConditionalSpec != nil {
+		a = repo.ConditionalSpec.Actions
+	}
 	if a == nil {
 		return nil
 	}

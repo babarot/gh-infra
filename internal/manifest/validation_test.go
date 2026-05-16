@@ -830,6 +830,55 @@ func TestValidateRepository_ConditionalWhen(t *testing.T) {
 				Metadata: RepositoryMetadata{Name: "repo", Owner: "org"},
 			},
 		},
+		{
+			name: "empty when fails",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition:       &RepositoryCondition{},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+			wantErr: "must specify at least one condition",
+		},
+		{
+			name: "invalid ruleset in conditional_spec fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: func() *RepositorySpec {
+					s := RepositorySpec{
+						Rulesets: []Ruleset{{
+							Name:        "bad",
+							Enforcement: Ptr("active"),
+							BypassActors: []RulesetBypassActor{
+								{BypassMode: "always"},
+							},
+							Rules: RulesetRules{Deletion: Ptr(true)},
+						}},
+					}
+					return &s
+				}(),
+			},
+			wantErr: "bypass_actors[0] must specify one of",
+		},
+		{
+			name: "empty ref_name.include in conditional_spec fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: func() *RepositorySpec {
+					s := RepositorySpec{
+						Rulesets: []Ruleset{{
+							Name:        "bad",
+							Enforcement: Ptr("active"),
+							Conditions:  &RulesetConditions{RefName: &RulesetRefCondition{Include: []string{}}},
+							Rules:       RulesetRules{Deletion: Ptr(true)},
+						}},
+					}
+					return &s
+				}(),
+			},
+			wantErr: "ref_name.include must not be empty",
+		},
 	}
 
 	for _, tc := range tests {
