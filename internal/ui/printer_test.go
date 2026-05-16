@@ -594,3 +594,47 @@ func TestSetColumnWidth(t *testing.T) {
 		t.Errorf("default itemWidth = %d, want 30", p.itemWidth())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// PrintDiffBlock
+// ---------------------------------------------------------------------------
+
+func TestPrintDiffBlock(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+
+	lines := []string{
+		"--- a/ci.yml (current)",
+		"+++ b/ci.yml (desired)",
+		"@@ -1 +1 @@",
+		"-old content",
+		"+new content",
+	}
+	p.PrintDiffBlock(lines)
+	out := buf.String()
+
+	if !strings.Contains(out, "old content") {
+		t.Errorf("expected diff content, got:\n%s", out)
+	}
+	if !strings.Contains(out, "new content") {
+		t.Errorf("expected diff content, got:\n%s", out)
+	}
+	// Should end with a blank line
+	if !strings.HasSuffix(out, "\n\n") {
+		t.Errorf("expected trailing blank line, got:\n%q", out)
+	}
+	// Should be indented at IndentSub level (10 spaces)
+	if !strings.Contains(out, Indent(IndentSub)) {
+		t.Errorf("expected IndentSub indentation, got:\n%q", out)
+	}
+}
+
+func TestPrintDiffBlock_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+	p.PrintDiffBlock(nil)
+	// Empty block: only the trailing blank line
+	if buf.String() != "\n" {
+		t.Errorf("expected only blank line for empty block, got:\n%q", buf.String())
+	}
+}

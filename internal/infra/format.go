@@ -12,7 +12,7 @@ import (
 
 // printPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
-func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change) {
+func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change, showDiff bool) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -102,12 +102,43 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 			for _, c := range fChanges {
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				p.PrintFileChange(fileChangeToItem(c, added, removed))
+				if showDiff {
+					printFileDiff(p, c)
+				}
 			}
 		}
 
 		p.GroupEnd()
 		p.SetColumnWidth(0)
 	}
+}
+
+// printFileDiff emits a colored unified diff block for a single file change.
+// For creates, it diffs empty string against desired content.
+// For deletes, it diffs current content against empty string.
+// For updates, it diffs current against desired.
+// Output is written to stdout at IndentSub indent, matching the file change line above it.
+func printFileDiff(p ui.Printer, c fileset.Change) {
+	var current, desired string
+	switch c.Type {
+	case fileset.ChangeCreate:
+		current = ""
+		desired = c.Desired
+	case fileset.ChangeUpdate:
+		current = c.Current
+		desired = c.Desired
+	case fileset.ChangeDelete:
+		current = c.Current
+		desired = ""
+	default:
+		return
+	}
+	diff := ui.GenerateDiff(current, desired, c.Path)
+	if diff == "" {
+		return
+	}
+	lines := strings.Split(strings.TrimRight(diff, "\n"), "\n")
+	p.PrintDiffBlock(lines)
 }
 
 // printApplyResults prints apply results grouped by repo name,

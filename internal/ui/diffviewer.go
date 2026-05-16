@@ -398,6 +398,24 @@ func renderDiffIcon(icon string) string {
 	}
 }
 
+// colorDiffLineNoTrunc applies diff coloring without terminal truncation.
+// Used for non-interactive output (plan --diff) where the terminal handles wrapping.
+func colorDiffLineNoTrunc(line string) string {
+	if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+		return Green.Render(line)
+	}
+	if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+		return Red.Render(line)
+	}
+	if strings.HasPrefix(line, "@@") {
+		return Cyan.Render(line)
+	}
+	if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") {
+		return Bold.Render(line)
+	}
+	return line
+}
+
 func colorDiffLine(line string, maxWidth int) string {
 	display := truncate(line, maxWidth)
 	if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
