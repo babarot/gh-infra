@@ -1202,7 +1202,12 @@ func TestApplyRepoPatch_Empty(t *testing.T) {
 }
 
 func TestApplyMergeStrategyBatch(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .allow_squash_merge":     []byte(""),
+			"api repos/myorg/myrepo --jq .delete_branch_on_merge": []byte(""),
+		},
+	}
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
@@ -1699,6 +1704,39 @@ func TestApplyMergeStrategyBatch_SilentAcceptDetected(t *testing.T) {
 	}
 }
 
+func TestApplyMergeStrategyBatch_SilentAcceptDetected_SetFalse(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .allow_auto_merge": []byte("true\n"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "allow_auto_merge", NewValue: false},
+			},
+		},
+	}
+
+	repo := newTestRepo("myorg", "myrepo")
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected error for silent-accept when setting false, got nil")
+	}
+	if !strings.Contains(results[0].Err.Error(), "allow_auto_merge") {
+		t.Errorf("expected error mentioning field name, got: %v", results[0].Err)
+	}
+}
+
 func TestApplyMergeStrategyBatch_VerificationPasses(t *testing.T) {
 	// Simulate GitHub accepting and applying the change — read-back returns "true".
 	mock := &gh.MockRunner{
@@ -1786,6 +1824,9 @@ func TestApplyMergeStrategyBatch_DeleteBranchOnMergeFieldTranslation(t *testing.
 
 	repo := newTestRepo("myorg", "myrepo")
 	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
 	if results[0].Err == nil {
 		t.Fatal("expected error for silent-accept of delete_branch_on_merge, got nil")
 	}

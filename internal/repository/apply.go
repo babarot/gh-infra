@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 )
@@ -374,12 +375,7 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 	fullName := c.Name
 	payload := map[string]any{}
 	for _, child := range c.Children {
-		switch child.Field {
-		case "auto_delete_head_branches":
-			payload["delete_branch_on_merge"] = child.NewValue
-		default:
-			payload[child.Field] = child.NewValue
-		}
+		payload[canonicalAPIField(child.Field)] = child.NewValue
 	}
 
 	body, err := json.Marshal(payload)
@@ -410,11 +406,7 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 			// Skip non-bool fields until jq output normalisation is addressed.
 			continue
 		}
-		apiField := child.Field
-		if child.Field == "auto_delete_head_branches" {
-			apiField = "delete_branch_on_merge"
-		}
-		if verifyErr := p.verifyBoolField(ctx, fullName, apiField, desired); verifyErr != nil {
+		if verifyErr := p.verifyBoolField(ctx, fullName, canonicalAPIField(child.Field), desired); verifyErr != nil {
 			return ApplyResult{Change: c, Err: verifyErr}
 		}
 	}
@@ -1263,6 +1255,13 @@ func wrapError(err error, repo, field string) error {
 	return fmt.Errorf("update %s %s: %w", repo, field, err)
 }
 
+func canonicalAPIField(field string) string {
+	if field == "auto_delete_head_branches" {
+		return "delete_branch_on_merge"
+	}
+	return field
+}
+
 func derefBool(b *bool) bool {
 	if b == nil {
 		return false
@@ -1283,12 +1282,13 @@ func (p *Processor) verifyBoolField(ctx context.Context, fullName, field string,
 		"--jq", "."+field,
 	)
 	if err != nil {
-		// Non-fatal: skip verification on read-back failure.
+		logger.Debug("verification read-back failed, skipping", "repo", fullName, "field", field, "err", err)
 		return nil
 	}
 	actual := strings.TrimSpace(string(out))
 	if actual == "" {
-		// Empty output means the field was absent in the response — skip.
+		// Field absent in response — safe to skip because jq always outputs
+		// "true"/"false" for present booleans, and the caller filters non-bools.
 		return nil
 	}
 	desiredStr := fmt.Sprintf("%v", desired)
