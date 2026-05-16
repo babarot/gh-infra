@@ -58,6 +58,4 @@ func (r *ParseResult) Merge(other *ParseResult) {
 }
 
 // Ptr returns a pointer to the given value.
-//
-//go:fix inline
 func Ptr[T any](v T) *T { return new(v) }

@@ -2,6 +2,7 @@ package yamledit
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -217,8 +218,8 @@ func Delete(data []byte, docIndex int, yamlPath string) ([]byte, error) {
 		return data, nil
 	}
 
-	for i := len(parents) - 1; i >= 0; i-- {
-		if childMap, ok := parents[i].child.(*ast.MappingNode); ok && len(childMap.Values) == 0 {
+	for i, p := range slices.Backward(parents) {
+		if childMap, ok := p.child.(*ast.MappingNode); ok && len(childMap.Values) == 0 {
 			deleteMappingKey(parents[i].node, parents[i].key)
 			continue
 		}
