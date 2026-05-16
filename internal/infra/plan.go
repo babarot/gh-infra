@@ -21,6 +21,7 @@ type PlanOptions struct {
 	FailOnUnknown bool
 	ForceSecrets  bool // only meaningful when followed by Apply
 	DryRun        bool // true = plan only (skip secret resolution)
+	ShowDiff      bool // emit unified diff for each file change in plan output
 }
 
 // PlanResult holds the outcome of the plan phase.
@@ -206,7 +207,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	p.Separator()
 	p.Legend(result.Creates > 0, result.Updates > 0, result.Deletes > 0)
 
-	printPlan(p, repoChanges, fileChanges)
+	printPlan(p, repoChanges, fileChanges, opts.ShowDiff)
 
 	parts := []string{
 		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", result.Creates))),
