@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -122,6 +123,106 @@ func TestBuildRightPane_NotSkipped(t *testing.T) {
 	}
 	if !hasDiffMarker {
 		t.Error("non-skipped entry should show unified diff")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// colorDiffLine
+// ---------------------------------------------------------------------------
+
+func TestColorDiffLine(t *testing.T) {
+	DisableStyles()
+
+	tests := []struct {
+		name     string
+		line     string
+		maxWidth int
+		want     string
+	}{
+		{"added line no trunc", "+new content", 0, "+new content"},
+		{"removed line no trunc", "-old content", 0, "-old content"},
+		{"hunk header", "@@ -1,3 +1,4 @@", 0, "@@ -1,3 +1,4 @@"},
+		{"file header plus", "+++ b/file.go", 0, "+++ b/file.go"},
+		{"file header minus", "--- a/file.go", 0, "--- a/file.go"},
+		{"context line", " unchanged", 0, " unchanged"},
+		{"empty string", "", 0, ""},
+		{"added line truncated", "+very long added content here", 10, "+very l..."},
+		{"removed line truncated", "-very long removed content", 10, "-very l..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := colorDiffLine(tt.line, tt.maxWidth)
+			if got != tt.want {
+				t.Errorf("colorDiffLine(%q, %d) = %q, want %q", tt.line, tt.maxWidth, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestColorDiffLine_StripsANSI(t *testing.T) {
+	DisableStyles()
+
+	line := "+\x1b[2Jmalicious content"
+	got := colorDiffLine(line, 0)
+	if strings.Contains(got, "\x1b") {
+		t.Errorf("expected ANSI sequences stripped, got: %q", got)
+	}
+	if got != "+malicious content" {
+		t.Errorf("expected '+malicious content', got: %q", got)
+	}
+}
+
+func TestColorDiffLine_PrefixNotGreen(t *testing.T) {
+	DisableStyles()
+
+	// "+++ " lines should be treated as file headers, not added lines
+	got := colorDiffLine("+++ b/file.go (desired)", 0)
+	if got != "+++ b/file.go (desired)" {
+		t.Errorf("expected file header unchanged with disabled styles, got: %q", got)
+	}
+
+	// "--- " lines should be treated as file headers, not removed lines
+	got = colorDiffLine("--- a/file.go (current)", 0)
+	if got != "--- a/file.go (current)" {
+		t.Errorf("expected file header unchanged with disabled styles, got: %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TruncateDiff
+// ---------------------------------------------------------------------------
+
+func TestTruncateDiff_UnderLimit(t *testing.T) {
+	diff := "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n"
+	got := TruncateDiff(diff, 500)
+	if got != diff {
+		t.Errorf("expected unchanged diff, got:\n%s", got)
+	}
+}
+
+func TestTruncateDiff_OverLimit(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("--- a/f\n+++ b/f\n@@ -1 +1 @@\n")
+	for i := range 600 {
+		fmt.Fprintf(&b, "+line %d\n", i)
+	}
+	diff := b.String()
+
+	got := TruncateDiff(diff, 10)
+	lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+	if len(lines) != 11 { // 10 retained + 1 truncation note
+		t.Errorf("expected 11 lines, got %d", len(lines))
+	}
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "lines truncated") {
+		t.Errorf("expected truncation message, got: %q", last)
+	}
+}
+
+func TestTruncateDiff_Empty(t *testing.T) {
+	got := TruncateDiff("", 500)
+	if got != "" {
+		t.Errorf("expected empty, got: %q", got)
 	}
 }
 

@@ -603,14 +603,8 @@ func TestPrintDiffBlock(t *testing.T) {
 	var buf bytes.Buffer
 	p := NewStandardPrinterWith(&buf, &buf)
 
-	lines := []string{
-		"--- a/ci.yml (current)",
-		"+++ b/ci.yml (desired)",
-		"@@ -1 +1 @@",
-		"-old content",
-		"+new content",
-	}
-	p.PrintDiffBlock(lines)
+	diff := "--- a/ci.yml (current)\n+++ b/ci.yml (desired)\n@@ -1 +1 @@\n-old content\n+new content\n"
+	p.PrintDiffBlock(diff)
 	out := buf.String()
 
 	if !strings.Contains(out, "old content") {
@@ -632,9 +626,8 @@ func TestPrintDiffBlock(t *testing.T) {
 func TestPrintDiffBlock_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	p := NewStandardPrinterWith(&buf, &buf)
-	p.PrintDiffBlock(nil)
-	// Empty block: only the trailing blank line
-	if buf.String() != "\n" {
-		t.Errorf("expected only blank line for empty block, got:\n%q", buf.String())
+	p.PrintDiffBlock("")
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for empty diff, got:\n%q", buf.String())
 	}
 }

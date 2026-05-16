@@ -113,11 +113,13 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 	}
 }
 
+const maxDiffLines = 500
+
 // printFileDiff emits a colored unified diff block for a single file change.
 // For creates, it diffs empty string against desired content.
 // For deletes, it diffs current content against empty string.
 // For updates, it diffs current against desired.
-// Output is written to stdout at IndentSub indent, matching the file change line above it.
+// Output is capped at maxDiffLines to prevent terminal flooding.
 func printFileDiff(p ui.Printer, c fileset.Change) {
 	var current, desired string
 	switch c.Type {
@@ -137,8 +139,7 @@ func printFileDiff(p ui.Printer, c fileset.Change) {
 	if diff == "" {
 		return
 	}
-	lines := strings.Split(strings.TrimRight(diff, "\n"), "\n")
-	p.PrintDiffBlock(lines)
+	p.PrintDiffBlock(ui.TruncateDiff(diff, maxDiffLines))
 }
 
 // printApplyResults prints apply results grouped by repo name,

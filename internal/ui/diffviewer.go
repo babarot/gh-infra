@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/pmezard/go-difflib/difflib"
 )
 
@@ -40,6 +41,19 @@ func GenerateDiff(current, desired, path string) string {
 		Context:  3,
 	})
 	return expandTabs(diff)
+}
+
+// TruncateDiff caps a unified diff string at maxLines lines.
+// If the diff exceeds the limit, the output is truncated with a summary note.
+// Returns the original diff unchanged if within the limit.
+func TruncateDiff(diff string, maxLines int) string {
+	lines := strings.Split(strings.TrimSuffix(diff, "\n"), "\n")
+	if len(lines) <= maxLines {
+		return diff
+	}
+	lines = append(lines[:maxLines],
+		fmt.Sprintf("... (%d lines truncated)", len(lines)-maxLines))
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // expandTabs replaces tab characters with 4 spaces for consistent terminal rendering.
@@ -398,26 +412,16 @@ func renderDiffIcon(icon string) string {
 	}
 }
 
-// colorDiffLineNoTrunc applies diff coloring without terminal truncation.
-// Used for non-interactive output (plan --diff) where the terminal handles wrapping.
-func colorDiffLineNoTrunc(line string) string {
-	if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
-		return Green.Render(line)
-	}
-	if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
-		return Red.Render(line)
-	}
-	if strings.HasPrefix(line, "@@") {
-		return Cyan.Render(line)
-	}
-	if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") {
-		return Bold.Render(line)
-	}
-	return line
-}
-
+// colorDiffLine applies diff coloring to a single unified-diff line.
+// If maxWidth > 0 the line is truncated to fit; pass 0 to skip truncation.
+// ANSI escape sequences are stripped from the input to prevent terminal injection
+// from file content fetched via the GitHub API.
 func colorDiffLine(line string, maxWidth int) string {
-	display := truncate(line, maxWidth)
+	line = ansi.Strip(line)
+	display := line
+	if maxWidth > 0 {
+		display = truncate(line, maxWidth)
+	}
 	if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
 		return Green.Render(display)
 	}

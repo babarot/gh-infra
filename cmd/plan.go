@@ -35,7 +35,7 @@ func newPlanCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&repo, "repo", "r", "", "Target specific repository only")
 	cmd.Flags().BoolVar(&ci, "ci", false, "Exit with code 1 if changes are detected")
 	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
-	cmd.Flags().BoolVar(&showDiff, "diff", false, "Show unified diff for each file change")
+	cmd.Flags().BoolVar(&showDiff, "diff", false, "Show unified diff for FileSet file changes (prints full content)")
 
 	return cmd
 }
