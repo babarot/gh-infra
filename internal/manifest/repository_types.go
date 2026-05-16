@@ -148,13 +148,13 @@ func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
 	if v, ok := fields["secrets"]; ok {
 		s.SecretsSet = true
 		if v == nil {
-			return fmt.Errorf("secrets must be a sequence; use [] to declare an empty secrets list")
+			return fmt.Errorf("secrets must be a sequence; use [] to inherit no secrets from defaults")
 		}
 	}
 	if v, ok := fields["variables"]; ok {
 		s.VariablesSet = true
 		if v == nil {
-			return fmt.Errorf("variables must be a sequence; use [] to declare an empty variables list")
+			return fmt.Errorf("variables must be a sequence; use [] to inherit no variables from defaults")
 		}
 	}
 

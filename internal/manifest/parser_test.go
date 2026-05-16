@@ -2052,6 +2052,32 @@ spec:
 			wantErr: "cannot specify both reconcile.labels and spec.label_sync",
 		},
 		{
+			name: "null secrets rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  secrets:
+`,
+			wantErr: "secrets must be a sequence",
+		},
+		{
+			name: "null variables rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  variables:
+`,
+			wantErr: "variables must be a sequence",
+		},
+		{
 			name: "null labels rejected",
 			content: `
 apiVersion: v1
@@ -2365,13 +2391,22 @@ repositories:
 	if len(repos[1].Spec.Secrets) != 3 {
 		t.Fatalf("adds-secret: expected 3 secrets, got %d", len(repos[1].Spec.Secrets))
 	}
-	secretNames := make(map[string]bool)
 	for _, s := range repos[1].Spec.Secrets {
-		secretNames[s.Name] = true
-	}
-	for _, want := range []string{"DEPLOY_TOKEN", "SLACK_WEBHOOK", "EXTRA_TOKEN"} {
-		if !secretNames[want] {
-			t.Errorf("adds-secret: missing secret %q", want)
+		switch s.Name {
+		case "DEPLOY_TOKEN":
+			if s.Value != "${ENV_DEPLOY_TOKEN}" {
+				t.Errorf("adds-secret: DEPLOY_TOKEN value = %q, want ${ENV_DEPLOY_TOKEN} (inherited)", s.Value)
+			}
+		case "SLACK_WEBHOOK":
+			if s.Value != "${ENV_SLACK_WEBHOOK}" {
+				t.Errorf("adds-secret: SLACK_WEBHOOK value = %q, want ${ENV_SLACK_WEBHOOK} (inherited)", s.Value)
+			}
+		case "EXTRA_TOKEN":
+			if s.Value != "${ENV_EXTRA_TOKEN}" {
+				t.Errorf("adds-secret: EXTRA_TOKEN value = %q, want ${ENV_EXTRA_TOKEN}", s.Value)
+			}
+		default:
+			t.Errorf("adds-secret: unexpected secret %q", s.Name)
 		}
 	}
 
@@ -2379,10 +2414,18 @@ repositories:
 	if len(repos[2].Spec.Secrets) != 2 {
 		t.Fatalf("overrides-secret: expected 2 secrets, got %d", len(repos[2].Spec.Secrets))
 	}
-	// verify DEPLOY_TOKEN was overridden
 	for _, s := range repos[2].Spec.Secrets {
-		if s.Name == "DEPLOY_TOKEN" && s.Value != "${ENV_CUSTOM_TOKEN}" {
-			t.Errorf("overrides-secret: DEPLOY_TOKEN value = %q, want ${ENV_CUSTOM_TOKEN}", s.Value)
+		switch s.Name {
+		case "DEPLOY_TOKEN":
+			if s.Value != "${ENV_CUSTOM_TOKEN}" {
+				t.Errorf("overrides-secret: DEPLOY_TOKEN value = %q, want ${ENV_CUSTOM_TOKEN}", s.Value)
+			}
+		case "SLACK_WEBHOOK":
+			if s.Value != "${ENV_SLACK_WEBHOOK}" {
+				t.Errorf("overrides-secret: SLACK_WEBHOOK value = %q, want ${ENV_SLACK_WEBHOOK} (inherited)", s.Value)
+			}
+		default:
+			t.Errorf("overrides-secret: unexpected secret %q", s.Name)
 		}
 	}
 }
@@ -2459,6 +2502,58 @@ repositories:
 		if v.Name == "APP_ENV" && v.Value != "production" {
 			t.Errorf("overrides-variable: APP_ENV value = %q, want production (inherited)", v.Value)
 		}
+	}
+}
+
+func TestRepositorySet_VariablesMerge_OverrideByName(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    variables:
+      - name: DEFAULT_VAR_A
+        value: value-a
+      - name: DEFAULT_VAR_B
+        value: value-b
+repositories:
+  - name: repo-a
+    spec:
+      variables:
+        - name: DEFAULT_VAR_A
+          value: overridden-a
+        - name: NEW_VAR
+          value: new-value
+`
+	path := filepath.Join(dir, "variables.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+
+	vars := repos[0].Spec.Variables
+	if len(vars) != 3 {
+		t.Fatalf("expected 3 variables, got %d", len(vars))
+	}
+
+	if vars[0].Name != "DEFAULT_VAR_A" || vars[0].Value != "overridden-a" {
+		t.Errorf("DEFAULT_VAR_A not overridden: got name=%q value=%q", vars[0].Name, vars[0].Value)
+	}
+	if vars[1].Name != "DEFAULT_VAR_B" || vars[1].Value != "value-b" {
+		t.Errorf("DEFAULT_VAR_B not inherited: got %+v", vars[1])
+	}
+	if vars[2].Name != "NEW_VAR" || vars[2].Value != "new-value" {
+		t.Errorf("NEW_VAR not appended: got %+v", vars[2])
 	}
 }
 

@@ -165,7 +165,27 @@ repositories:
       # result: DEPLOY_TOKEN (custom) + SLACK_WEBHOOK (from defaults) + EXTRA_TOKEN (new)
 ```
 
-Variables follow the same merge behavior.
+#### Variables
+
+```yaml
+defaults:
+  spec:
+    variables:
+      - name: APP_ENV
+        value: production
+      - name: REGION
+        value: us-east-1
+
+repositories:
+  - name: my-repo
+    spec:
+      variables:
+        - name: REGION
+          value: eu-west-1           # overrides default REGION
+        - name: EXTRA_VAR
+          value: custom-value        # appended
+      # result: APP_ENV (from defaults) + REGION (custom) + EXTRA_VAR (new)
+```
 
 ### Maps — merged by key
 
