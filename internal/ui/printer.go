@@ -330,7 +330,7 @@ func (p *StandardPrinter) PrintDiffBlock(diff string) {
 		return
 	}
 	ind := Indent(IndentSub)
-	for _, line := range strings.Split(strings.TrimSuffix(diff, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(diff, "\n"), "\n") {
 		fmt.Fprintf(p.out, "%s%s\n", ind, colorDiffLine(line, 0))
 	}
 	fmt.Fprintln(p.out)
