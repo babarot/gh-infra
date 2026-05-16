@@ -428,11 +428,13 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 		result.Rulesets = mergeRulesets(result.Rulesets, override.Rulesets)
 		result.RulesetsSet = true
 	}
-	if len(override.Secrets) > 0 {
-		result.Secrets = override.Secrets
+	if override.SecretsSet {
+		result.Secrets = mergeSecrets(result.Secrets, override.Secrets)
+		result.SecretsSet = true
 	}
-	if len(override.Variables) > 0 {
-		result.Variables = override.Variables
+	if override.VariablesSet {
+		result.Variables = mergeVariables(result.Variables, override.Variables)
+		result.VariablesSet = true
 	}
 	if override.LabelsSet {
 		result.Labels = mergeLabels(result.Labels, override.Labels)
@@ -714,6 +716,62 @@ func mergeRulesets(base, override []Ruleset) []Ruleset {
 		} else {
 			index[rs.Name] = len(result)
 			result = append(result, rs)
+		}
+	}
+	return result
+}
+
+// mergeSecrets merges two secret slices by name. Override secrets take precedence
+// for entries with the same name; new secrets are appended.
+func mergeSecrets(base, override []Secret) []Secret {
+	if len(base) == 0 {
+		return override
+	}
+	if len(override) == 0 {
+		return base
+	}
+
+	index := make(map[string]int, len(base))
+	result := make([]Secret, len(base))
+	copy(result, base)
+	for i, s := range result {
+		index[s.Name] = i
+	}
+
+	for _, s := range override {
+		if i, ok := index[s.Name]; ok {
+			result[i] = s
+		} else {
+			index[s.Name] = len(result)
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+// mergeVariables merges two variable slices by name. Override variables take precedence
+// for entries with the same name; new variables are appended.
+func mergeVariables(base, override []Variable) []Variable {
+	if len(base) == 0 {
+		return override
+	}
+	if len(override) == 0 {
+		return base
+	}
+
+	index := make(map[string]int, len(base))
+	result := make([]Variable, len(base))
+	copy(result, base)
+	for i, v := range result {
+		index[v.Name] = i
+	}
+
+	for _, v := range override {
+		if i, ok := index[v.Name]; ok {
+			result[i] = v
+		} else {
+			index[v.Name] = len(result)
+			result = append(result, v)
 		}
 	}
 	return result

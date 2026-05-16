@@ -72,6 +72,8 @@ Collections with a natural key field are merged. Entries with the same key are m
 | `labels` | `name` | Entry replaced |
 | `branch_protection` | `pattern` | Fields merged (unspecified fields inherit default) |
 | `rulesets` | `name` | Entry replaced |
+| `secrets` | `name` | Entry replaced |
+| `variables` | `name` | Entry replaced |
 
 #### Labels
 
@@ -137,6 +139,52 @@ repositories:
         - name: protect-main
           target: branch
           enforcement: evaluate   # replaces the entire default ruleset entry
+```
+
+#### Secrets & Variables
+
+Same-name entries are replaced; new entries are appended; default entries not referenced are inherited.
+
+```yaml
+defaults:
+  spec:
+    secrets:
+      - name: DEPLOY_TOKEN
+        value: "${ENV_DEPLOY_TOKEN}"
+      - name: SLACK_WEBHOOK
+        value: "${ENV_SLACK_WEBHOOK}"
+
+repositories:
+  - name: my-repo
+    spec:
+      secrets:
+        - name: DEPLOY_TOKEN
+          value: "${ENV_CUSTOM_TOKEN}"   # overrides default DEPLOY_TOKEN
+        - name: EXTRA_TOKEN
+          value: "${ENV_EXTRA_TOKEN}"    # appended
+      # result: DEPLOY_TOKEN (custom) + SLACK_WEBHOOK (from defaults) + EXTRA_TOKEN (new)
+```
+
+#### Variables
+
+```yaml
+defaults:
+  spec:
+    variables:
+      - name: APP_ENV
+        value: production
+      - name: REGION
+        value: us-east-1
+
+repositories:
+  - name: my-repo
+    spec:
+      variables:
+        - name: REGION
+          value: eu-west-1           # overrides default REGION
+        - name: EXTRA_VAR
+          value: custom-value        # appended
+      # result: APP_ENV (from defaults) + REGION (custom) + EXTRA_VAR (new)
 ```
 
 ### Maps — merged by key

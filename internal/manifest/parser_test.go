@@ -2052,6 +2052,32 @@ spec:
 			wantErr: "cannot specify both reconcile.labels and spec.label_sync",
 		},
 		{
+			name: "null secrets rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  secrets:
+`,
+			wantErr: "secrets must be a sequence",
+		},
+		{
+			name: "null variables rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  variables:
+`,
+			wantErr: "variables must be a sequence",
+		},
+		{
 			name: "null labels rejected",
 			content: `
 apiVersion: v1
@@ -2311,5 +2337,277 @@ spec:
 	_, err := ParsePath(path)
 	if err == nil {
 		t.Fatal("expected validation error for invalid milestone state value")
+	}
+}
+
+func TestRepositorySet_SecretsMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    secrets:
+      - name: DEPLOY_TOKEN
+        value: "${ENV_DEPLOY_TOKEN}"
+      - name: SLACK_WEBHOOK
+        value: "${ENV_SLACK_WEBHOOK}"
+repositories:
+  - name: inherits-secrets
+    spec:
+      description: "inherits default secrets"
+  - name: adds-secret
+    spec:
+      secrets:
+        - name: EXTRA_TOKEN
+          value: "${ENV_EXTRA_TOKEN}"
+  - name: overrides-secret
+    spec:
+      secrets:
+        - name: DEPLOY_TOKEN
+          value: "${ENV_CUSTOM_TOKEN}"
+`
+	path := filepath.Join(dir, "secrets.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 3 {
+		t.Fatalf("expected 3 repos, got %d", len(repos))
+	}
+
+	// inherits-secrets: should have both default secrets
+	if len(repos[0].Spec.Secrets) != 2 {
+		t.Errorf("inherits-secrets: expected 2 secrets, got %d", len(repos[0].Spec.Secrets))
+	}
+
+	// adds-secret: should have defaults + new secret (3 total)
+	if len(repos[1].Spec.Secrets) != 3 {
+		t.Fatalf("adds-secret: expected 3 secrets, got %d", len(repos[1].Spec.Secrets))
+	}
+	for _, s := range repos[1].Spec.Secrets {
+		switch s.Name {
+		case "DEPLOY_TOKEN":
+			if s.Value != "${ENV_DEPLOY_TOKEN}" {
+				t.Errorf("adds-secret: DEPLOY_TOKEN value = %q, want ${ENV_DEPLOY_TOKEN} (inherited)", s.Value)
+			}
+		case "SLACK_WEBHOOK":
+			if s.Value != "${ENV_SLACK_WEBHOOK}" {
+				t.Errorf("adds-secret: SLACK_WEBHOOK value = %q, want ${ENV_SLACK_WEBHOOK} (inherited)", s.Value)
+			}
+		case "EXTRA_TOKEN":
+			if s.Value != "${ENV_EXTRA_TOKEN}" {
+				t.Errorf("adds-secret: EXTRA_TOKEN value = %q, want ${ENV_EXTRA_TOKEN}", s.Value)
+			}
+		default:
+			t.Errorf("adds-secret: unexpected secret %q", s.Name)
+		}
+	}
+
+	// overrides-secret: DEPLOY_TOKEN replaced, SLACK_WEBHOOK inherited (2 total)
+	if len(repos[2].Spec.Secrets) != 2 {
+		t.Fatalf("overrides-secret: expected 2 secrets, got %d", len(repos[2].Spec.Secrets))
+	}
+	for _, s := range repos[2].Spec.Secrets {
+		switch s.Name {
+		case "DEPLOY_TOKEN":
+			if s.Value != "${ENV_CUSTOM_TOKEN}" {
+				t.Errorf("overrides-secret: DEPLOY_TOKEN value = %q, want ${ENV_CUSTOM_TOKEN}", s.Value)
+			}
+		case "SLACK_WEBHOOK":
+			if s.Value != "${ENV_SLACK_WEBHOOK}" {
+				t.Errorf("overrides-secret: SLACK_WEBHOOK value = %q, want ${ENV_SLACK_WEBHOOK} (inherited)", s.Value)
+			}
+		default:
+			t.Errorf("overrides-secret: unexpected secret %q", s.Name)
+		}
+	}
+}
+
+func TestRepositorySet_VariablesMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    variables:
+      - name: APP_ENV
+        value: production
+      - name: REGION
+        value: us-east-1
+repositories:
+  - name: inherits-variables
+    spec:
+      description: "inherits default variables"
+  - name: adds-variable
+    spec:
+      variables:
+        - name: EXTRA_VAR
+          value: custom-value
+  - name: overrides-variable
+    spec:
+      variables:
+        - name: REGION
+          value: eu-west-1
+`
+	path := filepath.Join(dir, "variables.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 3 {
+		t.Fatalf("expected 3 repos, got %d", len(repos))
+	}
+
+	// inherits-variables: should have both default variables
+	if len(repos[0].Spec.Variables) != 2 {
+		t.Errorf("inherits-variables: expected 2 variables, got %d", len(repos[0].Spec.Variables))
+	}
+
+	// adds-variable: defaults + new variable (3 total)
+	if len(repos[1].Spec.Variables) != 3 {
+		t.Fatalf("adds-variable: expected 3 variables, got %d", len(repos[1].Spec.Variables))
+	}
+	varNames := make(map[string]bool)
+	for _, v := range repos[1].Spec.Variables {
+		varNames[v.Name] = true
+	}
+	for _, want := range []string{"APP_ENV", "REGION", "EXTRA_VAR"} {
+		if !varNames[want] {
+			t.Errorf("adds-variable: missing variable %q", want)
+		}
+	}
+
+	// overrides-variable: REGION replaced (eu-west-1), APP_ENV inherited (2 total)
+	if len(repos[2].Spec.Variables) != 2 {
+		t.Fatalf("overrides-variable: expected 2 variables, got %d", len(repos[2].Spec.Variables))
+	}
+	for _, v := range repos[2].Spec.Variables {
+		if v.Name == "REGION" && v.Value != "eu-west-1" {
+			t.Errorf("overrides-variable: REGION value = %q, want eu-west-1", v.Value)
+		}
+		if v.Name == "APP_ENV" && v.Value != "production" {
+			t.Errorf("overrides-variable: APP_ENV value = %q, want production (inherited)", v.Value)
+		}
+	}
+}
+
+func TestRepositorySet_VariablesMerge_OverrideByName(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    variables:
+      - name: DEFAULT_VAR_A
+        value: value-a
+      - name: DEFAULT_VAR_B
+        value: value-b
+repositories:
+  - name: repo-a
+    spec:
+      variables:
+        - name: DEFAULT_VAR_A
+          value: overridden-a
+        - name: NEW_VAR
+          value: new-value
+`
+	path := filepath.Join(dir, "variables.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+
+	vars := repos[0].Spec.Variables
+	if len(vars) != 3 {
+		t.Fatalf("expected 3 variables, got %d", len(vars))
+	}
+
+	if vars[0].Name != "DEFAULT_VAR_A" || vars[0].Value != "overridden-a" {
+		t.Errorf("DEFAULT_VAR_A not overridden: got name=%q value=%q", vars[0].Name, vars[0].Value)
+	}
+	if vars[1].Name != "DEFAULT_VAR_B" || vars[1].Value != "value-b" {
+		t.Errorf("DEFAULT_VAR_B not inherited: got %+v", vars[1])
+	}
+	if vars[2].Name != "NEW_VAR" || vars[2].Value != "new-value" {
+		t.Errorf("NEW_VAR not appended: got %+v", vars[2])
+	}
+}
+
+func TestRepositorySet_SecretsMerge_OverrideByName(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    secrets:
+      - name: DEFAULT_SECRET_A
+        value: value-a
+      - name: DEFAULT_SECRET_B
+        value: value-b
+repositories:
+  - name: repo-a
+    spec:
+      secrets:
+        - name: DEFAULT_SECRET_A
+          value: overridden-a
+        - name: NEW_SECRET
+          value: new-value
+`
+	path := filepath.Join(dir, "secrets.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+
+	secrets := repos[0].Spec.Secrets
+	if len(secrets) != 3 {
+		t.Fatalf("expected 3 secrets, got %d", len(secrets))
+	}
+
+	// DEFAULT_SECRET_A overridden (value changed)
+	if secrets[0].Name != "DEFAULT_SECRET_A" || secrets[0].Value != "overridden-a" {
+		t.Errorf("DEFAULT_SECRET_A not overridden: got name=%q value=%q", secrets[0].Name, secrets[0].Value)
+	}
+	// DEFAULT_SECRET_B inherited from defaults
+	if secrets[1].Name != "DEFAULT_SECRET_B" || secrets[1].Value != "value-b" {
+		t.Errorf("DEFAULT_SECRET_B not inherited: got %+v", secrets[1])
+	}
+	// NEW_SECRET appended
+	if secrets[2].Name != "NEW_SECRET" || secrets[2].Value != "new-value" {
+		t.Errorf("NEW_SECRET not appended: got %+v", secrets[2])
 	}
 }
