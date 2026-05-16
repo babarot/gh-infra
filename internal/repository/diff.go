@@ -140,6 +140,46 @@ func effectiveVisibility(desired *manifest.Repository, current *CurrentState) st
 	return current.Visibility
 }
 
+// evaluateCondition returns true if the condition is satisfied by the current
+// state. A nil condition is always satisfied. An empty Visibility field is
+// treated as satisfied (future-proofing for multi-field conditions).
+func evaluateCondition(cond *manifest.RepositoryCondition, current *CurrentState) bool {
+	if cond == nil {
+		return true
+	}
+	if cond.Visibility != "" && cond.Visibility != current.Visibility {
+		return false
+	}
+	return true
+}
+
+// conditionApplied returns a shallow copy of desired with conditionalSpec
+// merged on top of desired.Spec, for use in diffConditionalSpec only.
+func conditionApplied(desired *manifest.Repository, conditionalSpec *manifest.RepositorySpec) *manifest.Repository {
+	merged := *desired
+	base := &manifest.RepositorySetDefaults{Spec: desired.Spec}
+	merged.Spec = manifest.MergeSpecs(base, *conditionalSpec)
+	return &merged
+}
+
+// diffConditionalSpec diffs only the fields declared in conditionalSpec against
+// current state. conditionalDesired has conditionalSpec merged on top of Spec,
+// so all diff helpers see the merged view.
+func diffConditionalSpec(ctx context.Context, name string, conditionalDesired *manifest.Repository, current *CurrentState, opt DiffOptions) []Change {
+	var changes []Change
+	changes = append(changes, diffBranchProtection(name, conditionalDesired, current)...)
+	changes = append(changes, diffRulesets(ctx, name, conditionalDesired, current, opt.Resolver)...)
+	changes = append(changes, diffSecrets(name, conditionalDesired, current, opt.ForceSecrets)...)
+	changes = append(changes, diffVariables(name, conditionalDesired, current)...)
+	changes = append(changes, diffLabels(name, conditionalDesired, current, manifest.LabelsReconcileMode(conditionalDesired.Reconcile, conditionalDesired.Spec.LabelSync))...)
+	changes = append(changes, diffMilestones(name, conditionalDesired, current)...)
+	changes = append(changes, diffActions(name, conditionalDesired, current)...)
+	changes = append(changes, diffSecurity(name, conditionalDesired, current)...)
+	// diffRepoSettings, diffFeatures, diffMergeStrategy are intentionally
+	// excluded — scalar repo settings should be declared unconditionally in spec.
+	return changes
+}
+
 // Diff compares desired state with current state and returns changes.
 // If the repository does not exist (current.IsNew), a single ChangeCreate is returned.
 func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
@@ -172,6 +212,15 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
 	changes = append(changes, diffSecurity(name, desired, current)...)
+
+	// Evaluate conditional_spec when a when: clause is present.
+	if desired.Condition != nil && desired.ConditionalSpec != nil {
+		if evaluateCondition(desired.Condition, current) {
+			conditionalDesired := conditionApplied(desired, desired.ConditionalSpec)
+			changes = append(changes, diffConditionalSpec(ctx, name, conditionalDesired, current, opt)...)
+		}
+		// Condition not met: silently skip conditional_spec fields.
+	}
 
 	return changes
 }

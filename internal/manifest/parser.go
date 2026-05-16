@@ -223,21 +223,27 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 				Name:  entry.Name,
 				Owner: set.Metadata.Owner,
 			},
-			Reconcile: mergeReconcile(set.Defaults, entry.Reconcile),
-			Spec:      mergeSpecs(set.Defaults, entry.Spec),
+			Reconcile:       mergeReconcile(set.Defaults, entry.Reconcile),
+			Condition:       entry.When,
+			ConditionalSpec: entry.ConditionalSpec,
+			// ConditionalSpec is NOT merged with defaults — it is applied only
+			// when the condition is met, evaluated in the diff layer.
+			Spec: MergeSpecs(set.Defaults, entry.Spec),
 		}
 		if err := repo.Validate(); err != nil {
 			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 		}
 		repos = append(repos, repo)
 		docs = append(docs, &RepositoryDocument{
-			Resource:          repo,
-			SourcePath:        path,
-			DocIndex:          docIndex,
-			FromSet:           true,
-			SetEntryIndex:     i,
-			DefaultsSpec:      set.Defaults,
-			OriginalEntrySpec: &originalSpec,
+			Resource:            repo,
+			SourcePath:          path,
+			DocIndex:            docIndex,
+			FromSet:             true,
+			SetEntryIndex:       i,
+			DefaultsSpec:        set.Defaults,
+			OriginalEntrySpec:   &originalSpec,
+			OriginalCondition:   entry.When,
+			OriginalConditional: entry.ConditionalSpec,
 		})
 	}
 	return repos, docs, warnings, nil
@@ -372,8 +378,8 @@ func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
 	return entries, err
 }
 
-// mergeSpecs merges defaults with per-repo overrides. Per-repo values take precedence.
-func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) RepositorySpec {
+// MergeSpecs merges defaults with per-repo overrides. Per-repo values take precedence.
+func MergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) RepositorySpec {
 	if defaults == nil {
 		return override
 	}

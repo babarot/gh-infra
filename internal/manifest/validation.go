@@ -12,6 +12,24 @@ func (r *Repository) Validate() error {
 		return err
 	}
 	name := r.Metadata.Name
+	// Condition/ConditionalSpec must be specified together.
+	if r.Condition != nil && r.ConditionalSpec == nil {
+		return fmt.Errorf("%s: when: requires conditional_spec: to be present", name)
+	}
+	if r.ConditionalSpec != nil && r.Condition == nil {
+		return fmt.Errorf("%s: conditional_spec: requires when: to be present", name)
+	}
+	// Validate when.visibility value when present.
+	if r.Condition != nil && r.Condition.Visibility != "" {
+		allowed := map[string]bool{
+			VisibilityPublic:   true,
+			VisibilityPrivate:  true,
+			VisibilityInternal: true,
+		}
+		if !allowed[r.Condition.Visibility] {
+			return fmt.Errorf("%s: when.visibility must be one of: public, private, internal", name)
+		}
+	}
 	if r.Reconcile != nil {
 		if r.Reconcile.Labels != nil {
 			if r.Spec.LabelSync != nil {

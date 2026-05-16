@@ -2313,3 +2313,190 @@ spec:
 		t.Fatal("expected validation error for invalid milestone state value")
 	}
 }
+
+func TestParseRepositorySet_WithWhen_ParsesCondition(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+repositories:
+  - name: my-repo
+    spec:
+      description: "shared"
+    when:
+      visibility: public
+    conditional_spec:
+      rulesets:
+        - name: protect-main
+          enforcement: active
+          rules:
+            deletion: true
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if len(result.Repositories) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(result.Repositories))
+	}
+
+	repo := result.Repositories[0]
+	if repo.Condition == nil {
+		t.Fatal("expected Condition to be set, got nil")
+	}
+	if repo.Condition.Visibility != "public" {
+		t.Errorf("Condition.Visibility = %q, want %q", repo.Condition.Visibility, "public")
+	}
+	if repo.ConditionalSpec == nil {
+		t.Fatal("expected ConditionalSpec to be set, got nil")
+	}
+	if len(repo.ConditionalSpec.Rulesets) != 1 {
+		t.Fatalf("expected 1 ruleset in ConditionalSpec, got %d", len(repo.ConditionalSpec.Rulesets))
+	}
+	if repo.ConditionalSpec.Rulesets[0].Name != "protect-main" {
+		t.Errorf("ConditionalSpec.Rulesets[0].Name = %q, want %q", repo.ConditionalSpec.Rulesets[0].Name, "protect-main")
+	}
+
+	// RepositoryDocument should carry OriginalCondition and OriginalConditional.
+	if len(result.RepositoryDocs) != 1 {
+		t.Fatalf("expected 1 repository doc, got %d", len(result.RepositoryDocs))
+	}
+	doc := result.RepositoryDocs[0]
+	if doc.OriginalCondition == nil {
+		t.Fatal("expected OriginalCondition on RepositoryDocument, got nil")
+	}
+	if doc.OriginalCondition.Visibility != "public" {
+		t.Errorf("OriginalCondition.Visibility = %q, want %q", doc.OriginalCondition.Visibility, "public")
+	}
+	if doc.OriginalConditional == nil {
+		t.Fatal("expected OriginalConditional on RepositoryDocument, got nil")
+	}
+}
+
+func TestParseRepositorySet_WithWhen_NoConditionalSpec_Error(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+repositories:
+  - name: my-repo
+    spec: {}
+    when:
+      visibility: public
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ParseAll(path)
+	if err == nil {
+		t.Fatal("expected error when when: is set without conditional_spec:, got nil")
+	}
+	if !strings.Contains(err.Error(), "conditional_spec") {
+		t.Errorf("error %q should mention conditional_spec", err.Error())
+	}
+}
+
+func TestParseRepositorySet_WithConditionalSpec_NoWhen_Error(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+repositories:
+  - name: my-repo
+    spec: {}
+    conditional_spec:
+      rulesets:
+        - name: protect-main
+          enforcement: active
+          rules:
+            deletion: true
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ParseAll(path)
+	if err == nil {
+		t.Fatal("expected error when conditional_spec: is set without when:, got nil")
+	}
+	if !strings.Contains(err.Error(), "when") {
+		t.Errorf("error %q should mention when", err.Error())
+	}
+}
+
+func TestParseRepositorySet_WithWhen_InvalidVisibility_Error(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+repositories:
+  - name: my-repo
+    spec: {}
+    when:
+      visibility: secret
+    conditional_spec:
+      rulesets:
+        - name: protect-main
+          enforcement: active
+          rules:
+            deletion: true
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ParseAll(path)
+	if err == nil {
+		t.Fatal("expected error for invalid when.visibility value, got nil")
+	}
+	if !strings.Contains(err.Error(), "visibility") {
+		t.Errorf("error %q should mention visibility", err.Error())
+	}
+}
+
+func TestParseRepositorySet_NoWhen_Unchanged(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+repositories:
+  - name: my-repo
+    spec:
+      description: "no condition"
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	repo := result.Repositories[0]
+	if repo.Condition != nil {
+		t.Errorf("expected Condition == nil for entry without when:, got %+v", repo.Condition)
+	}
+	if repo.ConditionalSpec != nil {
+		t.Errorf("expected ConditionalSpec == nil for entry without conditional_spec:, got %+v", repo.ConditionalSpec)
+	}
+}
