@@ -592,6 +592,85 @@ func TestResolveFiles_PatchesPropagated(t *testing.T) {
 	}
 }
 
+func TestParseFileSet_OverrideSourceResolved(t *testing.T) {
+	t.Run("source resolved to content", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "default.yml"), []byte("default-content\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "override.yml"), []byte("override-content\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		yamlContent := `apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: testowner
+spec:
+  repositories:
+    - name: repo-a
+      overrides:
+        - path: .github/workflows/ci.yml
+          source: override.yml
+  files:
+    - path: .github/workflows/ci.yml
+      source: default.yml
+  via: push
+  commit_message: "test"
+`
+		if err := os.WriteFile(filepath.Join(dir, "fileset.yaml"), []byte(yamlContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		fs, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if fs.Spec.Files[0].Content != "default-content\n" {
+			t.Errorf("default content: got %q, want %q", fs.Spec.Files[0].Content, "default-content\n")
+		}
+		if fs.Spec.Repositories[0].Overrides[0].Content != "override-content\n" {
+			t.Errorf("override content: got %q, want %q", fs.Spec.Repositories[0].Overrides[0].Content, "override-content\n")
+		}
+	})
+
+	t.Run("missing override source returns error", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "default.yml"), []byte("default-content\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		yamlContent := `apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: testowner
+spec:
+  repositories:
+    - name: repo-a
+      overrides:
+        - path: .github/workflows/ci.yml
+          source: missing.yml
+  files:
+    - path: .github/workflows/ci.yml
+      source: default.yml
+  via: push
+  commit_message: "test"
+`
+		if err := os.WriteFile(filepath.Join(dir, "fileset.yaml"), []byte(yamlContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		_, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
+		if err == nil {
+			t.Fatal("expected error for missing override source")
+		}
+		if !strings.Contains(err.Error(), "resolve overrides") {
+			t.Errorf("error should contain %q, got: %v", "resolve overrides", err)
+		}
+	})
+}
+
 func TestResolveFiles_DuplicatePathError(t *testing.T) {
 	dir := t.TempDir()
 

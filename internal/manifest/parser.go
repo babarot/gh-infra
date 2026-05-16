@@ -305,6 +305,16 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 	}
 	fs.Spec.Files = resolved
 
+	for i, repo := range fs.Spec.Repositories {
+		if len(repo.Overrides) > 0 {
+			resolvedOverrides, err := resolver.ResolveFiles(context.Background(), repo.Overrides, filepath.Dir(path))
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s: resolve overrides for %s: %w", path, repo.Name, err)
+			}
+			fs.Spec.Repositories[i].Overrides = resolvedOverrides
+		}
+	}
+
 	// Collect deprecation warnings
 	warnings := collectFileSetWarnings(fs.Spec)
 
