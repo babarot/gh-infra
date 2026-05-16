@@ -31,7 +31,7 @@ func ValidateStruct(prefix string, v any) error {
 // (dot-separated YAML path) for error messages.
 func validateStructRecursive(prefix, structPath string, v any) error {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	if rv.Kind() != reflect.Struct {
@@ -63,7 +63,7 @@ func validateStructRecursive(prefix, structPath string, v any) error {
 			if err := validateStructRecursive(prefix, fieldPath, fv.Addr().Interface()); err != nil {
 				return err
 			}
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if !fv.IsNil() && fv.Elem().Kind() == reflect.Struct {
 				if err := validateStructRecursive(prefix, fieldPath, fv.Interface()); err != nil {
 					return err
@@ -122,7 +122,7 @@ func validateField(fieldPath string, fv reflect.Value, tag string, parentStruct 
 // Returns an error if a deprecated field and its migration target are both set.
 func MigrateDeprecated(v any) ([]string, error) {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	if rv.Kind() != reflect.Struct {
@@ -223,7 +223,7 @@ func checkRequired(name string, fv reflect.Value) error {
 		if fv.IsNil() || fv.Len() == 0 {
 			return fmt.Errorf("%s is required", name)
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if fv.IsNil() {
 			return fmt.Errorf("%s is required", name)
 		}
@@ -237,7 +237,7 @@ func checkOneOf(name string, fv reflect.Value, allowed []string) error {
 	switch fv.Kind() {
 	case reflect.String:
 		val = fv.String()
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if fv.IsNil() {
 			return nil
 		}
@@ -260,7 +260,7 @@ func checkUnique(fieldPath string, fv reflect.Value, keyYAML string) error {
 	}
 	// Resolve yaml name to Go field name from the element type
 	elemType := fv.Type().Elem()
-	if elemType.Kind() == reflect.Ptr {
+	if elemType.Kind() == reflect.Pointer {
 		elemType = elemType.Elem()
 	}
 	sf, ok := goFieldByYAMLName(elemType, keyYAML)
@@ -270,7 +270,7 @@ func checkUnique(fieldPath string, fv reflect.Value, keyYAML string) error {
 	seen := make(map[string]bool)
 	for i := range fv.Len() {
 		elem := fv.Index(i)
-		if elem.Kind() == reflect.Ptr {
+		if elem.Kind() == reflect.Pointer {
 			elem = elem.Elem()
 		}
 		if elem.Kind() != reflect.Struct {
@@ -322,7 +322,7 @@ func checkExclusive(fieldPath string, fv reflect.Value, parent reflect.Value, ot
 // isZero checks if a value is the zero value for its type.
 func isZero(fv reflect.Value) bool {
 	switch fv.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		return fv.IsNil()
 	case reflect.String:
 		return fv.String() == ""
