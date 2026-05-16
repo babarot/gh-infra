@@ -1202,7 +1202,12 @@ func TestApplyRepoPatch_Empty(t *testing.T) {
 }
 
 func TestApplyMergeStrategyBatch(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .allow_squash_merge":     []byte(""),
+			"api repos/myorg/myrepo --jq .delete_branch_on_merge": []byte(""),
+		},
+	}
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
@@ -1233,9 +1238,12 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 
-	// Should be exactly 1 API call (batched PATCH)
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	// 1 batched PATCH + 2 post-apply verification reads (one per bool child:
+	// allow_squash_merge and auto_delete_head_branches→delete_branch_on_merge).
+	// squash_merge_commit_title is a string field and is skipped.
+	// Verification reads return empty output (non-fatal), so Err stays nil.
+	if len(mock.Called) != 3 {
+		t.Fatalf("expected 3 gh calls (1 PATCH + 2 verify reads), got %d", len(mock.Called))
 	}
 
 	body := mock.CalledStdin[0]
@@ -1655,6 +1663,175 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 	call := strings.Join(mock.Called[0], " ")
 	if !strings.Contains(call, "label edit enhancement") {
 		t.Errorf("expected 'label edit enhancement', got: %s", call)
+	}
+}
+
+func TestApplyMergeStrategyBatch_SilentAcceptDetected(t *testing.T) {
+	// Simulate GitHub returning 200 (nil error from PATCH) but not updating
+	// the allow_auto_merge field — the read-back still returns "false".
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .allow_auto_merge": []byte("false\n"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "allow_auto_merge", NewValue: true},
+			},
+		},
+	}
+
+	repo := newTestRepo("myorg", "myrepo")
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected error for silent-accept, got nil")
+	}
+	if !strings.Contains(results[0].Err.Error(), "allow_auto_merge") {
+		t.Errorf("expected error mentioning field name, got: %v", results[0].Err)
+	}
+	if !strings.Contains(results[0].Err.Error(), "GitHub reports") {
+		t.Errorf("expected error mentioning read-back, got: %v", results[0].Err)
+	}
+}
+
+func TestApplyMergeStrategyBatch_SilentAcceptDetected_SetFalse(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .allow_auto_merge": []byte("true\n"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "allow_auto_merge", NewValue: false},
+			},
+		},
+	}
+
+	repo := newTestRepo("myorg", "myrepo")
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected error for silent-accept when setting false, got nil")
+	}
+	if !strings.Contains(results[0].Err.Error(), "allow_auto_merge") {
+		t.Errorf("expected error mentioning field name, got: %v", results[0].Err)
+	}
+}
+
+func TestApplyMergeStrategyBatch_VerificationPasses(t *testing.T) {
+	// Simulate GitHub accepting and applying the change — read-back returns "true".
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .allow_auto_merge": []byte("true\n"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "allow_auto_merge", NewValue: true},
+			},
+		},
+	}
+
+	repo := newTestRepo("myorg", "myrepo")
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+}
+
+func TestApplyMergeStrategyBatch_VerificationReadBackFailure(t *testing.T) {
+	// Simulate the read-back API call failing (e.g. network error).
+	// The apply should still succeed — verification is best-effort.
+	mock := &gh.MockRunner{
+		Errors: map[string]error{
+			"api repos/myorg/myrepo --jq .allow_auto_merge": fmt.Errorf("network error"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "allow_auto_merge", NewValue: true},
+			},
+		},
+	}
+
+	repo := newTestRepo("myorg", "myrepo")
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("verification read-back failure should be non-fatal, got: %v", results[0].Err)
+	}
+}
+
+func TestApplyMergeStrategyBatch_DeleteBranchOnMergeFieldTranslation(t *testing.T) {
+	// auto_delete_head_branches in the Change maps to delete_branch_on_merge
+	// in the GitHub API. The verification call must use the API field name.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .delete_branch_on_merge": []byte("false\n"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "auto_delete_head_branches", NewValue: true},
+			},
+		},
+	}
+
+	repo := newTestRepo("myorg", "myrepo")
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected error for silent-accept of delete_branch_on_merge, got nil")
+	}
+	if !strings.Contains(results[0].Err.Error(), "delete_branch_on_merge") {
+		t.Errorf("expected error mentioning API field name, got: %v", results[0].Err)
 	}
 }
 
