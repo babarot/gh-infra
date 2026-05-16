@@ -208,6 +208,9 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 
 	printPlan(p, repoChanges, fileChanges)
 
+	// Emit conditional-spec warnings after plan output, before summary.
+	printConditionalWarnings(p, parsed.Repositories, repoChanges)
+
 	parts := []string{
 		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", result.Creates))),
 		fmt.Sprintf("%s to update", ui.Bold.Render(fmt.Sprintf("%d", result.Updates))),

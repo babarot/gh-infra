@@ -31,13 +31,15 @@ type ParseResult struct {
 
 // RepositoryDocument wraps a Repository with parse-origin metadata.
 type RepositoryDocument struct {
-	Resource          *Repository            // the parsed Repository
-	SourcePath        string                 // file path that was parsed
-	DocIndex          int                    // 0-based position in multi-doc YAML
-	FromSet           bool                   // true if expanded from a RepositorySet
-	SetEntryIndex     int                    // index within RepositorySet.Repositories (valid when FromSet)
-	DefaultsSpec      *RepositorySetDefaults // RepositorySet defaults (valid when FromSet)
-	OriginalEntrySpec *RepositorySpec        // pre-merge override spec (valid when FromSet)
+	Resource            *Repository            // the parsed Repository
+	SourcePath          string                 // file path that was parsed
+	DocIndex            int                    // 0-based position in multi-doc YAML
+	FromSet             bool                   // true if expanded from a RepositorySet
+	SetEntryIndex       int                    // index within RepositorySet.Repositories (valid when FromSet)
+	DefaultsSpec        *RepositorySetDefaults // RepositorySet defaults (valid when FromSet)
+	OriginalEntrySpec   *RepositorySpec        // pre-merge override spec (valid when FromSet)
+	OriginalCondition   *RepositoryCondition   // nil for single Repository docs and entries without when:
+	OriginalConditional *RepositorySpec        // nil when no conditional_spec: clause is present
 }
 
 // FileDocument wraps a FileSet with parse-origin metadata.

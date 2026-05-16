@@ -2174,3 +2174,345 @@ func TestDiffActions_ChildOrder(t *testing.T) {
 		}
 	}
 }
+
+// --- Conditional when: clause tests ---
+
+func TestEvaluateCondition(t *testing.T) {
+	publicState := &CurrentState{Visibility: "public"}
+	privateState := &CurrentState{Visibility: "private"}
+
+	tests := []struct {
+		name string
+		cond *manifest.RepositoryCondition
+		cur  *CurrentState
+		want bool
+	}{
+		{
+			name: "nil condition is always satisfied",
+			cond: nil,
+			cur:  publicState,
+			want: true,
+		},
+		{
+			name: "visibility match is satisfied",
+			cond: &manifest.RepositoryCondition{Visibility: "public"},
+			cur:  publicState,
+			want: true,
+		},
+		{
+			name: "visibility mismatch is not satisfied",
+			cond: &manifest.RepositoryCondition{Visibility: "public"},
+			cur:  privateState,
+			want: false,
+		},
+		{
+			name: "empty visibility in condition is satisfied",
+			cond: &manifest.RepositoryCondition{Visibility: ""},
+			cur:  privateState,
+			want: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := evaluateCondition(tc.cond, tc.cur)
+			if got != tc.want {
+				t.Errorf("evaluateCondition(%+v, %+v) = %v, want %v", tc.cond, tc.cur, got, tc.want)
+			}
+		})
+	}
+}
+
+func makeRuleset(name string) manifest.Ruleset {
+	enforcement := "active"
+	del := true
+	return manifest.Ruleset{
+		Name:        name,
+		Enforcement: &enforcement,
+		Rules:       manifest.RulesetRules{Deletion: &del},
+	}
+}
+
+func TestDiff_ConditionalSpec_ConditionMet_IncludesConditionalChanges(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("protect-main")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes := Diff(context.Background(), desired, current)
+
+	var rulesetChanges []Change
+	for _, c := range changes {
+		if c.Resource == "Ruleset[protect-main]" {
+			rulesetChanges = append(rulesetChanges, c)
+		}
+	}
+	if len(rulesetChanges) == 0 {
+		t.Errorf("expected ruleset change when condition is met (visibility=public), got none; all changes: %v", changes)
+	}
+}
+
+func TestDiff_ConditionalSpec_ConditionNotMet_ExcludesConditionalChanges(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("protect-main")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "private"
+
+	changes := Diff(context.Background(), desired, current)
+
+	for _, c := range changes {
+		if c.Resource == "Ruleset[protect-main]" {
+			t.Errorf("expected no ruleset changes when condition is not met (visibility=private), got: %+v", c)
+		}
+	}
+}
+
+func TestDiff_ConditionalSpec_NilCondition_NoEffect(t *testing.T) {
+	desired := baseDesired()
+	// No Condition, no ConditionalSpec — standard diff.
+	desired.Spec.Description = manifest.Ptr("hello")
+
+	current := baseState()
+	current.Description = "old"
+
+	changes := Diff(context.Background(), desired, current)
+	if len(changes) != 1 {
+		t.Errorf("expected 1 change (description), got %d: %v", len(changes), changes)
+	}
+}
+
+func TestDiff_ConditionalSpec_ConditionMet_RulesetAlreadyExists_NoChange(t *testing.T) {
+	desired := baseDesired()
+	enforcement := "active"
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{{
+			Name:        "protect-main",
+			Enforcement: &enforcement,
+			Rules:       manifest.RulesetRules{},
+		}},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+	current.Rulesets = map[string]*CurrentRuleset{
+		"protect-main": {
+			ID:          42,
+			Name:        "protect-main",
+			Enforcement: enforcement,
+			Target:      "branch",
+		},
+	}
+
+	changes := Diff(context.Background(), desired, current)
+	for _, c := range changes {
+		if c.Resource == "Ruleset[protect-main]" {
+			t.Errorf("expected no ruleset changes when ruleset already matches, got: %+v", c)
+		}
+	}
+}
+
+func TestDiff_ConditionalSpec_IsNew_ConditionNotEvaluated(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("protect-main")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.IsNew = true
+
+	changes := Diff(context.Background(), desired, current)
+	if len(changes) != 1 {
+		t.Errorf("expected single ChangeCreate for new repo, got %d: %v", len(changes), changes)
+	}
+	if changes[0].Type != ChangeCreate || changes[0].Field != "repository" {
+		t.Errorf("expected repository ChangeCreate, got %+v", changes[0])
+	}
+}
+
+func TestDiff_ConditionalSpec_InternalVisibility(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("protect-main")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "internal"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "internal"
+
+	changes := Diff(context.Background(), desired, current)
+	var rulesetChanges []Change
+	for _, c := range changes {
+		if c.Resource == "Ruleset[protect-main]" {
+			rulesetChanges = append(rulesetChanges, c)
+		}
+	}
+	if len(rulesetChanges) == 0 {
+		t.Errorf("expected ruleset change when visibility=internal matches condition, got none")
+	}
+}
+
+func TestDiff_ConditionalSpec_PublicCondition_PrivateCurrentVisibility_NoRulesets(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("protect-main")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	// Also set an unconditional description change.
+	desired.Spec.Description = manifest.Ptr("new desc")
+
+	current := baseState()
+	current.Visibility = "private"
+	current.Description = "old desc"
+
+	changes := Diff(context.Background(), desired, current)
+
+	// Unconditional description change must still appear.
+	foundDesc := false
+	for _, c := range changes {
+		if c.Field == "description" {
+			foundDesc = true
+		}
+		if c.Resource == "Ruleset[protect-main]" {
+			t.Errorf("ruleset change must not appear when condition is not met: %+v", c)
+		}
+	}
+	if !foundDesc {
+		t.Error("expected description change regardless of condition")
+	}
+}
+
+func TestDiff_ConditionalSpec_NoDuplicateChanges_OverlappingResources(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{makeRuleset("shared-ruleset")}
+	desired.Spec.RulesetsSet = true
+
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("shared-ruleset")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes := Diff(context.Background(), desired, current)
+
+	rulesetCount := 0
+	for _, c := range changes {
+		if c.Resource == "Ruleset[shared-ruleset]" {
+			rulesetCount++
+		}
+	}
+	if rulesetCount > 1 {
+		t.Errorf("expected at most 1 ruleset change for overlapping spec/conditional_spec, got %d", rulesetCount)
+	}
+}
+
+func TestDiff_ConditionalSpec_ActionsOnly(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Actions: &manifest.Actions{
+			Enabled: manifest.Ptr(true),
+		},
+	}
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+	current.Actions.Enabled = false
+
+	changes := Diff(context.Background(), desired, current)
+
+	foundActions := false
+	for _, c := range changes {
+		if c.Resource == manifest.ResourceActions {
+			foundActions = true
+		}
+	}
+	if !foundActions {
+		t.Error("expected actions change from conditional_spec when condition is met")
+	}
+}
+
+func TestDiff_ConditionalSpec_Idempotent(t *testing.T) {
+	desired := baseDesired()
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("protect-main")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes1 := Diff(context.Background(), desired, current)
+	changes2 := Diff(context.Background(), desired, current)
+
+	if len(changes1) != len(changes2) {
+		t.Errorf("expected same number of changes on repeated Diff, got %d and %d", len(changes1), len(changes2))
+	}
+	for i := range changes1 {
+		if i >= len(changes2) {
+			break
+		}
+		if changes1[i].Resource != changes2[i].Resource || changes1[i].Field != changes2[i].Field || changes1[i].Type != changes2[i].Type {
+			t.Errorf("change[%d] differs between calls: %+v vs %+v", i, changes1[i], changes2[i])
+		}
+	}
+}
+
+func TestDiff_ConditionalSpec_BaseSpecNotRediffed(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.BranchProtection = []manifest.BranchProtection{
+		{Pattern: "main", EnforceAdmins: manifest.Ptr(true)},
+	}
+	desired.Spec.BranchProtectionSet = true
+
+	condSpec := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{makeRuleset("cond-only")},
+	}
+	condSpec.RulesetsSet = true
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &condSpec
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes := Diff(context.Background(), desired, current)
+
+	bpCount := 0
+	for _, c := range changes {
+		if strings.HasPrefix(c.Resource, manifest.ResourceBranchProtection) {
+			bpCount++
+		}
+	}
+	if bpCount != 1 {
+		t.Errorf("expected exactly 1 branch_protection change (from base spec only), got %d", bpCount)
+	}
+}

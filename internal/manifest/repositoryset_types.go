@@ -19,7 +19,9 @@ type RepositorySetDefaults struct {
 }
 
 type RepositorySetEntry struct {
-	Name      string               `yaml:"name"`
-	Reconcile *RepositoryReconcile `yaml:"reconcile,omitempty"`
-	Spec      RepositorySpec       `yaml:"spec"`
+	Name            string               `yaml:"name"`
+	Reconcile       *RepositoryReconcile `yaml:"reconcile,omitempty"`
+	Spec            RepositorySpec       `yaml:"spec"`
+	When            *RepositoryCondition `yaml:"when,omitempty"`
+	ConditionalSpec *RepositorySpec      `yaml:"conditional_spec,omitempty"`
 }
