@@ -562,3 +562,100 @@ func TestHasChanges_OnlyDeletes(t *testing.T) {
 		t.Error("expected HasChanges=true when only ChangeDelete changes exist")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// isHeadConflict and retry tests
+// ---------------------------------------------------------------------------
+
+func TestIsHeadConflict(t *testing.T) {
+	tests := []struct {
+		err  error
+		want bool
+	}{
+		{fmt.Errorf("graphql: is at abc123 but expected def456"), true},
+		{fmt.Errorf("graphql: some other error"), false},
+		{nil, false},
+	}
+	for _, tt := range tests {
+		if got := isHeadConflict(tt.err); got != tt.want {
+			t.Errorf("isHeadConflict(%v) = %v, want %v", tt.err, got, tt.want)
+		}
+	}
+}
+
+// SequenceMockRunner returns different responses for successive calls matching a prefix.
+type SequenceMockRunner struct {
+	gh.MockRunner
+	DefaultResponse []byte
+	sequences       map[string][]sequenceEntry
+	callCounts      map[string]int
+}
+
+type sequenceEntry struct {
+	response []byte
+	err      error
+}
+
+func (m *SequenceMockRunner) Run(_ context.Context, args ...string) ([]byte, error) {
+	key := strings.Join(args, " ")
+	m.Called = append(m.Called, args)
+	if err, ok := m.Errors[key]; ok {
+		return nil, err
+	}
+	if resp, ok := m.Responses[key]; ok {
+		return resp, nil
+	}
+	// Check sequences by prefix match
+	for prefix, entries := range m.sequences {
+		if strings.HasPrefix(key, prefix) {
+			idx := m.callCounts[prefix]
+			m.callCounts[prefix]++
+			if idx < len(entries) {
+				e := entries[idx]
+				return e.response, e.err
+			}
+		}
+	}
+	return m.DefaultResponse, nil
+}
+
+func TestApply_RetryOnHeadConflict(t *testing.T) {
+	repo := "owner/repo"
+	mock := &SequenceMockRunner{
+		MockRunner: gh.MockRunner{
+			Responses: map[string][]byte{
+				fmt.Sprintf("repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", repo): []byte("main"),
+				fmt.Sprintf("api repos/%s/git/ref/heads/main --jq .object.sha", repo):                []byte("head123"),
+			},
+			Errors: map[string]error{},
+		},
+		DefaultResponse: []byte(`{"data":{"createCommitOnBranch":{"commit":{"oid":"new-sha"}}}}`),
+		sequences: map[string][]sequenceEntry{
+			"api graphql": {
+				{response: []byte(`{"errors":[{"message":"is at newsha but expected head123"}]}`), err: nil},
+				{response: []byte(`{"data":{"createCommitOnBranch":{"commit":{"oid":"final-sha"}}}}`), err: nil},
+			},
+		},
+		callCounts: make(map[string]int),
+	}
+
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	changes := []Change{
+		{
+			FileSetID: "test",
+			Target:    repo,
+			Path:      ".github/ci.yml",
+			Type:      ChangeUpdate,
+			Desired:   "name: CI",
+		},
+	}
+
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, ui.NoopReporter{})
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Errorf("expected success after retry, got error: %v", results[0].Err)
+	}
+}

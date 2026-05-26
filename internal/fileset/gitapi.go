@@ -11,9 +11,12 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
+const maxCommitRetries = 3
+
 // applyToRepo creates a verified commit for all file changes using the GitHub GraphQL
 // createCommitOnBranch mutation. Falls back to Contents API for empty repositories.
 // Returns (prURL, error); prURL is non-empty only for pull_request strategy.
+// Retries up to maxCommitRetries times on HEAD conflict errors caused by concurrent commits.
 func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
@@ -22,7 +25,28 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		}
 		return "", fmt.Errorf("get HEAD: %w", err)
 	}
-	return p.applyViaGraphQL(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
+
+	for attempt := range maxCommitRetries {
+		prURL, err := p.applyViaGraphQL(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
+		if err == nil {
+			return prURL, nil
+		}
+		if !isHeadConflict(err) || attempt == maxCommitRetries-1 {
+			return "", err
+		}
+		headSHA, _, err = p.getHeadSHA(ctx, repo)
+		if err != nil {
+			return "", fmt.Errorf("get HEAD for retry: %w", err)
+		}
+	}
+	return "", fmt.Errorf("commit retries exhausted for %s", repo)
+}
+
+// isHeadConflict reports whether err is a GitHub GraphQL HEAD conflict error,
+// which occurs when a concurrent commit advances the branch between our HEAD
+// fetch and our createCommitOnBranch call.
+func isHeadConflict(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "but expected")
 }
 
 // applyViaGraphQL creates a verified commit using the GitHub GraphQL createCommitOnBranch
