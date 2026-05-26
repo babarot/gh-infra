@@ -54,6 +54,7 @@ func RenderTemplate(content string, repo string, vars map[string]string) (string
 }
 
 // RenderCommitMessage renders a commit or PR message template with Repo and Source context.
+// Vars are not available in commit messages — use .Repo and .Source fields only.
 func RenderCommitMessage(msg string, repo string, sourceURL string) (string, error) {
 	repoCtx := buildRepoContext(repo)
 	ctx := TemplateContext{

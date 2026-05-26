@@ -199,12 +199,18 @@ func (p *Processor) commitViaGraphQL(ctx context.Context, repo, branch, headSHA,
 		}
 	}
 
+	headline, msgBody := splitCommitMessage(message)
+	msgInput := map[string]string{"headline": headline}
+	if msgBody != "" {
+		msgInput["body"] = msgBody
+	}
+
 	input := map[string]any{
 		"branch": map[string]string{
 			"repositoryNameWithOwner": repo,
 			"branchName":              branch,
 		},
-		"message":         map[string]string{"headline": message},
+		"message":         msgInput,
 		"expectedHeadOid": headSHA,
 		"fileChanges":     fileChanges{Additions: adds, Deletions: dels},
 	}
@@ -255,9 +261,9 @@ func (p *Processor) commitViaGraphQL(ctx context.Context, repo, branch, headSHA,
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
 func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions) error {
 	p.writer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
-	message := opts.CommitMessage
-	if message == "" {
-		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
+	message, err := resolveCommitMessage(opts, repo)
+	if err != nil {
+		return fmt.Errorf("render commit message: %w", err)
 	}
 	for _, c := range changes {
 		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
@@ -351,6 +357,7 @@ func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts Ap
 		if err != nil {
 			return "", fmt.Errorf("render PR title: %w", err)
 		}
+		prTitle, _ = splitCommitMessage(prTitle)
 	} else if HasTemplate(prTitle, nil) {
 		var err error
 		prTitle, err = RenderCommitMessage(prTitle, repo, opts.SourceURL)
@@ -390,6 +397,19 @@ func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts Ap
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// splitCommitMessage splits a commit message into headline and body.
+// The headline is the text before the first newline; body is everything after,
+// with leading newlines stripped. Matches standard Git commit message convention.
+func splitCommitMessage(msg string) (headline, body string) {
+	if idx := strings.Index(msg, "\n"); idx >= 0 {
+		headline = msg[:idx]
+		body = strings.TrimLeft(msg[idx+1:], "\n")
+	} else {
+		headline = msg
+	}
+	return
 }
 
 // sanitizeBranchName converts an identity string into a valid Git branch name component.

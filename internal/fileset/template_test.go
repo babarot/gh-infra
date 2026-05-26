@@ -201,6 +201,26 @@ func TestRenderTemplateWithTrace_UnsupportedSyntax(t *testing.T) {
 	}
 }
 
+func TestSplitCommitMessage(t *testing.T) {
+	tests := []struct {
+		msg          string
+		wantHeadline string
+		wantBody     string
+	}{
+		{"single line", "single line", ""},
+		{"headline\n\nbody text", "headline", "body text"},
+		{"headline\nbody without blank line", "headline", "body without blank line"},
+		{"headline\n\nfirst para\n\nsecond para", "headline", "first para\n\nsecond para"},
+	}
+	for _, tt := range tests {
+		h, b := splitCommitMessage(tt.msg)
+		if h != tt.wantHeadline || b != tt.wantBody {
+			t.Errorf("splitCommitMessage(%q) = (%q, %q), want (%q, %q)",
+				tt.msg, h, b, tt.wantHeadline, tt.wantBody)
+		}
+	}
+}
+
 func TestRenderCommitMessage_SourceURL(t *testing.T) {
 	msg := "ci: sync files\n\nSource: <% .Source.URL %>"
 	result, err := RenderCommitMessage(msg, "org/repo", "https://github.com/org/config/pull/17")
