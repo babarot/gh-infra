@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -574,6 +575,7 @@ func TestIsHeadConflict(t *testing.T) {
 	}{
 		{fmt.Errorf("graphql: is at abc123 but expected def456"), true},
 		{fmt.Errorf("graphql: some other error"), false},
+		{fmt.Errorf("value must be X but expected Y"), false},
 		{nil, false},
 	}
 	for _, tt := range tests {
@@ -589,6 +591,7 @@ type SequenceMockRunner struct {
 	DefaultResponse []byte
 	sequences       map[string][]sequenceEntry
 	callCounts      map[string]int
+	mu              sync.Mutex
 }
 
 type sequenceEntry struct {
@@ -598,23 +601,27 @@ type sequenceEntry struct {
 
 func (m *SequenceMockRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 	key := strings.Join(args, " ")
+	m.mu.Lock()
 	m.Called = append(m.Called, args)
+	m.CalledStdin = append(m.CalledStdin, nil)
+	for prefix, entries := range m.sequences {
+		if strings.HasPrefix(key, prefix) {
+			idx := m.callCounts[prefix]
+			m.callCounts[prefix]++
+			m.mu.Unlock()
+			if idx < len(entries) {
+				e := entries[idx]
+				return e.response, e.err
+			}
+			return m.DefaultResponse, nil
+		}
+	}
+	m.mu.Unlock()
 	if err, ok := m.Errors[key]; ok {
 		return nil, err
 	}
 	if resp, ok := m.Responses[key]; ok {
 		return resp, nil
-	}
-	// Check sequences by prefix match
-	for prefix, entries := range m.sequences {
-		if strings.HasPrefix(key, prefix) {
-			idx := m.callCounts[prefix]
-			m.callCounts[prefix]++
-			if idx < len(entries) {
-				e := entries[idx]
-				return e.response, e.err
-			}
-		}
 	}
 	return m.DefaultResponse, nil
 }
@@ -625,7 +632,6 @@ func TestApply_RetryOnHeadConflict(t *testing.T) {
 		MockRunner: gh.MockRunner{
 			Responses: map[string][]byte{
 				fmt.Sprintf("repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", repo): []byte("main"),
-				fmt.Sprintf("api repos/%s/git/ref/heads/main --jq .object.sha", repo):                 []byte("head123"),
 			},
 			Errors: map[string]error{},
 		},
@@ -634,6 +640,10 @@ func TestApply_RetryOnHeadConflict(t *testing.T) {
 			"api graphql": {
 				{response: []byte(`{"errors":[{"message":"is at newsha but expected head123"}]}`), err: nil},
 				{response: []byte(`{"data":{"createCommitOnBranch":{"commit":{"oid":"final-sha"}}}}`), err: nil},
+			},
+			"api repos/owner/repo/git/ref/heads/main": {
+				{response: []byte("head123"), err: nil},
+				{response: []byte("head456"), err: nil},
 			},
 		},
 		callCounts: make(map[string]int),
@@ -657,5 +667,12 @@ func TestApply_RetryOnHeadConflict(t *testing.T) {
 	}
 	if results[0].Err != nil {
 		t.Errorf("expected success after retry, got error: %v", results[0].Err)
+	}
+
+	if got := mock.callCounts["api graphql"]; got != 2 {
+		t.Errorf("expected 2 graphql calls (1 failure + 1 retry), got %d", got)
+	}
+	if got := mock.callCounts["api repos/owner/repo/git/ref/heads/main"]; got != 2 {
+		t.Errorf("expected 2 HEAD SHA fetches (initial + retry), got %d", got)
 	}
 }

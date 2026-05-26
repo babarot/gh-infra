@@ -17,6 +17,8 @@ const maxCommitRetries = 3
 // createCommitOnBranch mutation. Falls back to Contents API for empty repositories.
 // Returns (prURL, error); prURL is non-empty only for pull_request strategy.
 // Retries up to maxCommitRetries times on HEAD conflict errors caused by concurrent commits.
+// For pull_request mode, branch creation and PR opening happen outside the retry loop so
+// that only the commit itself is retried on conflict.
 func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
@@ -26,32 +28,6 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		return "", fmt.Errorf("get HEAD: %w", err)
 	}
 
-	for attempt := range maxCommitRetries {
-		prURL, err := p.applyViaGraphQL(ctx, repo, defaultBranch, headSHA, changes, opts, statusFn)
-		if err == nil {
-			return prURL, nil
-		}
-		if !isHeadConflict(err) || attempt == maxCommitRetries-1 {
-			return "", err
-		}
-		headSHA, _, err = p.getHeadSHA(ctx, repo)
-		if err != nil {
-			return "", fmt.Errorf("get HEAD for retry: %w", err)
-		}
-	}
-	return "", fmt.Errorf("commit retries exhausted for %s", repo)
-}
-
-// isHeadConflict reports whether err is a GitHub GraphQL HEAD conflict error,
-// which occurs when a concurrent commit advances the branch between our HEAD
-// fetch and our createCommitOnBranch call.
-func isHeadConflict(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "but expected")
-}
-
-// applyViaGraphQL creates a verified commit using the GitHub GraphQL createCommitOnBranch
-// mutation. All file changes are committed atomically in a single call.
-func (p *Processor) applyViaGraphQL(ctx context.Context, repo, defaultBranch, headSHA string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
 	message := resolveCommitMessage(opts)
 	targetBranch := defaultBranch
 
@@ -67,9 +43,22 @@ func (p *Processor) applyViaGraphQL(ctx context.Context, repo, defaultBranch, he
 		targetBranch = prBranch
 	}
 
-	statusFn("committing changes...")
-	if err := p.commitViaGraphQL(ctx, repo, targetBranch, headSHA, message, changes); err != nil {
-		return "", err
+	for attempt := range maxCommitRetries {
+		statusFn("committing changes...")
+		err := p.commitViaGraphQL(ctx, repo, targetBranch, headSHA, message, changes)
+		if err == nil {
+			break
+		}
+		if !isHeadConflict(err) {
+			return "", err
+		}
+		if attempt == maxCommitRetries-1 {
+			return "", fmt.Errorf("commit retries exhausted for %s: %w", repo, err)
+		}
+		headSHA, _, err = p.getHeadSHA(ctx, repo)
+		if err != nil {
+			return "", fmt.Errorf("get HEAD for retry: %w", err)
+		}
 	}
 
 	if opts.Via == manifest.ViaPullRequest {
@@ -77,6 +66,17 @@ func (p *Processor) applyViaGraphQL(ctx context.Context, repo, defaultBranch, he
 		return p.openPR(ctx, repo, defaultBranch, targetBranch, opts)
 	}
 	return "", nil
+}
+
+// isHeadConflict reports whether err is a GitHub GraphQL HEAD conflict error,
+// which occurs when a concurrent commit advances the branch between our HEAD
+// fetch and our createCommitOnBranch call.
+func isHeadConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "is at ") && strings.Contains(msg, "but expected")
 }
 
 // commitViaGraphQL sends a createCommitOnBranch GraphQL mutation.
