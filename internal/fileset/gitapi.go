@@ -569,12 +569,8 @@ func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts Ap
 // The headline is the text before the first newline; body is everything after,
 // with leading newlines stripped. Matches standard Git commit message convention.
 func splitCommitMessage(msg string) (headline, body string) {
-	if idx := strings.Index(msg, "\n"); idx >= 0 {
-		headline = msg[:idx]
-		body = strings.TrimLeft(msg[idx+1:], "\n")
-	} else {
-		headline = msg
-	}
+	headline, body, _ = strings.Cut(msg, "\n")
+	body = strings.TrimLeft(body, "\n")
 	return
 }
 
