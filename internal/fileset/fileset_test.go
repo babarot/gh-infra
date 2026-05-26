@@ -625,7 +625,7 @@ func TestApply_RetryOnHeadConflict(t *testing.T) {
 		MockRunner: gh.MockRunner{
 			Responses: map[string][]byte{
 				fmt.Sprintf("repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", repo): []byte("main"),
-				fmt.Sprintf("api repos/%s/git/ref/heads/main --jq .object.sha", repo):                []byte("head123"),
+				fmt.Sprintf("api repos/%s/git/ref/heads/main --jq .object.sha", repo):                 []byte("head123"),
 			},
 			Errors: map[string]error{},
 		},
