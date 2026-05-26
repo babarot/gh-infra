@@ -16,8 +16,14 @@ const (
 
 // TemplateContext is the data available to templates.
 type TemplateContext struct {
-	Repo RepoContext
-	Vars map[string]string
+	Repo   RepoContext
+	Vars   map[string]string
+	Source SourceContext
+}
+
+// SourceContext provides source provenance metadata to templates.
+type SourceContext struct {
+	URL string
 }
 
 // RepoContext provides repository metadata to templates.
@@ -45,6 +51,16 @@ func RenderTemplate(content string, repo string, vars map[string]string) (string
 	// Pass 2: Expand content (can reference .Repo and .Vars)
 	ctx := TemplateContext{Repo: repoCtx, Vars: expandedVars}
 	return execTemplate(content, ctx)
+}
+
+// RenderCommitMessage renders a commit or PR message template with Repo and Source context.
+func RenderCommitMessage(msg string, repo string, sourceURL string) (string, error) {
+	repoCtx := buildRepoContext(repo)
+	ctx := TemplateContext{
+		Repo:   repoCtx,
+		Source: SourceContext{URL: sourceURL},
+	}
+	return execTemplate(msg, ctx)
 }
 
 // HasTemplate returns true if the content uses <% %> template syntax or has vars.
