@@ -200,3 +200,39 @@ func TestRenderTemplateWithTrace_UnsupportedSyntax(t *testing.T) {
 		t.Fatal("expected error for unsupported syntax")
 	}
 }
+
+func TestRenderCommitMessage_SourceURL(t *testing.T) {
+	msg := "ci: sync files\n\nSource: <% .Source.URL %>"
+	result, err := RenderCommitMessage(msg, "org/repo", "https://github.com/org/config/pull/17")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ci: sync files\n\nSource: https://github.com/org/config/pull/17"
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}
+
+func TestRenderCommitMessage_EmptySourceURL(t *testing.T) {
+	msg := "ci: sync files <% .Source.URL %>"
+	result, err := RenderCommitMessage(msg, "org/repo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ci: sync files "
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}
+
+func TestRenderCommitMessage_WithRepoContext(t *testing.T) {
+	msg := "ci: sync <% .Repo.Name %> files\n\nSource: <% .Source.URL %>"
+	result, err := RenderCommitMessage(msg, "babarot/gomi", "https://github.com/org/config/pull/17")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ci: sync gomi files\n\nSource: https://github.com/org/config/pull/17"
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}
