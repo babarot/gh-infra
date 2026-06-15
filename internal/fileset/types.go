@@ -10,14 +10,15 @@ type State struct {
 
 // Change represents a planned change for a file.
 type Change struct {
-	FileSetID string // org/owner that owns this FileSet
-	Target    string // owner/repo
-	Path      string
-	Type      ChangeType
-	Current   string // current content (if exists)
-	Desired   string // desired content
-	SHA       string // current SHA (for updates)
-	Via       string // "push" or "pull_request" (from FileSet spec)
+	FileSetID  string // org/owner that owns this FileSet
+	Target     string // owner/repo
+	Path       string
+	Type       ChangeType
+	Current    string // current content (if exists)
+	Desired    string // desired content
+	SHA        string // current SHA (for updates)
+	Executable bool
+	Via        string // "push" or "pull_request" (from FileSet spec)
 }
 
 type ChangeType string

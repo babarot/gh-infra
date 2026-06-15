@@ -583,6 +583,7 @@ func TestIsHeadConflict(t *testing.T) {
 		{"real GitHub error from graphql errors payload", fmt.Errorf("graphql: %s", headConflictMsg), true},
 		{"unrelated graphql error", fmt.Errorf("graphql: some other error"), false},
 		{"partial match", errors.New("Expected branch to point to main"), false},
+		{"Git Data API non-fast-forward ref update", fmt.Errorf("update ref: %w", errors.New("gh: Update is not a fast forward (HTTP 422)")), true},
 		{"nil", nil, false},
 	}
 	for _, tt := range tests {
@@ -822,6 +823,30 @@ func TestApply_NoopCommit_Push(t *testing.T) {
 	}
 	if _, ok := del["content"]; ok {
 		t.Errorf("delete entry must not carry content, got: %v", del)
+	}
+}
+
+func TestIsNoopCommit_ExecutableUsesMode100755(t *testing.T) {
+	mock := newNoopGuardMock("base-tree")
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	changes := []Change{{Path: ".hooks/pre-commit", Type: ChangeUpdate, Desired: "#!/bin/sh\n", Executable: true}}
+
+	if !p.isNoopCommit(context.Background(), "owner/repo", "head123", changes) {
+		t.Fatal("expected noop when the created tree matches HEAD")
+	}
+
+	var req struct {
+		Tree []map[string]any `json:"tree"`
+	}
+	for i, c := range flattenCalls(mock.Called) {
+		if c == treesPostKey {
+			if err := json.Unmarshal(mock.CalledStdin[i], &req); err != nil {
+				t.Fatalf("failed to parse tree request: %v", err)
+			}
+		}
+	}
+	if len(req.Tree) != 1 || req.Tree[0]["mode"] != "100755" {
+		t.Errorf("expected a single entry with mode 100755, got %v", req.Tree)
 	}
 }
 

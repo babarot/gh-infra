@@ -187,23 +187,29 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 	return changes, nil
 }
 
+func boolVal(b *bool) bool {
+	return b != nil && *b
+}
+
 // planCreateOnly handles reconcile: create_only — create if missing, NoOp if exists.
 func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) Change {
 	current, err := p.fetchFileContent(ctx, repo, file.Path)
 	if err != nil || !current.Exists {
 		return Change{
-			FileSetID: fileSetName,
-			Target:    repo,
-			Path:      file.Path,
-			Type:      ChangeCreate,
-			Desired:   file.Content,
+			FileSetID:  fileSetName,
+			Target:     repo,
+			Path:       file.Path,
+			Type:       ChangeCreate,
+			Desired:    file.Content,
+			Executable: boolVal(file.Executable),
 		}
 	}
 	return Change{
-		FileSetID: fileSetName,
-		Target:    repo,
-		Path:      file.Path,
-		Type:      ChangeNoOp,
+		FileSetID:  fileSetName,
+		Target:     repo,
+		Path:       file.Path,
+		Type:       ChangeNoOp,
+		Executable: boolVal(file.Executable),
 	}
 }
 
@@ -211,11 +217,12 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 	current, err := p.fetchFileContent(ctx, repo, file.Path)
 	if err != nil || !current.Exists {
 		return Change{
-			FileSetID: fileSetName,
-			Target:    repo,
-			Path:      file.Path,
-			Type:      ChangeCreate,
-			Desired:   file.Content,
+			FileSetID:  fileSetName,
+			Target:     repo,
+			Path:       file.Path,
+			Type:       ChangeCreate,
+			Desired:    file.Content,
+			Executable: boolVal(file.Executable),
 		}
 	}
 
@@ -225,22 +232,24 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 
 	if currentContent == desiredContent {
 		return Change{
-			FileSetID: fileSetName,
-			Target:    repo,
-			Path:      file.Path,
-			Type:      ChangeNoOp,
+			FileSetID:  fileSetName,
+			Target:     repo,
+			Path:       file.Path,
+			Type:       ChangeNoOp,
+			Executable: boolVal(file.Executable),
 		}
 	}
 
 	// Content differs — update
 	return Change{
-		FileSetID: fileSetName,
-		Target:    repo,
-		Path:      file.Path,
-		Type:      ChangeUpdate,
-		Current:   current.Content,
-		Desired:   file.Content,
-		SHA:       current.SHA,
+		FileSetID:  fileSetName,
+		Target:     repo,
+		Path:       file.Path,
+		Type:       ChangeUpdate,
+		Current:    current.Content,
+		Desired:    file.Content,
+		SHA:        current.SHA,
+		Executable: boolVal(file.Executable),
 	}
 }
 

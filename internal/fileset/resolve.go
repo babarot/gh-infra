@@ -38,6 +38,9 @@ func ResolveFiles(fs *manifest.FileSet, target manifest.FileSetRepository) []man
 			if override.OriginalSource == "" {
 				override.OriginalSource = f.OriginalSource
 			}
+			if override.Executable == nil && f.Executable != nil {
+				override.Executable = f.Executable
+			}
 			result = append(result, override)
 		} else {
 			result = append(result, f)
