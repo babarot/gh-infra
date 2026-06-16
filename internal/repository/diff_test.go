@@ -2230,6 +2230,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 		{
 			name: "squash: PR_TITLE+PR_BODY is valid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
 				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
 				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
 			},
@@ -2238,6 +2239,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 		{
 			name: "squash: PR_TITLE+BLANK is valid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
 				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
 				ms.SquashMergeCommitMessage = manifest.Ptr("BLANK")
 			},
@@ -2246,6 +2248,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 		{
 			name: "squash: PR_TITLE+COMMIT_MESSAGES is valid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
 				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
 				ms.SquashMergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
 			},
@@ -2254,6 +2257,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 		{
 			name: "squash: COMMIT_OR_PR_TITLE+COMMIT_MESSAGES is valid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
 				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
 				ms.SquashMergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
 			},
@@ -2262,6 +2266,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 		{
 			name: "squash: COMMIT_OR_PR_TITLE+PR_BODY is invalid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
 				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
 				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
 			},
@@ -2271,6 +2276,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 		{
 			name: "squash: COMMIT_OR_PR_TITLE+BLANK is invalid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
 				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
 				ms.SquashMergeCommitMessage = manifest.Ptr("BLANK")
 			},
@@ -2281,27 +2287,50 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 		{
 			name: "merge: PR_TITLE+PR_BODY is valid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
 				ms.MergeCommitTitle = manifest.Ptr("PR_TITLE")
 				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
 			},
 			wantErr: false,
 		},
 		{
-			name: "merge: COMMIT_OR_PR_TITLE+COMMIT_MESSAGES is valid",
+			name: "merge: MERGE_MESSAGE+PR_TITLE is valid",
 			setupMS: func(ms *manifest.MergeStrategy) {
-				ms.MergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
-				ms.MergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
 			},
 			wantErr: false,
 		},
 		{
+			name: "merge: COMMIT_OR_PR_TITLE+COMMIT_MESSAGES is invalid for merge (squash-only)",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
 			name: "merge: COMMIT_OR_PR_TITLE+PR_BODY is invalid",
 			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
 				ms.MergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
 				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
 			},
 			wantErr:     true,
 			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: validation skipped when allow_merge_commit is false",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(false)
+				// MERGE_MESSAGE+PR_TITLE is valid, but GitHub ignores these when disabled
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
+			},
+			wantErr: false,
 		},
 		// --- effective value: one field omitted, falls back to current ---
 		{
@@ -2310,7 +2339,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
 				// title omitted → effective = current = "PR_TITLE" → PR_TITLE+PR_BODY is valid
 			},
-			currentMS: CurrentMergeStrategy{SquashMergeCommitTitle: "PR_TITLE"},
+			currentMS: CurrentMergeStrategy{AllowSquashMerge: true, SquashMergeCommitTitle: "PR_TITLE"},
 			wantErr:   false,
 		},
 		{
@@ -2319,7 +2348,7 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
 				// title omitted → effective = current = "COMMIT_OR_PR_TITLE" → COMMIT_OR_PR_TITLE+PR_BODY is invalid
 			},
-			currentMS:   CurrentMergeStrategy{SquashMergeCommitTitle: "COMMIT_OR_PR_TITLE"},
+			currentMS:   CurrentMergeStrategy{AllowSquashMerge: true, SquashMergeCommitTitle: "COMMIT_OR_PR_TITLE"},
 			wantErr:     true,
 			wantErrText: "squash_merge_commit",
 		},
