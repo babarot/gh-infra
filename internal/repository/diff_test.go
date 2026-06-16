@@ -2218,6 +2218,143 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 	}
 }
 
+func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupMS     func(ms *manifest.MergeStrategy)
+		currentMS   CurrentMergeStrategy
+		wantErr     bool
+		wantErrText string
+	}{
+		// --- squash pair ---
+		{
+			name: "squash: PR_TITLE+PR_BODY is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: PR_TITLE+BLANK is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("BLANK")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: PR_TITLE+COMMIT_MESSAGES is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: COMMIT_OR_PR_TITLE+COMMIT_MESSAGES is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: COMMIT_OR_PR_TITLE+PR_BODY is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr:     true,
+			wantErrText: "squash_merge_commit",
+		},
+		{
+			name: "squash: COMMIT_OR_PR_TITLE+BLANK is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("BLANK")
+			},
+			wantErr:     true,
+			wantErrText: "squash_merge_commit",
+		},
+		// --- merge pair ---
+		{
+			name: "merge: PR_TITLE+PR_BODY is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.MergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr: false,
+		},
+		{
+			name: "merge: COMMIT_OR_PR_TITLE+COMMIT_MESSAGES is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.MergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+			},
+			wantErr: false,
+		},
+		{
+			name: "merge: COMMIT_OR_PR_TITLE+PR_BODY is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.MergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		// --- effective value: one field omitted, falls back to current ---
+		{
+			name: "squash: desired message only, current title valid combo",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+				// title omitted → effective = current = "PR_TITLE" → PR_TITLE+PR_BODY is valid
+			},
+			currentMS: CurrentMergeStrategy{SquashMergeCommitTitle: "PR_TITLE"},
+			wantErr:   false,
+		},
+		{
+			name: "squash: desired message only, current title invalid combo",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+				// title omitted → effective = current = "COMMIT_OR_PR_TITLE" → COMMIT_OR_PR_TITLE+PR_BODY is invalid
+			},
+			currentMS:   CurrentMergeStrategy{SquashMergeCommitTitle: "COMMIT_OR_PR_TITLE"},
+			wantErr:     true,
+			wantErrText: "squash_merge_commit",
+		},
+		// --- nil merge_strategy: no error ---
+		{
+			name:    "nil merge_strategy: ok",
+			setupMS: nil,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &manifest.Repository{Spec: manifest.RepositorySpec{}}
+			if tt.setupMS != nil {
+				d.Spec.MergeStrategy = &manifest.MergeStrategy{}
+				tt.setupMS(d.Spec.MergeStrategy)
+			}
+			c := &CurrentState{MergeStrategy: tt.currentMS}
+
+			err := ValidateDependencies(d, c)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrText) {
+					t.Errorf("expected error containing %q, got: %v", tt.wantErrText, err)
+				}
+			} else if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestDiffActions_ChildOrder(t *testing.T) {
 	// Verify enabled/allowed_actions come before selected_actions
 	desired := baseDesired()

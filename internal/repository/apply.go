@@ -372,11 +372,42 @@ func (p *Processor) applyRepoPatch(ctx context.Context, fullName string, repo *m
 // applyMergeStrategyBatch batches merge strategy children into a single repos
 // PATCH call. Used during updates when multiple merge strategy fields change
 // together.
+//
+// GitHub requires squash_merge_commit_title and squash_merge_commit_message to
+// be sent together, and merge_commit_title and merge_commit_message to be sent
+// together. If only one half of a coupled pair appears in the diff, fetch the
+// current value of the companion from GitHub so both are always present.
 func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) ApplyResult {
 	fullName := c.Name
 	payload := map[string]any{}
 	for _, child := range c.Children {
 		payload[canonicalAPIField(child.Field)] = child.NewValue
+	}
+
+	// Coupled pairs: GitHub rejects a PATCH that sets one field without the other.
+	// If only one half is present, fetch the current value of the missing companion.
+	type coupledPair struct{ title, message string }
+	pairs := []coupledPair{
+		{"squash_merge_commit_title", "squash_merge_commit_message"},
+		{"merge_commit_title", "merge_commit_message"},
+	}
+	for _, pair := range pairs {
+		_, hasTitle := payload[pair.title]
+		_, hasMessage := payload[pair.message]
+		if hasTitle == hasMessage {
+			// Both present or both absent — nothing to fix.
+			continue
+		}
+		// One half is missing; fetch its current value from GitHub.
+		missing := pair.message
+		if hasMessage {
+			missing = pair.title
+		}
+		out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s", fullName), "--jq", "."+missing)
+		if err != nil {
+			return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
+		}
+		payload[missing] = strings.TrimSpace(string(out))
 	}
 
 	body, err := json.Marshal(payload)

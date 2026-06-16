@@ -1256,7 +1256,13 @@ func TestApplyRepoPatch_Empty(t *testing.T) {
 }
 
 func TestApplyMergeStrategyBatch(t *testing.T) {
-	mock := &gh.MockRunner{}
+	// squash_merge_commit_title is present but squash_merge_commit_message is not,
+	// so the fix fetches the companion message before issuing the PATCH.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .squash_merge_commit_message": []byte("COMMIT_MESSAGES\n"),
+		},
+	}
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
@@ -1287,14 +1293,14 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 
-	// Should be exactly 1 API call (batched PATCH); verification uses its response
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	// Expect 2 calls: 1 fetch for the missing companion + 1 batched PATCH.
+	if len(mock.Called) != 2 {
+		t.Fatalf("expected 2 gh calls, got %d", len(mock.Called))
 	}
 
-	body := mock.CalledStdin[0]
+	body := mock.CalledStdin[1]
 	if body == nil {
-		t.Fatal("expected stdin body, got nil")
+		t.Fatal("expected stdin body on PATCH call, got nil")
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1305,6 +1311,9 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 	}
 	if payload["squash_merge_commit_title"] != "PR_TITLE" {
 		t.Errorf("squash_merge_commit_title = %v, want PR_TITLE", payload["squash_merge_commit_title"])
+	}
+	if payload["squash_merge_commit_message"] != "COMMIT_MESSAGES" {
+		t.Errorf("squash_merge_commit_message = %v, want COMMIT_MESSAGES (fetched companion)", payload["squash_merge_commit_message"])
 	}
 	// auto_delete_head_branches should be mapped to delete_branch_on_merge
 	if payload["delete_branch_on_merge"] != true {
@@ -1745,17 +1754,19 @@ func TestApplyMergeStrategyBatch_Verification(t *testing.T) {
 			children: []Change{
 				{Field: "allow_auto_merge", NewValue: true},
 				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
 			},
-			response: `{"allow_auto_merge":false,"squash_merge_commit_title":"COMMIT_OR_PR_TITLE"}`,
-			wantErrs: []string{"allow_auto_merge=true", "squash_merge_commit_title=PR_TITLE"},
+			response: `{"allow_auto_merge":false,"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}`,
+			wantErrs: []string{"allow_auto_merge=true", "squash_merge_commit_title=PR_TITLE", "squash_merge_commit_message=PR_BODY"},
 		},
 		{
 			name: "applied as sent",
 			children: []Change{
 				{Field: "allow_auto_merge", NewValue: true},
 				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
 			},
-			response:  `{"allow_auto_merge":true,"squash_merge_commit_title":"PR_TITLE"}`,
+			response:  `{"allow_auto_merge":true,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"PR_BODY"}`,
 			wantNoErr: true,
 		},
 		{
@@ -1812,6 +1823,156 @@ func TestApplyMergeStrategyBatch_Verification(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestApplyMergeStrategyBatch_PairedSquashFields(t *testing.T) {
+	// When only squash_merge_commit_message changes, GitHub requires the
+	// companion squash_merge_commit_title to be sent in the same PATCH.
+	// The batch function must fetch the current title and include it.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .squash_merge_commit_title": []byte("PR_TITLE\n"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	// Expect: 1 gh api fetch for the companion title + 1 PATCH
+	if len(mock.Called) != 2 {
+		t.Fatalf("expected 2 gh calls (fetch companion + PATCH), got %d: %v", len(mock.Called), mock.Called)
+	}
+
+	// First call fetches the missing companion.
+	fetchCall := strings.Join(mock.Called[0], " ")
+	if !strings.Contains(fetchCall, "--jq .squash_merge_commit_title") {
+		t.Errorf("expected jq fetch for squash_merge_commit_title, got: %s", fetchCall)
+	}
+
+	// Second call is the PATCH; its payload must include both fields.
+	body := mock.CalledStdin[1]
+	if body == nil {
+		t.Fatal("expected stdin body on PATCH call, got nil")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse PATCH payload: %v", err)
+	}
+	if payload["squash_merge_commit_message"] != "PR_BODY" {
+		t.Errorf("squash_merge_commit_message = %v, want PR_BODY", payload["squash_merge_commit_message"])
+	}
+	if payload["squash_merge_commit_title"] != "PR_TITLE" {
+		t.Errorf("squash_merge_commit_title = %v, want PR_TITLE (fetched companion)", payload["squash_merge_commit_title"])
+	}
+}
+
+func TestApplyMergeStrategyBatch_PairedMergeFields(t *testing.T) {
+	// When only merge_commit_title changes, the companion merge_commit_message
+	// must be fetched and sent together.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo --jq .merge_commit_message": []byte("PR_BODY\n"),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "merge_commit_title", NewValue: "PR_TITLE"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	// First call fetches merge_commit_message, second is the PATCH.
+	if len(mock.Called) != 2 {
+		t.Fatalf("expected 2 gh calls, got %d: %v", len(mock.Called), mock.Called)
+	}
+
+	body := mock.CalledStdin[1]
+	if body == nil {
+		t.Fatal("expected stdin body on PATCH call, got nil")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse PATCH payload: %v", err)
+	}
+	if payload["merge_commit_title"] != "PR_TITLE" {
+		t.Errorf("merge_commit_title = %v, want PR_TITLE", payload["merge_commit_title"])
+	}
+	if payload["merge_commit_message"] != "PR_BODY" {
+		t.Errorf("merge_commit_message = %v, want PR_BODY (fetched companion)", payload["merge_commit_message"])
+	}
+}
+
+func TestApplyMergeStrategyBatch_BothFieldsPresent_NoExtraFetch(t *testing.T) {
+	// When both fields of a pair are present in the diff, no extra fetch is needed.
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	// Only the PATCH — no extra fetch.
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call (no extra fetch), got %d: %v", len(mock.Called), mock.Called)
+	}
+	body := mock.CalledStdin[0]
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse payload: %v", err)
+	}
+	if payload["squash_merge_commit_title"] != "PR_TITLE" {
+		t.Errorf("squash_merge_commit_title = %v, want PR_TITLE", payload["squash_merge_commit_title"])
+	}
+	if payload["squash_merge_commit_message"] != "PR_BODY" {
+		t.Errorf("squash_merge_commit_message = %v, want PR_BODY", payload["squash_merge_commit_message"])
 	}
 }
 

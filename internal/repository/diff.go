@@ -107,6 +107,8 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 //   - actions.fork_pr_approval is unsupported for private repositories.
 //   - security.automated_security_fixes requires security.vulnerability_alerts
 //     to be effectively true. Required by the GitHub API.
+//   - merge_strategy squash/merge commit title+message must be a valid pairing
+//     per the GitHub API.
 func ValidateDependencies(desired *manifest.Repository, current *CurrentState) error {
 	if desired.Spec.Actions != nil && desired.Spec.Actions.ForkPRApproval != nil && effectiveVisibility(desired, current) == manifest.VisibilityPrivate {
 		return fmt.Errorf("actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or make the repository public/internal)")
@@ -117,15 +119,78 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 	}
 
 	s := desired.Spec.Security
-	if s == nil || s.AutomatedSecurityFixes == nil || !*s.AutomatedSecurityFixes {
+	if s != nil && s.AutomatedSecurityFixes != nil && *s.AutomatedSecurityFixes {
+		effectiveAlerts := current.Security.VulnerabilityAlerts
+		if s.VulnerabilityAlerts != nil {
+			effectiveAlerts = *s.VulnerabilityAlerts
+		}
+		if !effectiveAlerts {
+			return fmt.Errorf("security.automated_security_fixes: true requires security.vulnerability_alerts to be enabled (current state is disabled and the manifest does not enable it)")
+		}
+	}
+
+	return validateMergeCommitPairs(desired, current)
+}
+
+// validSquashCombinations lists all GitHub-accepted (title, message) pairs for
+// squash merges. The same set applies to regular merge commits.
+var validMergeCommitCombinations = map[[2]string]bool{
+	{"PR_TITLE", "PR_BODY"}:                   true,
+	{"PR_TITLE", "BLANK"}:                     true,
+	{"PR_TITLE", "COMMIT_MESSAGES"}:           true,
+	{"COMMIT_OR_PR_TITLE", "COMMIT_MESSAGES"}: true,
+}
+
+// validateMergeCommitPairs checks that the effective squash/merge commit
+// title+message combinations are valid per the GitHub API.
+func validateMergeCommitPairs(desired *manifest.Repository, current *CurrentState) error {
+	ms := desired.Spec.MergeStrategy
+	if ms == nil {
 		return nil
 	}
-	effectiveAlerts := current.Security.VulnerabilityAlerts
-	if s.VulnerabilityAlerts != nil {
-		effectiveAlerts = *s.VulnerabilityAlerts
+
+	type pair struct {
+		scope          string
+		desiredTitle   *string
+		desiredMessage *string
+		currentTitle   string
+		currentMessage string
 	}
-	if !effectiveAlerts {
-		return fmt.Errorf("security.automated_security_fixes: true requires security.vulnerability_alerts to be enabled (current state is disabled and the manifest does not enable it)")
+	pairs := []pair{
+		{
+			scope:          "merge_strategy.squash_merge_commit",
+			desiredTitle:   ms.SquashMergeCommitTitle,
+			desiredMessage: ms.SquashMergeCommitMessage,
+			currentTitle:   current.MergeStrategy.SquashMergeCommitTitle,
+			currentMessage: current.MergeStrategy.SquashMergeCommitMessage,
+		},
+		{
+			scope:          "merge_strategy.merge_commit",
+			desiredTitle:   ms.MergeCommitTitle,
+			desiredMessage: ms.MergeCommitMessage,
+			currentTitle:   current.MergeStrategy.MergeCommitTitle,
+			currentMessage: current.MergeStrategy.MergeCommitMessage,
+		},
+	}
+
+	for _, p := range pairs {
+		// Neither field set — nothing to validate.
+		if p.desiredTitle == nil && p.desiredMessage == nil {
+			continue
+		}
+		effectiveTitle := p.currentTitle
+		if p.desiredTitle != nil {
+			effectiveTitle = *p.desiredTitle
+		}
+		effectiveMessage := p.currentMessage
+		if p.desiredMessage != nil {
+			effectiveMessage = *p.desiredMessage
+		}
+		key := [2]string{effectiveTitle, effectiveMessage}
+		if !validMergeCommitCombinations[key] {
+			return fmt.Errorf("%s: invalid combination title=%q message=%q; valid pairs are PR_TITLE+PR_BODY, PR_TITLE+BLANK, PR_TITLE+COMMIT_MESSAGES, COMMIT_OR_PR_TITLE+COMMIT_MESSAGES",
+				p.scope, effectiveTitle, effectiveMessage)
+		}
 	}
 	return nil
 }
