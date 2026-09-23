@@ -911,10 +911,24 @@ func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *ma
 		rules = append(rules, map[string]any{"type": "required_status_checks", "parameters": params})
 	}
 
+	if update := rs.Rules.Update; update != nil && update.Enabled != nil && *update.Enabled {
+		rule := map[string]any{"type": "update"}
+		targetIsBranch := rs.Target == nil || *rs.Target == manifest.RulesetTargetBranch
+		if update.AllowsFetchAndMerge != nil || targetIsBranch {
+			allowsFetchAndMerge := false
+			if update.AllowsFetchAndMerge != nil {
+				allowsFetchAndMerge = *update.AllowsFetchAndMerge
+			}
+			rule["parameters"] = map[string]any{
+				"update_allows_fetch_and_merge": allowsFetchAndMerge,
+			}
+		}
+		rules = append(rules, rule)
+	}
+
 	// Toggle rules
 	toggles := map[string]*bool{
 		"non_fast_forward":        rs.Rules.NonFastForward,
-		"update":                  rs.Rules.Update,
 		"deletion":                rs.Rules.Deletion,
 		"creation":                rs.Rules.Creation,
 		"required_linear_history": rs.Rules.RequiredLinearHistory,

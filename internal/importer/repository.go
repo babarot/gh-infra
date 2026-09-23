@@ -1113,7 +1113,10 @@ func rulesetCreateDiffs(name string, rs manifest.Ruleset) []FieldDiff {
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.target", name), rs.Target)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.enforcement", name), rs.Enforcement)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.non_fast_forward", name), rs.Rules.NonFastForward)
-	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.update", name), rs.Rules.Update)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.update", name), rs.Rules.Update.IsEnabled())
+	if rs.Rules.Update != nil {
+		appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.update.allows_fetch_and_merge", name), rs.Rules.Update.AllowsFetchAndMerge)
+	}
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.deletion", name), rs.Rules.Deletion)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), rs.Rules.Creation)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), rs.Rules.RequiredLinearHistory)
@@ -1161,7 +1164,20 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.target", name), local.Target, imported.Target)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.enforcement", name), local.Enforcement, imported.Enforcement)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.non_fast_forward", name), local.Rules.NonFastForward, imported.Rules.NonFastForward)
-	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.update", name), local.Rules.Update, imported.Rules.Update)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.update", name), local.Rules.Update.IsEnabled(), imported.Rules.Update.IsEnabled())
+	var localAllowsFetchAndMerge, importedAllowsFetchAndMerge *bool
+	if local.Rules.Update != nil {
+		localAllowsFetchAndMerge = local.Rules.Update.AllowsFetchAndMerge
+	}
+	if imported.Rules.Update != nil {
+		importedAllowsFetchAndMerge = imported.Rules.Update.AllowsFetchAndMerge
+	}
+	appendFieldUpdate(
+		&diffs,
+		fmt.Sprintf("rulesets.%s.rules.update.allows_fetch_and_merge", name),
+		localAllowsFetchAndMerge,
+		importedAllowsFetchAndMerge,
+	)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.deletion", name), local.Rules.Deletion, imported.Rules.Deletion)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), local.Rules.Creation, imported.Rules.Creation)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), local.Rules.RequiredLinearHistory, imported.Rules.RequiredLinearHistory)

@@ -914,8 +914,11 @@ func TestBuildRulesetPayload(t *testing.T) {
 					{Context: "ci/test"},
 				},
 			},
-			NonFastForward:     manifest.Ptr(true),
-			Update:             manifest.Ptr(true),
+			NonFastForward: manifest.Ptr(true),
+			Update: &manifest.RulesetUpdate{
+				Enabled:             manifest.Ptr(true),
+				AllowsFetchAndMerge: manifest.Ptr(true),
+			},
 			Deletion:           manifest.Ptr(true),
 			Creation:           manifest.Ptr(false),
 			RequiredSignatures: manifest.Ptr(true),
@@ -960,6 +963,39 @@ func TestBuildRulesetPayload(t *testing.T) {
 	}
 	if ruleTypes["creation"] {
 		t.Error("creation rule should not be in payload when set to false")
+	}
+	for _, rule := range rules {
+		if rule["type"] != "update" {
+			continue
+		}
+		params, ok := rule["parameters"].(map[string]any)
+		if !ok {
+			t.Fatalf("update parameters type = %T, want map[string]any", rule["parameters"])
+		}
+		if got := params["update_allows_fetch_and_merge"]; got != true {
+			t.Errorf("update_allows_fetch_and_merge = %v, want true", got)
+		}
+	}
+}
+
+func TestBuildRulesetPayloadTagUpdateHasNoParameters(t *testing.T) {
+	rs := &manifest.Ruleset{
+		Name:   "protect-tags",
+		Target: manifest.Ptr(manifest.RulesetTargetTag),
+		Rules: manifest.RulesetRules{
+			Update: &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
+		},
+	}
+	payload, err := buildRulesetPayload(context.Background(), rs, nil)
+	if err != nil {
+		t.Fatalf("buildRulesetPayload: %v", err)
+	}
+	rules := payload["rules"].([]map[string]any)
+	if len(rules) != 1 {
+		t.Fatalf("rules length = %d, want 1", len(rules))
+	}
+	if _, ok := rules[0]["parameters"]; ok {
+		t.Fatalf("tag update rule should not contain parameters: %#v", rules[0])
 	}
 }
 

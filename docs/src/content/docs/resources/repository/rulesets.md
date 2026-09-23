@@ -194,11 +194,29 @@ Simple on/off rules — set to `true` to enable:
 | Field | Description |
 |-------|-------------|
 | `non_fast_forward` | Block force pushes to matching refs |
-| `update` | Block updates to matching refs |
 | `deletion` | Block deletion of matching refs |
 | `creation` | Block creation of matching refs |
 | `required_linear_history` | Require linear commit history (no merge commits) |
 | `required_signatures` | Require signed commits |
+
+### Update Rule
+
+Set `update` to `true` to block updates to matching refs:
+
+```yaml
+update: true
+```
+
+For branch rulesets, use object form to control whether fork branches may pull
+changes from their upstream repository:
+
+```yaml
+update:
+  allows_fetch_and_merge: true
+```
+
+`allows_fetch_and_merge` maps to the REST API
+`update_allows_fetch_and_merge` parameter and is not supported for tag rulesets.
 
 ## Rulesets vs Classic Branch Protection
 

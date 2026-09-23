@@ -704,7 +704,7 @@ func TestFetchRulesets_MultipleRulesets(t *testing.T) {
 				{"id":3,"name":"tag-rules","source_type":"Repository"}
 			]`),
 			"api repos/myorg/myrepo/rulesets/1": []byte(`{"id":1,"name":"protect-main","target":"branch","enforcement":"active"}`),
-			"api repos/myorg/myrepo/rulesets/2": []byte(`{"id":2,"name":"protect-release","target":"branch","enforcement":"active"}`),
+			"api repos/myorg/myrepo/rulesets/2": []byte(`{"id":2,"name":"protect-release","target":"branch","enforcement":"active","rules":[{"type":"update","parameters":{"update_allows_fetch_and_merge":true}}]}`),
 			"api repos/myorg/myrepo/rulesets/3": []byte(`{"id":3,"name":"tag-rules","target":"tag","enforcement":"evaluate","rules":[{"type":"update"}]}`),
 		},
 	}
@@ -722,8 +722,16 @@ func TestFetchRulesets_MultipleRulesets(t *testing.T) {
 			t.Errorf("ruleset %q missing from result", name)
 		}
 	}
-	if !got["tag-rules"].Rules.Update {
+	if got["tag-rules"].Rules.Update == nil {
 		t.Error("expected tag-rules update rule to be enabled")
+	}
+	if got["tag-rules"].Rules.Update.AllowsFetchAndMerge != nil {
+		t.Error("expected tag-rules allows_fetch_and_merge to be absent")
+	}
+	if got["protect-release"].Rules.Update == nil ||
+		got["protect-release"].Rules.Update.AllowsFetchAndMerge == nil ||
+		!*got["protect-release"].Rules.Update.AllowsFetchAndMerge {
+		t.Error("expected protect-release allows_fetch_and_merge to be true")
 	}
 }
 

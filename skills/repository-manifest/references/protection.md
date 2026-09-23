@@ -59,11 +59,23 @@ spec:
 Simple on/off rules — set to `true` to enable:
 
 - `non_fast_forward` — block force pushes
-- `update` — block ref updates
 - `deletion` — block ref deletion
 - `creation` — block ref creation
 - `required_linear_history` — require linear commit history
 - `required_signatures` — require signed commits
+
+The `update` rule accepts either bool form or object form:
+
+```yaml
+update: true
+```
+
+```yaml
+update:
+  allows_fetch_and_merge: true
+```
+
+`allows_fetch_and_merge` is only supported for branch rulesets.
 
 ### Conditions
 

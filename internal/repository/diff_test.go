@@ -1631,7 +1631,7 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 			Target:      manifest.Ptr("branch"),
 			Rules: manifest.RulesetRules{
 				NonFastForward: manifest.Ptr(true),
-				Update:         manifest.Ptr(false),
+				Update:         &manifest.RulesetUpdate{Enabled: manifest.Ptr(false)},
 				Deletion:       manifest.Ptr(false),
 			},
 		},
@@ -1644,7 +1644,6 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 		Target:      "branch",
 		Rules: CurrentRulesetRules{
 			NonFastForward: true,
-			Update:         false,
 			Deletion:       false,
 		},
 	}
@@ -1765,7 +1764,7 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 			Name: "protect-main",
 			Rules: manifest.RulesetRules{
 				NonFastForward:        manifest.Ptr(true),
-				Update:                manifest.Ptr(true),
+				Update:                &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
 				Deletion:              manifest.Ptr(true),
 				RequiredLinearHistory: manifest.Ptr(true),
 			},
@@ -1777,7 +1776,6 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 		Name: "protect-main",
 		Rules: CurrentRulesetRules{
 			NonFastForward: false,
-			Update:         false,
 			Deletion:       false,
 		},
 	}
@@ -1795,6 +1793,37 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 	}
 	if !fields["rules.required_linear_history"] {
 		t.Error("expected rules.required_linear_history change")
+	}
+}
+
+func TestDiff_Rulesets_UpdateParameters(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{
+					Enabled:             manifest.Ptr(true),
+					AllowsFetchAndMerge: manifest.Ptr(true),
+				},
+			},
+		},
+	}
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		ID:   1,
+		Name: "protect-main",
+		Rules: CurrentRulesetRules{
+			Update: &CurrentRulesetUpdate{AllowsFetchAndMerge: manifest.Ptr(false)},
+		},
+	}
+
+	fields := collectChildFields(Diff(context.Background(), desired, current))
+	if !fields["rules.update.allows_fetch_and_merge"] {
+		t.Error("expected rules.update.allows_fetch_and_merge change")
+	}
+	if fields["rules.update"] {
+		t.Error("did not expect rules.update enabled state change")
 	}
 }
 

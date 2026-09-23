@@ -73,12 +73,19 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			Enforcement: manifest.Ptr(rs.Enforcement),
 			Rules: manifest.RulesetRules{
 				NonFastForward:        manifest.Ptr(rs.Rules.NonFastForward),
-				Update:                manifest.Ptr(rs.Rules.Update),
 				Deletion:              manifest.Ptr(rs.Rules.Deletion),
 				Creation:              manifest.Ptr(rs.Rules.Creation),
 				RequiredLinearHistory: manifest.Ptr(rs.Rules.RequiredLinearHistory),
 				RequiredSignatures:    manifest.Ptr(rs.Rules.RequiredSignatures),
 			},
+		}
+		if rs.Rules.Update == nil {
+			mrs.Rules.Update = &manifest.RulesetUpdate{Enabled: manifest.Ptr(false)}
+		} else {
+			mrs.Rules.Update = &manifest.RulesetUpdate{
+				Enabled:             manifest.Ptr(true),
+				AllowsFetchAndMerge: rs.Rules.Update.AllowsFetchAndMerge,
+			}
 		}
 		for _, ba := range rs.BypassActors {
 			if resolver != nil {

@@ -323,11 +323,59 @@ type RulesetRules struct {
 	PullRequest           *RulesetPullRequest  `yaml:"pull_request,omitempty"`
 	RequiredStatusChecks  *RulesetStatusChecks `yaml:"required_status_checks,omitempty"`
 	NonFastForward        *bool                `yaml:"non_fast_forward,omitempty"`
-	Update                *bool                `yaml:"update,omitempty"`
+	Update                *RulesetUpdate       `yaml:"update,omitempty"`
 	Deletion              *bool                `yaml:"deletion,omitempty"`
 	Creation              *bool                `yaml:"creation,omitempty"`
 	RequiredLinearHistory *bool                `yaml:"required_linear_history,omitempty"`
 	RequiredSignatures    *bool                `yaml:"required_signatures,omitempty"`
+}
+
+// RulesetUpdate controls whether matching refs can be updated.
+// It supports both bool form and object form with update rule parameters.
+//
+// Enabled is an internal field and is not exposed in YAML.
+type RulesetUpdate struct {
+	Enabled             *bool `yaml:"-"`
+	AllowsFetchAndMerge *bool `yaml:"allows_fetch_and_merge,omitempty"`
+}
+
+// UnmarshalYAML allows RulesetUpdate to be either a bool or a struct.
+// Object form implicitly enables the rule.
+func (u *RulesetUpdate) UnmarshalYAML(unmarshal func(any) error) error {
+	var b bool
+	if err := unmarshal(&b); err == nil {
+		u.Enabled = &b
+		return nil
+	}
+	type raw RulesetUpdate
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	*u = RulesetUpdate(r)
+	u.Enabled = Ptr(true)
+	return nil
+}
+
+// MarshalYAML emits bool form unless update rule parameters are configured.
+func (u RulesetUpdate) MarshalYAML() (any, error) {
+	if u.Enabled != nil && !*u.Enabled {
+		return false, nil
+	}
+	if u.AllowsFetchAndMerge == nil {
+		return true, nil
+	}
+	return struct {
+		AllowsFetchAndMerge bool `yaml:"allows_fetch_and_merge"`
+	}{AllowsFetchAndMerge: *u.AllowsFetchAndMerge}, nil
+}
+
+// IsEnabled returns the configured enabled state.
+func (u *RulesetUpdate) IsEnabled() *bool {
+	if u == nil {
+		return nil
+	}
+	return u.Enabled
 }
 
 type RulesetPullRequest struct {

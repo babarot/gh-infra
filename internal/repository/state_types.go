@@ -109,11 +109,15 @@ type CurrentRulesetRules struct {
 	PullRequest           *CurrentRulesetPullRequest
 	RequiredStatusChecks  *CurrentRulesetStatusChecks
 	NonFastForward        bool
-	Update                bool
+	Update                *CurrentRulesetUpdate
 	Deletion              bool
 	Creation              bool
 	RequiredLinearHistory bool
 	RequiredSignatures    bool
+}
+
+type CurrentRulesetUpdate struct {
+	AllowsFetchAndMerge *bool
 }
 
 type CurrentRulesetPullRequest struct {
