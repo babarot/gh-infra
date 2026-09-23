@@ -323,6 +323,7 @@ type RulesetRules struct {
 	PullRequest           *RulesetPullRequest  `yaml:"pull_request,omitempty"`
 	RequiredStatusChecks  *RulesetStatusChecks `yaml:"required_status_checks,omitempty"`
 	NonFastForward        *bool                `yaml:"non_fast_forward,omitempty"`
+	Update                *bool                `yaml:"update,omitempty"`
 	Deletion              *bool                `yaml:"deletion,omitempty"`
 	Creation              *bool                `yaml:"creation,omitempty"`
 	RequiredLinearHistory *bool                `yaml:"required_linear_history,omitempty"`

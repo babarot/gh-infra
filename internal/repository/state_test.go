@@ -705,7 +705,7 @@ func TestFetchRulesets_MultipleRulesets(t *testing.T) {
 			]`),
 			"api repos/myorg/myrepo/rulesets/1": []byte(`{"id":1,"name":"protect-main","target":"branch","enforcement":"active"}`),
 			"api repos/myorg/myrepo/rulesets/2": []byte(`{"id":2,"name":"protect-release","target":"branch","enforcement":"active"}`),
-			"api repos/myorg/myrepo/rulesets/3": []byte(`{"id":3,"name":"tag-rules","target":"tag","enforcement":"evaluate"}`),
+			"api repos/myorg/myrepo/rulesets/3": []byte(`{"id":3,"name":"tag-rules","target":"tag","enforcement":"evaluate","rules":[{"type":"update"}]}`),
 		},
 	}
 
@@ -721,6 +721,9 @@ func TestFetchRulesets_MultipleRulesets(t *testing.T) {
 		if _, ok := got[name]; !ok {
 			t.Errorf("ruleset %q missing from result", name)
 		}
+	}
+	if !got["tag-rules"].Rules.Update {
+		t.Error("expected tag-rules update rule to be enabled")
 	}
 }
 

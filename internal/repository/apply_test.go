@@ -915,6 +915,7 @@ func TestBuildRulesetPayload(t *testing.T) {
 				},
 			},
 			NonFastForward:     manifest.Ptr(true),
+			Update:             manifest.Ptr(true),
 			Deletion:           manifest.Ptr(true),
 			Creation:           manifest.Ptr(false),
 			RequiredSignatures: manifest.Ptr(true),
@@ -944,7 +945,7 @@ func TestBuildRulesetPayload(t *testing.T) {
 		t.Fatalf("rules is not []map[string]any, got %T", payload["rules"])
 	}
 
-	// Should have: pull_request, required_status_checks, non_fast_forward, deletion, required_signatures
+	// Should have: pull_request, required_status_checks, non_fast_forward, update, deletion, required_signatures
 	// NOT creation (false)
 	ruleTypes := make(map[string]bool)
 	for _, r := range rules {
@@ -952,7 +953,7 @@ func TestBuildRulesetPayload(t *testing.T) {
 			ruleTypes[typ] = true
 		}
 	}
-	for _, expected := range []string{"pull_request", "required_status_checks", "non_fast_forward", "deletion", "required_signatures"} {
+	for _, expected := range []string{"pull_request", "required_status_checks", "non_fast_forward", "update", "deletion", "required_signatures"} {
 		if !ruleTypes[expected] {
 			t.Errorf("expected rule type %q not found in payload", expected)
 		}

@@ -53,6 +53,7 @@ spec:
             - context: "ci/test"
               app: github-actions
         non_fast_forward: true
+        update: false
         deletion: true
         creation: false
         required_linear_history: false
@@ -193,6 +194,7 @@ Simple on/off rules — set to `true` to enable:
 | Field | Description |
 |-------|-------------|
 | `non_fast_forward` | Block force pushes to matching refs |
+| `update` | Block updates to matching refs |
 | `deletion` | Block deletion of matching refs |
 | `creation` | Block creation of matching refs |
 | `required_linear_history` | Require linear commit history (no merge commits) |

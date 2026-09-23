@@ -384,6 +384,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 			appendIfSet(&children, "enforcement", drs.Enforcement)
 			appendIfSet(&children, "target", drs.Target)
 			appendIfSet(&children, "rules.non_fast_forward", drs.Rules.NonFastForward)
+			appendIfSet(&children, "rules.update", drs.Rules.Update)
 			appendIfSet(&children, "rules.deletion", drs.Rules.Deletion)
 			appendIfSet(&children, "rules.creation", drs.Rules.Creation)
 			appendIfSet(&children, "rules.required_linear_history", drs.Rules.RequiredLinearHistory)
@@ -450,6 +451,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 
 		// toggle rules
 		appendChildChanged(&fieldChanges, "rules.non_fast_forward", drs.Rules.NonFastForward, crs.Rules.NonFastForward)
+		appendChildChanged(&fieldChanges, "rules.update", drs.Rules.Update, crs.Rules.Update)
 		appendChildChanged(&fieldChanges, "rules.deletion", drs.Rules.Deletion, crs.Rules.Deletion)
 		appendChildChanged(&fieldChanges, "rules.creation", drs.Rules.Creation, crs.Rules.Creation)
 		appendChildChanged(&fieldChanges, "rules.required_linear_history", drs.Rules.RequiredLinearHistory, crs.Rules.RequiredLinearHistory)

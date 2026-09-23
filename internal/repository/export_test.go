@@ -242,6 +242,7 @@ func TestToManifest_Rulesets(t *testing.T) {
 				},
 				Rules: CurrentRulesetRules{
 					NonFastForward: true,
+					Update:         true,
 					Deletion:       false,
 					PullRequest: &CurrentRulesetPullRequest{
 						RequiredApprovingReviewCount: 1,
@@ -271,6 +272,7 @@ func TestToManifest_Rulesets(t *testing.T) {
 	assertStringPtr(t, "target", rs.Target, "branch")
 	assertStringPtr(t, "enforcement", rs.Enforcement, "active")
 	assertBoolPtr(t, "non_fast_forward", rs.Rules.NonFastForward, true)
+	assertBoolPtr(t, "update", rs.Rules.Update, true)
 	assertBoolPtr(t, "deletion", rs.Rules.Deletion, false)
 
 	if rs.Rules.PullRequest == nil {

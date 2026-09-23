@@ -1631,6 +1631,7 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 			Target:      manifest.Ptr("branch"),
 			Rules: manifest.RulesetRules{
 				NonFastForward: manifest.Ptr(true),
+				Update:         manifest.Ptr(false),
 				Deletion:       manifest.Ptr(false),
 			},
 		},
@@ -1643,6 +1644,7 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 		Target:      "branch",
 		Rules: CurrentRulesetRules{
 			NonFastForward: true,
+			Update:         false,
 			Deletion:       false,
 		},
 	}
@@ -1763,6 +1765,7 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 			Name: "protect-main",
 			Rules: manifest.RulesetRules{
 				NonFastForward:        manifest.Ptr(true),
+				Update:                manifest.Ptr(true),
 				Deletion:              manifest.Ptr(true),
 				RequiredLinearHistory: manifest.Ptr(true),
 			},
@@ -1774,6 +1777,7 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 		Name: "protect-main",
 		Rules: CurrentRulesetRules{
 			NonFastForward: false,
+			Update:         false,
 			Deletion:       false,
 		},
 	}
@@ -1782,6 +1786,9 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 	fields := collectChildFields(changes)
 	if !fields["rules.non_fast_forward"] {
 		t.Error("expected rules.non_fast_forward change")
+	}
+	if !fields["rules.update"] {
+		t.Error("expected rules.update change")
 	}
 	if !fields["rules.deletion"] {
 		t.Error("expected rules.deletion change")

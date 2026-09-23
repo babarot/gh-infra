@@ -675,6 +675,8 @@ func (p *Processor) fetchRuleset(ctx context.Context, owner, name string, id int
 			}
 		case "non_fast_forward":
 			rs.Rules.NonFastForward = true
+		case "update":
+			rs.Rules.Update = true
 		case "deletion":
 			rs.Rules.Deletion = true
 		case "creation":

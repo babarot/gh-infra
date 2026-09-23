@@ -1037,6 +1037,7 @@ repositories:
 					Enforcement: &active,
 					Rules: manifest.RulesetRules{
 						NonFastForward:        manifest.Ptr(true),
+						Update:                manifest.Ptr(true),
 						Deletion:              manifest.Ptr(true),
 						Creation:              manifest.Ptr(false),
 						RequiredLinearHistory: manifest.Ptr(false),
@@ -1068,6 +1069,9 @@ repositories:
 	}
 	if !strings.Contains(updated, "rulesets:") {
 		t.Fatalf("expected rulesets override to be written:\n%s", updated)
+	}
+	if !strings.Contains(updated, "update: true") {
+		t.Fatalf("expected update rule to be written:\n%s", updated)
 	}
 	if !strings.Contains(updated, "non_fast_forward: true") {
 		t.Fatalf("expected ruleset rules to be written:\n%s", updated)

@@ -914,6 +914,7 @@ func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *ma
 	// Toggle rules
 	toggles := map[string]*bool{
 		"non_fast_forward":        rs.Rules.NonFastForward,
+		"update":                  rs.Rules.Update,
 		"deletion":                rs.Rules.Deletion,
 		"creation":                rs.Rules.Creation,
 		"required_linear_history": rs.Rules.RequiredLinearHistory,

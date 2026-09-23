@@ -109,6 +109,7 @@ type CurrentRulesetRules struct {
 	PullRequest           *CurrentRulesetPullRequest
 	RequiredStatusChecks  *CurrentRulesetStatusChecks
 	NonFastForward        bool
+	Update                bool
 	Deletion              bool
 	Creation              bool
 	RequiredLinearHistory bool
