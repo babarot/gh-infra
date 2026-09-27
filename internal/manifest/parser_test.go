@@ -1297,6 +1297,73 @@ func TestMergeMergeStrategy_MergeCommitTitleMessage(t *testing.T) {
 	}
 }
 
+func TestMergeMergeStrategy_AllowAutoMergeFromOverride(t *testing.T) {
+	base := &MergeStrategy{AllowSquashMerge: Ptr(true)}
+	override := &MergeStrategy{AllowAutoMerge: Ptr(true)}
+
+	result := mergeMergeStrategy(base, override)
+
+	if result.AllowAutoMerge == nil || !*result.AllowAutoMerge {
+		t.Errorf("allow_auto_merge = %v, want true (from override)", result.AllowAutoMerge)
+	}
+	if result.AllowSquashMerge == nil || !*result.AllowSquashMerge {
+		t.Errorf("allow_squash_merge = %v, want true (from base)", result.AllowSquashMerge)
+	}
+}
+
+func TestMergeMergeStrategy_AllowAutoMergeOverridesBase(t *testing.T) {
+	base := &MergeStrategy{AllowAutoMerge: Ptr(true)}
+	override := &MergeStrategy{AllowAutoMerge: Ptr(false)}
+
+	result := mergeMergeStrategy(base, override)
+
+	if result.AllowAutoMerge == nil || *result.AllowAutoMerge {
+		t.Errorf("allow_auto_merge = %v, want false (overridden)", result.AllowAutoMerge)
+	}
+}
+
+func TestRepositorySet_MergeStrategyAllowAutoMergeOverride(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    merge_strategy:
+      allow_squash_merge: true
+repositories:
+  - name: auto-merge-repo
+    spec:
+      merge_strategy:
+        allow_auto_merge: true
+`
+	path := filepath.Join(dir, "auto-merge.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath returned error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+
+	ms := repos[0].Spec.MergeStrategy
+	if ms == nil {
+		t.Fatal("merge_strategy is nil after merge")
+	}
+	if ms.AllowAutoMerge == nil || !*ms.AllowAutoMerge {
+		t.Errorf("merge_strategy.allow_auto_merge = %v, want true (from entry)", ms.AllowAutoMerge)
+	}
+	if ms.AllowSquashMerge == nil || !*ms.AllowSquashMerge {
+		t.Errorf("merge_strategy.allow_squash_merge = %v, want true (from defaults)", ms.AllowSquashMerge)
+	}
+}
+
 func TestMergeFeatures_NilBase(t *testing.T) {
 	override := &Features{
 		Issues: Ptr(true),

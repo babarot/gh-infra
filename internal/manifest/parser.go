@@ -539,6 +539,9 @@ func mergeMergeStrategy(base, override *MergeStrategy) *MergeStrategy {
 	if override.AllowRebaseMerge != nil {
 		result.AllowRebaseMerge = override.AllowRebaseMerge
 	}
+	if override.AllowAutoMerge != nil {
+		result.AllowAutoMerge = override.AllowAutoMerge
+	}
 	if override.AutoDeleteHeadBranches != nil {
 		result.AutoDeleteHeadBranches = override.AutoDeleteHeadBranches
 	}
