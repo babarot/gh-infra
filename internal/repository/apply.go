@@ -652,15 +652,6 @@ func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *m
 			break
 		}
 	}
-	// Fallback: check conditional_spec when the condition was met.
-	if bp == nil && repo.ConditionalSpec != nil {
-		for i := range repo.ConditionalSpec.BranchProtection {
-			if repo.ConditionalSpec.BranchProtection[i].Pattern == pattern {
-				bp = &repo.ConditionalSpec.BranchProtection[i]
-				break
-			}
-		}
-	}
 	if bp == nil {
 		return fmt.Errorf("branch protection rule %q not found in desired state", pattern)
 	}
@@ -745,15 +736,6 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 		if repo.Spec.Rulesets[i].Name == rulesetName {
 			rs = &repo.Spec.Rulesets[i]
 			break
-		}
-	}
-	// Fallback: check conditional_spec when the condition was met.
-	if rs == nil && repo.ConditionalSpec != nil {
-		for i := range repo.ConditionalSpec.Rulesets {
-			if repo.ConditionalSpec.Rulesets[i].Name == rulesetName {
-				rs = &repo.ConditionalSpec.Rulesets[i]
-				break
-			}
 		}
 	}
 	if rs == nil {
@@ -970,20 +952,12 @@ func (p *Processor) applySecret(ctx context.Context, c Change, repo *manifest.Re
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
 
-	// Find secret value from desired state; fall back to conditional_spec.
+	// Find secret value from desired state
 	var value string
 	for _, s := range repo.Spec.Secrets {
 		if s.Name == c.Field {
 			value = s.Value
 			break
-		}
-	}
-	if value == "" && repo.ConditionalSpec != nil {
-		for _, s := range repo.ConditionalSpec.Secrets {
-			if s.Name == c.Field {
-				value = s.Value
-				break
-			}
 		}
 	}
 
@@ -999,20 +973,12 @@ func (p *Processor) applyVariable(ctx context.Context, c Change, repo *manifest.
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
 
-	// Find variable value from desired state; fall back to conditional_spec.
+	// Find variable value from desired state
 	var value string
 	for _, v := range repo.Spec.Variables {
 		if v.Name == c.Field {
 			value = v.Value
 			break
-		}
-	}
-	if value == "" && repo.ConditionalSpec != nil {
-		for _, v := range repo.ConditionalSpec.Variables {
-			if v.Name == c.Field {
-				value = v.Value
-				break
-			}
 		}
 	}
 
@@ -1033,20 +999,12 @@ func (p *Processor) applyLabel(ctx context.Context, c Change, repo *manifest.Rep
 		return wrapError(err, fullName, "label:"+c.Field)
 	}
 
-	// Find label from desired state; fall back to conditional_spec.
+	// Find label from desired state (required for create/update)
 	var label *manifest.Label
 	for i := range repo.Spec.Labels {
 		if repo.Spec.Labels[i].Name == c.Field {
 			label = &repo.Spec.Labels[i]
 			break
-		}
-	}
-	if label == nil && repo.ConditionalSpec != nil {
-		for i := range repo.ConditionalSpec.Labels {
-			if repo.ConditionalSpec.Labels[i].Name == c.Field {
-				label = &repo.ConditionalSpec.Labels[i]
-				break
-			}
 		}
 	}
 	if label == nil {
@@ -1077,20 +1035,12 @@ func (p *Processor) applyMilestone(ctx context.Context, c Change, repo *manifest
 	name := repo.Metadata.Name
 	fullName := owner + "/" + name
 
-	// Find milestone from desired state; fall back to conditional_spec.
+	// Find milestone from desired state
 	var ms *manifest.Milestone
 	for i := range repo.Spec.Milestones {
 		if repo.Spec.Milestones[i].Title == c.Field {
 			ms = &repo.Spec.Milestones[i]
 			break
-		}
-	}
-	if ms == nil && repo.ConditionalSpec != nil {
-		for i := range repo.ConditionalSpec.Milestones {
-			if repo.ConditionalSpec.Milestones[i].Title == c.Field {
-				ms = &repo.ConditionalSpec.Milestones[i]
-				break
-			}
 		}
 	}
 	if ms == nil {
@@ -1166,9 +1116,6 @@ func (p *Processor) findMilestoneNumber(ctx context.Context, owner, name, title 
 
 func (p *Processor) applyActions(ctx context.Context, c Change, repo *manifest.Repository) error {
 	a := repo.Spec.Actions
-	if a == nil && repo.ConditionalSpec != nil {
-		a = repo.ConditionalSpec.Actions
-	}
 	if a == nil {
 		return nil
 	}

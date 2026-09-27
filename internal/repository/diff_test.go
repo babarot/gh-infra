@@ -2491,15 +2491,17 @@ func TestDiff_ConditionalSpec_PublicCondition_PrivateCurrentVisibility_NoRuleset
 	}
 }
 
-func TestDiff_ConditionalSpec_NoDuplicateChanges_OverlappingResources(t *testing.T) {
+func TestDiff_ConditionalSpec_SameNameRuleset_ConditionalWins(t *testing.T) {
 	desired := baseDesired()
 	desired.Spec.Rulesets = []manifest.Ruleset{makeRuleset("shared-ruleset")}
 	desired.Spec.RulesetsSet = true
 
+	condRuleset := makeRuleset("shared-ruleset")
+	condRuleset.Enforcement = manifest.Ptr("evaluate")
 	condSpec := manifest.RepositorySpec{
-		Rulesets: []manifest.Ruleset{makeRuleset("shared-ruleset")},
+		Rulesets:    []manifest.Ruleset{condRuleset},
+		RulesetsSet: true,
 	}
-	condSpec.RulesetsSet = true
 	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
 	desired.ConditionalSpec = &condSpec
 
@@ -2508,14 +2510,23 @@ func TestDiff_ConditionalSpec_NoDuplicateChanges_OverlappingResources(t *testing
 
 	changes := Diff(context.Background(), desired, current)
 
-	rulesetCount := 0
+	var rulesetChanges []Change
 	for _, c := range changes {
 		if c.Resource == "Ruleset[shared-ruleset]" {
-			rulesetCount++
+			rulesetChanges = append(rulesetChanges, c)
 		}
 	}
-	if rulesetCount > 1 {
-		t.Errorf("expected at most 1 ruleset change for overlapping spec/conditional_spec, got %d", rulesetCount)
+	if len(rulesetChanges) != 1 {
+		t.Fatalf("expected exactly 1 ruleset change, got %d: %v", len(rulesetChanges), rulesetChanges)
+	}
+	var enforcement any
+	for _, child := range rulesetChanges[0].Details {
+		if child.Field == "enforcement" {
+			enforcement = child.NewValue
+		}
+	}
+	if enforcement != "evaluate" {
+		t.Errorf("enforcement = %v, want conditional_spec value %q", enforcement, "evaluate")
 	}
 }
 
@@ -2574,7 +2585,7 @@ func TestDiff_ConditionalSpec_Idempotent(t *testing.T) {
 	}
 }
 
-func TestDiff_ConditionalSpec_BaseSpecNotRediffed(t *testing.T) {
+func TestDiff_ConditionalSpec_MergedSpecDiffedOnce(t *testing.T) {
 	desired := baseDesired()
 	desired.Spec.BranchProtection = []manifest.BranchProtection{
 		{Pattern: "main", EnforceAdmins: manifest.Ptr(true)},
@@ -2582,9 +2593,9 @@ func TestDiff_ConditionalSpec_BaseSpecNotRediffed(t *testing.T) {
 	desired.Spec.BranchProtectionSet = true
 
 	condSpec := manifest.RepositorySpec{
-		Rulesets: []manifest.Ruleset{makeRuleset("cond-only")},
+		Rulesets:    []manifest.Ruleset{makeRuleset("cond-only")},
+		RulesetsSet: true,
 	}
-	condSpec.RulesetsSet = true
 	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
 	desired.ConditionalSpec = &condSpec
 
@@ -2593,13 +2604,94 @@ func TestDiff_ConditionalSpec_BaseSpecNotRediffed(t *testing.T) {
 
 	changes := Diff(context.Background(), desired, current)
 
-	bpCount := 0
+	bpCount, rulesetCount := 0, 0
 	for _, c := range changes {
-		if strings.HasPrefix(c.Resource, manifest.ResourceBranchProtection) {
+		switch {
+		case strings.HasPrefix(c.Resource, manifest.ResourceBranchProtection):
 			bpCount++
+		case c.Resource == "Ruleset[cond-only]":
+			rulesetCount++
 		}
 	}
-	if bpCount != 1 {
-		t.Errorf("expected exactly 1 branch_protection change (from base spec only), got %d", bpCount)
+	if bpCount != 1 || rulesetCount != 1 {
+		t.Errorf("expected 1 branch_protection and 1 ruleset change, got %d and %d: %v", bpCount, rulesetCount, changes)
+	}
+}
+
+func TestDiff_ConditionalSpec_MergeStrategyDiffed(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.MergeStrategy = &manifest.MergeStrategy{AllowSquashMerge: manifest.Ptr(true)}
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &manifest.RepositorySpec{
+		MergeStrategy: &manifest.MergeStrategy{AutoDeleteHeadBranches: manifest.Ptr(true)},
+	}
+
+	current := baseState()
+	current.Visibility = "public"
+
+	changes := Diff(context.Background(), desired, current)
+
+	fields := map[string]bool{}
+	for _, c := range changes {
+		if c.Field == "merge_strategy" {
+			for _, child := range c.Children {
+				fields[child.Field] = true
+			}
+		}
+	}
+	if !fields["allow_squash_merge"] || !fields["auto_delete_head_branches"] {
+		t.Errorf("expected allow_squash_merge (spec) and auto_delete_head_branches (conditional_spec) changes, got %v", fields)
+	}
+}
+
+func TestDiff_ConditionalSpec_ConditionNotMet_NoConditionalFieldChanges(t *testing.T) {
+	desired := baseDesired()
+	desired.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+	desired.ConditionalSpec = &manifest.RepositorySpec{
+		Description:   manifest.Ptr("public repo"),
+		MergeStrategy: &manifest.MergeStrategy{AllowAutoMerge: manifest.Ptr(true)},
+		Actions:       &manifest.Actions{Enabled: manifest.Ptr(true)},
+	}
+
+	current := baseState()
+	current.Visibility = "private"
+
+	if changes := Diff(context.Background(), desired, current); len(changes) != 0 {
+		t.Errorf("expected no changes when condition is not met, got %v", changes)
+	}
+}
+
+func TestResolveConditional(t *testing.T) {
+	newDesired := func() *manifest.Repository {
+		d := baseDesired()
+		d.Spec.Description = manifest.Ptr("base")
+		d.Condition = &manifest.RepositoryCondition{Visibility: "public"}
+		d.ConditionalSpec = &manifest.RepositorySpec{Description: manifest.Ptr("conditional")}
+		return d
+	}
+
+	tests := []struct {
+		name     string
+		current  *CurrentState
+		wantDesc string
+	}{
+		{"condition met", &CurrentState{Visibility: "public"}, "conditional"},
+		{"condition not met", &CurrentState{Visibility: "private"}, "base"},
+		{"new repository", &CurrentState{IsNew: true}, "base"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desired := newDesired()
+			got := ResolveConditional(desired, tt.current)
+			if *got.Spec.Description != tt.wantDesc {
+				t.Errorf("Spec.Description = %q, want %q", *got.Spec.Description, tt.wantDesc)
+			}
+			if got.Condition != nil || got.ConditionalSpec != nil {
+				t.Errorf("expected Condition and ConditionalSpec cleared, got %+v / %+v", got.Condition, got.ConditionalSpec)
+			}
+			if *desired.Spec.Description != "base" || desired.ConditionalSpec == nil {
+				t.Error("ResolveConditional must not modify its input")
+			}
+		})
 	}
 }

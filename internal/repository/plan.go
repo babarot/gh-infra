@@ -71,6 +71,10 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		}
 		tracker.Checkpoint(fullName, "fetched repository state")
 
+		// Resolve conditional_spec once so dependency checks, Diff, and
+		// apply (which receives the returned repo) all see the same spec.
+		r = ResolveConditional(r, current)
+
 		// Cross-field dependencies that need current state to evaluate.
 		if err := ValidateDependencies(r, current); err != nil {
 			logger.Error("dependency validation failed", "repo", fullName, "err", err)
