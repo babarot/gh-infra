@@ -990,7 +990,10 @@ func TestBuildRulesetPayloadTagUpdateHasNoParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRulesetPayload: %v", err)
 	}
-	rules := payload["rules"].([]map[string]any)
+	rules, ok := payload["rules"].([]map[string]any)
+	if !ok {
+		t.Fatalf("rules is not []map[string]any, got %T", payload["rules"])
+	}
 	if len(rules) != 1 {
 		t.Fatalf("rules length = %d, want 1", len(rules))
 	}
