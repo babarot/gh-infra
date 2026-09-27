@@ -695,6 +695,10 @@ var rulesetDeleteFields = []deleteField[*CurrentRuleset]{
 		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.NonFastForward },
 	},
 	{
+		Field: "rules.update",
+		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.Update != nil },
+	},
+	{
 		Field: "rules.deletion",
 		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.Deletion },
 	},

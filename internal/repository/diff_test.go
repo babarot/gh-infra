@@ -1689,6 +1689,24 @@ func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
 	}
 }
 
+func TestRsDeleteChildren_Update(t *testing.T) {
+	fields := func(rs *CurrentRuleset) map[string]bool {
+		m := map[string]bool{}
+		for _, c := range rsDeleteChildren(rs) {
+			m[c.Field] = true
+		}
+		return m
+	}
+
+	withUpdate := &CurrentRuleset{Name: "r", Rules: CurrentRulesetRules{Update: &CurrentRulesetUpdate{}}}
+	if !fields(withUpdate)["rules.update"] {
+		t.Error("expected rules.update in delete details when the update rule is set")
+	}
+	if fields(&CurrentRuleset{Name: "r"})["rules.update"] {
+		t.Error("did not expect rules.update in delete details when the update rule is not set")
+	}
+}
+
 func TestDiff_Rulesets_ReconcileAuthoritativeNoopWhenOmitted(t *testing.T) {
 	desired := baseDesired()
 	mode := manifest.CollectionReconcileAuthoritative
