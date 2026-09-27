@@ -19,6 +19,8 @@ spec:
 
 `${ENV_DEPLOY_TOKEN}` is resolved from the environment where `gh infra apply` runs — your terminal or CI environment.
 
+Only variables with the `ENV_` prefix are expanded, so a manifest cannot copy arbitrary variables (such as `GH_TOKEN`) from the apply environment into a secret. `plan` and `apply` fail if a secret references a variable without the `ENV_` prefix, or if a referenced `ENV_*` variable is unset or empty.
+
 ### Limitations
 
 GitHub does not expose secret values via the API. This means:

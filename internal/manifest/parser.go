@@ -3,6 +3,7 @@ package manifest
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -726,21 +727,50 @@ func mergeSelectedActions(base, override *SelectedActions) *SelectedActions {
 	return &result
 }
 
-// expandEnvVars replaces ${ENV_*} references with actual environment variables.
-func expandEnvVars(s string) string {
-	return os.Expand(s, func(key string) string {
-		if strings.HasPrefix(key, "ENV_") {
-			return os.Getenv(key)
+// expandEnvVars replaces ${ENV_*} references with environment variable values.
+// Only ENV_-prefixed names are expanded so that a manifest cannot pull
+// arbitrary variables (e.g. GH_TOKEN) from the apply environment into a
+// secret. It returns the expanded string along with any references that were
+// not ENV_-prefixed and any ENV_* variables that are unset or empty.
+func expandEnvVars(s string) (expanded string, disallowed, missing []string) {
+	expanded = os.Expand(s, func(key string) string {
+		if !strings.HasPrefix(key, "ENV_") {
+			disallowed = append(disallowed, key)
+			return "${" + key + "}"
 		}
-		return "${" + key + "}"
+		v := os.Getenv(key)
+		if v == "" {
+			missing = append(missing, key)
+		}
+		return v
 	})
+	return expanded, disallowed, missing
 }
 
-// ResolveSecrets expands environment variable references in secret values.
-func ResolveSecrets(repos []*Repository) {
+// ResolveSecrets expands ${ENV_*} references in secret values. It returns an
+// error if a secret references a variable without the ENV_ prefix, or if a
+// referenced ENV_* variable is unset or empty, rather than silently storing a
+// corrupted value.
+func ResolveSecrets(repos []*Repository) error {
+	var errs []error
 	for _, repo := range repos {
 		for i := range repo.Spec.Secrets {
-			repo.Spec.Secrets[i].Value = expandEnvVars(repo.Spec.Secrets[i].Value)
+			secret := &repo.Spec.Secrets[i]
+			resolved, disallowed, missing := expandEnvVars(secret.Value)
+			secret.Value = resolved
+			for _, key := range disallowed {
+				errs = append(errs, fmt.Errorf(
+					"repo %s: secret %q references ${%s}: only ${ENV_*} variables are allowed",
+					repo.Metadata.Name, secret.Name, key,
+				))
+			}
+			for _, key := range missing {
+				errs = append(errs, fmt.Errorf(
+					"repo %s: secret %q references ${%s}, which is unset or empty",
+					repo.Metadata.Name, secret.Name, key,
+				))
+			}
 		}
 	}
+	return errors.Join(errs...)
 }
