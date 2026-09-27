@@ -918,14 +918,12 @@ func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *ma
 
 	if update := rs.Rules.Update; update != nil && update.Enabled != nil && *update.Enabled {
 		rule := map[string]any{"type": "update"}
-		targetIsBranch := rs.Target == nil || *rs.Target == manifest.RulesetTargetBranch
-		if update.AllowsFetchAndMerge != nil || targetIsBranch {
-			allowsFetchAndMerge := false
-			if update.AllowsFetchAndMerge != nil {
-				allowsFetchAndMerge = *update.AllowsFetchAndMerge
-			}
+		// Only send the parameter when the manifest sets it. Sending a default
+		// of false would silently turn off a setting that plan never reported,
+		// since plan does not compare fields the manifest leaves unset.
+		if update.AllowsFetchAndMerge != nil {
 			rule["parameters"] = map[string]any{
-				"update_allows_fetch_and_merge": allowsFetchAndMerge,
+				"update_allows_fetch_and_merge": *update.AllowsFetchAndMerge,
 			}
 		}
 		rules = append(rules, rule)

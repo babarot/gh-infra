@@ -455,16 +455,16 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		// toggle rules
 		appendChildChanged(&fieldChanges, "rules.non_fast_forward", drs.Rules.NonFastForward, crs.Rules.NonFastForward)
 		appendChildChanged(&fieldChanges, "rules.update", drs.Rules.Update.IsEnabled(), crs.Rules.Update != nil)
-		if drs.Rules.Update != nil && crs.Rules.Update != nil {
-			currentAllowsFetchAndMerge := false
-			if crs.Rules.Update.AllowsFetchAndMerge != nil {
-				currentAllowsFetchAndMerge = *crs.Rules.Update.AllowsFetchAndMerge
-			}
+		// GitHub does not always return update_allows_fetch_and_merge (e.g. for
+		// user-owned, non-fork repos it is accepted but omitted from responses).
+		// Only compare when the current value is known; otherwise setting it
+		// would show a diff on every plan that apply can never resolve.
+		if drs.Rules.Update != nil && crs.Rules.Update != nil && crs.Rules.Update.AllowsFetchAndMerge != nil {
 			appendChildChanged(
 				&fieldChanges,
 				"rules.update.allows_fetch_and_merge",
 				drs.Rules.Update.AllowsFetchAndMerge,
-				currentAllowsFetchAndMerge,
+				*crs.Rules.Update.AllowsFetchAndMerge,
 			)
 		}
 		appendChildChanged(&fieldChanges, "rules.deletion", drs.Rules.Deletion, crs.Rules.Deletion)
@@ -693,6 +693,10 @@ var rulesetDeleteFields = []deleteField[*CurrentRuleset]{
 	{
 		Field: "rules.non_fast_forward",
 		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.NonFastForward },
+	},
+	{
+		Field: "rules.update",
+		Value: func(rs *CurrentRuleset) (any, bool) { return true, rs.Rules.Update != nil },
 	},
 	{
 		Field: "rules.deletion",

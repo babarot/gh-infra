@@ -217,6 +217,11 @@ update:
 
 `allows_fetch_and_merge` maps to the REST API
 `update_allows_fetch_and_merge` parameter and is not supported for tag rulesets.
+GitHub may omit this parameter from API responses (for example, on user-owned
+repositories). When it does, `plan` cannot detect drift for this field.
+
+With the bool form (`update: true`), gh-infra does not manage
+`allows_fetch_and_merge`: it neither sends nor compares the parameter.
 
 ## Rulesets vs Classic Branch Protection
 

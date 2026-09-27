@@ -978,27 +978,41 @@ func TestBuildRulesetPayload(t *testing.T) {
 	}
 }
 
-func TestBuildRulesetPayloadTagUpdateHasNoParameters(t *testing.T) {
-	rs := &manifest.Ruleset{
-		Name:   "protect-tags",
-		Target: manifest.Ptr(manifest.RulesetTargetTag),
-		Rules: manifest.RulesetRules{
-			Update: &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
-		},
+func TestBuildRulesetPayload_UpdateWithoutParameters(t *testing.T) {
+	// Bool-form update must not send update_allows_fetch_and_merge; sending a
+	// default false would silently turn off a setting plan never reported.
+	tests := []struct {
+		name   string
+		target *string
+	}{
+		{"tag", manifest.Ptr(manifest.RulesetTargetTag)},
+		{"branch", manifest.Ptr(manifest.RulesetTargetBranch)},
+		{"target unset", nil},
 	}
-	payload, err := buildRulesetPayload(context.Background(), rs, nil)
-	if err != nil {
-		t.Fatalf("buildRulesetPayload: %v", err)
-	}
-	rules, ok := payload["rules"].([]map[string]any)
-	if !ok {
-		t.Fatalf("rules is not []map[string]any, got %T", payload["rules"])
-	}
-	if len(rules) != 1 {
-		t.Fatalf("rules length = %d, want 1", len(rules))
-	}
-	if _, ok := rules[0]["parameters"]; ok {
-		t.Fatalf("tag update rule should not contain parameters: %#v", rules[0])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rs := &manifest.Ruleset{
+				Name:   "protect",
+				Target: tt.target,
+				Rules: manifest.RulesetRules{
+					Update: &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
+				},
+			}
+			payload, err := buildRulesetPayload(context.Background(), rs, nil)
+			if err != nil {
+				t.Fatalf("buildRulesetPayload: %v", err)
+			}
+			rules, ok := payload["rules"].([]map[string]any)
+			if !ok {
+				t.Fatalf("rules is not []map[string]any, got %T", payload["rules"])
+			}
+			if len(rules) != 1 {
+				t.Fatalf("rules length = %d, want 1", len(rules))
+			}
+			if _, ok := rules[0]["parameters"]; ok {
+				t.Fatalf("update rule should not contain parameters: %#v", rules[0])
+			}
+		})
 	}
 }
 

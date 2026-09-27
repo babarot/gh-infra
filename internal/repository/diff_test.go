@@ -1689,6 +1689,24 @@ func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
 	}
 }
 
+func TestRsDeleteChildren_Update(t *testing.T) {
+	fields := func(rs *CurrentRuleset) map[string]bool {
+		m := map[string]bool{}
+		for _, c := range rsDeleteChildren(rs) {
+			m[c.Field] = true
+		}
+		return m
+	}
+
+	withUpdate := &CurrentRuleset{Name: "r", Rules: CurrentRulesetRules{Update: &CurrentRulesetUpdate{}}}
+	if !fields(withUpdate)["rules.update"] {
+		t.Error("expected rules.update in delete details when the update rule is set")
+	}
+	if fields(&CurrentRuleset{Name: "r"})["rules.update"] {
+		t.Error("did not expect rules.update in delete details when the update rule is not set")
+	}
+}
+
 func TestDiff_Rulesets_ReconcileAuthoritativeNoopWhenOmitted(t *testing.T) {
 	desired := baseDesired()
 	mode := manifest.CollectionReconcileAuthoritative
@@ -1821,6 +1839,39 @@ func TestDiff_Rulesets_UpdateParameters(t *testing.T) {
 	fields := collectChildFields(Diff(context.Background(), desired, current))
 	if !fields["rules.update.allows_fetch_and_merge"] {
 		t.Error("expected rules.update.allows_fetch_and_merge change")
+	}
+	if fields["rules.update"] {
+		t.Error("did not expect rules.update enabled state change")
+	}
+}
+
+func TestDiff_Rulesets_UpdateParametersNotReturned(t *testing.T) {
+	// GitHub may accept update_allows_fetch_and_merge but omit it from
+	// responses. A missing current value must not produce a perpetual diff.
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{
+					Enabled:             manifest.Ptr(true),
+					AllowsFetchAndMerge: manifest.Ptr(true),
+				},
+			},
+		},
+	}
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		ID:   1,
+		Name: "protect-main",
+		Rules: CurrentRulesetRules{
+			Update: &CurrentRulesetUpdate{},
+		},
+	}
+
+	fields := collectChildFields(Diff(context.Background(), desired, current))
+	if fields["rules.update.allows_fetch_and_merge"] {
+		t.Error("did not expect rules.update.allows_fetch_and_merge change when GitHub omits the parameter")
 	}
 	if fields["rules.update"] {
 		t.Error("did not expect rules.update enabled state change")
