@@ -168,8 +168,7 @@ func evaluateCondition(cond *manifest.RepositoryCondition, current *CurrentState
 // desired.Spec — callers must not append to or mutate slice elements.
 func conditionApplied(desired *manifest.Repository, conditionalSpec *manifest.RepositorySpec) *manifest.Repository {
 	merged := *desired
-	base := &manifest.RepositorySetDefaults{Spec: desired.Spec}
-	merged.Spec = manifest.MergeSpecs(base, *conditionalSpec)
+	merged.Spec = manifest.MergeSpecs(desired.Spec, *conditionalSpec)
 	return &merged
 }
 

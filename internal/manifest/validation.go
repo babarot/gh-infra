@@ -12,25 +12,8 @@ func (r *Repository) Validate() error {
 		return err
 	}
 	name := r.Metadata.Name
-	// Condition/ConditionalSpec must be specified together.
-	if r.Condition != nil && r.ConditionalSpec == nil {
-		return fmt.Errorf("%s: when: requires conditional_spec: to be present", name)
-	}
-	if r.ConditionalSpec != nil && r.Condition == nil {
-		return fmt.Errorf("%s: conditional_spec: requires when: to be present", name)
-	}
-	if r.Condition != nil {
-		if r.Condition.Visibility == "" {
-			return fmt.Errorf("%s: when: must specify at least one condition (e.g. visibility: public)", name)
-		}
-		allowed := map[string]bool{
-			VisibilityPublic:   true,
-			VisibilityPrivate:  true,
-			VisibilityInternal: true,
-		}
-		if !allowed[r.Condition.Visibility] {
-			return fmt.Errorf("%s: when[visibility] must be one of: public, private, internal", name)
-		}
+	if err := validateCondition(name, r.Condition, r.ConditionalSpec); err != nil {
+		return err
 	}
 	if r.Reconcile != nil {
 		if r.Reconcile.Labels != nil {
@@ -42,10 +25,49 @@ func (r *Repository) Validate() error {
 	if err := validateSpecElements(name, "spec", &r.Spec); err != nil {
 		return err
 	}
+	if err := validateActions(name, "spec", r.Spec.Actions, r.Spec.Visibility); err != nil {
+		return err
+	}
 	if r.ConditionalSpec != nil {
 		if err := validateSpecElements(name, "conditional_spec", r.ConditionalSpec); err != nil {
 			return err
 		}
+		if a := r.ConditionalSpec.Actions; a != nil {
+			if a.ForkPRApproval != nil && r.Condition.Visibility == VisibilityPrivate {
+				return fmt.Errorf("%s: conditional_spec.actions.fork_pr_approval is not supported for private repositories (remove it or change when.visibility)", name)
+			}
+			// conditional_spec.actions overlays spec.actions field by field, so
+			// validate the merged result rather than the partial overlay.
+			if err := validateActions(name, "conditional_spec", mergeActions(r.Spec.Actions, a), r.ConditionalSpec.Visibility); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateCondition checks that when and conditional_spec are specified
+// together and that the condition is well-formed.
+func validateCondition(name string, when *RepositoryCondition, conditionalSpec *RepositorySpec) error {
+	if when != nil && conditionalSpec == nil {
+		return fmt.Errorf("%s: when: requires conditional_spec: to be present", name)
+	}
+	if conditionalSpec != nil && when == nil {
+		return fmt.Errorf("%s: conditional_spec: requires when: to be present", name)
+	}
+	if when == nil {
+		return nil
+	}
+	if when.Visibility == "" {
+		return fmt.Errorf("%s: when: must specify at least one condition (e.g. visibility: public)", name)
+	}
+	allowed := map[string]bool{
+		VisibilityPublic:   true,
+		VisibilityPrivate:  true,
+		VisibilityInternal: true,
+	}
+	if !allowed[when.Visibility] {
+		return fmt.Errorf("%s: when[visibility] must be one of: public, private, internal", name)
 	}
 	return nil
 }
@@ -118,8 +140,14 @@ func validateSpecElements(name, prefix string, spec *RepositorySpec) error {
 			return err
 		}
 	}
-	if a := spec.Actions; a != nil {
-		if a.ForkPRApproval != nil && spec.Visibility != nil && *spec.Visibility == VisibilityPrivate {
+	return nil
+}
+
+// validateActions validates an actions block against the visibility declared
+// alongside it. prefix is "spec" or "conditional_spec" for error message context.
+func validateActions(name, prefix string, a *Actions, visibility *string) error {
+	if a != nil {
+		if a.ForkPRApproval != nil && visibility != nil && *visibility == VisibilityPrivate {
 			return fmt.Errorf("%s: %s.actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or set visibility to public/internal)", name, prefix)
 		}
 		if a.Enabled == nil {

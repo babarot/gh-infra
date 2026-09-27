@@ -2893,3 +2893,285 @@ func TestResolveSecrets_NilConditionalSpec(t *testing.T) {
 		t.Errorf("spec secret not expanded: got %q", repos[0].Spec.Secrets[0].Value)
 	}
 }
+
+func parseSetContent(t *testing.T, content string) (*ParseResult, error) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return ParseAll(path)
+}
+
+func TestParseRepositorySet_DefaultsWhen_InheritedByEntries(t *testing.T) {
+	result, err := parseSetContent(t, `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec: {}
+  when:
+    visibility: public
+  conditional_spec:
+    rulesets:
+      - name: protect-main
+        rules:
+          deletion: true
+repositories:
+  - name: repo-a
+    spec: {}
+  - name: repo-b
+    spec: {}
+`)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	for _, repo := range result.Repositories {
+		if repo.Condition == nil || repo.Condition.Visibility != "public" {
+			t.Errorf("%s: Condition = %+v, want visibility public", repo.Metadata.Name, repo.Condition)
+		}
+		if repo.ConditionalSpec == nil || len(repo.ConditionalSpec.Rulesets) != 1 || repo.ConditionalSpec.Rulesets[0].Name != "protect-main" {
+			t.Errorf("%s: ConditionalSpec = %+v, want protect-main ruleset", repo.Metadata.Name, repo.ConditionalSpec)
+		}
+	}
+	if doc := result.RepositoryDocs[0]; doc.OriginalCondition != nil || doc.OriginalConditional != nil {
+		t.Errorf("OriginalCondition/OriginalConditional should stay raw (nil) for entry without when, got %+v / %+v", doc.OriginalCondition, doc.OriginalConditional)
+	}
+}
+
+func TestParseRepositorySet_EntryConditionalSpec_MergesWithDefaults(t *testing.T) {
+	result, err := parseSetContent(t, `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec: {}
+  when:
+    visibility: public
+  conditional_spec:
+    rulesets:
+      - name: protect-main
+        enforcement: evaluate
+        rules:
+          deletion: true
+    variables:
+      - name: SHARED
+        value: "1"
+    actions:
+      enabled: true
+      workflow_permissions: read
+repositories:
+  - name: repo-a
+    spec: {}
+    conditional_spec:
+      rulesets:
+        - name: protect-main
+          enforcement: active
+          rules:
+            non_fast_forward: true
+      variables:
+        - name: EXTRA
+          value: "2"
+      actions:
+        workflow_permissions: write
+  - name: repo-b
+    spec: {}
+    when:
+      visibility: public
+    conditional_spec:
+      variables:
+        - name: EXTRA
+          value: "3"
+`)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+
+	a := result.Repositories[0]
+	if a.Condition == nil || a.Condition.Visibility != "public" {
+		t.Fatalf("repo-a: Condition = %+v, want inherited visibility public", a.Condition)
+	}
+	cs := a.ConditionalSpec
+	if len(cs.Rulesets) != 1 || *cs.Rulesets[0].Enforcement != "active" || cs.Rulesets[0].Rules.Deletion != nil {
+		t.Errorf("repo-a: rulesets = %+v, want entry protect-main to replace the default by name", cs.Rulesets)
+	}
+	if len(cs.Variables) != 2 || cs.Variables[0].Name != "SHARED" || cs.Variables[1].Name != "EXTRA" {
+		t.Errorf("repo-a: variables = %+v, want [SHARED EXTRA]", cs.Variables)
+	}
+	if cs.Actions == nil || cs.Actions.Enabled == nil || !*cs.Actions.Enabled || *cs.Actions.WorkflowPermissions != "write" {
+		t.Errorf("repo-a: actions = %+v, want enabled from defaults and workflow_permissions write from entry", cs.Actions)
+	}
+
+	b := result.Repositories[1]
+	if b.Condition == nil || b.Condition.Visibility != "public" {
+		t.Fatalf("repo-b: Condition = %+v, want visibility public", b.Condition)
+	}
+	if len(b.ConditionalSpec.Rulesets) != 1 || len(b.ConditionalSpec.Variables) != 2 || b.ConditionalSpec.Variables[1].Value != "3" {
+		t.Errorf("repo-b: ConditionalSpec = %+v, want default ruleset plus [SHARED EXTRA=3]", b.ConditionalSpec)
+	}
+}
+
+func TestParseRepositorySet_EntryWhenDiffersFromDefaults_Error(t *testing.T) {
+	_, err := parseSetContent(t, `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec: {}
+  when:
+    visibility: public
+  conditional_spec:
+    labels:
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo-a
+    spec: {}
+    when:
+      visibility: private
+    conditional_spec:
+      labels:
+        - name: bug
+          color: d73a4a
+`)
+	if err == nil {
+		t.Fatal("expected error when entry when differs from defaults.when, got nil")
+	}
+	if !strings.Contains(err.Error(), "repo-a: when must match defaults.when") {
+		t.Errorf("error = %q, want it to mention defaults.when", err.Error())
+	}
+}
+
+func TestParseRepositorySet_DefaultsConditionPairing_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		defaults string
+		wantErr  string
+	}{
+		{
+			name: "when without conditional_spec",
+			defaults: `
+  when:
+    visibility: public`,
+			wantErr: "defaults: when: requires conditional_spec:",
+		},
+		{
+			name: "conditional_spec without when",
+			defaults: `
+  conditional_spec:
+    labels:
+      - name: bug
+        color: d73a4a`,
+			wantErr: "defaults: conditional_spec: requires when:",
+		},
+		{
+			name: "invalid visibility",
+			defaults: `
+  when:
+    visibility: secret
+  conditional_spec:
+    labels:
+      - name: bug
+        color: d73a4a`,
+			wantErr: "defaults: when[visibility] must be one of",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// No entries: defaults must be validated on their own.
+			_, err := parseSetContent(t, `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec: {}`+tt.defaults+`
+repositories: []
+`)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseRepositorySet_DefaultsConditionalSpec_NotSharedAcrossEntries(t *testing.T) {
+	result, err := parseSetContent(t, `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec: {}
+  when:
+    visibility: public
+  conditional_spec:
+    description: "public repo"
+repositories:
+  - name: repo-a
+    spec: {}
+  - name: repo-b
+    spec: {}
+`)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	a, b := result.Repositories[0], result.Repositories[1]
+	a.ConditionalSpec.Description = Ptr("changed")
+	a.Condition.Visibility = "private"
+	if *b.ConditionalSpec.Description != "public repo" {
+		t.Errorf("repo-b description = %q, want unaffected by repo-a mutation", *b.ConditionalSpec.Description)
+	}
+	if b.Condition.Visibility != "public" {
+		t.Errorf("repo-b condition = %q, want unaffected by repo-a mutation", b.Condition.Visibility)
+	}
+}
+
+func TestResolveSecrets_SharedDefaultsSecrets_ExpandedOncePerRepo(t *testing.T) {
+	// The expanded value contains "${...}"; re-expanding it would corrupt it
+	// and report a disallowed reference.
+	t.Setenv("ENV_TOKEN", "abc${NOT_A_REF}")
+
+	result, err := parseSetContent(t, `
+apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: my-org
+defaults:
+  spec:
+    secrets:
+      - name: TOKEN
+        value: "${ENV_TOKEN}"
+  when:
+    visibility: public
+  conditional_spec:
+    secrets:
+      - name: PUBLIC_TOKEN
+        value: "${ENV_TOKEN}"
+repositories:
+  - name: repo-a
+    spec: {}
+  - name: repo-b
+    spec: {}
+`)
+	if err != nil {
+		t.Fatalf("ParseAll returned error: %v", err)
+	}
+	if err := ResolveSecrets(result.Repositories); err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
+	for _, repo := range result.Repositories {
+		if got := repo.Spec.Secrets[0].Value; got != "abc${NOT_A_REF}" {
+			t.Errorf("%s: spec secret = %q, want %q", repo.Metadata.Name, got, "abc${NOT_A_REF}")
+		}
+		if got := repo.ConditionalSpec.Secrets[0].Value; got != "abc${NOT_A_REF}" {
+			t.Errorf("%s: conditional secret = %q, want %q", repo.Metadata.Name, got, "abc${NOT_A_REF}")
+		}
+	}
+}

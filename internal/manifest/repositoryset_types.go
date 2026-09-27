@@ -14,8 +14,10 @@ type RepositorySetMetadata struct {
 }
 
 type RepositorySetDefaults struct {
-	Reconcile *RepositoryReconcile `yaml:"reconcile,omitempty"`
-	Spec      RepositorySpec       `yaml:"spec"`
+	Reconcile       *RepositoryReconcile `yaml:"reconcile,omitempty"`
+	Spec            RepositorySpec       `yaml:"spec"`
+	When            *RepositoryCondition `yaml:"when,omitempty"`
+	ConditionalSpec *RepositorySpec      `yaml:"conditional_spec,omitempty"`
 }
 
 type RepositorySetEntry struct {

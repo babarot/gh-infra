@@ -243,3 +243,53 @@ repositories:
 ```
 
 If a reconcile policy is set but the corresponding collection is omitted after defaults and overrides are merged, that collection is unmanaged for that repository. Use `spec.rulesets: []` or `spec.labels: []` for an explicitly empty managed collection.
+
+## Conditional Settings
+
+A `when` clause gates a `conditional_spec` block on the repository's visibility. This lets one set mix public and private repositories and apply settings — such as rulesets, which GitHub Free rejects on private repositories — only where they are supported.
+
+```yaml
+defaults:
+  spec:
+    merge_strategy:
+      allow_squash_merge: true
+  when:
+    visibility: public          # public, private, or internal
+  conditional_spec:
+    rulesets:
+      - name: protect-main
+        enforcement: active
+        rules:
+          deletion: true
+    actions:
+      enabled: true
+      fork_pr_approval: all_external_contributors
+
+repositories:
+  - name: public-repo           # gets protect-main and fork_pr_approval
+  - name: private-repo          # conditional_spec skipped while private
+  - name: docs-site
+    conditional_spec:
+      rulesets:
+        - name: protect-main    # replaces the default protect-main by name
+          enforcement: evaluate
+          rules:
+            deletion: true
+```
+
+`when` and `conditional_spec` must be specified together, at either the `defaults` or the entry level.
+
+### Evaluation
+
+- The condition is evaluated during `plan` against the repository's **current** visibility on GitHub, not `spec.visibility`.
+- Repositories that do not exist yet skip `conditional_spec`; it takes effect on the next apply after creation.
+- Changing `spec.visibility` also takes two applies: the first changes visibility, the second applies the `conditional_spec` that now matches.
+- When the condition matches, `conditional_spec` is merged on top of `spec` using the rules above, so it wins over `spec` for the same field or key.
+
+### Inheritance from defaults
+
+Entries inherit `defaults.when` and `defaults.conditional_spec`. An entry's `conditional_spec` is merged on top of `defaults.conditional_spec` with the same rules as `spec`. An entry may repeat `when`, but it must equal `defaults.when` — a repository has only one condition. There is no per-entry opt-out, matching `defaults.spec`.
+
+:::note
+`import --into` computes per-entry overrides from `spec` only and ignores `when` / `conditional_spec`.
+:::

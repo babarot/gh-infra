@@ -205,11 +205,22 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	}
 
 	var warnings []string
+	var defaultsSpec RepositorySpec
 	if set.Defaults != nil {
+		if err := validateCondition("defaults", set.Defaults.When, set.Defaults.ConditionalSpec); err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+		}
+		defaultsSpec = set.Defaults.Spec
 		warnings = append(warnings, repositoryWarnings(set.Defaults.Spec)...)
+		if set.Defaults.ConditionalSpec != nil {
+			warnings = append(warnings, repositoryWarnings(*set.Defaults.ConditionalSpec)...)
+		}
 	}
 	for i := range set.Repositories {
 		warnings = append(warnings, repositoryWarnings(set.Repositories[i].Spec)...)
+		if set.Repositories[i].ConditionalSpec != nil {
+			warnings = append(warnings, repositoryWarnings(*set.Repositories[i].ConditionalSpec)...)
+		}
 	}
 
 	var repos []*Repository
@@ -217,6 +228,10 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	for i := range set.Repositories {
 		entry := set.Repositories[i]
 		originalSpec := entry.Spec // copy before merge
+		condition, conditionalSpec, err := mergeConditional(set.Defaults, entry)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+		}
 		repo := &Repository{
 			APIVersion: set.APIVersion,
 			Kind:       KindRepository,
@@ -225,11 +240,9 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 				Owner: set.Metadata.Owner,
 			},
 			Reconcile:       mergeReconcile(set.Defaults, entry.Reconcile),
-			Condition:       entry.When,
-			ConditionalSpec: entry.ConditionalSpec,
-			// ConditionalSpec is NOT merged with defaults — it is applied only
-			// when the condition is met, evaluated in the diff layer.
-			Spec: MergeSpecs(set.Defaults, entry.Spec),
+			Condition:       condition,
+			ConditionalSpec: conditionalSpec,
+			Spec:            MergeSpecs(defaultsSpec, entry.Spec),
 		}
 		if err := repo.Validate(); err != nil {
 			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
@@ -389,13 +402,9 @@ func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
 	return entries, err
 }
 
-// MergeSpecs merges defaults with per-repo overrides. Per-repo values take precedence.
-func MergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) RepositorySpec {
-	if defaults == nil {
-		return override
-	}
-
-	result := defaults.Spec
+// MergeSpecs merges override on top of base. Override values take precedence.
+func MergeSpecs(base, override RepositorySpec) RepositorySpec {
+	result := base
 
 	if override.Description != nil {
 		result.Description = override.Description
@@ -455,6 +464,26 @@ func MergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	}
 
 	return result
+}
+
+// mergeConditional merges an entry's when/conditional_spec with the defaults'.
+// An entry inherits defaults.when and layers its conditional_spec on top of
+// defaults.conditional_spec using the same rules as spec. Since a repository
+// has a single condition, an entry's when must match defaults.when.
+func mergeConditional(defaults *RepositorySetDefaults, entry RepositorySetEntry) (*RepositoryCondition, *RepositorySpec, error) {
+	if defaults == nil || defaults.When == nil {
+		return entry.When, entry.ConditionalSpec, nil
+	}
+	if entry.When != nil && *entry.When != *defaults.When {
+		return nil, nil, fmt.Errorf("%s: when must match defaults.when (a repository can have only one condition)", entry.Name)
+	}
+	var override RepositorySpec
+	if entry.ConditionalSpec != nil {
+		override = *entry.ConditionalSpec
+	}
+	when := *defaults.When
+	merged := MergeSpecs(*defaults.ConditionalSpec, override)
+	return &when, &merged, nil
 }
 
 func mergeReconcile(defaults *RepositorySetDefaults, override *RepositoryReconcile) *RepositoryReconcile {

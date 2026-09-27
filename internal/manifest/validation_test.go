@@ -915,6 +915,39 @@ func TestValidateRepository_ConditionalWhen(t *testing.T) {
 			},
 			wantErr: "ref_name.include must not be empty",
 		},
+		{
+			name: "fork_pr_approval in conditional_spec with private when fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "private"},
+				ConditionalSpec: &RepositorySpec{
+					Actions: &Actions{Enabled: Ptr(true), ForkPRApproval: Ptr("first_time_contributors")},
+				},
+			},
+			wantErr: "conditional_spec.actions.fork_pr_approval is not supported for private repositories",
+		},
+		{
+			name: "partial actions overlay on spec.actions passes",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Spec:      RepositorySpec{Actions: &Actions{Enabled: Ptr(true)}},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: &RepositorySpec{
+					Actions: &Actions{WorkflowPermissions: Ptr("write")},
+				},
+			},
+		},
+		{
+			name: "partial actions overlay without enabled anywhere fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: &RepositorySpec{
+					Actions: &Actions{WorkflowPermissions: Ptr("write")},
+				},
+			},
+			wantErr: "conditional_spec.actions.enabled is required",
+		},
 	}
 
 	for _, tc := range tests {
