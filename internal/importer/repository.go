@@ -1172,12 +1172,16 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 	if imported.Rules.Update != nil {
 		importedAllowsFetchAndMerge = imported.Rules.Update.AllowsFetchAndMerge
 	}
-	appendFieldUpdate(
-		&diffs,
-		fmt.Sprintf("rulesets.%s.rules.update.allows_fetch_and_merge", name),
-		localAllowsFetchAndMerge,
-		importedAllowsFetchAndMerge,
-	)
+	// GitHub may omit update_allows_fetch_and_merge from responses; keep the
+	// local value rather than treating the missing parameter as a change.
+	if importedAllowsFetchAndMerge != nil {
+		appendFieldUpdate(
+			&diffs,
+			fmt.Sprintf("rulesets.%s.rules.update.allows_fetch_and_merge", name),
+			localAllowsFetchAndMerge,
+			importedAllowsFetchAndMerge,
+		)
+	}
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.deletion", name), local.Rules.Deletion, imported.Rules.Deletion)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), local.Rules.Creation, imported.Rules.Creation)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), local.Rules.RequiredLinearHistory, imported.Rules.RequiredLinearHistory)

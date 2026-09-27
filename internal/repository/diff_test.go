@@ -1827,6 +1827,39 @@ func TestDiff_Rulesets_UpdateParameters(t *testing.T) {
 	}
 }
 
+func TestDiff_Rulesets_UpdateParametersNotReturned(t *testing.T) {
+	// GitHub may accept update_allows_fetch_and_merge but omit it from
+	// responses. A missing current value must not produce a perpetual diff.
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{
+					Enabled:             manifest.Ptr(true),
+					AllowsFetchAndMerge: manifest.Ptr(true),
+				},
+			},
+		},
+	}
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		ID:   1,
+		Name: "protect-main",
+		Rules: CurrentRulesetRules{
+			Update: &CurrentRulesetUpdate{},
+		},
+	}
+
+	fields := collectChildFields(Diff(context.Background(), desired, current))
+	if fields["rules.update.allows_fetch_and_merge"] {
+		t.Error("did not expect rules.update.allows_fetch_and_merge change when GitHub omits the parameter")
+	}
+	if fields["rules.update"] {
+		t.Error("did not expect rules.update enabled state change")
+	}
+}
+
 func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 	desired := baseDesired()
 	desired.Spec.Rulesets = []manifest.Ruleset{

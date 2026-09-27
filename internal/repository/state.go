@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 )
@@ -680,7 +681,9 @@ func (p *Processor) fetchRuleset(ctx context.Context, owner, name string, id int
 				AllowsFetchAndMerge *bool `json:"update_allows_fetch_and_merge"`
 			}
 			if len(env.Parameters) > 0 {
-				_ = json.Unmarshal(env.Parameters, &params)
+				if err := json.Unmarshal(env.Parameters, &params); err != nil {
+					logger.Debug("cannot parse update rule parameters", "ruleset", rs.Name, "err", err)
+				}
 			}
 			rs.Rules.Update = &CurrentRulesetUpdate{
 				AllowsFetchAndMerge: params.AllowsFetchAndMerge,

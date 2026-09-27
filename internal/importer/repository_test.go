@@ -1356,6 +1356,34 @@ func TestCompareRulesets_Update(t *testing.T) {
 	}
 }
 
+func TestCompareRulesets_UpdateParametersNotReturned(t *testing.T) {
+	// GitHub may omit update_allows_fetch_and_merge from responses; the local
+	// value must be kept rather than reported as a change.
+	local := []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{
+					Enabled:             manifest.Ptr(true),
+					AllowsFetchAndMerge: manifest.Ptr(true),
+				},
+			},
+		},
+	}
+	imported := []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
+			},
+		},
+	}
+
+	if diffs := compareRulesets(local, imported); len(diffs) != 0 {
+		t.Errorf("expected no diffs, got %+v", diffs)
+	}
+}
+
 func TestCompareRulesets_NewOnGitHub(t *testing.T) {
 	local := []manifest.Ruleset{}
 	imported := []manifest.Ruleset{
