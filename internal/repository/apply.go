@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 )
@@ -374,25 +376,28 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 	fullName := c.Name
 	payload := map[string]any{}
 	for _, child := range c.Children {
-		switch child.Field {
-		case "auto_delete_head_branches":
-			payload["delete_branch_on_merge"] = child.NewValue
-		default:
-			payload[child.Field] = child.NewValue
-		}
+		payload[canonicalAPIField(child.Field)] = child.NewValue
 	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return ApplyResult{Change: c, Err: err}
 	}
-	_, err = p.runner.RunWithStdin(ctx, body,
+	out, err := p.runner.RunWithStdin(ctx, body,
 		"api", fmt.Sprintf("repos/%s", fullName),
 		"--method", "PATCH",
 		"--header", "Content-Type: application/json",
 		"--input", "-",
 	)
-	return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
+	if err != nil {
+		return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
+	}
+
+	// GitHub silently ignores some settings (e.g. allow_auto_merge on private
+	// repos without branch protection), returning 200 without updating the
+	// stored value. The PATCH response contains the updated repository, so
+	// compare it against what we sent.
+	return ApplyResult{Change: c, Err: verifyPatchResponse(fullName, payload, out)}
 }
 
 func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manifest.Repository) error {
@@ -1237,9 +1242,50 @@ func wrapError(err error, repo, field string) error {
 	return fmt.Errorf("update %s %s: %w", repo, field, err)
 }
 
+func canonicalAPIField(field string) string {
+	if field == "auto_delete_head_branches" {
+		return "delete_branch_on_merge"
+	}
+	return field
+}
+
 func derefBool(b *bool) bool {
 	if b == nil {
 		return false
 	}
 	return *b
+}
+
+// verifyPatchResponse compares the fields sent in a repos PATCH against the
+// repository returned in the response, and reports every field whose stored
+// value differs from what was sent. Verification is best-effort: if the
+// response cannot be parsed, or a field is absent from it, it is skipped and
+// the next plan will surface any real drift.
+func verifyPatchResponse(fullName string, sent map[string]any, resp []byte) error {
+	var got map[string]any
+	if err := json.Unmarshal(resp, &got); err != nil {
+		logger.Debug("cannot parse PATCH response, skipping verification", "repo", fullName, "err", err)
+		return nil
+	}
+	fields := make([]string, 0, len(sent))
+	for field := range sent {
+		fields = append(fields, field)
+	}
+	slices.Sort(fields)
+
+	var errs []error
+	for _, field := range fields {
+		actual, ok := got[field]
+		if !ok || actual == nil {
+			continue
+		}
+		want := fmt.Sprint(sent[field])
+		if have := fmt.Sprint(actual); have != want {
+			errs = append(errs, fmt.Errorf(
+				"applied %s=%s but GitHub reports %s=%s (setting may not be supported for this repository configuration)",
+				field, want, field, have,
+			))
+		}
+	}
+	return wrapError(errors.Join(errs...), fullName, "merge_strategy")
 }

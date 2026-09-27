@@ -1233,7 +1233,7 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 
-	// Should be exactly 1 API call (batched PATCH)
+	// Should be exactly 1 API call (batched PATCH); verification uses its response
 	if len(mock.Called) != 1 {
 		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
 	}
@@ -1655,6 +1655,109 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 	call := strings.Join(mock.Called[0], " ")
 	if !strings.Contains(call, "label edit enhancement") {
 		t.Errorf("expected 'label edit enhancement', got: %s", call)
+	}
+}
+
+func TestApplyMergeStrategyBatch_Verification(t *testing.T) {
+	const patchKey = "api repos/myorg/myrepo --method PATCH --header Content-Type: application/json --input -"
+
+	tests := []struct {
+		name      string
+		children  []Change
+		response  string
+		wantErrs  []string
+		wantNoErr bool
+	}{
+		{
+			name:     "silently ignored bool",
+			children: []Change{{Field: "allow_auto_merge", NewValue: true}},
+			response: `{"allow_auto_merge":false}`,
+			wantErrs: []string{"allow_auto_merge=true but GitHub reports allow_auto_merge=false"},
+		},
+		{
+			name:     "silently ignored when setting false",
+			children: []Change{{Field: "allow_auto_merge", NewValue: false}},
+			response: `{"allow_auto_merge":true}`,
+			wantErrs: []string{"allow_auto_merge=false but GitHub reports allow_auto_merge=true"},
+		},
+		{
+			name:     "uses API field name",
+			children: []Change{{Field: "auto_delete_head_branches", NewValue: true}},
+			response: `{"delete_branch_on_merge":false}`,
+			wantErrs: []string{"delete_branch_on_merge=true but GitHub reports delete_branch_on_merge=false"},
+		},
+		{
+			name: "reports every mismatch including strings",
+			children: []Change{
+				{Field: "allow_auto_merge", NewValue: true},
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+			},
+			response: `{"allow_auto_merge":false,"squash_merge_commit_title":"COMMIT_OR_PR_TITLE"}`,
+			wantErrs: []string{"allow_auto_merge=true", "squash_merge_commit_title=PR_TITLE"},
+		},
+		{
+			name: "applied as sent",
+			children: []Change{
+				{Field: "allow_auto_merge", NewValue: true},
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+			},
+			response:  `{"allow_auto_merge":true,"squash_merge_commit_title":"PR_TITLE"}`,
+			wantNoErr: true,
+		},
+		{
+			name:      "unparsable response is skipped",
+			children:  []Change{{Field: "allow_auto_merge", NewValue: true}},
+			response:  ``,
+			wantNoErr: true,
+		},
+		{
+			name:      "field absent from response is skipped",
+			children:  []Change{{Field: "allow_auto_merge", NewValue: true}},
+			response:  `{}`,
+			wantNoErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{
+				Responses: map[string][]byte{patchKey: []byte(tt.response)},
+			}
+			proc := NewProcessor(mock, nil)
+
+			changes := []Change{
+				{
+					Type:     ChangeUpdate,
+					Resource: "Repository",
+					Name:     "myorg/myrepo",
+					Field:    "merge_strategy",
+					Children: tt.children,
+				},
+			}
+
+			repo := newTestRepo("myorg", "myrepo")
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			if len(results) != 1 {
+				t.Fatalf("expected 1 result, got %d", len(results))
+			}
+			if len(mock.Called) != 1 {
+				t.Errorf("expected 1 gh call (PATCH only), got %d", len(mock.Called))
+			}
+			if tt.wantNoErr {
+				if results[0].Err != nil {
+					t.Fatalf("unexpected error: %v", results[0].Err)
+				}
+				return
+			}
+			if results[0].Err == nil {
+				t.Fatal("expected error for silently ignored setting, got nil")
+			}
+			for _, want := range tt.wantErrs {
+				if !strings.Contains(results[0].Err.Error(), want) {
+					t.Errorf("error = %q, want it to contain %q", results[0].Err, want)
+				}
+			}
+		})
 	}
 }
 
