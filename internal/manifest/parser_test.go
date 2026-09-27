@@ -631,8 +631,6 @@ repositories:
 func TestResolveSecrets_ExpandsEnvVars(t *testing.T) {
 	t.Setenv("ENV_SECRET_TOKEN", "my-secret-value")
 	t.Setenv("ENV_API_KEY", "api-key-123")
-	t.Setenv("NOT_ENV_PREFIX", "no-prefix-value")
-	t.Setenv("RELEASE_APP_PRIVATE_KEY", "pem-key-data")
 
 	repos := []*Repository{
 		{
@@ -640,26 +638,24 @@ func TestResolveSecrets_ExpandsEnvVars(t *testing.T) {
 			Spec: RepositorySpec{
 				Secrets: []Secret{
 					{Name: "TOKEN", Value: "${ENV_SECRET_TOKEN}"},
-					{Name: "API_KEY", Value: "${ENV_API_KEY}"},
+					{Name: "API_KEY", Value: "prefix-${ENV_API_KEY}"},
 					{Name: "LITERAL", Value: "plain-value"},
-					{Name: "NON_ENV", Value: "${NOT_ENV_PREFIX}"},
-					{Name: "APP_KEY", Value: "${RELEASE_APP_PRIVATE_KEY}"},
 				},
 			},
 		},
 	}
 
-	ResolveSecrets(repos)
+	if err := ResolveSecrets(repos); err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
 
 	tests := []struct {
 		idx  int
 		want string
 	}{
 		{0, "my-secret-value"},
-		{1, "api-key-123"},
+		{1, "prefix-api-key-123"},
 		{2, "plain-value"},
-		{3, "no-prefix-value"},
-		{4, "pem-key-data"},
 	}
 
 	for _, tt := range tests {
@@ -670,31 +666,42 @@ func TestResolveSecrets_ExpandsEnvVars(t *testing.T) {
 	}
 }
 
-func TestResolveSecrets_WarnOnEmptyResolution(t *testing.T) {
-	repos := []*Repository{
-		{
-			Metadata: RepositoryMetadata{Name: "myrepo", Owner: "org"},
-			Spec: RepositorySpec{
-				Secrets: []Secret{
-					{Name: "MISSING", Value: "${UNSET_VAR_XYZ}"},
-					{Name: "PRESENT", Value: "${ENV_SECRET_TOKEN}"},
-					{Name: "LITERAL", Value: "plain"},
+func TestResolveSecrets_Errors(t *testing.T) {
+	t.Setenv("GH_TOKEN", "should-not-leak")
+	t.Setenv("ENV_EMPTY", "")
+
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{"non-prefixed", "${GH_TOKEN}", "only ${ENV_*} variables are allowed"},
+		{"unset", "${ENV_UNSET_VAR_XYZ}", "unset or empty"},
+		{"empty", "${ENV_EMPTY}", "unset or empty"},
+		{"unset inside value", "x-${ENV_UNSET_VAR_XYZ}-y", "unset or empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repos := []*Repository{
+				{
+					Metadata: RepositoryMetadata{Name: "myrepo", Owner: "org"},
+					Spec: RepositorySpec{
+						Secrets: []Secret{{Name: "S", Value: tt.value}},
+					},
 				},
-			},
-		},
-	}
-	t.Setenv("ENV_SECRET_TOKEN", "tok")
-
-	warnings := ResolveSecrets(repos)
-
-	if len(warnings) != 1 {
-		t.Fatalf("want 1 warning, got %d: %v", len(warnings), warnings)
-	}
-	if !strings.Contains(warnings[0], "MISSING") {
-		t.Errorf("warning should mention secret name MISSING, got: %s", warnings[0])
-	}
-	if repos[0].Spec.Secrets[0].Value != "" {
-		t.Errorf("unset var should resolve to empty string, got %q", repos[0].Spec.Secrets[0].Value)
+			}
+			err := ResolveSecrets(repos)
+			if err == nil {
+				t.Fatal("ResolveSecrets() error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+			if strings.Contains(repos[0].Spec.Secrets[0].Value, "should-not-leak") {
+				t.Errorf("non-prefixed variable was expanded: %q", repos[0].Spec.Secrets[0].Value)
+			}
+		})
 	}
 }
 

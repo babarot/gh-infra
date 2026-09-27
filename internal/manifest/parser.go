@@ -3,6 +3,7 @@ package manifest
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -726,28 +727,50 @@ func mergeSelectedActions(base, override *SelectedActions) *SelectedActions {
 	return &result
 }
 
-// expandEnvVars replaces ${VAR} references with environment variable values.
-func expandEnvVars(s string) string {
-	return os.Expand(s, os.Getenv)
+// expandEnvVars replaces ${ENV_*} references with environment variable values.
+// Only ENV_-prefixed names are expanded so that a manifest cannot pull
+// arbitrary variables (e.g. GH_TOKEN) from the apply environment into a
+// secret. It returns the expanded string along with any references that were
+// not ENV_-prefixed and any ENV_* variables that are unset or empty.
+func expandEnvVars(s string) (expanded string, disallowed, missing []string) {
+	expanded = os.Expand(s, func(key string) string {
+		if !strings.HasPrefix(key, "ENV_") {
+			disallowed = append(disallowed, key)
+			return "${" + key + "}"
+		}
+		v := os.Getenv(key)
+		if v == "" {
+			missing = append(missing, key)
+		}
+		return v
+	})
+	return expanded, disallowed, missing
 }
 
-// ResolveSecrets expands environment variable references in secret values.
-// Returns warnings for secret values that contained ${VAR} references but
-// resolved to empty string, indicating a missing or unset environment variable.
-func ResolveSecrets(repos []*Repository) []string {
-	var warnings []string
+// ResolveSecrets expands ${ENV_*} references in secret values. It returns an
+// error if a secret references a variable without the ENV_ prefix, or if a
+// referenced ENV_* variable is unset or empty, rather than silently storing a
+// corrupted value.
+func ResolveSecrets(repos []*Repository) error {
+	var errs []error
 	for _, repo := range repos {
 		for i := range repo.Spec.Secrets {
-			original := repo.Spec.Secrets[i].Value
-			resolved := expandEnvVars(original)
-			repo.Spec.Secrets[i].Value = resolved
-			if strings.Contains(original, "${") && resolved == "" {
-				warnings = append(warnings, fmt.Sprintf(
-					"repo %s: secret %q resolved to empty string — check that the referenced env var is set",
-					repo.Metadata.Name, repo.Spec.Secrets[i].Name,
+			secret := &repo.Spec.Secrets[i]
+			resolved, disallowed, missing := expandEnvVars(secret.Value)
+			secret.Value = resolved
+			for _, key := range disallowed {
+				errs = append(errs, fmt.Errorf(
+					"repo %s: secret %q references ${%s}: only ${ENV_*} variables are allowed",
+					repo.Metadata.Name, secret.Name, key,
+				))
+			}
+			for _, key := range missing {
+				errs = append(errs, fmt.Errorf(
+					"repo %s: secret %q references ${%s}, which is unset or empty",
+					repo.Metadata.Name, secret.Name, key,
 				))
 			}
 		}
 	}
-	return warnings
+	return errors.Join(errs...)
 }
