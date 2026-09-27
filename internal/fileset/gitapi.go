@@ -16,7 +16,8 @@ const maxCommitRetries = 3
 // applyToRepo creates a verified commit for all file changes using the GitHub GraphQL
 // createCommitOnBranch mutation. Falls back to Contents API for empty repositories.
 // Returns (prURL, error); prURL is non-empty only for pull_request strategy.
-// Retries up to maxCommitRetries times on HEAD conflict errors caused by concurrent commits.
+// Retries up to maxCommitRetries times on HEAD conflict errors caused by concurrent commits,
+// refetching the target branch's HEAD before each retry.
 // For pull_request mode, branch creation and PR opening happen outside the retry loop so
 // that only the commit itself is retried on conflict.
 func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
@@ -55,7 +56,7 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		if attempt == maxCommitRetries-1 {
 			return "", fmt.Errorf("commit retries exhausted for %s: %w", repo, err)
 		}
-		headSHA, _, err = p.getHeadSHA(ctx, repo)
+		headSHA, err = p.getRefSHA(ctx, repo, targetBranch)
 		if err != nil {
 			return "", fmt.Errorf("get HEAD for retry: %w", err)
 		}
@@ -68,15 +69,15 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 	return "", nil
 }
 
-// isHeadConflict reports whether err is a GitHub GraphQL HEAD conflict error,
-// which occurs when a concurrent commit advances the branch between our HEAD
-// fetch and our createCommitOnBranch call.
+// isHeadConflict reports whether err is the createCommitOnBranch error returned when
+// a concurrent commit advances the branch between our HEAD fetch and the mutation:
+// `Expected branch to point to "<sha>" but it did not.  Pull and try again.`
 func isHeadConflict(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := err.Error()
-	return strings.Contains(msg, "is at ") && strings.Contains(msg, "but expected")
+	return strings.Contains(msg, "Expected branch to point to") && strings.Contains(msg, "but it did not")
 }
 
 // commitViaGraphQL sends a createCommitOnBranch GraphQL mutation.
@@ -212,12 +213,20 @@ func (p *Processor) getHeadSHA(ctx context.Context, repo string) (sha, branch st
 		return "", "", fmt.Errorf("repository is empty (no default branch)")
 	}
 
-	out, err = p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/ref/heads/%s", repo, branch), "--jq", ".object.sha")
+	sha, err = p.getRefSHA(ctx, repo, branch)
 	if err != nil {
 		return "", "", err
 	}
-	sha = strings.TrimSpace(string(out))
 	return sha, branch, nil
+}
+
+// getRefSHA returns the commit SHA that the given branch currently points to.
+func (p *Processor) getRefSHA(ctx context.Context, repo, branch string) (string, error) {
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/ref/heads/%s", repo, branch), "--jq", ".object.sha")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // createBranchAt creates or force-updates a branch pointing to the given SHA.
