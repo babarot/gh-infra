@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.13.1](https://github.com/babarot/gh-infra/compare/v0.13.0...v0.13.1) - 2026-09-27
+### Bug fixes
+- Fix FileSet per-repo override source resolution by @wpfleger96 in https://github.com/babarot/gh-infra/pull/152
+### Improvements
+- Merge secrets and variables by key in RepositorySet by @wpfleger96 in https://github.com/babarot/gh-infra/pull/158
+### Refactorings
+- fix: address golangci-lint v2.12 govet and modernize issues by @babarot in https://github.com/babarot/gh-infra/pull/156
+- refactor: extract mergeByKey generic and polish #158 follow-ups by @babarot in https://github.com/babarot/gh-infra/pull/162
+
 ## [v0.13.0](https://github.com/babarot/gh-infra/compare/v0.12.0...v0.13.0) - 2026-04-20
 ### New Features
 - Add collection reconciliation policy (additive/authoritative modes) by @babarot in https://github.com/babarot/gh-infra/pull/143
