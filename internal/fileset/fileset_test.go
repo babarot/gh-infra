@@ -1059,3 +1059,19 @@ func TestPlan_AuthoritativeListErrorSkipsRepo(t *testing.T) {
 		t.Errorf("expected one ErrForbidden reported for owner/repo, got %v", errs)
 	}
 }
+
+func TestApplyToEmptyRepo_MultiLineMessageKeepsPathInHeadline(t *testing.T) {
+	mock := &WildcardMockRunner{MockRunner: gh.MockRunner{Responses: map[string][]byte{}, Errors: map[string]error{}}}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	changes := []Change{{Path: ".github/ci.yml", Type: ChangeCreate, Desired: "name: CI"}}
+	opts := ApplyOptions{CommitMessage: "ci: sync CI workflow\n\nSource: <% .Source.URL %>", SourceURL: "https://example.com/pull/1"}
+
+	if err := p.applyToEmptyRepo(context.Background(), "owner/repo", changes, opts); err != nil {
+		t.Fatal(err)
+	}
+
+	want := "message=ci: sync CI workflow: .github/ci.yml\n\nSource: https://example.com/pull/1"
+	if len(mock.Called) != 1 || !strings.Contains(strings.Join(mock.Called[0], "\x00"), want) {
+		t.Errorf("expected Contents API call with %q, got %q", want, mock.Called)
+	}
+}

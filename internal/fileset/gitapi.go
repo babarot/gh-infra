@@ -431,8 +431,12 @@ func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes [
 	if err != nil {
 		return fmt.Errorf("render commit message: %w", err)
 	}
+	headline, body := splitCommitMessage(message)
 	for _, c := range changes {
-		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
+		commitMsg := fmt.Sprintf("%s: %s", headline, c.Path)
+		if body != "" {
+			commitMsg += "\n\n" + body
+		}
 		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg, ""); err != nil {
 			return err
 		}
