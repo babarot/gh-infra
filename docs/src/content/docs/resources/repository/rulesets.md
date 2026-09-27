@@ -220,6 +220,10 @@ update:
 GitHub may omit this parameter from API responses (for example, on user-owned
 repositories). When it does, `plan` cannot detect drift for this field.
 
+With the bool form (`update: true`), gh-infra does not manage
+`allows_fetch_and_merge`: it neither sends nor compares the parameter, so the
+current setting on GitHub is left as is.
+
 ## Rulesets vs Classic Branch Protection
 
 | Feature | Classic `branch_protection` | `rulesets` |

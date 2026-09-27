@@ -75,7 +75,7 @@ update:
   allows_fetch_and_merge: true
 ```
 
-`allows_fetch_and_merge` is only supported for branch rulesets.
+`allows_fetch_and_merge` is only supported for branch rulesets. With the bool form, gh-infra does not manage `allows_fetch_and_merge` (it neither sends nor compares it).
 
 ### Conditions
 
