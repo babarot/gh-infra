@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -382,7 +383,7 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 	if err != nil {
 		return ApplyResult{Change: c, Err: err}
 	}
-	_, err = p.runner.RunWithStdin(ctx, body,
+	out, err := p.runner.RunWithStdin(ctx, body,
 		"api", fmt.Sprintf("repos/%s", fullName),
 		"--method", "PATCH",
 		"--header", "Content-Type: application/json",
@@ -392,25 +393,11 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 		return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
 	}
 
-	// Verify that the API actually applied the changes. GitHub silently ignores
-	// some settings (e.g. allow_auto_merge on private repos without branch
-	// protection), returning 200 but not updating the stored value. Only bool
-	// fields are verified for now — string fields have jq quoting differences
-	// that would cause false mismatches.
-	//
-	// Note: new repo creation via applyRepoPatch does not go through this path,
-	// so the verification gap for new repos is accepted for the initial fix.
-	for _, child := range c.Children {
-		desired, ok := child.NewValue.(bool)
-		if !ok {
-			// Skip non-bool fields until jq output normalisation is addressed.
-			continue
-		}
-		if verifyErr := p.verifyBoolField(ctx, fullName, canonicalAPIField(child.Field), desired); verifyErr != nil {
-			return ApplyResult{Change: c, Err: verifyErr}
-		}
-	}
-	return ApplyResult{Change: c}
+	// GitHub silently ignores some settings (e.g. allow_auto_merge on private
+	// repos without branch protection), returning 200 without updating the
+	// stored value. The PATCH response contains the updated repository, so
+	// compare it against what we sent.
+	return ApplyResult{Change: c, Err: verifyPatchResponse(fullName, payload, out)}
 }
 
 func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manifest.Repository) error {
@@ -1269,34 +1256,36 @@ func derefBool(b *bool) bool {
 	return *b
 }
 
-// verifyBoolField reads back a single boolean field from the GitHub repos REST
-// API and compares it to the desired value. Returns an error if the API
-// accepted the PATCH but the field was not updated, indicating a silent-ignore.
-//
-// Verification failure is non-fatal: if the read-back call fails or returns
-// empty output, the error is suppressed. The next plan will surface any real
-// drift.
-func (p *Processor) verifyBoolField(ctx context.Context, fullName, field string, desired bool) error {
-	out, err := p.runner.Run(ctx,
-		"api", fmt.Sprintf("repos/%s", fullName),
-		"--jq", "."+field,
-	)
-	if err != nil {
-		logger.Debug("verification read-back failed, skipping", "repo", fullName, "field", field, "err", err)
+// verifyPatchResponse compares the fields sent in a repos PATCH against the
+// repository returned in the response, and reports every field whose stored
+// value differs from what was sent. Verification is best-effort: if the
+// response cannot be parsed, or a field is absent from it, it is skipped and
+// the next plan will surface any real drift.
+func verifyPatchResponse(fullName string, sent map[string]any, resp []byte) error {
+	var got map[string]any
+	if err := json.Unmarshal(resp, &got); err != nil {
+		logger.Debug("cannot parse PATCH response, skipping verification", "repo", fullName, "err", err)
 		return nil
 	}
-	actual := strings.TrimSpace(string(out))
-	if actual == "" {
-		// Field absent in response — safe to skip because jq always outputs
-		// "true"/"false" for present booleans, and the caller filters non-bools.
-		return nil
+	fields := make([]string, 0, len(sent))
+	for field := range sent {
+		fields = append(fields, field)
 	}
-	desiredStr := fmt.Sprintf("%v", desired)
-	if actual != desiredStr {
-		return fmt.Errorf(
-			"applied %s=%v but GitHub reports %s=%s (setting may not be supported for this repository configuration)",
-			field, desired, field, actual,
-		)
+	slices.Sort(fields)
+
+	var errs []error
+	for _, field := range fields {
+		actual, ok := got[field]
+		if !ok || actual == nil {
+			continue
+		}
+		want := fmt.Sprint(sent[field])
+		if have := fmt.Sprint(actual); have != want {
+			errs = append(errs, fmt.Errorf(
+				"applied %s=%s but GitHub reports %s=%s (setting may not be supported for this repository configuration)",
+				field, want, field, have,
+			))
+		}
 	}
-	return nil
+	return wrapError(errors.Join(errs...), fullName, "merge_strategy")
 }
