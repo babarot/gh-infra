@@ -535,6 +535,42 @@ func TestValidateRulesets(t *testing.T) {
 			},
 			wantErr: "include must not be empty",
 		},
+		{
+			name: "update allows fetch and merge on tag ruleset",
+			setup: func(r *Repository) {
+				r.Spec.Rulesets = []Ruleset{
+					{
+						Name:   "tags",
+						Target: Ptr(RulesetTargetTag),
+						Rules: RulesetRules{
+							Update: &RulesetUpdate{
+								Enabled:             Ptr(true),
+								AllowsFetchAndMerge: Ptr(true),
+							},
+						},
+					},
+				}
+			},
+			wantErr: "only supported for branch rulesets",
+		},
+		{
+			name: "update allows fetch and merge false on tag ruleset",
+			setup: func(r *Repository) {
+				r.Spec.Rulesets = []Ruleset{
+					{
+						Name:   "tags",
+						Target: Ptr(RulesetTargetTag),
+						Rules: RulesetRules{
+							Update: &RulesetUpdate{
+								Enabled:             Ptr(true),
+								AllowsFetchAndMerge: Ptr(false),
+							},
+						},
+					},
+				}
+			},
+			wantErr: "only supported for branch rulesets",
+		},
 	}
 
 	for _, tt := range tests {

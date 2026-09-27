@@ -79,6 +79,14 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 				RequiredSignatures:    manifest.Ptr(rs.Rules.RequiredSignatures),
 			},
 		}
+		if rs.Rules.Update == nil {
+			mrs.Rules.Update = &manifest.RulesetUpdate{Enabled: manifest.Ptr(false)}
+		} else {
+			mrs.Rules.Update = &manifest.RulesetUpdate{
+				Enabled:             manifest.Ptr(true),
+				AllowsFetchAndMerge: rs.Rules.Update.AllowsFetchAndMerge,
+			}
+		}
 		for _, ba := range rs.BypassActors {
 			if resolver != nil {
 				mrs.BypassActors = append(mrs.BypassActors, resolver.ReverseBypassActor(ctx, ba.ActorID, ba.ActorType, ba.BypassMode, r.Name))

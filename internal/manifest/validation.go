@@ -63,6 +63,14 @@ func (r *Repository) Validate() error {
 				return fmt.Errorf("%s: rulesets[%s].conditions.ref_name.include must not be empty", name, rs.Name)
 			}
 		}
+		if update := rs.Rules.Update; update != nil && update.AllowsFetchAndMerge != nil {
+			if update.Enabled != nil && !*update.Enabled {
+				return fmt.Errorf("%s: rulesets[%s].rules.update.allows_fetch_and_merge requires update to be enabled", name, rs.Name)
+			}
+			if rs.Target != nil && *rs.Target == RulesetTargetTag {
+				return fmt.Errorf("%s: rulesets[%s].rules.update.allows_fetch_and_merge is only supported for branch rulesets", name, rs.Name)
+			}
+		}
 	}
 	// Secrets/Variables: element tag validation (unique handled by tags)
 	for i, s := range r.Spec.Secrets {

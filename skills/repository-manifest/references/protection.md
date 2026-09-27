@@ -64,6 +64,19 @@ Simple on/off rules — set to `true` to enable:
 - `required_linear_history` — require linear commit history
 - `required_signatures` — require signed commits
 
+The `update` rule accepts either bool form or object form:
+
+```yaml
+update: true
+```
+
+```yaml
+update:
+  allows_fetch_and_merge: true
+```
+
+`allows_fetch_and_merge` is only supported for branch rulesets.
+
 ### Conditions
 
 Use `fnmatch`-style patterns. Special values: `~DEFAULT_BRANCH`, `~ALL`.

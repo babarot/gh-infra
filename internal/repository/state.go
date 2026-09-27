@@ -675,6 +675,16 @@ func (p *Processor) fetchRuleset(ctx context.Context, owner, name string, id int
 			}
 		case "non_fast_forward":
 			rs.Rules.NonFastForward = true
+		case "update":
+			var params struct {
+				AllowsFetchAndMerge *bool `json:"update_allows_fetch_and_merge"`
+			}
+			if len(env.Parameters) > 0 {
+				_ = json.Unmarshal(env.Parameters, &params)
+			}
+			rs.Rules.Update = &CurrentRulesetUpdate{
+				AllowsFetchAndMerge: params.AllowsFetchAndMerge,
+			}
 		case "deletion":
 			rs.Rules.Deletion = true
 		case "creation":

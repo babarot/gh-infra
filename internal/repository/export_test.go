@@ -242,7 +242,10 @@ func TestToManifest_Rulesets(t *testing.T) {
 				},
 				Rules: CurrentRulesetRules{
 					NonFastForward: true,
-					Deletion:       false,
+					Update: &CurrentRulesetUpdate{
+						AllowsFetchAndMerge: manifest.Ptr(true),
+					},
+					Deletion: false,
 					PullRequest: &CurrentRulesetPullRequest{
 						RequiredApprovingReviewCount: 1,
 						DismissStaleReviewsOnPush:    true,
@@ -271,6 +274,10 @@ func TestToManifest_Rulesets(t *testing.T) {
 	assertStringPtr(t, "target", rs.Target, "branch")
 	assertStringPtr(t, "enforcement", rs.Enforcement, "active")
 	assertBoolPtr(t, "non_fast_forward", rs.Rules.NonFastForward, true)
+	if rs.Rules.Update == nil || rs.Rules.Update.Enabled == nil || !*rs.Rules.Update.Enabled {
+		t.Fatal("expected update rule to be enabled")
+	}
+	assertBoolPtr(t, "update.allows_fetch_and_merge", rs.Rules.Update.AllowsFetchAndMerge, true)
 	assertBoolPtr(t, "deletion", rs.Rules.Deletion, false)
 
 	if rs.Rules.PullRequest == nil {
@@ -309,6 +316,32 @@ func TestToManifest_Rulesets(t *testing.T) {
 	}
 	if len(rs.Conditions.RefName.Include) != 1 || rs.Conditions.RefName.Include[0] != "refs/heads/main" {
 		t.Errorf("conditions include: got %v", rs.Conditions.RefName.Include)
+	}
+}
+
+func TestToManifest_TagUpdateOmitsBranchParameters(t *testing.T) {
+	state := &CurrentState{
+		Owner: "myorg",
+		Name:  "myrepo",
+		Rulesets: map[string]*CurrentRuleset{
+			"protect-tags": {
+				Name:        "protect-tags",
+				Target:      manifest.RulesetTargetTag,
+				Enforcement: "active",
+				Rules: CurrentRulesetRules{
+					Update: &CurrentRulesetUpdate{},
+				},
+			},
+		},
+	}
+
+	repo := ToManifest(context.Background(), state, nil)
+	update := repo.Spec.Rulesets[0].Rules.Update
+	if update == nil || update.Enabled == nil || !*update.Enabled {
+		t.Fatal("expected update rule to be enabled")
+	}
+	if update.AllowsFetchAndMerge != nil {
+		t.Fatalf("allows_fetch_and_merge = %v, want nil", *update.AllowsFetchAndMerge)
 	}
 }
 
