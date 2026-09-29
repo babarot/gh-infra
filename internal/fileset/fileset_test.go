@@ -719,3 +719,237 @@ func TestApply_RetryOnHeadConflict_PullRequestRefetchesPRBranch(t *testing.T) {
 		t.Errorf("expected PR branch HEAD fetched once (retry), got %d", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Noop commit guard tests
+// ---------------------------------------------------------------------------
+
+const treesPostKey = "api repos/owner/repo/git/trees --method POST --input - --jq .sha"
+
+// commitTreeKey returns the mock key for fetching a commit's tree SHA.
+func commitTreeKey(sha string) string {
+	return fmt.Sprintf("api repos/owner/repo/git/commits/%s --jq .tree.sha", sha)
+}
+
+// newNoopGuardMock returns a runner for owner/repo whose default branch HEAD is
+// head123 with tree base-tree, and whose tree creation returns newTree.
+func newNoopGuardMock(newTree string) *gh.MockRunner {
+	return &gh.MockRunner{
+		Responses: map[string][]byte{
+			"repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name": []byte("main"),
+			"api repos/owner/repo/git/ref/heads/main --jq .object.sha":                 []byte("head123"),
+			commitTreeKey("head123"): []byte("base-tree\n"),
+			treesPostKey:             []byte(newTree + "\n"),
+		},
+		Errors: map[string]error{},
+	}
+}
+
+func applyChanges(t *testing.T, runner gh.Runner, changes []Change, opts ApplyOptions) []ApplyResult {
+	t.Helper()
+	p := NewProcessor(runner, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	results := p.Apply(context.Background(), changes, opts, ui.NoopReporter{})
+	if len(results) != len(changes) {
+		t.Fatalf("expected %d results, got %d", len(changes), len(results))
+	}
+	for _, r := range results {
+		if r.Err != nil {
+			t.Fatalf("unexpected error: %v", r.Err)
+		}
+	}
+	return results
+}
+
+func countCalls(calls [][]string, prefix string) int {
+	n := 0
+	for _, c := range flattenCalls(calls) {
+		if strings.HasPrefix(c, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestApply_NoopCommit_Push(t *testing.T) {
+	mock := newNoopGuardMock("base-tree")
+	changes := []Change{
+		{Target: "owner/repo", Path: "Justfile", Type: ChangeUpdate, Desired: "build:\n\tgo build\n"},
+		{Target: "owner/repo", Path: "old.txt", Type: ChangeDelete},
+	}
+
+	results := applyChanges(t, mock, changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush})
+
+	for _, r := range results {
+		if !r.Skipped {
+			t.Errorf("%s: expected Skipped result", r.Change.Path)
+		}
+	}
+	if n := countCalls(mock.Called, "api graphql"); n != 0 {
+		t.Errorf("expected no commit mutation, got %d", n)
+	}
+
+	// Verify the tree request: base_tree is the HEAD tree, updates carry
+	// content with mode 100644, deletes carry an explicit null sha.
+	var body []byte
+	for i, c := range flattenCalls(mock.Called) {
+		if c == treesPostKey {
+			body = mock.CalledStdin[i]
+		}
+	}
+	if body == nil {
+		t.Fatal("expected a tree creation request")
+	}
+	var req struct {
+		BaseTree string           `json:"base_tree"`
+		Tree     []map[string]any `json:"tree"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Fatalf("failed to parse tree request: %v", err)
+	}
+	if req.BaseTree != "base-tree" {
+		t.Errorf("base_tree = %q, want base-tree", req.BaseTree)
+	}
+	if len(req.Tree) != 2 {
+		t.Fatalf("expected 2 tree entries, got %d", len(req.Tree))
+	}
+	update, del := req.Tree[0], req.Tree[1]
+	if update["path"] != "Justfile" || update["mode"] != "100644" || update["type"] != "blob" || update["content"] != "build:\n\tgo build\n" {
+		t.Errorf("unexpected update entry: %v", update)
+	}
+	sha, ok := del["sha"]
+	if del["path"] != "old.txt" || !ok || sha != nil {
+		t.Errorf("delete entry must carry \"sha\": null, got: %v", del)
+	}
+	if _, ok := del["content"]; ok {
+		t.Errorf("delete entry must not carry content, got: %v", del)
+	}
+}
+
+func TestApply_NoopCommit_PullRequest(t *testing.T) {
+	mock := newNoopGuardMock("base-tree")
+	changes := []Change{
+		{Target: "owner/repo", Path: "Justfile", Type: ChangeUpdate, Desired: "build:\n"},
+	}
+
+	results := applyChanges(t, mock, changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPullRequest})
+
+	if !results[0].Skipped {
+		t.Error("expected Skipped result")
+	}
+	if results[0].PRURL != "" {
+		t.Errorf("expected no PR URL, got %q", results[0].PRURL)
+	}
+	for _, prefix := range []string{"api repos/owner/repo/git/refs", "api graphql", "pr create"} {
+		if n := countCalls(mock.Called, prefix); n != 0 {
+			t.Errorf("expected no %q call for a noop, got %d", prefix, n)
+		}
+	}
+}
+
+func TestApply_NoopCommit_ChangedTreeCommits(t *testing.T) {
+	for _, via := range []string{manifest.ViaPush, manifest.ViaPullRequest} {
+		t.Run(via, func(t *testing.T) {
+			mock := newNoopGuardMock("new-tree")
+			changes := []Change{
+				{Target: "owner/repo", Path: "Justfile", Type: ChangeUpdate, Desired: "build:\n"},
+			}
+
+			results := applyChanges(t, mock, changes, ApplyOptions{FileSetID: "test", Via: via})
+
+			if results[0].Skipped {
+				t.Error("expected commit, got Skipped result")
+			}
+			if n := countCalls(mock.Called, "api graphql"); n != 1 {
+				t.Errorf("expected 1 commit mutation, got %d", n)
+			}
+			if via == manifest.ViaPullRequest {
+				if n := countCalls(mock.Called, "pr create"); n != 1 {
+					t.Errorf("expected PR to be opened, got %d pr create calls", n)
+				}
+			}
+		})
+	}
+}
+
+func TestApply_NoopCommit_CheckErrorFallsBackToCommit(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(m *gh.MockRunner)
+	}{
+		{
+			name: "commit fetch fails",
+			setup: func(m *gh.MockRunner) {
+				m.Errors[commitTreeKey("head123")] = errors.New("HTTP 502")
+			},
+		},
+		{
+			name: "tree creation fails",
+			setup: func(m *gh.MockRunner) {
+				m.Errors[treesPostKey] = errors.New("HTTP 422")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newNoopGuardMock("base-tree")
+			tt.setup(mock)
+			changes := []Change{
+				{Target: "owner/repo", Path: "Justfile", Type: ChangeUpdate, Desired: "build:\n"},
+			}
+
+			results := applyChanges(t, mock, changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush})
+
+			if results[0].Skipped {
+				t.Error("expected commit on check failure, got Skipped result")
+			}
+			if n := countCalls(mock.Called, "api graphql"); n != 1 {
+				t.Errorf("expected 1 commit mutation, got %d", n)
+			}
+		})
+	}
+}
+
+func TestApply_NoopCommit_NonUTF8SkipsCheck(t *testing.T) {
+	mock := newNoopGuardMock("base-tree")
+	changes := []Change{
+		{Target: "owner/repo", Path: "bin.dat", Type: ChangeUpdate, Desired: "\xff\xfe"},
+	}
+
+	results := applyChanges(t, mock, changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush})
+
+	if results[0].Skipped {
+		t.Error("expected commit for non-UTF-8 content, got Skipped result")
+	}
+	if n := countCalls(mock.Called, treesPostKey); n != 0 {
+		t.Errorf("expected no tree creation for non-UTF-8 content, got %d", n)
+	}
+}
+
+func TestApply_NoopCommit_RecheckAfterHeadConflict(t *testing.T) {
+	// The first check sees a changed tree and commits; the commit hits a HEAD
+	// conflict because a concurrent commit (head456) already stored the same
+	// content. The recheck against head456 finds no change and skips the retry.
+	repo := "owner/repo"
+	mainRef := "api repos/owner/repo/git/ref/heads/main "
+	mock := newHeadConflictMock(repo, map[string][]sequenceEntry{
+		mainRef: {{response: []byte("head123")}, {response: []byte("head456")}},
+	})
+	mock.Responses[commitTreeKey("head123")] = []byte("tree-old")
+	mock.Responses[commitTreeKey("head456")] = []byte("tree-new")
+	mock.Responses[treesPostKey] = []byte("tree-new")
+
+	changes := []Change{
+		{Target: repo, Path: ".github/ci.yml", Type: ChangeUpdate, Desired: "name: CI"},
+	}
+	results := applyChanges(t, mock, changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush})
+
+	if !results[0].Skipped {
+		t.Error("expected Skipped result after recheck")
+	}
+	if got := mock.callCounts["api graphql"]; got != 1 {
+		t.Errorf("expected 1 graphql call (conflict only, retry skipped), got %d", got)
+	}
+	if n := countCalls(mock.Called, treesPostKey); n != 2 {
+		t.Errorf("expected 2 tree checks (initial + recheck), got %d", n)
+	}
+}
