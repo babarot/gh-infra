@@ -140,6 +140,33 @@ func effectiveVisibility(desired *manifest.Repository, current *CurrentState) st
 	return current.Visibility
 }
 
+// evaluateCondition returns true if the condition is satisfied by the current
+// state. A nil condition is always satisfied. An empty Visibility field is
+// treated as satisfied (future-proofing for multi-field conditions).
+func evaluateCondition(cond *manifest.RepositoryCondition, current *CurrentState) bool {
+	if cond == nil {
+		return true
+	}
+	if cond.Visibility != "" && cond.Visibility != current.Visibility {
+		return false
+	}
+	return true
+}
+
+// ResolveConditional returns a copy of desired whose Spec has ConditionalSpec
+// merged on top when the condition matches the current state of an existing
+// repository. Condition and ConditionalSpec are cleared either way, so diff
+// and apply operate on Spec alone.
+func ResolveConditional(desired *manifest.Repository, current *CurrentState) *manifest.Repository {
+	resolved := *desired
+	resolved.Condition = nil
+	resolved.ConditionalSpec = nil
+	if desired.ConditionalSpec != nil && !current.IsNew && evaluateCondition(desired.Condition, current) {
+		resolved.Spec = manifest.MergeSpecs(desired.Spec, *desired.ConditionalSpec)
+	}
+	return &resolved
+}
+
 // Diff compares desired state with current state and returns changes.
 // If the repository does not exist (current.IsNew), a single ChangeCreate is returned.
 func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentState, opts ...DiffOptions) []Change {
@@ -148,6 +175,7 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 		opt = opts[0]
 	}
 
+	desired = ResolveConditional(desired, current)
 	name := desired.Metadata.FullName()
 
 	if current.IsNew {

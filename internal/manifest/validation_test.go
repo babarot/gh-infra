@@ -786,3 +786,185 @@ func TestValidateActions_InvalidWorkflowPermissions(t *testing.T) {
 		t.Fatal("expected error for invalid workflow_permissions value")
 	}
 }
+
+func TestValidateRepository_ConditionalWhen(t *testing.T) {
+	makeRuleset := func(name string) RepositorySpec {
+		return RepositorySpec{
+			Rulesets: []Ruleset{{
+				Name:        name,
+				Enforcement: Ptr("active"),
+				Rules:       RulesetRules{Deletion: Ptr(true)},
+			}},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		repo    *Repository
+		wantErr string
+	}{
+		{
+			name: "when and conditional_spec both present passes",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition:       &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+		},
+		{
+			name: "when without conditional_spec fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "public"},
+			},
+			wantErr: "conditional_spec",
+		},
+		{
+			name: "conditional_spec without when fails",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+			wantErr: "when",
+		},
+		{
+			name: "invalid when.visibility fails",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition:       &RepositoryCondition{Visibility: "secret"},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+			wantErr: "visibility",
+		},
+		{
+			name: "valid visibility public passes",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition:       &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+		},
+		{
+			name: "valid visibility private passes",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition:       &RepositoryCondition{Visibility: "private"},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+		},
+		{
+			name: "valid visibility internal passes",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition:       &RepositoryCondition{Visibility: "internal"},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+		},
+		{
+			name: "both nil passes (no when clause)",
+			repo: &Repository{
+				Metadata: RepositoryMetadata{Name: "repo", Owner: "org"},
+			},
+		},
+		{
+			name: "empty when fails",
+			repo: &Repository{
+				Metadata:        RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition:       &RepositoryCondition{},
+				ConditionalSpec: func() *RepositorySpec { s := makeRuleset("r"); return &s }(),
+			},
+			wantErr: "must specify at least one condition",
+		},
+		{
+			name: "invalid ruleset in conditional_spec fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: func() *RepositorySpec {
+					s := RepositorySpec{
+						Rulesets: []Ruleset{{
+							Name:        "bad",
+							Enforcement: Ptr("active"),
+							BypassActors: []RulesetBypassActor{
+								{BypassMode: "always"},
+							},
+							Rules: RulesetRules{Deletion: Ptr(true)},
+						}},
+					}
+					return &s
+				}(),
+			},
+			wantErr: "bypass_actors[0] must specify one of",
+		},
+		{
+			name: "empty ref_name.include in conditional_spec fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: func() *RepositorySpec {
+					s := RepositorySpec{
+						Rulesets: []Ruleset{{
+							Name:        "bad",
+							Enforcement: Ptr("active"),
+							Conditions:  &RulesetConditions{RefName: &RulesetRefCondition{Include: []string{}}},
+							Rules:       RulesetRules{Deletion: Ptr(true)},
+						}},
+					}
+					return &s
+				}(),
+			},
+			wantErr: "ref_name.include must not be empty",
+		},
+		{
+			name: "fork_pr_approval in conditional_spec with private when fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "private"},
+				ConditionalSpec: &RepositorySpec{
+					Actions: &Actions{Enabled: Ptr(true), ForkPRApproval: Ptr("first_time_contributors")},
+				},
+			},
+			wantErr: "conditional_spec.actions.fork_pr_approval is not supported for private repositories",
+		},
+		{
+			name: "partial actions overlay on spec.actions passes",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Spec:      RepositorySpec{Actions: &Actions{Enabled: Ptr(true)}},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: &RepositorySpec{
+					Actions: &Actions{WorkflowPermissions: Ptr("write")},
+				},
+			},
+		},
+		{
+			name: "partial actions overlay without enabled anywhere fails",
+			repo: &Repository{
+				Metadata:  RepositoryMetadata{Name: "repo", Owner: "org"},
+				Condition: &RepositoryCondition{Visibility: "public"},
+				ConditionalSpec: &RepositorySpec{
+					Actions: &Actions{WorkflowPermissions: Ptr("write")},
+				},
+			},
+			wantErr: "conditional_spec.actions.enabled is required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.repo.Validate()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("error = %q, want it to contain %q", err.Error(), tc.wantErr)
+				}
+			}
+		})
+	}
+}

@@ -12,6 +12,9 @@ func (r *Repository) Validate() error {
 		return err
 	}
 	name := r.Metadata.Name
+	if err := validateCondition(name, r.Condition, r.ConditionalSpec); err != nil {
+		return err
+	}
 	if r.Reconcile != nil {
 		if r.Reconcile.Labels != nil {
 			if r.Spec.LabelSync != nil {
@@ -19,19 +22,69 @@ func (r *Repository) Validate() error {
 			}
 		}
 	}
-	// Branch protection: element tag validation
-	for i, bp := range r.Spec.BranchProtection {
-		if err := ValidateStruct(fmt.Sprintf("%s: spec.branch_protection[%d]", name, i), &bp); err != nil {
+	if err := validateSpecElements(name, "spec", &r.Spec); err != nil {
+		return err
+	}
+	if err := validateActions(name, "spec", r.Spec.Actions, r.Spec.Visibility); err != nil {
+		return err
+	}
+	if r.ConditionalSpec != nil {
+		if err := validateSpecElements(name, "conditional_spec", r.ConditionalSpec); err != nil {
+			return err
+		}
+		if a := r.ConditionalSpec.Actions; a != nil {
+			if a.ForkPRApproval != nil && r.Condition.Visibility == VisibilityPrivate {
+				return fmt.Errorf("%s: conditional_spec.actions.fork_pr_approval is not supported for private repositories (remove it or change when.visibility)", name)
+			}
+			// conditional_spec.actions overlays spec.actions field by field, so
+			// validate the merged result rather than the partial overlay.
+			if err := validateActions(name, "conditional_spec", mergeActions(r.Spec.Actions, a), r.ConditionalSpec.Visibility); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateCondition checks that when and conditional_spec are specified
+// together and that the condition is well-formed.
+func validateCondition(name string, when *RepositoryCondition, conditionalSpec *RepositorySpec) error {
+	if when != nil && conditionalSpec == nil {
+		return fmt.Errorf("%s: when: requires conditional_spec: to be present", name)
+	}
+	if conditionalSpec != nil && when == nil {
+		return fmt.Errorf("%s: conditional_spec: requires when: to be present", name)
+	}
+	if when == nil {
+		return nil
+	}
+	if when.Visibility == "" {
+		return fmt.Errorf("%s: when: must specify at least one condition (e.g. visibility: public)", name)
+	}
+	allowed := map[string]bool{
+		VisibilityPublic:   true,
+		VisibilityPrivate:  true,
+		VisibilityInternal: true,
+	}
+	if !allowed[when.Visibility] {
+		return fmt.Errorf("%s: when[visibility] must be one of: public, private, internal", name)
+	}
+	return nil
+}
+
+// validateSpecElements validates element-level fields within a RepositorySpec.
+// prefix is "spec" or "conditional_spec" for error message context.
+func validateSpecElements(name, prefix string, spec *RepositorySpec) error {
+	for i, bp := range spec.BranchProtection {
+		if err := ValidateStruct(fmt.Sprintf("%s: %s.branch_protection[%d]", name, prefix, i), &bp); err != nil {
 			return err
 		}
 	}
-	// Rulesets: element tag validation + cross-field checks
-	for i, rs := range r.Spec.Rulesets {
-		if err := ValidateStruct(fmt.Sprintf("%s: spec.rulesets[%d]", name, i), &rs); err != nil {
+	for i, rs := range spec.Rulesets {
+		if err := ValidateStruct(fmt.Sprintf("%s: %s.rulesets[%d]", name, prefix, i), &rs); err != nil {
 			return err
 		}
 		for j, ba := range rs.BypassActors {
-			// Exactly one actor type must be specified
 			count := 0
 			if ba.Role != "" {
 				count++
@@ -54,7 +107,7 @@ func (r *Repository) Validate() error {
 			if count > 1 {
 				return fmt.Errorf("%s: rulesets[%s].bypass_actors[%d] must specify exactly one of: role, team, app, org-admin, or custom-role", name, rs.Name, j)
 			}
-			if err := ValidateStruct(fmt.Sprintf("%s: spec.rulesets[%d].bypass_actors[%d]", name, i, j), &ba); err != nil {
+			if err := ValidateStruct(fmt.Sprintf("%s: %s.rulesets[%d].bypass_actors[%d]", name, prefix, i, j), &ba); err != nil {
 				return err
 			}
 		}
@@ -72,41 +125,41 @@ func (r *Repository) Validate() error {
 			}
 		}
 	}
-	// Secrets/Variables: element tag validation (unique handled by tags)
-	for i, s := range r.Spec.Secrets {
-		if err := ValidateStruct(fmt.Sprintf("%s: spec.secrets[%d]", name, i), &s); err != nil {
+	for i, s := range spec.Secrets {
+		if err := ValidateStruct(fmt.Sprintf("%s: %s.secrets[%d]", name, prefix, i), &s); err != nil {
 			return err
 		}
 	}
-	for i, v := range r.Spec.Variables {
-		if err := ValidateStruct(fmt.Sprintf("%s: spec.variables[%d]", name, i), &v); err != nil {
+	for i, v := range spec.Variables {
+		if err := ValidateStruct(fmt.Sprintf("%s: %s.variables[%d]", name, prefix, i), &v); err != nil {
 			return err
 		}
 	}
-	// Milestones: element tag validation
-	for i, ms := range r.Spec.Milestones {
-		if err := ValidateStruct(fmt.Sprintf("%s: spec.milestones[%d]", name, i), &ms); err != nil {
+	for i, ms := range spec.Milestones {
+		if err := ValidateStruct(fmt.Sprintf("%s: %s.milestones[%d]", name, prefix, i), &ms); err != nil {
 			return err
 		}
 	}
-	// Actions: cross-field checks
-	if a := r.Spec.Actions; a != nil {
-		if a.ForkPRApproval != nil && r.Spec.Visibility != nil && *r.Spec.Visibility == VisibilityPrivate {
-			return fmt.Errorf("%s: actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or set visibility to public/internal)", name)
+	return nil
+}
+
+// validateActions validates an actions block against the visibility declared
+// alongside it. prefix is "spec" or "conditional_spec" for error message context.
+func validateActions(name, prefix string, a *Actions, visibility *string) error {
+	if a != nil {
+		if a.ForkPRApproval != nil && visibility != nil && *visibility == VisibilityPrivate {
+			return fmt.Errorf("%s: %s.actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or set visibility to public/internal)", name, prefix)
 		}
-		// GitHub API requires "enabled" in every PUT to /actions/permissions.
-		// To avoid silently changing the enabled state, require it whenever
-		// any other actions field is specified.
 		if a.Enabled == nil {
 			hasOtherField := a.AllowedActions != nil || a.SHAPinningRequired != nil || a.WorkflowPermissions != nil ||
 				a.CanApprovePullRequests != nil || a.SelectedActions != nil || a.ForkPRApproval != nil
 			if hasOtherField {
-				return fmt.Errorf("%s: actions.enabled is required when other actions fields are specified (add \"enabled: true\" or \"enabled: false\")", name)
+				return fmt.Errorf("%s: %s.actions.enabled is required when other actions fields are specified (add \"enabled: true\" or \"enabled: false\")", name, prefix)
 			}
 		}
 		if a.SelectedActions != nil {
 			if a.AllowedActions == nil || *a.AllowedActions != "selected" {
-				return fmt.Errorf("%s: actions.selected_actions can only be used when allowed_actions is \"selected\" (add \"allowed_actions: selected\")", name)
+				return fmt.Errorf("%s: %s.actions.selected_actions can only be used when allowed_actions is \"selected\" (add \"allowed_actions: selected\")", name, prefix)
 			}
 		}
 	}
