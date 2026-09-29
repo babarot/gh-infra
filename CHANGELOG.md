@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.14.0](https://github.com/babarot/gh-infra/compare/v0.13.1...v0.14.0) - 2026-09-29
+### New Features
+- Support ruleset update restrictions by @Songmu in https://github.com/babarot/gh-infra/pull/172
+### Bug fixes
+- fix: fail on unresolvable secret references instead of storing them silently by @wpfleger96 in https://github.com/babarot/gh-infra/pull/170
+- Detect silent-accept when GitHub API ignores settings by @wpfleger96 in https://github.com/babarot/gh-infra/pull/159
+- fix: skip allows_fetch_and_merge drift when GitHub omits the parameter by @babarot in https://github.com/babarot/gh-infra/pull/175
+- fix(manifest): carry allow_auto_merge through merge_strategy overrides by @wpfleger96 in https://github.com/babarot/gh-infra/pull/176
+- fix: retry on HEAD conflict in createCommitOnBranch by @wpfleger96 in https://github.com/babarot/gh-infra/pull/163
+- fix: send merge commit title/message pairs together and validate combinations by @babarot in https://github.com/babarot/gh-infra/pull/177
+- fix: skip FileSet commits that would not change the HEAD tree by @babarot in https://github.com/babarot/gh-infra/pull/178
+
 ## [v0.13.1](https://github.com/babarot/gh-infra/compare/v0.13.0...v0.13.1) - 2026-09-27
 ### Bug fixes
 - Fix FileSet per-repo override source resolution by @wpfleger96 in https://github.com/babarot/gh-infra/pull/152
