@@ -2352,6 +2352,15 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 			wantErr:     true,
 			wantErrText: "squash_merge_commit",
 		},
+		{
+			name: "squash: current title unknown, validation skipped",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+				// title omitted and current settings unavailable (403/404 fallback)
+			},
+			currentMS: CurrentMergeStrategy{AllowSquashMerge: true},
+			wantErr:   false,
+		},
 		// --- nil merge_strategy: no error ---
 		{
 			name:    "nil merge_strategy: ok",

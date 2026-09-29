@@ -218,6 +218,12 @@ func validateMergeCommitPairs(desired *manifest.Repository, current *CurrentStat
 		if p.desiredMessage != nil {
 			effectiveMessage = *p.desiredMessage
 		}
+		// The current value is unknown when the commit message settings could
+		// not be fetched (403/404 fallback). Leave the pair to GitHub rather
+		// than reporting a combination with an empty half.
+		if effectiveTitle == "" || effectiveMessage == "" {
+			continue
+		}
 		key := [2]string{effectiveTitle, effectiveMessage}
 		if !p.validCombos[key] {
 			return fmt.Errorf("%s: invalid combination title=%q message=%q",

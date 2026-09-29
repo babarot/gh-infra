@@ -384,30 +384,8 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 		payload[canonicalAPIField(child.Field)] = child.NewValue
 	}
 
-	// Coupled pairs: GitHub rejects a PATCH that sets one field without the other.
-	// If only one half is present, fetch the current value of the missing companion.
-	type coupledPair struct{ title, message string }
-	pairs := []coupledPair{
-		{"squash_merge_commit_title", "squash_merge_commit_message"},
-		{"merge_commit_title", "merge_commit_message"},
-	}
-	for _, pair := range pairs {
-		_, hasTitle := payload[pair.title]
-		_, hasMessage := payload[pair.message]
-		if hasTitle == hasMessage {
-			// Both present or both absent — nothing to fix.
-			continue
-		}
-		// One half is missing; fetch its current value from GitHub.
-		missing := pair.message
-		if hasMessage {
-			missing = pair.title
-		}
-		out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s", fullName), "--jq", "."+missing)
-		if err != nil {
-			return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
-		}
-		payload[missing] = strings.TrimSpace(string(out))
+	if err := p.fillMergeCommitCompanions(ctx, fullName, payload); err != nil {
+		return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
 	}
 
 	body, err := json.Marshal(payload)
@@ -429,6 +407,52 @@ func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) Apply
 	// stored value. The PATCH response contains the updated repository, so
 	// compare it against what we sent.
 	return ApplyResult{Change: c, Err: verifyPatchResponse(fullName, payload, out)}
+}
+
+// mergeCommitPairs lists the coupled title/message fields that GitHub
+// rejects when only one half is sent in a repos PATCH.
+var mergeCommitPairs = [][2]string{
+	{"squash_merge_commit_title", "squash_merge_commit_message"},
+	{"merge_commit_title", "merge_commit_message"},
+}
+
+// fillMergeCommitCompanions adds the current value of the missing half of each
+// coupled pair to payload. The repository is fetched at most once per call,
+// and only when a pair is incomplete. A companion that GitHub reports as null
+// or empty is left out rather than sent as a guessed value; the PATCH then
+// fails the same way it would have without the companion.
+func (p *Processor) fillMergeCommitCompanions(ctx context.Context, fullName string, payload map[string]any) error {
+	var missing []string
+	for _, pair := range mergeCommitPairs {
+		_, hasTitle := payload[pair[0]]
+		_, hasMessage := payload[pair[1]]
+		switch {
+		case hasTitle && !hasMessage:
+			missing = append(missing, pair[1])
+		case hasMessage && !hasTitle:
+			missing = append(missing, pair[0])
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s", fullName),
+		"--jq", "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}",
+	)
+	if err != nil {
+		return err
+	}
+	var current map[string]*string
+	if err := json.Unmarshal(out, &current); err != nil {
+		return fmt.Errorf("parse merge commit settings: %w", err)
+	}
+	for _, field := range missing {
+		if v := current[field]; v != nil && *v != "" {
+			payload[field] = *v
+		}
+	}
+	return nil
 }
 
 func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manifest.Repository) error {
