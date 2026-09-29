@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/babarot/gh-infra/internal/manifest"
 )
@@ -15,18 +16,25 @@ const maxCommitRetries = 3
 
 // applyToRepo creates a verified commit for all file changes using the GitHub GraphQL
 // createCommitOnBranch mutation. Falls back to Contents API for empty repositories.
-// Returns (prURL, error); prURL is non-empty only for pull_request strategy.
+// Returns (prURL, skipped, error); prURL is non-empty only for pull_request strategy,
+// and skipped is true when the changes would not alter the HEAD tree, in which case
+// no commit (and, for pull_request strategy, no branch or PR) is created.
 // Retries up to maxCommitRetries times on HEAD conflict errors caused by concurrent commits,
 // refetching the target branch's HEAD before each retry.
 // For pull_request mode, branch creation and PR opening happen outside the retry loop so
 // that only the commit itself is retried on conflict.
-func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, error) {
+func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, bool, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
 		if strings.Contains(err.Error(), "repository is empty") {
-			return "", p.applyToEmptyRepo(ctx, repo, changes, opts)
+			return "", false, p.applyToEmptyRepo(ctx, repo, changes, opts)
 		}
-		return "", fmt.Errorf("get HEAD: %w", err)
+		return "", false, fmt.Errorf("get HEAD: %w", err)
+	}
+
+	if p.isNoopCommit(ctx, repo, headSHA, changes) {
+		statusFn(noopCommitStatus)
+		return "", true, nil
 	}
 
 	message := resolveCommitMessage(opts)
@@ -39,34 +47,114 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		}
 		statusFn("creating PR branch...")
 		if err := p.createBranchAt(ctx, repo, prBranch, headSHA); err != nil {
-			return "", fmt.Errorf("create PR branch: %w", err)
+			return "", false, fmt.Errorf("create PR branch: %w", err)
 		}
 		targetBranch = prBranch
 	}
 
+	skipped := false
 	for attempt := range maxCommitRetries {
+		// The concurrent commit that caused the HEAD conflict may already carry
+		// the same content, so recheck against the refetched HEAD before retrying.
+		if attempt > 0 && p.isNoopCommit(ctx, repo, headSHA, changes) {
+			statusFn(noopCommitStatus)
+			skipped = true
+			break
+		}
 		statusFn("committing changes...")
 		err := p.commitViaGraphQL(ctx, repo, targetBranch, headSHA, message, changes)
 		if err == nil {
 			break
 		}
 		if !isHeadConflict(err) {
-			return "", err
+			return "", false, err
 		}
 		if attempt == maxCommitRetries-1 {
-			return "", fmt.Errorf("commit retries exhausted for %s: %w", repo, err)
+			return "", false, fmt.Errorf("commit retries exhausted for %s: %w", repo, err)
 		}
 		headSHA, err = p.getRefSHA(ctx, repo, targetBranch)
 		if err != nil {
-			return "", fmt.Errorf("get HEAD for retry: %w", err)
+			return "", false, fmt.Errorf("get HEAD for retry: %w", err)
 		}
 	}
 
 	if opts.Via == manifest.ViaPullRequest {
+		// The PR branch exists at this point. If the retry was skipped, the
+		// concurrent commit on it already carries the desired content, so the
+		// PR is still opened (or the existing one returned).
 		statusFn("creating pull request...")
-		return p.openPR(ctx, repo, defaultBranch, targetBranch, opts)
+		prURL, err := p.openPR(ctx, repo, defaultBranch, targetBranch, opts)
+		return prURL, false, err
 	}
-	return "", nil
+	return "", skipped, nil
+}
+
+const noopCommitStatus = "no content change on GitHub, skipping commit"
+
+// isNoopCommit reports whether committing changes on top of headSHA would produce
+// a tree identical to headSHA's tree, i.e. an empty commit. This happens when the
+// plan reports a difference that GitHub does not end up storing (#168).
+//
+// It creates a tree via the Git Data API with base_tree set to the HEAD tree and
+// compares the resulting SHA. Only an unreferenced tree object is created; no
+// commit or ref is touched. Any failure is treated as "not a noop" so the commit
+// proceeds as before.
+//
+// Known limitation: entries are written with mode 100644, so an existing 100755
+// (or symlink) file whose content is otherwise unchanged yields a different tree
+// and the commit proceeds. The check is conservative: it never skips a real change.
+func (p *Processor) isNoopCommit(ctx context.Context, repo, headSHA string, changes []Change) bool {
+	// The trees API takes content as a JSON string, which cannot carry
+	// arbitrary bytes. Skip the check rather than compare a mangled blob.
+	for _, c := range changes {
+		if c.Type != ChangeDelete && !utf8.ValidString(c.Desired) {
+			return false
+		}
+	}
+
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/commits/%s", repo, headSHA), "--jq", ".tree.sha")
+	if err != nil {
+		return false
+	}
+	baseTree := strings.TrimSpace(string(out))
+	if baseTree == "" {
+		return false
+	}
+
+	// map[string]any rather than a struct so that "sha": null (delete) is
+	// marshaled instead of omitted.
+	entries := make([]map[string]any, 0, len(changes))
+	for _, c := range changes {
+		entry := map[string]any{
+			"path": c.Path,
+			"mode": "100644",
+			"type": "blob",
+		}
+		if c.Type == ChangeDelete {
+			entry["sha"] = nil
+		} else {
+			entry["content"] = c.Desired
+		}
+		entries = append(entries, entry)
+	}
+	body, err := json.Marshal(map[string]any{
+		"base_tree": baseTree,
+		"tree":      entries,
+	})
+	if err != nil {
+		return false
+	}
+
+	out, err = p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s/git/trees", repo),
+		"--method", "POST",
+		"--input", "-",
+		"--jq", ".sha",
+	)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == baseTree
 }
 
 // isHeadConflict reports whether err is the createCommitOnBranch error returned when

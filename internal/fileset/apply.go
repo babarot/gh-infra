@@ -68,21 +68,25 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptio
 		statusFn := func(status string) {
 			reporter.UpdateStatus(entry.name, status)
 		}
-		prURL, err := p.applyToRepo(ctx, entry.name, filesToApply, opts, statusFn)
+		prURL, skipped, err := p.applyToRepo(ctx, entry.name, filesToApply, opts, statusFn)
 		elapsed := time.Since(start)
 
 		for _, c := range filesToApply {
 			results = append(results, ApplyResult{
-				Change: c,
-				Err:    err,
-				Via:    opts.Via,
-				PRURL:  prURL,
+				Change:  c,
+				Err:     err,
+				Via:     opts.Via,
+				PRURL:   prURL,
+				Skipped: skipped,
 			})
 		}
 
-		if err != nil {
+		switch {
+		case err != nil:
 			reporter.Error(entry.name, elapsed, err)
-		} else {
+		case skipped:
+			reporter.Done(entry.name, elapsed, 0)
+		default:
 			reporter.Done(entry.name, elapsed, len(filesToApply))
 		}
 		return results
@@ -98,10 +102,11 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptio
 }
 
 type ApplyResult struct {
-	Change Change
-	Err    error
-	Via    string // "push" or "pull_request"
-	PRURL  string // non-empty when via is pull_request
+	Change  Change
+	Err     error
+	Via     string // "push" or "pull_request"
+	PRURL   string // non-empty when via is pull_request
+	Skipped bool   // true when GitHub already has the content and no commit was made
 }
 
 func groupChangesByTarget(changes []Change) map[string][]Change {

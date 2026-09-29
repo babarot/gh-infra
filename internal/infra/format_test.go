@@ -210,6 +210,28 @@ func TestPrintApplyResults_FileResults(t *testing.T) {
 	}
 }
 
+func TestPrintApplyResults_FileResultsSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	fileResults := []fileset.ApplyResult{
+		{Change: fileset.Change{Type: fileset.ChangeUpdate, Target: "org/repo", Path: "a.txt"}, Via: "push", Skipped: true},
+	}
+
+	printApplyResults(p, nil, fileResults)
+	out := buf.String()
+
+	if !strings.Contains(out, "skipped") {
+		t.Errorf("expected skipped detail in output, got:\n%s", out)
+	}
+	if strings.Contains(out, "updated") {
+		t.Errorf("skipped file should not be reported as updated, got:\n%s", out)
+	}
+	if strings.Contains(out, "via push") {
+		t.Errorf("skipped file should not report a delivery method, got:\n%s", out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // repoFieldWidth / filePathWidth
 // ---------------------------------------------------------------------------

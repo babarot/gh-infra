@@ -209,9 +209,14 @@ func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 		var prURL string
 		var commitStrategy string
 		for _, r := range fileByTarget[name] {
-			if r.Err != nil {
+			switch {
+			case r.Err != nil:
 				p.PrintResult(ui.ResultItem{Icon: ui.IconError, Field: r.Change.Path, Detail: r.Err.Error()})
-			} else {
+			case r.Skipped:
+				// No commit was made, so there is no delivery method to report.
+				p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: r.Change.Path, Detail: "skipped (no content change on GitHub)"})
+				continue
+			default:
 				p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: r.Change.Path, Detail: fmt.Sprintf("%sd", r.Change.Type)})
 			}
 			if r.Via != "" {
