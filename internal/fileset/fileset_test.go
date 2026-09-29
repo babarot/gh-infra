@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -560,5 +563,159 @@ func TestHasChanges_OnlyDeletes(t *testing.T) {
 	}
 	if !HasChanges(changes) {
 		t.Error("expected HasChanges=true when only ChangeDelete changes exist")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// isHeadConflict and retry tests
+// ---------------------------------------------------------------------------
+
+// headConflictMsg is the exact createCommitOnBranch error GitHub returns on a HEAD conflict.
+const headConflictMsg = `Expected branch to point to "1d13718b1408525401981e76c82e25c8c1d6dc67" but it did not.  Pull and try again.`
+
+func TestIsHeadConflict(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"real GitHub error wrapped by commitViaGraphQL", fmt.Errorf("graphql mutation: %w", errors.New(headConflictMsg)), true},
+		{"real GitHub error from graphql errors payload", fmt.Errorf("graphql: %s", headConflictMsg), true},
+		{"unrelated graphql error", fmt.Errorf("graphql: some other error"), false},
+		{"partial match", errors.New("Expected branch to point to main"), false},
+		{"nil", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isHeadConflict(tt.err); got != tt.want {
+				t.Errorf("isHeadConflict(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// SequenceMockRunner returns different responses for successive calls matching a prefix.
+type SequenceMockRunner struct {
+	gh.MockRunner
+	DefaultResponse []byte
+	sequences       map[string][]sequenceEntry
+	callCounts      map[string]int
+	mu              sync.Mutex
+}
+
+type sequenceEntry struct {
+	response []byte
+	err      error
+}
+
+func (m *SequenceMockRunner) Run(_ context.Context, args ...string) ([]byte, error) {
+	key := strings.Join(args, " ")
+	m.mu.Lock()
+	m.Called = append(m.Called, args)
+	m.CalledStdin = append(m.CalledStdin, nil)
+	for prefix, entries := range m.sequences {
+		if strings.HasPrefix(key, prefix) {
+			idx := m.callCounts[prefix]
+			m.callCounts[prefix]++
+			m.mu.Unlock()
+			if idx < len(entries) {
+				e := entries[idx]
+				return e.response, e.err
+			}
+			return m.DefaultResponse, nil
+		}
+	}
+	m.mu.Unlock()
+	if err, ok := m.Errors[key]; ok {
+		return nil, err
+	}
+	if resp, ok := m.Responses[key]; ok {
+		return resp, nil
+	}
+	return m.DefaultResponse, nil
+}
+
+// newHeadConflictMock returns a runner whose first createCommitOnBranch call fails with
+// a HEAD conflict and whose second succeeds. extraSequences adds per-prefix responses.
+func newHeadConflictMock(repo string, extraSequences map[string][]sequenceEntry) *SequenceMockRunner {
+	sequences := map[string][]sequenceEntry{
+		"api graphql": {
+			{err: errors.New(headConflictMsg)},
+			{response: []byte(`{"data":{"createCommitOnBranch":{"commit":{"oid":"final-sha"}}}}`)},
+		},
+	}
+	maps.Copy(sequences, extraSequences)
+	return &SequenceMockRunner{
+		MockRunner: gh.MockRunner{
+			Responses: map[string][]byte{
+				fmt.Sprintf("repo view %s --json defaultBranchRef --jq .defaultBranchRef.name", repo): []byte("main"),
+			},
+			Errors: map[string]error{},
+		},
+		DefaultResponse: []byte(`{"data":{"createCommitOnBranch":{"commit":{"oid":"new-sha"}}}}`),
+		sequences:       sequences,
+		callCounts:      make(map[string]int),
+	}
+}
+
+func applyOneChange(t *testing.T, runner gh.Runner, repo string, opts ApplyOptions) {
+	t.Helper()
+	p := NewProcessor(runner, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	changes := []Change{
+		{
+			FileSetID: opts.FileSetID,
+			Target:    repo,
+			Path:      ".github/ci.yml",
+			Type:      ChangeUpdate,
+			Desired:   "name: CI",
+		},
+	}
+
+	results := p.Apply(context.Background(), changes, opts, ui.NoopReporter{})
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("expected success after retry, got error: %v", results[0].Err)
+	}
+}
+
+func TestApply_RetryOnHeadConflict_Push(t *testing.T) {
+	repo := "owner/repo"
+	mainRef := "api repos/owner/repo/git/ref/heads/main "
+	mock := newHeadConflictMock(repo, map[string][]sequenceEntry{
+		mainRef: {{response: []byte("head123")}, {response: []byte("head456")}},
+	})
+
+	applyOneChange(t, mock, repo, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush})
+
+	if got := mock.callCounts["api graphql"]; got != 2 {
+		t.Errorf("expected 2 graphql calls (1 conflict + 1 retry), got %d", got)
+	}
+	if got := mock.callCounts[mainRef]; got != 2 {
+		t.Errorf("expected 2 default branch HEAD fetches (initial + retry), got %d", got)
+	}
+}
+
+func TestApply_RetryOnHeadConflict_PullRequestRefetchesPRBranch(t *testing.T) {
+	repo := "owner/repo"
+	mainRef := "api repos/owner/repo/git/ref/heads/main "
+	prRef := "api repos/owner/repo/git/ref/heads/gh-infra/sync-test "
+	mock := newHeadConflictMock(repo, map[string][]sequenceEntry{
+		mainRef: {{response: []byte("head123")}},
+		prRef:   {{response: []byte("pr-head456")}},
+	})
+
+	applyOneChange(t, mock, repo, ApplyOptions{FileSetID: "test", Via: manifest.ViaPullRequest})
+
+	if got := mock.callCounts["api graphql"]; got != 2 {
+		t.Errorf("expected 2 graphql calls (1 conflict + 1 retry), got %d", got)
+	}
+	if got := mock.callCounts[mainRef]; got != 1 {
+		t.Errorf("expected default branch HEAD fetched once (initial only), got %d", got)
+	}
+	if got := mock.callCounts[prRef]; got != 1 {
+		t.Errorf("expected PR branch HEAD fetched once (retry), got %d", got)
 	}
 }
