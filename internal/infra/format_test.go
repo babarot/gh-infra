@@ -29,7 +29,7 @@ func TestPrintPlan_RepoChanges(t *testing.T) {
 		{Type: repository.ChangeCreate, Name: "org/repo", Field: "homepage", NewValue: "https://example.com"},
 	}
 
-	printPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil, false)
 	out := buf.String()
 
 	if !strings.Contains(out, "org/repo") {
@@ -52,7 +52,7 @@ func TestPrintPlan_FileChanges(t *testing.T) {
 		{Type: fileset.ChangeUpdate, Target: "org/repo", Path: ".github/lint.yml", Current: "old\n", Desired: "new\n", Via: "push"},
 	}
 
-	printPlan(p, nil, fileChanges)
+	printPlan(p, nil, fileChanges, false)
 	out := buf.String()
 
 	if !strings.Contains(out, "org/repo") {
@@ -77,7 +77,7 @@ func TestPrintPlan_Mixed(t *testing.T) {
 		{Type: fileset.ChangeCreate, Target: "org/repo", Path: "README.md"},
 	}
 
-	printPlan(p, repoChanges, fileChanges)
+	printPlan(p, repoChanges, fileChanges, false)
 	out := buf.String()
 
 	// Both repo and file changes should appear under same repo group
@@ -100,7 +100,7 @@ func TestPrintPlan_AllNoOp(t *testing.T) {
 		{Type: fileset.ChangeNoOp, Target: "org/repo"},
 	}
 
-	printPlan(p, repoChanges, fileChanges)
+	printPlan(p, repoChanges, fileChanges, false)
 
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output for all no-op, got:\n%s", buf.String())
@@ -111,7 +111,7 @@ func TestPrintPlan_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
 
-	printPlan(p, nil, nil)
+	printPlan(p, nil, nil, false)
 
 	if buf.Len() != 0 {
 		t.Errorf("expected empty output for nil changes, got:\n%s", buf.String())
@@ -134,7 +134,7 @@ func TestPrintPlan_ChildChanges(t *testing.T) {
 		},
 	}
 
-	printPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil, false)
 	out := buf.String()
 
 	if !strings.Contains(out, "features") {
@@ -488,7 +488,7 @@ func TestPrintPlan_GroupedLabelsAndMilestones(t *testing.T) {
 		{Type: repository.ChangeCreate, Resource: manifest.ResourceMilestone, Name: "org/repo", Field: "v1.0", NewValue: "open"},
 	}
 
-	printPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil, false)
 	out := buf.String()
 
 	if !strings.Contains(out, "labels") {
@@ -532,7 +532,7 @@ func TestPrintPlan_GroupedLabelUpdate(t *testing.T) {
 		},
 	}
 
-	printPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil, false)
 	out := buf.String()
 
 	if !strings.Contains(out, "labels") {
@@ -571,7 +571,7 @@ func TestPrintPlan_RulesetAndBranchProtectionHeaders(t *testing.T) {
 		},
 	}
 
-	printPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil, false)
 	out := buf.String()
 
 	if !strings.Contains(out, `ruleset "main-protection"`) {
@@ -614,7 +614,7 @@ func TestPrintPlan_DeleteRulesetAndBranchProtectionWithChildren(t *testing.T) {
 		},
 	}
 
-	printPlan(p, repoChanges, nil)
+	printPlan(p, repoChanges, nil, false)
 	out := buf.String()
 
 	for _, want := range []string{
@@ -631,5 +631,224 @@ func TestPrintPlan_DeleteRulesetAndBranchProtectionWithChildren(t *testing.T) {
 	}
 	if strings.Contains(out, "branch_protection      main") {
 		t.Errorf("expected grouped branch protection delete, got flat output:\n%s", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// printPlan with ShowDiff
+// ---------------------------------------------------------------------------
+
+func TestPrintPlan_ShowDiff_Update(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	fileChanges := []fileset.Change{
+		{
+			Type:    fileset.ChangeUpdate,
+			Target:  "org/repo",
+			Path:    ".github/ci.yml",
+			Current: "old line\n",
+			Desired: "new line\n",
+		},
+	}
+
+	printPlan(p, nil, fileChanges, true)
+	out := buf.String()
+
+	// Diff block should appear for update change
+	if !strings.Contains(out, "-old line") {
+		t.Errorf("expected removed line in diff output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "+new line") {
+		t.Errorf("expected added line in diff output, got:\n%s", out)
+	}
+}
+
+func TestPrintPlan_ShowDiff_Create(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	fileChanges := []fileset.Change{
+		{
+			Type:    fileset.ChangeCreate,
+			Target:  "org/repo",
+			Path:    "README.md",
+			Desired: "# Hello\n",
+		},
+	}
+
+	printPlan(p, nil, fileChanges, true)
+	out := buf.String()
+
+	if !strings.Contains(out, "+# Hello") {
+		t.Errorf("expected added content in diff output for create, got:\n%s", out)
+	}
+	if !strings.Contains(out, "--- README.md (current)") {
+		t.Errorf("expected file header '---' in diff output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "+++ README.md (desired)") {
+		t.Errorf("expected file header '+++' in diff output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "@@") {
+		t.Errorf("expected hunk header '@@' in diff output, got:\n%s", out)
+	}
+}
+
+func TestPrintPlan_ShowDiff_False(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	fileChanges := []fileset.Change{
+		{
+			Type:    fileset.ChangeUpdate,
+			Target:  "org/repo",
+			Path:    ".github/ci.yml",
+			Current: "old line\n",
+			Desired: "new line\n",
+		},
+	}
+
+	printPlan(p, nil, fileChanges, false)
+	out := buf.String()
+
+	// No diff block when showDiff=false
+	if strings.Contains(out, "-old line") || strings.Contains(out, "+new line") {
+		t.Errorf("expected no diff output when showDiff=false, got:\n%s", out)
+	}
+	// But the file change line itself still appears
+	if !strings.Contains(out, ".github/ci.yml") {
+		t.Errorf("expected file path in output, got:\n%s", out)
+	}
+}
+
+func TestPrintFileDiff_NoOp(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+	c := fileset.Change{Type: fileset.ChangeNoOp, Path: "a.txt"}
+	printFileDiff(p, c)
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for NoOp, got: %q", buf.String())
+	}
+}
+
+func TestPrintPlan_ShowDiff_Delete(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	fileChanges := []fileset.Change{
+		{
+			Type:    fileset.ChangeDelete,
+			Target:  "org/repo",
+			Path:    "old-config.yml",
+			Current: "removed content\n",
+		},
+	}
+
+	printPlan(p, nil, fileChanges, true)
+	out := buf.String()
+
+	if !strings.Contains(out, "-removed content") {
+		t.Errorf("expected removed line in diff output for delete, got:\n%s", out)
+	}
+}
+
+func TestPrintFileDiff_IdenticalContent(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+	c := fileset.Change{
+		Type:    fileset.ChangeUpdate,
+		Path:    "same.yml",
+		Current: "same content\n",
+		Desired: "same content\n",
+	}
+	printFileDiff(p, c)
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for identical content, got: %q", buf.String())
+	}
+}
+
+func TestPrintPlan_ShowDiff_MultiFile(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	fileChanges := []fileset.Change{
+		{
+			Type:    fileset.ChangeUpdate,
+			Target:  "org/repo",
+			Path:    "a.yml",
+			Current: "old-a\n",
+			Desired: "new-a\n",
+			Via:     "push",
+		},
+		{
+			Type:    fileset.ChangeCreate,
+			Target:  "org/repo",
+			Path:    "b.yml",
+			Desired: "content-b\n",
+			Via:     "push",
+		},
+	}
+
+	printPlan(p, nil, fileChanges, true)
+	out := buf.String()
+
+	if !strings.Contains(out, "-old-a") {
+		t.Errorf("expected first file diff, got:\n%s", out)
+	}
+	if !strings.Contains(out, "+new-a") {
+		t.Errorf("expected first file diff, got:\n%s", out)
+	}
+	if !strings.Contains(out, "+content-b") {
+		t.Errorf("expected second file diff, got:\n%s", out)
+	}
+}
+
+func TestPrintPlan_ShowDiff_Truncated(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	var content strings.Builder
+	for i := range 600 {
+		fmt.Fprintf(&content, "line %d\n", i)
+	}
+
+	fileChanges := []fileset.Change{
+		{
+			Type:    fileset.ChangeCreate,
+			Target:  "org/repo",
+			Path:    "big-file.txt",
+			Desired: content.String(),
+		},
+	}
+
+	printPlan(p, nil, fileChanges, true)
+	out := buf.String()
+
+	if !strings.Contains(out, "lines truncated") {
+		t.Errorf("expected truncation message for large diff, got:\n%s", out)
+	}
+}
+
+func TestPrintPlan_ShowDiff_NoANSI(t *testing.T) {
+	// Tests run with DisableStyles() via init(), simulating --ci mode.
+	// Verify no ANSI escape sequences leak into output.
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	fileChanges := []fileset.Change{
+		{
+			Type:    fileset.ChangeUpdate,
+			Target:  "org/repo",
+			Path:    ".github/ci.yml",
+			Current: "old line\n",
+			Desired: "new line\n",
+		},
+	}
+
+	printPlan(p, nil, fileChanges, true)
+	out := buf.String()
+
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("expected no ANSI escape sequences in CI mode, got:\n%q", out)
 	}
 }

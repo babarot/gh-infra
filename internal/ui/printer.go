@@ -58,6 +58,7 @@ type Printer interface {
 	SubGroupHeader(icon, name string)
 	PrintChange(item ChangeItem)
 	PrintFileChange(item FileItem)
+	PrintDiffBlock(diff string) // emit colored unified diff at IndentSub indent
 	PrintResult(item ResultItem)
 	Success(name, detail string)
 	Error(name, detail string)
@@ -317,6 +318,22 @@ func (p *StandardPrinter) PrintFileChange(item FileItem) {
 	stat := formatDiffStat(item.Added, item.Removed)
 	fmt.Fprintf(p.out, "%s%s %-*s %s\n",
 		ind, icon, p.subItemWidth(), item.Path, stat)
+}
+
+// PrintDiffBlock renders a unified diff string to stdout, indented at IndentSub.
+// Each line is colored using the same scheme as the interactive diff viewer:
+// added lines ("+") in green, removed lines ("-") in red, hunk headers ("@@") in cyan,
+// file headers ("---"/"+++") in bold, context lines as-is.
+// A blank line is emitted after the block as a visual separator.
+func (p *StandardPrinter) PrintDiffBlock(diff string) {
+	if diff == "" {
+		return
+	}
+	ind := Indent(IndentSub)
+	for line := range strings.SplitSeq(strings.TrimSuffix(diff, "\n"), "\n") {
+		fmt.Fprintf(p.out, "%s%s\n", ind, colorDiffLine(line, 0))
+	}
+	fmt.Fprintln(p.out)
 }
 
 // PrintResult prints an apply result line.
