@@ -37,7 +37,10 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		return "", true, nil
 	}
 
-	message := resolveCommitMessage(opts)
+	message, err := resolveCommitMessage(opts, repo)
+	if err != nil {
+		return "", false, fmt.Errorf("render commit message: %w", err)
+	}
 	targetBranch := defaultBranch
 
 	if opts.Via == manifest.ViaPullRequest {
@@ -196,12 +199,18 @@ func (p *Processor) commitViaGraphQL(ctx context.Context, repo, branch, headSHA,
 		}
 	}
 
+	headline, msgBody := splitCommitMessage(message)
+	msgInput := map[string]string{"headline": headline}
+	if msgBody != "" {
+		msgInput["body"] = msgBody
+	}
+
 	input := map[string]any{
 		"branch": map[string]string{
 			"repositoryNameWithOwner": repo,
 			"branchName":              branch,
 		},
-		"message":         map[string]string{"headline": message},
+		"message":         msgInput,
 		"expectedHeadOid": headSHA,
 		"fileChanges":     fileChanges{Additions: adds, Deletions: dels},
 	}
@@ -252,12 +261,16 @@ func (p *Processor) commitViaGraphQL(ctx context.Context, repo, branch, headSHA,
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
 func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions) error {
 	p.writer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
-	message := opts.CommitMessage
-	if message == "" {
-		message = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
+	message, err := resolveCommitMessage(opts, repo)
+	if err != nil {
+		return fmt.Errorf("render commit message: %w", err)
 	}
+	headline, body := splitCommitMessage(message)
 	for _, c := range changes {
-		commitMsg := fmt.Sprintf("%s: %s", message, c.Path)
+		commitMsg := fmt.Sprintf("%s: %s", headline, c.Path)
+		if body != "" {
+			commitMsg += "\n\n" + body
+		}
 		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg, ""); err != nil {
 			return err
 		}
@@ -343,11 +356,28 @@ func (p *Processor) createBranchAt(ctx context.Context, repo, branch, sha string
 func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts ApplyOptions) (string, error) {
 	prTitle := opts.PRTitle
 	if prTitle == "" {
-		prTitle = resolveCommitMessage(opts)
+		var err error
+		prTitle, err = resolveCommitMessage(opts, repo)
+		if err != nil {
+			return "", fmt.Errorf("render PR title: %w", err)
+		}
+		prTitle, _ = splitCommitMessage(prTitle)
+	} else if HasTemplate(prTitle, nil) {
+		var err error
+		prTitle, err = RenderCommitMessage(prTitle, repo, opts.SourceURL)
+		if err != nil {
+			return "", fmt.Errorf("render PR title: %w", err)
+		}
 	}
 	prBody := opts.PRBody
 	if prBody == "" {
 		prBody = fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetID)
+	} else if HasTemplate(prBody, nil) {
+		var err error
+		prBody, err = RenderCommitMessage(prBody, repo, opts.SourceURL)
+		if err != nil {
+			return "", fmt.Errorf("render PR body: %w", err)
+		}
 	}
 	out, err := p.runner.Run(ctx, "pr", "create",
 		"--repo", repo,
@@ -371,6 +401,15 @@ func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts Ap
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// splitCommitMessage splits a commit message into headline and body.
+// The headline is the text before the first newline; body is everything after,
+// with leading newlines stripped. Matches standard Git commit message convention.
+func splitCommitMessage(msg string) (headline, body string) {
+	headline, body, _ = strings.Cut(msg, "\n")
+	body = strings.TrimLeft(body, "\n")
+	return
 }
 
 // sanitizeBranchName converts an identity string into a valid Git branch name component.

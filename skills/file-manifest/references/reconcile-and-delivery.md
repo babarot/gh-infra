@@ -50,3 +50,19 @@ spec:
 ```
 
 If the PR branch already exists, gh-infra updates that PR.
+
+## Templated Messages
+
+`commit_message`, `pr_title`, `pr_body` support `<% %>` with `.Repo.*` and `.Source.URL` (from env `GH_INFRA_SOURCE_URL`; empty if unset). `.Vars` is not available.
+
+```yaml
+spec:
+  commit_message: |-
+    ci: sync CI workflow
+
+    <% if .Source.URL %>Source: <% .Source.URL %><% end %>
+```
+
+- First line = commit headline, rest = body; empty body is dropped. Default `pr_title` uses only the headline.
+- Guard `.Source.URL` with `if`, otherwise an unset env var leaves a dangling `Source: ` line.
+- Messages render only at apply time; `plan` does not show or validate them, so template errors surface during `apply`.

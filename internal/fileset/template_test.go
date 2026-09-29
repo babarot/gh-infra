@@ -200,3 +200,59 @@ func TestRenderTemplateWithTrace_UnsupportedSyntax(t *testing.T) {
 		t.Fatal("expected error for unsupported syntax")
 	}
 }
+
+func TestSplitCommitMessage(t *testing.T) {
+	tests := []struct {
+		msg          string
+		wantHeadline string
+		wantBody     string
+	}{
+		{"single line", "single line", ""},
+		{"headline\n\nbody text", "headline", "body text"},
+		{"headline\nbody without blank line", "headline", "body without blank line"},
+		{"headline\n\nfirst para\n\nsecond para", "headline", "first para\n\nsecond para"},
+	}
+	for _, tt := range tests {
+		h, b := splitCommitMessage(tt.msg)
+		if h != tt.wantHeadline || b != tt.wantBody {
+			t.Errorf("splitCommitMessage(%q) = (%q, %q), want (%q, %q)",
+				tt.msg, h, b, tt.wantHeadline, tt.wantBody)
+		}
+	}
+}
+
+func TestRenderCommitMessage_SourceURL(t *testing.T) {
+	msg := "ci: sync files\n\nSource: <% .Source.URL %>"
+	result, err := RenderCommitMessage(msg, "org/repo", "https://github.com/org/config/pull/17")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ci: sync files\n\nSource: https://github.com/org/config/pull/17"
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}
+
+func TestRenderCommitMessage_EmptySourceURL(t *testing.T) {
+	msg := "ci: sync files <% .Source.URL %>"
+	result, err := RenderCommitMessage(msg, "org/repo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ci: sync files "
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}
+
+func TestRenderCommitMessage_WithRepoContext(t *testing.T) {
+	msg := "ci: sync <% .Repo.Name %> files\n\nSource: <% .Source.URL %>"
+	result, err := RenderCommitMessage(msg, "babarot/gomi", "https://github.com/org/config/pull/17")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ci: sync gomi files\n\nSource: https://github.com/org/config/pull/17"
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}

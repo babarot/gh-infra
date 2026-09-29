@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -190,6 +191,7 @@ func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]file
 		FileSetID:     fs.Identity(),
 		PRTitle:       fs.Spec.PRTitle,
 		PRBody:        fs.Spec.PRBody,
+		SourceURL:     os.Getenv("GH_INFRA_SOURCE_URL"),
 	}
 	return fsChanges, opts
 }
