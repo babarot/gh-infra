@@ -146,16 +146,14 @@ var validSquashCombinations = map[[2]string]bool{
 var validMergeCombinations = map[[2]string]bool{
 	{"PR_TITLE", "PR_BODY"}:       true,
 	{"PR_TITLE", "BLANK"}:         true,
-	{"PR_TITLE", "PR_TITLE"}:      true,
 	{"MERGE_MESSAGE", "PR_TITLE"}: true,
-	{"MERGE_MESSAGE", "PR_BODY"}:  true,
-	{"MERGE_MESSAGE", "BLANK"}:    true,
 }
 
 // validateMergeCommitPairs checks that the effective squash/merge commit
-// title+message combinations are valid per the GitHub API. Validation is
-// skipped for a merge type when it is effectively disabled, because GitHub
-// ignores those fields when the type is off.
+// title+message combinations are valid per the GitHub API. When a merge type
+// is effectively disabled, GitHub rejects any change to its title/message
+// (no_merge_strategy / no_squash_merge_strategy), so only unchanged values are
+// allowed; the combination itself is not checked since nothing is sent.
 func validateMergeCommitPairs(desired *manifest.Repository, current *CurrentState) error {
 	ms := desired.Spec.MergeStrategy
 	if ms == nil {
@@ -173,6 +171,7 @@ func validateMergeCommitPairs(desired *manifest.Repository, current *CurrentStat
 
 	type pair struct {
 		scope          string
+		allowField     string
 		allowEnabled   bool
 		validCombos    map[[2]string]bool
 		desiredTitle   *string
@@ -183,6 +182,7 @@ func validateMergeCommitPairs(desired *manifest.Repository, current *CurrentStat
 	pairs := []pair{
 		{
 			scope:          "merge_strategy.squash_merge_commit",
+			allowField:     "allow_squash_merge",
 			allowEnabled:   effectiveBool(ms.AllowSquashMerge, current.MergeStrategy.AllowSquashMerge),
 			validCombos:    validSquashCombinations,
 			desiredTitle:   ms.SquashMergeCommitTitle,
@@ -192,6 +192,7 @@ func validateMergeCommitPairs(desired *manifest.Repository, current *CurrentStat
 		},
 		{
 			scope:          "merge_strategy.merge_commit",
+			allowField:     "allow_merge_commit",
 			allowEnabled:   effectiveBool(ms.AllowMergeCommit, current.MergeStrategy.AllowMergeCommit),
 			validCombos:    validMergeCombinations,
 			desiredTitle:   ms.MergeCommitTitle,
@@ -206,8 +207,15 @@ func validateMergeCommitPairs(desired *manifest.Repository, current *CurrentStat
 		if p.desiredTitle == nil && p.desiredMessage == nil {
 			continue
 		}
-		// GitHub ignores title/message fields when the merge type is disabled.
 		if !p.allowEnabled {
+			// An unknown current value (403/404 fallback) is left to GitHub.
+			changed := func(desired *string, current string) bool {
+				return desired != nil && current != "" && *desired != current
+			}
+			if changed(p.desiredTitle, p.currentTitle) || changed(p.desiredMessage, p.currentMessage) {
+				return fmt.Errorf("%s_title/message cannot be changed while merge_strategy.%s is false",
+					p.scope, p.allowField)
+			}
 			continue
 		}
 		effectiveTitle := p.currentTitle

@@ -2323,10 +2323,71 @@ func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 			wantErrText: "merge_commit",
 		},
 		{
+			name: "merge: PR_TITLE+PR_TITLE is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: MERGE_MESSAGE+PR_BODY is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: MERGE_MESSAGE+BLANK is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("BLANK")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: changing title while allow_merge_commit is false is rejected",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(false)
+				ms.MergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			currentMS:   CurrentMergeStrategy{AllowMergeCommit: true, MergeCommitTitle: "MERGE_MESSAGE", MergeCommitMessage: "PR_TITLE"},
+			wantErr:     true,
+			wantErrText: "allow_merge_commit is false",
+		},
+		{
+			name: "merge: unchanged title/message while allow_merge_commit is false is ok",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(false)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
+			},
+			currentMS: CurrentMergeStrategy{AllowMergeCommit: true, MergeCommitTitle: "MERGE_MESSAGE", MergeCommitMessage: "PR_TITLE"},
+			wantErr:   false,
+		},
+		{
+			name: "squash: changing message while allow_squash_merge is false is rejected",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(false)
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			currentMS:   CurrentMergeStrategy{SquashMergeCommitTitle: "PR_TITLE", SquashMergeCommitMessage: "COMMIT_MESSAGES"},
+			wantErr:     true,
+			wantErrText: "allow_squash_merge is false",
+		},
+		{
 			name: "merge: validation skipped when allow_merge_commit is false",
 			setupMS: func(ms *manifest.MergeStrategy) {
 				ms.AllowMergeCommit = manifest.Ptr(false)
-				// MERGE_MESSAGE+PR_TITLE is valid, but GitHub ignores these when disabled
+				// current values unknown (403/404 fallback), so left to GitHub
 				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
 				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
 			},
