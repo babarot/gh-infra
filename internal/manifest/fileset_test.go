@@ -64,3 +64,35 @@ overrides:
 		t.Errorf("override content = %q, want %q", target.Overrides[0].Content, "custom content")
 	}
 }
+
+func TestFileEntry_UnmarshalYAML_ExecutableTrue(t *testing.T) {
+	input := `
+path: bin/tool
+content: "#!/bin/sh\necho hello"
+executable: true
+`
+	var entry FileEntry
+	if err := yaml.Unmarshal([]byte(input), &entry); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entry.Executable == nil {
+		t.Fatal("Executable should be non-nil when set to true in YAML")
+	}
+	if !*entry.Executable {
+		t.Errorf("Executable = false, want true")
+	}
+}
+
+func TestFileEntry_UnmarshalYAML_ExecutableOmitted(t *testing.T) {
+	input := `
+path: some/file.txt
+content: "hello"
+`
+	var entry FileEntry
+	if err := yaml.Unmarshal([]byte(input), &entry); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entry.Executable != nil {
+		t.Errorf("Executable should be nil when omitted from YAML, got %v", *entry.Executable)
+	}
+}
