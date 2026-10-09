@@ -61,13 +61,22 @@ const (
 	DefaultMaxRepoList = "1000"
 )
 
+// RepositoryCondition gates settings on a runtime-evaluated repo property.
+// All specified fields must match for the condition to be satisfied.
+// Currently only Visibility is supported.
+type RepositoryCondition struct {
+	Visibility string `yaml:"visibility"`
+}
+
 // Repository represents a single repository declaration.
 type Repository struct {
-	APIVersion string               `yaml:"apiVersion"`
-	Kind       string               `yaml:"kind"`
-	Metadata   RepositoryMetadata   `yaml:"metadata"`
-	Reconcile  *RepositoryReconcile `yaml:"reconcile,omitempty"`
-	Spec       RepositorySpec       `yaml:"spec"`
+	APIVersion      string               `yaml:"apiVersion"`
+	Kind            string               `yaml:"kind"`
+	Metadata        RepositoryMetadata   `yaml:"metadata"`
+	Reconcile       *RepositoryReconcile `yaml:"reconcile,omitempty"`
+	Condition       *RepositoryCondition `yaml:"-"` // set by parseRepositorySet only; not serialized
+	ConditionalSpec *RepositorySpec      `yaml:"-"` // set by parseRepositorySet only; not serialized
+	Spec            RepositorySpec       `yaml:"spec"`
 }
 
 type RepositoryMetadata struct {

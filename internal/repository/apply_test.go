@@ -1533,6 +1533,86 @@ func TestApplyActions_RoutesCorrectly(t *testing.T) {
 	}
 }
 
+func TestApply_ResolvedConditionalActions_Sent(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	repo.Spec.Actions = &manifest.Actions{Enabled: manifest.Ptr(true)}
+	repo.Condition = &manifest.RepositoryCondition{Visibility: manifest.VisibilityPublic}
+	repo.ConditionalSpec = &manifest.RepositorySpec{
+		Actions: &manifest.Actions{
+			WorkflowPermissions: manifest.Ptr("write"),
+			ForkPRApproval:      manifest.Ptr("all_external_contributors"),
+		},
+	}
+	resolved := ResolveConditional(repo, &CurrentState{Visibility: manifest.VisibilityPublic})
+
+	changes := []Change{
+		{Type: ChangeUpdate, Resource: manifest.ResourceActions, Name: "myorg/myrepo", Field: "workflow_permissions"},
+		{Type: ChangeUpdate, Resource: manifest.ResourceActions, Name: "myorg/myrepo", Field: "fork_pr_approval"},
+	}
+	for _, r := range proc.Apply(context.Background(), changes, []*manifest.Repository{resolved}, ui.NoopReporter{}) {
+		if r.Err != nil {
+			t.Fatalf("unexpected error: %v", r.Err)
+		}
+	}
+
+	bodies := map[string]string{}
+	for i, call := range mock.Called {
+		bodies[strings.Join(call, " ")] = string(mock.CalledStdin[i])
+	}
+	var gotWorkflow, gotForkPR bool
+	for call, body := range bodies {
+		if strings.Contains(call, "actions/permissions/workflow") && strings.Contains(body, `"default_workflow_permissions":"write"`) {
+			gotWorkflow = true
+		}
+		if strings.Contains(call, "fork-pr-contributor-approval") && strings.Contains(body, `"approval_policy":"all_external_contributors"`) {
+			gotForkPR = true
+		}
+	}
+	if !gotWorkflow || !gotForkPR {
+		t.Errorf("expected conditional workflow_permissions and fork_pr_approval to be sent, got calls: %v", bodies)
+	}
+}
+
+func TestApply_ResolvedConditionalRuleset_WinsOverSpec(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	repo.Spec.Rulesets = []manifest.Ruleset{
+		{Name: "protect-main", Enforcement: manifest.Ptr("active"), Rules: manifest.RulesetRules{Deletion: manifest.Ptr(true)}},
+	}
+	repo.Condition = &manifest.RepositoryCondition{Visibility: manifest.VisibilityPublic}
+	repo.ConditionalSpec = &manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{
+			{Name: "protect-main", Enforcement: manifest.Ptr("evaluate"), Rules: manifest.RulesetRules{Deletion: manifest.Ptr(true)}},
+		},
+		RulesetsSet: true,
+	}
+	resolved := ResolveConditional(repo, &CurrentState{Visibility: manifest.VisibilityPublic})
+
+	changes := []Change{
+		{Type: ChangeCreate, Resource: "Ruleset[protect-main]", Name: "myorg/myrepo", Field: "ruleset", NewValue: "protect-main"},
+	}
+	for _, r := range proc.Apply(context.Background(), changes, []*manifest.Repository{resolved}, ui.NoopReporter{}) {
+		if r.Err != nil {
+			t.Fatalf("unexpected error: %v", r.Err)
+		}
+	}
+
+	for i, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "repos/myorg/myrepo/rulesets") {
+			if body := string(mock.CalledStdin[i]); !strings.Contains(body, `"enforcement":"evaluate"`) {
+				t.Errorf("expected conditional enforcement evaluate in ruleset payload, got: %s", body)
+			}
+			return
+		}
+	}
+	t.Errorf("expected ruleset POST, got calls: %v", mock.Called)
+}
+
 func TestApplyMilestone_Create(t *testing.T) {
 	mock := &gh.MockRunner{}
 	proc := NewProcessor(mock, nil)

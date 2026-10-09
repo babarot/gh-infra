@@ -205,11 +205,22 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	}
 
 	var warnings []string
+	var defaultsSpec RepositorySpec
 	if set.Defaults != nil {
+		if err := validateCondition("defaults", set.Defaults.When, set.Defaults.ConditionalSpec); err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+		}
+		defaultsSpec = set.Defaults.Spec
 		warnings = append(warnings, repositoryWarnings(set.Defaults.Spec)...)
+		if set.Defaults.ConditionalSpec != nil {
+			warnings = append(warnings, repositoryWarnings(*set.Defaults.ConditionalSpec)...)
+		}
 	}
 	for i := range set.Repositories {
 		warnings = append(warnings, repositoryWarnings(set.Repositories[i].Spec)...)
+		if set.Repositories[i].ConditionalSpec != nil {
+			warnings = append(warnings, repositoryWarnings(*set.Repositories[i].ConditionalSpec)...)
+		}
 	}
 
 	var repos []*Repository
@@ -217,6 +228,10 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	for i := range set.Repositories {
 		entry := set.Repositories[i]
 		originalSpec := entry.Spec // copy before merge
+		condition, conditionalSpec, err := mergeConditional(set.Defaults, entry)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+		}
 		repo := &Repository{
 			APIVersion: set.APIVersion,
 			Kind:       KindRepository,
@@ -224,21 +239,25 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 				Name:  entry.Name,
 				Owner: set.Metadata.Owner,
 			},
-			Reconcile: mergeReconcile(set.Defaults, entry.Reconcile),
-			Spec:      mergeSpecs(set.Defaults, entry.Spec),
+			Reconcile:       mergeReconcile(set.Defaults, entry.Reconcile),
+			Condition:       condition,
+			ConditionalSpec: conditionalSpec,
+			Spec:            MergeSpecs(defaultsSpec, entry.Spec),
 		}
 		if err := repo.Validate(); err != nil {
 			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 		}
 		repos = append(repos, repo)
 		docs = append(docs, &RepositoryDocument{
-			Resource:          repo,
-			SourcePath:        path,
-			DocIndex:          docIndex,
-			FromSet:           true,
-			SetEntryIndex:     i,
-			DefaultsSpec:      set.Defaults,
-			OriginalEntrySpec: &originalSpec,
+			Resource:            repo,
+			SourcePath:          path,
+			DocIndex:            docIndex,
+			FromSet:             true,
+			SetEntryIndex:       i,
+			DefaultsSpec:        set.Defaults,
+			OriginalEntrySpec:   &originalSpec,
+			OriginalCondition:   entry.When,
+			OriginalConditional: entry.ConditionalSpec,
 		})
 	}
 	return repos, docs, warnings, nil
@@ -383,13 +402,9 @@ func expandDir(srcDir, destPrefix string) ([]FileEntry, error) {
 	return entries, err
 }
 
-// mergeSpecs merges defaults with per-repo overrides. Per-repo values take precedence.
-func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) RepositorySpec {
-	if defaults == nil {
-		return override
-	}
-
-	result := defaults.Spec
+// MergeSpecs merges override on top of base. Override values take precedence.
+func MergeSpecs(base, override RepositorySpec) RepositorySpec {
+	result := base
 
 	if override.Description != nil {
 		result.Description = override.Description
@@ -449,6 +464,26 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	}
 
 	return result
+}
+
+// mergeConditional merges an entry's when/conditional_spec with the defaults'.
+// An entry inherits defaults.when and layers its conditional_spec on top of
+// defaults.conditional_spec using the same rules as spec. Since a repository
+// has a single condition, an entry's when must match defaults.when.
+func mergeConditional(defaults *RepositorySetDefaults, entry RepositorySetEntry) (*RepositoryCondition, *RepositorySpec, error) {
+	if defaults == nil || defaults.When == nil {
+		return entry.When, entry.ConditionalSpec, nil
+	}
+	if entry.When != nil && *entry.When != *defaults.When {
+		return nil, nil, fmt.Errorf("%s: when must match defaults.when (a repository can have only one condition)", entry.Name)
+	}
+	var override RepositorySpec
+	if entry.ConditionalSpec != nil {
+		override = *entry.ConditionalSpec
+	}
+	when := *defaults.When
+	merged := MergeSpecs(*defaults.ConditionalSpec, override)
+	return &when, &merged, nil
 }
 
 func mergeReconcile(defaults *RepositorySetDefaults, override *RepositoryReconcile) *RepositoryReconcile {
@@ -757,23 +792,43 @@ func expandEnvVars(s string) (expanded string, disallowed, missing []string) {
 func ResolveSecrets(repos []*Repository) error {
 	var errs []error
 	for _, repo := range repos {
-		for i := range repo.Spec.Secrets {
-			secret := &repo.Spec.Secrets[i]
-			resolved, disallowed, missing := expandEnvVars(secret.Value)
-			secret.Value = resolved
-			for _, key := range disallowed {
-				errs = append(errs, fmt.Errorf(
-					"repo %s: secret %q references ${%s}: only ${ENV_*} variables are allowed",
-					repo.Metadata.Name, secret.Name, key,
-				))
-			}
-			for _, key := range missing {
-				errs = append(errs, fmt.Errorf(
-					"repo %s: secret %q references ${%s}, which is unset or empty",
-					repo.Metadata.Name, secret.Name, key,
-				))
-			}
+		var secretErrs []error
+		repo.Spec.Secrets, secretErrs = resolveSecretList(repo.Metadata.Name, repo.Spec.Secrets)
+		errs = append(errs, secretErrs...)
+		if repo.ConditionalSpec != nil {
+			repo.ConditionalSpec.Secrets, secretErrs = resolveSecretList(repo.Metadata.Name, repo.ConditionalSpec.Secrets)
+			errs = append(errs, secretErrs...)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// resolveSecretList returns a copy of secrets with ${ENV_*} references
+// expanded. It copies rather than expanding in place because repositories
+// in a RepositorySet share the defaults' slice, and expanding it once per
+// repository would re-expand already-resolved values.
+func resolveSecretList(repoName string, secrets []Secret) ([]Secret, []error) {
+	if len(secrets) == 0 {
+		return secrets, nil
+	}
+	var errs []error
+	resolved := make([]Secret, len(secrets))
+	for i, secret := range secrets {
+		value, disallowed, missing := expandEnvVars(secret.Value)
+		secret.Value = value
+		resolved[i] = secret
+		for _, key := range disallowed {
+			errs = append(errs, fmt.Errorf(
+				"repo %s: secret %q references ${%s}: only ${ENV_*} variables are allowed",
+				repoName, secret.Name, key,
+			))
+		}
+		for _, key := range missing {
+			errs = append(errs, fmt.Errorf(
+				"repo %s: secret %q references ${%s}, which is unset or empty",
+				repoName, secret.Name, key,
+			))
+		}
+	}
+	return resolved, errs
 }
