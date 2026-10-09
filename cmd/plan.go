@@ -62,6 +62,12 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		return err
 	}
 
+	// A plan that skipped repositories is incomplete, so fail even when the
+	// remaining repositories have no changes.
+	if err := result.FailedTargetsError(); err != nil {
+		return err
+	}
+
 	if result.HasChanges {
 		result.Printer().Summary("To apply, run: " + ui.Bold.Render("gh infra apply"))
 		if opts.CI {
