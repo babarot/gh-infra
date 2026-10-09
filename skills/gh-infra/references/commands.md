@@ -39,6 +39,11 @@ Flags:
 - `--ci`: exit 1 if changes are detected
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 
+Exit status:
+
+- exits 1 if any repository's current state could not be fetched (e.g. token lacks permissions), even with no changes; the failed repos are skipped, never planned as creates
+- with `--ci`, also exits 1 when changes are detected
+
 ## apply
 
 ```bash
@@ -51,6 +56,8 @@ Flags:
 - `--auto-approve`: skip confirmation prompt
 - `--force-secrets`: re-send all declared secrets
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
+
+Exit status: 1 if any change fails or any repository could not be fetched (those repos are skipped; the rest are still applied).
 
 Interactive diff viewer:
 

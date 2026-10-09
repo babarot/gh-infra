@@ -1,6 +1,8 @@
 package infra
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/ui"
@@ -55,6 +57,48 @@ func TestUniqueStrings_PreservesOrder(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFailedTargets(t *testing.T) {
+	errs := []ui.TaskError{
+		{Name: "owner/b", Err: errors.New("fetch secrets: HTTP 403")},
+		{Name: "owner/a", Err: errors.New("fetch variables: HTTP 403")},
+		{Name: "owner/b", Err: errors.New("fetch files: HTTP 403")},
+	}
+	got := failedTargets(errs)
+	want := []string{"owner/b", "owner/a"}
+	if len(got) != len(want) {
+		t.Fatalf("failedTargets() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if got := failedTargets(nil); len(got) != 0 {
+		t.Errorf("failedTargets(nil) = %v, want empty", got)
+	}
+}
+
+func TestPlanResult_FailedTargetsError(t *testing.T) {
+	var nilResult *PlanResult
+	if err := nilResult.FailedTargetsError(); err != nil {
+		t.Errorf("nil result: got %v, want nil", err)
+	}
+	if err := (&PlanResult{}).FailedTargetsError(); err != nil {
+		t.Errorf("no failures: got %v, want nil", err)
+	}
+
+	r := &PlanResult{FailedTargets: []string{"owner/a", "owner/b"}}
+	err := r.FailedTargetsError()
+	if err == nil {
+		t.Fatal("expected an error when targets failed")
+	}
+	for _, s := range []string{"2 repositories", "owner/a", "owner/b"} {
+		if !strings.Contains(err.Error(), s) {
+			t.Errorf("error %q does not contain %q", err, s)
 		}
 	}
 }

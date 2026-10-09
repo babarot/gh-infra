@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -124,12 +125,17 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 				file.Content = patched
 			}
 			// create_only: create if missing, skip entirely if exists
+			plan := p.planFile
 			if file.Reconcile == manifest.ReconcileCreateOnly {
-				change := p.planCreateOnly(ctx, u.fileSetName, fullName, file)
-				out = append(out, change)
-				continue
+				plan = p.planCreateOnly
 			}
-			change := p.planFile(ctx, u.fileSetName, fullName, file)
+			change, err := plan(ctx, u.fileSetName, fullName, file)
+			if err != nil {
+				// The file's current state is unknown, so skip this repo
+				// rather than plan a create over a file that may exist.
+				tracker.Error(fullName, err)
+				return unitResult{}
+			}
 			out = append(out, change)
 		}
 		// Authoritative mode: detect orphaned files in target repo
@@ -146,9 +152,13 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 		for dirScope := range authoritativeDirs {
 			updateStatus("scanning " + dirScope + "...")
 			repoFiles, err := p.fetchDirectoryContents(ctx, fullName, dirScope)
-			if err != nil {
+			if errors.Is(err, gh.ErrNotFound) {
 				// Directory doesn't exist in repo yet — nothing to delete
 				continue
+			}
+			if err != nil {
+				tracker.Error(fullName, fmt.Errorf("list %s: %w", dirScope, err))
+				return unitResult{}
 			}
 			for _, repoFile := range repoFiles {
 				if !allPlannedPaths[repoFile] {
@@ -192,9 +202,12 @@ func boolVal(b *bool) bool {
 }
 
 // planCreateOnly handles reconcile: create_only — create if missing, NoOp if exists.
-func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) Change {
-	current, err := p.fetchFileContent(ctx, repo, file.Path)
-	if err != nil || !current.Exists {
+func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) (Change, error) {
+	current, err := p.fetchCurrentFile(ctx, repo, file.Path)
+	if err != nil {
+		return Change{}, err
+	}
+	if !current.Exists {
 		return Change{
 			FileSetID:  fileSetName,
 			Target:     repo,
@@ -202,7 +215,7 @@ func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string
 			Type:       ChangeCreate,
 			Desired:    file.Content,
 			Executable: boolVal(file.Executable),
-		}
+		}, nil
 	}
 	return Change{
 		FileSetID:  fileSetName,
@@ -210,12 +223,15 @@ func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string
 		Path:       file.Path,
 		Type:       ChangeNoOp,
 		Executable: boolVal(file.Executable),
-	}
+	}, nil
 }
 
-func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) Change {
-	current, err := p.fetchFileContent(ctx, repo, file.Path)
-	if err != nil || !current.Exists {
+func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) (Change, error) {
+	current, err := p.fetchCurrentFile(ctx, repo, file.Path)
+	if err != nil {
+		return Change{}, err
+	}
+	if !current.Exists {
 		return Change{
 			FileSetID:  fileSetName,
 			Target:     repo,
@@ -223,7 +239,7 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 			Type:       ChangeCreate,
 			Desired:    file.Content,
 			Executable: boolVal(file.Executable),
-		}
+		}, nil
 	}
 
 	// Normalize for comparison (trim trailing newlines)
@@ -237,7 +253,7 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 			Path:       file.Path,
 			Type:       ChangeNoOp,
 			Executable: boolVal(file.Executable),
-		}
+		}, nil
 	}
 
 	// Content differs — update
@@ -250,7 +266,20 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 		Desired:    file.Content,
 		SHA:        current.SHA,
 		Executable: boolVal(file.Executable),
+	}, nil
+}
+
+// fetchCurrentFile fetches a file for planning. A 404 means the file does not
+// exist yet; any other error is returned, because the file's state is unknown.
+func (p *Processor) fetchCurrentFile(ctx context.Context, repo, path string) (*State, error) {
+	current, err := p.fetchFileContent(ctx, repo, path)
+	if errors.Is(err, gh.ErrNotFound) {
+		return &State{Path: path, Exists: false}, nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", path, err)
+	}
+	return current, nil
 }
 
 func (p *Processor) fetchFileContent(ctx context.Context, repo, path string) (*State, error) {
@@ -302,12 +331,13 @@ func (p *Processor) fetchDirectoryContents(ctx context.Context, repo, dirPath st
 
 	var files []string
 	for _, item := range items {
-		if item.Type == "file" {
+		switch item.Type {
+		case "file":
 			files = append(files, item.Path)
-		} else if item.Type == "dir" {
+		case "dir":
 			subFiles, err := p.fetchDirectoryContents(ctx, repo, item.Path)
 			if err != nil {
-				continue
+				return nil, err
 			}
 			files = append(files, subFiles...)
 		}

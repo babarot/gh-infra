@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.14.1](https://github.com/babarot/gh-infra/compare/v0.14.0...v0.14.1) - 2026-10-09
+### Bug fixes
+- Fail plan when repository state cannot be fetched by @babarot in https://github.com/babarot/gh-infra/pull/180
+
 ## [v0.14.0](https://github.com/babarot/gh-infra/compare/v0.13.1...v0.14.0) - 2026-09-29
 ### New Features
 - Support ruleset update restrictions by @Songmu in https://github.com/babarot/gh-infra/pull/172
