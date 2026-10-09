@@ -99,9 +99,14 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 				label += ", via " + ui.Cyan.Render(via)
 			}
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
+			unsigned := false
 			for _, c := range fChanges {
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				p.PrintFileChange(fileChangeToItem(c, added, removed))
+				unsigned = unsigned || c.ModeChanged()
+			}
+			if unsigned {
+				p.Detail("Changing file modes needs the Git Data API, so this commit will not be signed")
 			}
 		}
 
@@ -434,6 +439,15 @@ func changeToItem(c repository.Change, level ui.IndentLevel) ui.ChangeItem {
 
 // fileChangeToItem converts a fileset.FileChange to a ui.FileItem.
 func fileChangeToItem(c fileset.Change, added, removed int) ui.FileItem {
+	item := changeTypeToItem(c, added, removed)
+	if c.ModeChanged() {
+		item.OldMode = c.CurrentMode
+		item.NewMode = c.Mode
+	}
+	return item
+}
+
+func changeTypeToItem(c fileset.Change, added, removed int) ui.FileItem {
 	switch c.Type {
 	case fileset.ChangeCreate:
 		return ui.FileItem{Icon: ui.IconAdd, Path: c.Path, Added: added}

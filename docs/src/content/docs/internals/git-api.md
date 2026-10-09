@@ -19,6 +19,16 @@ The process:
 
 All file changes are bundled into a single atomic, verified commit regardless of how many files are modified. This applies to both `push` and `pull_request` delivery methods.
 
+## Git Data API (file mode changes)
+
+`createCommitOnBranch` cannot set file modes: it creates new files as `100644` and keeps the mode of existing files. When a commit has to change a mode (see [File modes](/resources/file/delivery/#file-modes)), gh-infra builds the commit with the Git Data API instead:
+
+1. Create a tree on top of the HEAD tree, with the desired mode for each changed file. Files without `executable` keep their current mode
+2. Create a commit with that tree and HEAD as its parent
+3. Move the branch to the new commit (a non-fast-forward update is retried like a HEAD conflict)
+
+Commits created this way are not signed, so they are not marked Verified, and branches that require signed commits reject them. Only commits that change a mode take this path.
+
 ## Contents API (empty repository fallback)
 
 Repositories with **no commits** (e.g. freshly created) cannot use the GraphQL mutation because there is no existing HEAD. In this case, gh-infra automatically falls back to the **Contents API**.

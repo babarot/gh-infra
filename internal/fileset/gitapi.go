@@ -14,11 +14,11 @@ import (
 
 const maxCommitRetries = 3
 
-// needsGitDataAPI reports whether any change requires the Git Data API
-// (i.e., has executable mode 100755, which createCommitOnBranch does not support).
+// needsGitDataAPI reports whether any change has to change a file mode, which
+// createCommitOnBranch cannot do.
 func needsGitDataAPI(changes []Change) bool {
 	for _, c := range changes {
-		if c.Executable {
+		if c.ModeChanged() {
 			return true
 		}
 	}
@@ -29,9 +29,9 @@ func needsGitDataAPI(changes []Change) bool {
 type commitFunc func(ctx context.Context, repo, branch, headSHA, message string, changes []Change) error
 
 // applyToRepo creates a verified commit for all file changes. Uses the GitHub
-// GraphQL createCommitOnBranch mutation unless any file requires executable mode,
-// in which case the Git Data API is used. Falls back to Contents API for empty
-// repositories.
+// GraphQL createCommitOnBranch mutation unless a file mode has to change, in
+// which case the Git Data API is used and the commit is not signed. Falls back to
+// Contents API for empty repositories.
 // Returns (prURL, skipped, error); prURL is non-empty only for pull_request strategy,
 // and skipped is true when the changes would not alter the HEAD tree, in which case
 // no commit (and, for pull_request strategy, no branch or PR) is created.
@@ -120,9 +120,10 @@ const noopCommitStatus = "no content change on GitHub, skipping commit"
 // commit or ref is touched. Any failure is treated as "not a noop" so the commit
 // proceeds as before.
 //
-// Entries are written with the mode the commit would use (100755 for executable
-// files, 100644 otherwise), so a mode-only change is not mistaken for a noop.
-// Known limitation: an existing 100755 (or symlink) file not marked executable
+// Entries carry the mode the commit would give each file (see treeEntries), so a
+// mode-only change is not mistaken for a noop. Known limitation: when
+// createCommitOnBranch is used, the modes of files without `executable` are not
+// looked up and are written as 100644, so an existing 100755 (or symlink) file
 // whose content is otherwise unchanged yields a different tree and the commit
 // proceeds. The check is conservative: it never skips a real change.
 func (p *Processor) isNoopCommit(ctx context.Context, repo, headSHA string, changes []Change) bool {
@@ -134,53 +135,23 @@ func (p *Processor) isNoopCommit(ctx context.Context, repo, headSHA string, chan
 		}
 	}
 
-	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/commits/%s", repo, headSHA), "--jq", ".tree.sha")
+	baseTree, err := p.commitTreeSHA(ctx, repo, headSHA)
+	if err != nil || baseTree == "" {
+		return false
+	}
+	var modes *modeLookup
+	if needsGitDataAPI(changes) {
+		modes = p.modeLookupAt(repo, headSHA)
+	}
+	entries, err := p.treeEntries(ctx, repo, changes, modes)
 	if err != nil {
 		return false
 	}
-	baseTree := strings.TrimSpace(string(out))
-	if baseTree == "" {
-		return false
-	}
-
-	// map[string]any rather than a struct so that "sha": null (delete) is
-	// marshaled instead of omitted.
-	entries := make([]map[string]any, 0, len(changes))
-	for _, c := range changes {
-		mode := "100644"
-		if c.Executable {
-			mode = "100755"
-		}
-		entry := map[string]any{
-			"path": c.Path,
-			"mode": mode,
-			"type": "blob",
-		}
-		if c.Type == ChangeDelete {
-			entry["sha"] = nil
-		} else {
-			entry["content"] = c.Desired
-		}
-		entries = append(entries, entry)
-	}
-	body, err := json.Marshal(map[string]any{
-		"base_tree": baseTree,
-		"tree":      entries,
-	})
+	tree, err := p.createTree(ctx, repo, baseTree, entries)
 	if err != nil {
 		return false
 	}
-
-	out, err = p.runner.RunWithStdin(ctx, body,
-		"api", fmt.Sprintf("repos/%s/git/trees", repo),
-		"--method", "POST",
-		"--input", "-",
-		"--jq", ".sha",
-	)
-	if err != nil {
-		return false
-	}
-	return strings.TrimSpace(string(out)) == baseTree
+	return tree == baseTree
 }
 
 // isHeadConflict reports whether err is the error returned when a concurrent commit
@@ -196,109 +167,164 @@ func isHeadConflict(err error) bool {
 		strings.Contains(msg, "Update is not a fast forward")
 }
 
-// commitViaGitDataAPI commits changes using three REST calls:
-// create tree → create commit → update ref.
-// This path is used when any file requires mode 100755 (executable), since
-// the createCommitOnBranch GraphQL mutation only supports mode 100644.
+// commitViaGitDataAPI commits changes with the Git Data API: it creates a tree
+// on top of headSHA and a commit, then moves the branch to the commit. It is used
+// only when a file mode has to change, which createCommitOnBranch cannot do.
+// Unlike createCommitOnBranch, the commit is not signed.
 func (p *Processor) commitViaGitDataAPI(ctx context.Context, repo, branch, headSHA, message string, changes []Change) error {
-	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/commits/%s", repo, headSHA), "--jq", ".tree.sha")
+	baseTree, err := p.commitTreeSHA(ctx, repo, headSHA)
 	if err != nil {
 		return fmt.Errorf("get tree SHA: %w", err)
 	}
-	treeSHA := strings.TrimSpace(string(out))
-
-	// Use map[string]any so that nil sha marshals as JSON null (not omitted),
-	// which is what the Trees API requires for deletion.
-	var entries []map[string]any
-	for _, c := range changes {
-		if c.Type == ChangeDelete {
-			// sha: null tells the Trees API to remove this path from the tree.
-			entries = append(entries, map[string]any{"path": c.Path, "sha": nil})
-		} else {
-			mode := "100644"
-			if c.Executable {
-				mode = "100755"
-			}
-			entries = append(entries, map[string]any{
-				"path":    c.Path,
-				"mode":    mode,
-				"type":    "blob",
-				"content": c.Desired,
-			})
-		}
-	}
-
-	treeBody, err := json.Marshal(map[string]any{
-		"base_tree": treeSHA,
-		"tree":      entries,
-	})
+	entries, err := p.treeEntries(ctx, repo, changes, p.modeLookupAt(repo, headSHA))
 	if err != nil {
 		return err
 	}
-	newTreeSHA, err := p.postJSON(ctx, fmt.Sprintf("repos/%s/git/trees", repo), treeBody, ".sha")
+	tree, err := p.createTree(ctx, repo, baseTree, entries)
 	if err != nil {
 		return fmt.Errorf("create tree: %w", err)
 	}
 
-	commitBody, err := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"message": message,
-		"tree":    newTreeSHA,
+		"tree":    tree,
 		"parents": []string{headSHA},
 	})
 	if err != nil {
 		return err
 	}
-	newCommitSHA, err := p.postJSON(ctx, fmt.Sprintf("repos/%s/git/commits", repo), commitBody, ".sha")
+	out, err := p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s/git/commits", repo),
+		"--method", "POST",
+		"--input", "-",
+		"--jq", ".sha",
+	)
 	if err != nil {
 		return fmt.Errorf("create commit: %w", err)
 	}
+	commit := strings.TrimSpace(string(out))
 
-	refBody, err := json.Marshal(map[string]any{
-		"sha": newCommitSHA,
-	})
+	// Without force, the update fails unless it is a fast forward from headSHA,
+	// which isHeadConflict treats like a createCommitOnBranch HEAD conflict.
+	body, err = json.Marshal(map[string]any{"sha": commit})
 	if err != nil {
 		return err
 	}
-	_, err = p.patchJSON(ctx, fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch), refBody)
-	if err != nil {
+	if _, err := p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, branch),
+		"--method", "PATCH",
+		"--input", "-",
+	); err != nil {
 		return fmt.Errorf("update ref: %w", err)
 	}
-
 	return nil
 }
 
-func (p *Processor) postJSON(ctx context.Context, endpoint string, body []byte, jqFilter string) (string, error) {
-	tmpFile, err := os.CreateTemp("", "gh-infra-api-*.json")
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
+// treeEntries builds Trees API entries for changes. A file gets the mode its
+// `executable` asks for. Otherwise it keeps its mode at the base commit when
+// modes is non-nil, as createCommitOnBranch does, and gets 100644 when modes is
+// nil or the file is new. Content that is not valid UTF-8 cannot be sent as a
+// JSON string, so it is uploaded as a blob first.
+func (p *Processor) treeEntries(ctx context.Context, repo string, changes []Change, modes *modeLookup) ([]map[string]any, error) {
+	// map[string]any rather than a struct so that "sha": null (delete) is
+	// marshaled instead of omitted.
+	entries := make([]map[string]any, 0, len(changes))
+	for _, c := range changes {
+		entry := map[string]any{
+			"path": c.Path,
+			"mode": ModeFile,
+			"type": "blob",
+		}
+		if c.Type == ChangeDelete {
+			entry["sha"] = nil
+			entries = append(entries, entry)
+			continue
+		}
+		mode, err := entryMode(ctx, c, modes)
+		if err != nil {
+			return nil, err
+		}
+		entry["mode"] = mode
+		if utf8.ValidString(c.Desired) {
+			entry["content"] = c.Desired
+		} else {
+			sha, err := p.createBlob(ctx, repo, c.Desired)
+			if err != nil {
+				return nil, fmt.Errorf("create blob for %s: %w", c.Path, err)
+			}
+			entry["sha"] = sha
+		}
+		entries = append(entries, entry)
 	}
-	defer os.Remove(tmpFile.Name())
-	if _, err := tmpFile.Write(body); err != nil {
-		tmpFile.Close()
-		return "", fmt.Errorf("write temp file: %w", err)
-	}
-	tmpFile.Close()
+	return entries, nil
+}
 
-	out, err := p.runner.Run(ctx, "api", endpoint, "--method", "POST", "--input", tmpFile.Name(), "--jq", jqFilter)
+func entryMode(ctx context.Context, c Change, modes *modeLookup) (string, error) {
+	if c.Mode != "" {
+		return c.Mode, nil
+	}
+	if modes == nil || c.Type == ChangeCreate {
+		return ModeFile, nil
+	}
+	mode, err := modes.mode(ctx, c.Path)
+	if err != nil {
+		return "", err
+	}
+	if mode == ModeExecutable {
+		return ModeExecutable, nil
+	}
+	return ModeFile, nil
+}
+
+// commitTreeSHA returns the SHA of the tree of the given commit.
+func (p *Processor) commitTreeSHA(ctx context.Context, repo, commit string) (string, error) {
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/git/commits/%s", repo, commit), "--jq", ".tree.sha")
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (p *Processor) patchJSON(ctx context.Context, endpoint string, body []byte) ([]byte, error) {
-	tmpFile, err := os.CreateTemp("", "gh-infra-api-*.json")
+// createTree creates a tree from entries on top of baseTree and returns its SHA.
+func (p *Processor) createTree(ctx context.Context, repo, baseTree string, entries []map[string]any) (string, error) {
+	body, err := json.Marshal(map[string]any{
+		"base_tree": baseTree,
+		"tree":      entries,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("create temp file: %w", err)
+		return "", err
 	}
-	defer os.Remove(tmpFile.Name())
-	if _, err := tmpFile.Write(body); err != nil {
-		tmpFile.Close()
-		return nil, fmt.Errorf("write temp file: %w", err)
+	out, err := p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s/git/trees", repo),
+		"--method", "POST",
+		"--input", "-",
+		"--jq", ".sha",
+	)
+	if err != nil {
+		return "", err
 	}
-	tmpFile.Close()
+	return strings.TrimSpace(string(out)), nil
+}
 
-	return p.runner.Run(ctx, "api", endpoint, "--method", "PATCH", "--input", tmpFile.Name())
+// createBlob uploads content as a blob and returns its SHA.
+func (p *Processor) createBlob(ctx context.Context, repo, content string) (string, error) {
+	body, err := json.Marshal(map[string]string{
+		"content":  base64.StdEncoding.EncodeToString([]byte(content)),
+		"encoding": "base64",
+	})
+	if err != nil {
+		return "", err
+	}
+	out, err := p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s/git/blobs", repo),
+		"--method", "POST",
+		"--input", "-",
+		"--jq", ".sha",
+	)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // commitViaGraphQL sends a createCommitOnBranch GraphQL mutation.
@@ -384,6 +410,13 @@ func (p *Processor) commitViaGraphQL(ctx context.Context, repo, branch, headSHA,
 
 // applyToEmptyRepo uses Contents API as fallback for repos with no commits.
 func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions) error {
+	// The Contents API cannot set a mode. Plan rejects this already; check
+	// again in case the repository was emptied after plan.
+	for _, c := range changes {
+		if c.ModeChanged() {
+			return errExecutableInEmptyRepo(c.Path)
+		}
+	}
 	p.writer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
 	message := opts.CommitMessage
 	if message == "" {

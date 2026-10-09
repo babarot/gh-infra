@@ -829,7 +829,7 @@ func TestApply_NoopCommit_Push(t *testing.T) {
 func TestIsNoopCommit_ExecutableUsesMode100755(t *testing.T) {
 	mock := newNoopGuardMock("base-tree")
 	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	changes := []Change{{Path: ".hooks/pre-commit", Type: ChangeUpdate, Desired: "#!/bin/sh\n", Executable: true}}
+	changes := []Change{{Path: ".hooks/pre-commit", Type: ChangeUpdate, Desired: "#!/bin/sh\n", Mode: ModeExecutable, CurrentMode: ModeExecutable}}
 
 	if !p.isNoopCommit(context.Background(), "owner/repo", "head123", changes) {
 		t.Fatal("expected noop when the created tree matches HEAD")

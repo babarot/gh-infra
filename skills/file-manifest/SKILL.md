@@ -46,6 +46,7 @@ Key fields:
 - `files[].vars`: template variables
 - `files[].patches`: unified diff patches
 - `files[].reconcile`: `additive`, `authoritative`, `create_only`
+- `files[].executable`: `true` for mode 100755, `false` for 100644, omitted keeps the current mode
 
 Read these references as needed:
 
