@@ -953,3 +953,84 @@ func TestApply_NoopCommit_RecheckAfterHeadConflict(t *testing.T) {
 		t.Errorf("expected 2 tree checks (initial + recheck), got %d", n)
 	}
 }
+
+// recordingTracker records per-target errors reported during Plan.
+type recordingTracker struct {
+	mu     sync.Mutex
+	errors map[string][]error
+}
+
+func (r *recordingTracker) UpdateStatus(string, string) {}
+func (r *recordingTracker) Done(string)                 {}
+func (r *recordingTracker) Error(name string, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.errors == nil {
+		r.errors = map[string][]error{}
+	}
+	r.errors[name] = append(r.errors[name], err)
+}
+
+func TestPlan_FetchErrorSkipsRepo(t *testing.T) {
+	// A fetch error other than 404 must not be read as "file missing":
+	// planning a create there could overwrite a file that already exists.
+	tests := []struct {
+		name  string
+		entry manifest.FileEntry
+	}{
+		{"additive", manifest.FileEntry{Path: ".github/ci.yml", Content: "name: CI"}},
+		{"create_only", manifest.FileEntry{Path: ".github/ci.yml", Content: "name: CI", Reconcile: manifest.ReconcileCreateOnly}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{
+				Responses: map[string][]byte{},
+				Errors: map[string]error{
+					contentsKey("owner/repo", ".github/ci.yml"): gh.ErrForbidden,
+				},
+			}
+			p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+			tracker := &recordingTracker{}
+
+			changes, err := p.Plan(context.Background(), makeFileSet("owner", "repo", []manifest.FileEntry{tt.entry}), "", tracker)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(changes) != 0 {
+				t.Errorf("expected no changes for a repo that failed to fetch, got %+v", changes)
+			}
+			errs := tracker.errors["owner/repo"]
+			if len(errs) != 1 || !errors.Is(errs[0], gh.ErrForbidden) {
+				t.Errorf("expected one ErrForbidden reported for owner/repo, got %v", errs)
+			}
+		})
+	}
+}
+
+func TestPlan_AuthoritativeListErrorSkipsRepo(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "config/file1.yml"): contentsJSON("content1", "sha1"),
+		},
+		Errors: map[string]error{
+			contentsKey("owner/repo", "config"): gh.ErrForbidden,
+		},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	tracker := &recordingTracker{}
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
+		{Path: "config/file1.yml", Content: "content1", Reconcile: manifest.ReconcileAuthoritative, DirScope: "config"},
+	})
+
+	changes, err := p.Plan(context.Background(), fileSets, "", tracker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("expected no changes when the directory listing fails, got %+v", changes)
+	}
+	errs := tracker.errors["owner/repo"]
+	if len(errs) != 1 || !errors.Is(errs[0], gh.ErrForbidden) {
+		t.Errorf("expected one ErrForbidden reported for owner/repo, got %v", errs)
+	}
+}

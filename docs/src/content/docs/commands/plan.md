@@ -33,6 +33,15 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `--ci` | Exit with code 1 if changes detected (useful for CI drift detection) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
 
+## Exit status
+
+| Code | Meaning |
+|------|---------|
+| `0` | Plan computed for every repository (with `--ci`: and no changes) |
+| `1` | Changes detected (`--ci` only), or the current state of one or more repositories could not be fetched |
+
+When fetching fails for a repository (for example, a token without the required permissions), its error is shown and the repository is left out of the plan. A plan with skipped repositories is incomplete, so `plan` exits with `1` even if the other repositories have no changes. A file that cannot be fetched is never treated as missing, so no create is planned for it.
+
 ## Examples
 
 ```bash

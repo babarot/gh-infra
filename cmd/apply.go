@@ -64,7 +64,7 @@ func runApply(paths []string, opts applyCommandOptions) error {
 	}
 
 	if !result.HasChanges {
-		return nil
+		return result.FailedTargetsError()
 	}
 
 	p := result.Printer()
@@ -83,9 +83,14 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		applySkipSelections(result.FileChanges, diffEntries)
 	}
 
-	return infra.Apply(result, infra.ApplyOptions{
+	if err := infra.Apply(result, infra.ApplyOptions{
 		Stream: ui.OutputMode() == "stream",
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Repositories that could not be planned were not applied either.
+	return result.FailedTargetsError()
 }
 
 // applySkipSelections writes skip selections from the diff viewer back

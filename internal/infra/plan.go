@@ -36,6 +36,10 @@ type PlanResult struct {
 
 	HasChanges bool
 
+	// FailedTargets lists repositories whose current state could not be
+	// fetched or planned. Their changes are missing from this result.
+	FailedTargets []string
+
 	engine *engine // unexported runtime context for Apply
 }
 
@@ -181,16 +185,17 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	hasFile := fileset.HasChanges(fileChanges)
 
 	result := &PlanResult{
-		RepoChanges: repoChanges,
-		FileChanges: fileChanges,
-		TargetRepos: targetRepos,
-		Parsed:      parsed,
-		HasChanges:  hasRepo || hasFile,
-		engine:      eng,
+		RepoChanges:   repoChanges,
+		FileChanges:   fileChanges,
+		TargetRepos:   targetRepos,
+		Parsed:        parsed,
+		HasChanges:    hasRepo || hasFile,
+		FailedTargets: failedTargets(tracker.Errors()),
+		engine:        eng,
 	}
 
 	if !result.HasChanges {
-		if len(tracker.Errors()) > 0 {
+		if len(result.FailedTargets) > 0 {
 			p.Message("\nNo changes computed. Some repositories were skipped due to errors above.")
 		} else {
 			p.Message("\nNo changes. Infrastructure is up-to-date.")
@@ -218,4 +223,27 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	p.Summary(fmt.Sprintf("Plan: %s", strings.Join(parts, ", ")))
 
 	return result, nil
+}
+
+// failedTargets returns the unique task names that reported an error.
+func failedTargets(errs []ui.TaskError) []string {
+	names := make([]string, len(errs))
+	for i, e := range errs {
+		names[i] = e.Name
+	}
+	return uniqueStrings(names)
+}
+
+// FailedTargetsError returns an error naming the repositories that could not
+// be planned, or nil if every repository was planned.
+func (r *PlanResult) FailedTargetsError() error {
+	if r == nil || len(r.FailedTargets) == 0 {
+		return nil
+	}
+	noun := "repositories"
+	if len(r.FailedTargets) == 1 {
+		noun = "repository"
+	}
+	return fmt.Errorf("could not plan %d %s: %s",
+		len(r.FailedTargets), noun, strings.Join(r.FailedTargets, ", "))
 }
