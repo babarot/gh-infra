@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.15.1](https://github.com/babarot/gh-infra/compare/v0.15.0...v0.15.1) - 2026-10-10
+### Bug fixes
+- Keep what the manifest leaves out when updating a ruleset by @babarot in https://github.com/babarot/gh-infra/pull/204
+- Keep what the manifest leaves out when updating branch protection by @babarot in https://github.com/babarot/gh-infra/pull/206
+- Make plan converge for milestones and selected actions by @babarot in https://github.com/babarot/gh-infra/pull/207
+- Make [] in a RepositorySet entry mean none instead of inheriting by @babarot in https://github.com/babarot/gh-infra/pull/208
+- Leave a label's description alone when the manifest omits it by @babarot in https://github.com/babarot/gh-infra/pull/209
+
 ## [v0.15.0](https://github.com/babarot/gh-infra/compare/v0.14.1...v0.15.0) - 2026-10-10
 ### New Features
 - Add JSON output to plan and apply by @babarot in https://github.com/babarot/gh-infra/pull/201
