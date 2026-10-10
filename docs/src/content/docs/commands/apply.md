@@ -34,6 +34,10 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `--force-secrets` | Re-set all secrets (even existing ones) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
 
+## Exit status
+
+`apply` exits with `1` if any change fails, or if the current state of a repository could not be fetched. Repositories that could not be fetched are left out of the plan and are not applied; the other repositories are still applied.
+
 ## Interactive Diff Viewer
 
 After the plan is displayed, the confirmation prompt offers three options:

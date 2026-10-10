@@ -397,6 +397,47 @@ repositories:
 	}
 }
 
+func TestRepositorySet_EmptyTopicsOverridesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    topics:
+      - default-topic
+repositories:
+  - name: inherit-repo
+    spec:
+      description: "inherits topics"
+  - name: clear-repo
+    spec:
+      topics: []
+`
+	path := filepath.Join(dir, "topics.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath returned error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+
+	inherit, clear := repos[0], repos[1]
+	if !inherit.Spec.TopicsSet || len(inherit.Spec.Topics) != 1 || inherit.Spec.Topics[0] != "default-topic" {
+		t.Errorf("inherit-repo topics = %v (set=%v), want [default-topic]", inherit.Spec.Topics, inherit.Spec.TopicsSet)
+	}
+	if !clear.Spec.TopicsSet || len(clear.Spec.Topics) != 0 {
+		t.Errorf("clear-repo topics = %v (set=%v), want [] set", clear.Spec.Topics, clear.Spec.TopicsSet)
+	}
+}
+
 func TestRepositorySet_FeaturesMerge(t *testing.T) {
 	dir := t.TempDir()
 	content := `
@@ -629,7 +670,6 @@ repositories:
 }
 
 func TestResolveSecrets_ExpandsEnvVars(t *testing.T) {
-	// Set test environment variables
 	t.Setenv("ENV_SECRET_TOKEN", "my-secret-value")
 	t.Setenv("ENV_API_KEY", "api-key-123")
 
@@ -639,24 +679,24 @@ func TestResolveSecrets_ExpandsEnvVars(t *testing.T) {
 			Spec: RepositorySpec{
 				Secrets: []Secret{
 					{Name: "TOKEN", Value: "${ENV_SECRET_TOKEN}"},
-					{Name: "API_KEY", Value: "${ENV_API_KEY}"},
+					{Name: "API_KEY", Value: "prefix-${ENV_API_KEY}"},
 					{Name: "LITERAL", Value: "plain-value"},
-					{Name: "NON_ENV", Value: "${NOT_ENV_PREFIX}"},
 				},
 			},
 		},
 	}
 
-	ResolveSecrets(repos)
+	if err := ResolveSecrets(repos); err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
 
 	tests := []struct {
 		idx  int
 		want string
 	}{
 		{0, "my-secret-value"},
-		{1, "api-key-123"},
+		{1, "prefix-api-key-123"},
 		{2, "plain-value"},
-		{3, "${NOT_ENV_PREFIX}"},
 	}
 
 	for _, tt := range tests {
@@ -664,6 +704,45 @@ func TestResolveSecrets_ExpandsEnvVars(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("secret[%d].Value = %q, want %q", tt.idx, got, tt.want)
 		}
+	}
+}
+
+func TestResolveSecrets_Errors(t *testing.T) {
+	t.Setenv("GH_TOKEN", "should-not-leak")
+	t.Setenv("ENV_EMPTY", "")
+
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{"non-prefixed", "${GH_TOKEN}", "only ${ENV_*} variables are allowed"},
+		{"unset", "${ENV_UNSET_VAR_XYZ}", "unset or empty"},
+		{"empty", "${ENV_EMPTY}", "unset or empty"},
+		{"unset inside value", "x-${ENV_UNSET_VAR_XYZ}-y", "unset or empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repos := []*Repository{
+				{
+					Metadata: RepositoryMetadata{Name: "myrepo", Owner: "org"},
+					Spec: RepositorySpec{
+						Secrets: []Secret{{Name: "S", Value: tt.value}},
+					},
+				},
+			}
+			err := ResolveSecrets(repos)
+			if err == nil {
+				t.Fatal("ResolveSecrets() error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+			if strings.Contains(repos[0].Spec.Secrets[0].Value, "should-not-leak") {
+				t.Errorf("non-prefixed variable was expanded: %q", repos[0].Spec.Secrets[0].Value)
+			}
+		})
 	}
 }
 
@@ -1256,6 +1335,73 @@ func TestMergeMergeStrategy_MergeCommitTitleMessage(t *testing.T) {
 	}
 	if result.SquashMergeCommitMessage == nil || *result.SquashMergeCommitMessage != "BLANK" {
 		t.Errorf("squash_merge_commit_message = %v, want BLANK", result.SquashMergeCommitMessage)
+	}
+}
+
+func TestMergeMergeStrategy_AllowAutoMergeFromOverride(t *testing.T) {
+	base := &MergeStrategy{AllowSquashMerge: Ptr(true)}
+	override := &MergeStrategy{AllowAutoMerge: Ptr(true)}
+
+	result := mergeMergeStrategy(base, override)
+
+	if result.AllowAutoMerge == nil || !*result.AllowAutoMerge {
+		t.Errorf("allow_auto_merge = %v, want true (from override)", result.AllowAutoMerge)
+	}
+	if result.AllowSquashMerge == nil || !*result.AllowSquashMerge {
+		t.Errorf("allow_squash_merge = %v, want true (from base)", result.AllowSquashMerge)
+	}
+}
+
+func TestMergeMergeStrategy_AllowAutoMergeOverridesBase(t *testing.T) {
+	base := &MergeStrategy{AllowAutoMerge: Ptr(true)}
+	override := &MergeStrategy{AllowAutoMerge: Ptr(false)}
+
+	result := mergeMergeStrategy(base, override)
+
+	if result.AllowAutoMerge == nil || *result.AllowAutoMerge {
+		t.Errorf("allow_auto_merge = %v, want false (overridden)", result.AllowAutoMerge)
+	}
+}
+
+func TestRepositorySet_MergeStrategyAllowAutoMergeOverride(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    merge_strategy:
+      allow_squash_merge: true
+repositories:
+  - name: auto-merge-repo
+    spec:
+      merge_strategy:
+        allow_auto_merge: true
+`
+	path := filepath.Join(dir, "auto-merge.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath returned error: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(repos))
+	}
+
+	ms := repos[0].Spec.MergeStrategy
+	if ms == nil {
+		t.Fatal("merge_strategy is nil after merge")
+	}
+	if ms.AllowAutoMerge == nil || !*ms.AllowAutoMerge {
+		t.Errorf("merge_strategy.allow_auto_merge = %v, want true (from entry)", ms.AllowAutoMerge)
+	}
+	if ms.AllowSquashMerge == nil || !*ms.AllowSquashMerge {
+		t.Errorf("merge_strategy.allow_squash_merge = %v, want true (from defaults)", ms.AllowSquashMerge)
 	}
 }
 
@@ -2090,6 +2236,19 @@ spec:
 `,
 			wantErr: "labels must be a sequence",
 		},
+		{
+			name: "null topics rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  topics:
+`,
+			wantErr: "topics must be a sequence",
+		},
 	}
 
 	for _, tt := range tests {
@@ -2138,7 +2297,7 @@ spec:
 	if len(repos) != 1 {
 		t.Fatalf("expected 1 repo, got %d", len(repos))
 	}
-	if repos[0].Spec.LabelsSet || repos[0].Spec.RulesetsSet || repos[0].Spec.BranchProtectionSet {
+	if repos[0].Spec.LabelsSet || repos[0].Spec.RulesetsSet || repos[0].Spec.BranchProtectionSet || repos[0].Spec.TopicsSet {
 		t.Fatalf("omitted collections should remain unset: %+v", repos[0].Spec)
 	}
 }

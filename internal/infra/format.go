@@ -99,12 +99,17 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 				label += ", via " + ui.Cyan.Render(via)
 			}
 			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
+			unsigned := false
 			for _, c := range fChanges {
 				added, removed := fileset.DiffStat(c.Current, c.Desired)
 				p.PrintFileChange(fileChangeToItem(c, added, removed))
 				if showDiff {
 					printFileDiff(p, c)
 				}
+				unsigned = unsigned || c.ModeChanged()
+			}
+			if unsigned {
+				p.Detail("Changing file modes needs the Git Data API, so this commit will not be signed")
 			}
 		}
 
@@ -241,9 +246,14 @@ func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 		var prURL string
 		var commitStrategy string
 		for _, r := range fileByTarget[name] {
-			if r.Err != nil {
+			switch {
+			case r.Err != nil:
 				p.PrintResult(ui.ResultItem{Icon: ui.IconError, Field: r.Change.Path, Detail: r.Err.Error()})
-			} else {
+			case r.Skipped:
+				// No commit was made, so there is no delivery method to report.
+				p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: r.Change.Path, Detail: "skipped (no content change on GitHub)"})
+				continue
+			default:
 				p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: r.Change.Path, Detail: fmt.Sprintf("%sd", r.Change.Type)})
 			}
 			if r.Via != "" {
@@ -461,6 +471,15 @@ func changeToItem(c repository.Change, level ui.IndentLevel) ui.ChangeItem {
 
 // fileChangeToItem converts a fileset.FileChange to a ui.FileItem.
 func fileChangeToItem(c fileset.Change, added, removed int) ui.FileItem {
+	item := changeTypeToItem(c, added, removed)
+	if c.ModeChanged() {
+		item.OldMode = c.CurrentMode
+		item.NewMode = c.Mode
+	}
+	return item
+}
+
+func changeTypeToItem(c fileset.Change, added, removed int) ui.FileItem {
 	switch c.Type {
 	case fileset.ChangeCreate:
 		return ui.FileItem{Icon: ui.IconAdd, Path: c.Path, Added: added}

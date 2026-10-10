@@ -121,6 +121,18 @@ func TestCountFileResults(t *testing.T) {
 	}
 }
 
+func TestCountFileResults_SkippedNotCounted(t *testing.T) {
+	results := []fileset.ApplyResult{
+		{Err: nil},
+		{Skipped: true},
+		{Skipped: true},
+	}
+	s, f := countFileResults(results)
+	if s != 1 || f != 0 {
+		t.Errorf("expected (1, 0), got (%d, %d)", s, f)
+	}
+}
+
 func TestCountFileResults_Empty(t *testing.T) {
 	s, f := countFileResults(nil)
 	if s != 0 || f != 0 {

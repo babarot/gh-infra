@@ -457,7 +457,7 @@ func TestWarning(t *testing.T) {
 
 func TestRepoStyle(t *testing.T) {
 	t.Run("owner/repo includes hyperlink URL", func(t *testing.T) {
-		s := repoStyle("babarot/gh-test")
+		s := repoStyle("babarot/gh-test", true)
 		link, _ := s.GetHyperlink()
 		if link != "https://github.com/babarot/gh-test" {
 			t.Errorf("expected hyperlink URL, got %q", link)
@@ -465,10 +465,28 @@ func TestRepoStyle(t *testing.T) {
 	})
 
 	t.Run("no slash returns plain Bold", func(t *testing.T) {
-		s := repoStyle("noslash")
+		s := repoStyle("noslash", true)
 		link, _ := s.GetHyperlink()
 		if link != "" {
 			t.Errorf("expected no hyperlink, got %q", link)
+		}
+	})
+
+	t.Run("link disabled returns plain Bold", func(t *testing.T) {
+		s := repoStyle("babarot/gh-test", false)
+		link, _ := s.GetHyperlink()
+		if link != "" {
+			t.Errorf("expected no hyperlink, got %q", link)
+		}
+	})
+
+	t.Run("headers have no hyperlink when stdout is not a terminal", func(t *testing.T) {
+		var outBuf, errBuf bytes.Buffer
+		p := NewStandardPrinterWith(&outBuf, &errBuf)
+		p.GroupHeader(IconChange, "babarot/gh-test")
+		p.ActionHeader("babarot/gh-test", "will be updated")
+		if strings.Contains(outBuf.String(), "\x1b]8;") {
+			t.Errorf("expected no OSC 8 hyperlink, got %q", outBuf.String())
 		}
 	})
 }

@@ -132,6 +132,25 @@ func TestDiff_RepoSettings(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "topics omitted leaves current topics alone",
+			setup: func(d *manifest.Repository, c *CurrentState) {
+				d.Spec.Topics = nil
+				c.Topics = []string{"go", "cli"}
+			},
+			wantCount: 0,
+		},
+		{
+			name: "topics empty list removes current topics",
+			setup: func(d *manifest.Repository, c *CurrentState) {
+				d.Spec.Topics = []string{}
+				d.Spec.TopicsSet = true
+				c.Topics = []string{"go", "cli"}
+			},
+			wantCount: 1,
+			wantField: "topics",
+			wantType:  ChangeUpdate,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1631,6 +1650,7 @@ func TestDiff_Rulesets_Noop(t *testing.T) {
 			Target:      manifest.Ptr("branch"),
 			Rules: manifest.RulesetRules{
 				NonFastForward: manifest.Ptr(true),
+				Update:         &manifest.RulesetUpdate{Enabled: manifest.Ptr(false)},
 				Deletion:       manifest.Ptr(false),
 			},
 		},
@@ -1685,6 +1705,24 @@ func TestDiff_Rulesets_ReconcileAuthoritativeDeletesUndeclared(t *testing.T) {
 	}
 	if len(changes[0].Details) == 0 {
 		t.Fatal("expected display-only delete children")
+	}
+}
+
+func TestRsDeleteChildren_Update(t *testing.T) {
+	fields := func(rs *CurrentRuleset) map[string]bool {
+		m := map[string]bool{}
+		for _, c := range rsDeleteChildren(rs) {
+			m[c.Field] = true
+		}
+		return m
+	}
+
+	withUpdate := &CurrentRuleset{Name: "r", Rules: CurrentRulesetRules{Update: &CurrentRulesetUpdate{}}}
+	if !fields(withUpdate)["rules.update"] {
+		t.Error("expected rules.update in delete details when the update rule is set")
+	}
+	if fields(&CurrentRuleset{Name: "r"})["rules.update"] {
+		t.Error("did not expect rules.update in delete details when the update rule is not set")
 	}
 }
 
@@ -1763,6 +1801,7 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 			Name: "protect-main",
 			Rules: manifest.RulesetRules{
 				NonFastForward:        manifest.Ptr(true),
+				Update:                &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
 				Deletion:              manifest.Ptr(true),
 				RequiredLinearHistory: manifest.Ptr(true),
 			},
@@ -1783,11 +1822,78 @@ func TestDiff_Rulesets_UpdateToggleRules(t *testing.T) {
 	if !fields["rules.non_fast_forward"] {
 		t.Error("expected rules.non_fast_forward change")
 	}
+	if !fields["rules.update"] {
+		t.Error("expected rules.update change")
+	}
 	if !fields["rules.deletion"] {
 		t.Error("expected rules.deletion change")
 	}
 	if !fields["rules.required_linear_history"] {
 		t.Error("expected rules.required_linear_history change")
+	}
+}
+
+func TestDiff_Rulesets_UpdateParameters(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{
+					Enabled:             manifest.Ptr(true),
+					AllowsFetchAndMerge: manifest.Ptr(true),
+				},
+			},
+		},
+	}
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		ID:   1,
+		Name: "protect-main",
+		Rules: CurrentRulesetRules{
+			Update: &CurrentRulesetUpdate{AllowsFetchAndMerge: manifest.Ptr(false)},
+		},
+	}
+
+	fields := collectChildFields(Diff(context.Background(), desired, current))
+	if !fields["rules.update.allows_fetch_and_merge"] {
+		t.Error("expected rules.update.allows_fetch_and_merge change")
+	}
+	if fields["rules.update"] {
+		t.Error("did not expect rules.update enabled state change")
+	}
+}
+
+func TestDiff_Rulesets_UpdateParametersNotReturned(t *testing.T) {
+	// GitHub may accept update_allows_fetch_and_merge but omit it from
+	// responses. A missing current value must not produce a perpetual diff.
+	desired := baseDesired()
+	desired.Spec.Rulesets = []manifest.Ruleset{
+		{
+			Name: "protect-main",
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{
+					Enabled:             manifest.Ptr(true),
+					AllowsFetchAndMerge: manifest.Ptr(true),
+				},
+			},
+		},
+	}
+	current := baseState()
+	current.Rulesets["protect-main"] = &CurrentRuleset{
+		ID:   1,
+		Name: "protect-main",
+		Rules: CurrentRulesetRules{
+			Update: &CurrentRulesetUpdate{},
+		},
+	}
+
+	fields := collectChildFields(Diff(context.Background(), desired, current))
+	if fields["rules.update.allows_fetch_and_merge"] {
+		t.Error("did not expect rules.update.allows_fetch_and_merge change when GitHub omits the parameter")
+	}
+	if fields["rules.update"] {
+		t.Error("did not expect rules.update enabled state change")
 	}
 }
 
@@ -1824,6 +1930,53 @@ func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 	if !fields["rules.pull_request.dismiss_stale_reviews_on_push"] {
 		t.Error("expected dismiss stale reviews change")
 	}
+}
+
+func TestDiff_Rulesets_PullRequestUnsetParamsUseDefaults(t *testing.T) {
+	desiredWithCount := func(count int) *manifest.Repository {
+		d := baseDesired()
+		d.Spec.Rulesets = []manifest.Ruleset{
+			{
+				Name: "protect-main",
+				Rules: manifest.RulesetRules{
+					PullRequest: &manifest.RulesetPullRequest{
+						RequiredApprovingReviewCount: manifest.Ptr(count),
+					},
+				},
+			},
+		}
+		return d
+	}
+	currentWith := func(pr CurrentRulesetPullRequest) *CurrentState {
+		c := baseState()
+		c.Rulesets["protect-main"] = &CurrentRuleset{
+			ID:    1,
+			Name:  "protect-main",
+			Rules: CurrentRulesetRules{PullRequest: &pr},
+		}
+		return c
+	}
+
+	t.Run("non-default current value is planned back to the default", func(t *testing.T) {
+		changes := Diff(context.Background(), desiredWithCount(1), currentWith(CurrentRulesetPullRequest{
+			RequiredApprovingReviewCount: 1,
+			DismissStaleReviewsOnPush:    true,
+		}))
+		fields := collectChildFields(changes)
+		if !fields["rules.pull_request.dismiss_stale_reviews_on_push"] {
+			t.Errorf("expected dismiss_stale_reviews_on_push change, got %v", fields)
+		}
+		if fields["rules.pull_request.required_approving_review_count"] {
+			t.Error("did not expect review count change")
+		}
+	})
+
+	t.Run("default current values are no change", func(t *testing.T) {
+		changes := Diff(context.Background(), desiredWithCount(0), currentWith(CurrentRulesetPullRequest{}))
+		if len(changes) != 0 {
+			t.Errorf("expected no changes, got %v", changes)
+		}
+	})
 }
 
 // ─── Rulesets diff WITH resolver ───
@@ -2128,6 +2281,242 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 		if !fields[f] {
 			t.Errorf("missing expected field change: %s", f)
 		}
+	}
+}
+
+func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupMS     func(ms *manifest.MergeStrategy)
+		currentMS   CurrentMergeStrategy
+		wantErr     bool
+		wantErrText string
+	}{
+		// --- squash pair ---
+		{
+			name: "squash: PR_TITLE+PR_BODY is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
+				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: PR_TITLE+BLANK is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
+				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("BLANK")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: PR_TITLE+COMMIT_MESSAGES is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
+				ms.SquashMergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: COMMIT_OR_PR_TITLE+COMMIT_MESSAGES is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
+				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+			},
+			wantErr: false,
+		},
+		{
+			name: "squash: COMMIT_OR_PR_TITLE+PR_BODY is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
+				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr:     true,
+			wantErrText: "squash_merge_commit",
+		},
+		{
+			name: "squash: COMMIT_OR_PR_TITLE+BLANK is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(true)
+				ms.SquashMergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.SquashMergeCommitMessage = manifest.Ptr("BLANK")
+			},
+			wantErr:     true,
+			wantErrText: "squash_merge_commit",
+		},
+		// --- merge pair ---
+		{
+			name: "merge: PR_TITLE+PR_BODY is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr: false,
+		},
+		{
+			name: "merge: MERGE_MESSAGE+PR_TITLE is valid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
+			},
+			wantErr: false,
+		},
+		{
+			name: "merge: COMMIT_OR_PR_TITLE+COMMIT_MESSAGES is invalid for merge (squash-only)",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("COMMIT_MESSAGES")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: COMMIT_OR_PR_TITLE+PR_BODY is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("COMMIT_OR_PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: PR_TITLE+PR_TITLE is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: MERGE_MESSAGE+PR_BODY is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: MERGE_MESSAGE+BLANK is invalid",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(true)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("BLANK")
+			},
+			wantErr:     true,
+			wantErrText: "merge_commit",
+		},
+		{
+			name: "merge: changing title while allow_merge_commit is false is rejected",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(false)
+				ms.MergeCommitTitle = manifest.Ptr("PR_TITLE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			currentMS:   CurrentMergeStrategy{AllowMergeCommit: true, MergeCommitTitle: "MERGE_MESSAGE", MergeCommitMessage: "PR_TITLE"},
+			wantErr:     true,
+			wantErrText: "allow_merge_commit is false",
+		},
+		{
+			name: "merge: unchanged title/message while allow_merge_commit is false is ok",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(false)
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
+			},
+			currentMS: CurrentMergeStrategy{AllowMergeCommit: true, MergeCommitTitle: "MERGE_MESSAGE", MergeCommitMessage: "PR_TITLE"},
+			wantErr:   false,
+		},
+		{
+			name: "squash: changing message while allow_squash_merge is false is rejected",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowSquashMerge = manifest.Ptr(false)
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+			},
+			currentMS:   CurrentMergeStrategy{SquashMergeCommitTitle: "PR_TITLE", SquashMergeCommitMessage: "COMMIT_MESSAGES"},
+			wantErr:     true,
+			wantErrText: "allow_squash_merge is false",
+		},
+		{
+			name: "merge: validation skipped when allow_merge_commit is false",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.AllowMergeCommit = manifest.Ptr(false)
+				// current values unknown (403/404 fallback), so left to GitHub
+				ms.MergeCommitTitle = manifest.Ptr("MERGE_MESSAGE")
+				ms.MergeCommitMessage = manifest.Ptr("PR_TITLE")
+			},
+			wantErr: false,
+		},
+		// --- effective value: one field omitted, falls back to current ---
+		{
+			name: "squash: desired message only, current title valid combo",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+				// title omitted → effective = current = "PR_TITLE" → PR_TITLE+PR_BODY is valid
+			},
+			currentMS: CurrentMergeStrategy{AllowSquashMerge: true, SquashMergeCommitTitle: "PR_TITLE"},
+			wantErr:   false,
+		},
+		{
+			name: "squash: desired message only, current title invalid combo",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+				// title omitted → effective = current = "COMMIT_OR_PR_TITLE" → COMMIT_OR_PR_TITLE+PR_BODY is invalid
+			},
+			currentMS:   CurrentMergeStrategy{AllowSquashMerge: true, SquashMergeCommitTitle: "COMMIT_OR_PR_TITLE"},
+			wantErr:     true,
+			wantErrText: "squash_merge_commit",
+		},
+		{
+			name: "squash: current title unknown, validation skipped",
+			setupMS: func(ms *manifest.MergeStrategy) {
+				ms.SquashMergeCommitMessage = manifest.Ptr("PR_BODY")
+				// title omitted and current settings unavailable (403/404 fallback)
+			},
+			currentMS: CurrentMergeStrategy{AllowSquashMerge: true},
+			wantErr:   false,
+		},
+		// --- nil merge_strategy: no error ---
+		{
+			name:    "nil merge_strategy: ok",
+			setupMS: nil,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &manifest.Repository{Spec: manifest.RepositorySpec{}}
+			if tt.setupMS != nil {
+				d.Spec.MergeStrategy = &manifest.MergeStrategy{}
+				tt.setupMS(d.Spec.MergeStrategy)
+			}
+			c := &CurrentState{MergeStrategy: tt.currentMS}
+
+			err := ValidateDependencies(d, c)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrText) {
+					t.Errorf("expected error containing %q, got: %v", tt.wantErrText, err)
+				}
+			} else if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+		})
 	}
 }
 

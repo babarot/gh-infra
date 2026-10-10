@@ -54,3 +54,5 @@ spec:
 - `my-cli` uses `binary_name: "my-cli"` (from the template expansion of `<% .Repo.Name %>`)
 - `special-repo` uses `binary_name: "special-binary"` (from the override)
 
+`executable` is inherited the same way: an override without `executable` uses the value from the original file entry.
+

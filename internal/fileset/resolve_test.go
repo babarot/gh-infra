@@ -227,3 +227,64 @@ func TestResolveFiles_InheritsContentAndSource(t *testing.T) {
 		t.Errorf("Vars.Description = %q, want %q", v, "overwrite message")
 	}
 }
+
+func TestResolveFiles_InheritsExecutable(t *testing.T) {
+	execTrue := true
+	fs := &manifest.FileSet{
+		Spec: manifest.FileSetSpec{
+			Files: []manifest.FileEntry{
+				{Path: "bin/tool", Content: "#!/bin/sh\necho hello", Executable: &execTrue},
+			},
+		},
+	}
+	target := manifest.FileSetRepository{
+		Name: "repo",
+		Overrides: []manifest.FileEntry{
+			// Content override but Executable is nil — should inherit from base.
+			{Path: "bin/tool", Content: "#!/bin/sh\necho world"},
+		},
+	}
+
+	result := ResolveFiles(fs, target)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(result))
+	}
+	if result[0].Executable == nil {
+		t.Fatal("Executable should be inherited (non-nil), got nil")
+	}
+	if !*result[0].Executable {
+		t.Errorf("Executable = false, want true (inherited from base)")
+	}
+}
+
+func TestResolveFiles_ExecutableNotInherited_WhenOverrideExplicitlySetsIt(t *testing.T) {
+	execTrue := true
+	execFalse := false
+	fs := &manifest.FileSet{
+		Spec: manifest.FileSetSpec{
+			Files: []manifest.FileEntry{
+				{Path: "bin/tool", Content: "#!/bin/sh\necho hello", Executable: &execTrue},
+			},
+		},
+	}
+	target := manifest.FileSetRepository{
+		Name: "repo",
+		Overrides: []manifest.FileEntry{
+			// Override explicitly sets Executable: false — must NOT be overwritten.
+			{Path: "bin/tool", Content: "#!/bin/sh\necho world", Executable: &execFalse},
+		},
+	}
+
+	result := ResolveFiles(fs, target)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(result))
+	}
+	if result[0].Executable == nil {
+		t.Fatal("Executable should be non-nil")
+	}
+	if *result[0].Executable {
+		t.Errorf("Executable = true, want false (override should take precedence)")
+	}
+}

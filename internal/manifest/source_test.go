@@ -490,6 +490,25 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 	}
 }
 
+func TestResolveFiles_ExecutablePropagated(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pre-commit"), []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	executable := true
+	files := []FileEntry{
+		{Path: ".hooks/pre-commit", Source: "pre-commit", Executable: &executable},
+	}
+
+	result, err := (&SourceResolver{}).ResolveFiles(context.Background(), files, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 1 || result[0].Executable == nil || !*result[0].Executable {
+		t.Errorf("executable must survive source resolution, got %+v", result)
+	}
+}
+
 func TestResolvePatches(t *testing.T) {
 	dir := t.TempDir()
 

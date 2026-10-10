@@ -8,12 +8,16 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.35.0",
+    "@astrojs/starlight": "^0.42.6",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/noto-sans": "^5.2.10",
-    "astro": "^5.9.0",
+    "astro": "^7.3.8",
     "astro-mermaid": "^2.0.1",
-    "mermaid": "^11.13.0",
-    "sharp": "^0.33.0"
+    "mermaid": "^11.17.2",
+    "sharp": "^0.35.5"
+  },
+  "overrides": {
+    "katex": "^0.18.11",
+    "postcss-selector-parser": "^7.1.6"
   }
 }

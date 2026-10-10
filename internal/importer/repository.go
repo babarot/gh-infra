@@ -3,6 +3,7 @@ package importer
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -34,6 +35,8 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 		imported.Secrets = local.Secrets
 		// Preserve local label_sync — this is a local policy, not GitHub state.
 		imported.LabelSync = local.LabelSync
+		// Preserve ruleset parameters GitHub accepts but may not return.
+		imported.Rulesets = preserveUnreturnedRulesetParams(local.Rulesets, imported.Rulesets)
 
 		diffs := compareSpecs(local, imported)
 		if len(diffs) == 0 {
@@ -71,6 +74,38 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 	return plan, nil
 }
 
+// preserveUnreturnedRulesetParams carries local ruleset parameters over to
+// the imported rulesets when GitHub accepted them but does not return them.
+// GitHub may omit update_allows_fetch_and_merge from responses (e.g. on
+// user-owned repositories); without this, import would rewrite the manifest
+// and drop the local value. It returns a copy and does not modify imported.
+func preserveUnreturnedRulesetParams(local, imported []manifest.Ruleset) []manifest.Ruleset {
+	if len(local) == 0 || len(imported) == 0 {
+		return imported
+	}
+	localByName := make(map[string]manifest.Ruleset, len(local))
+	for _, rs := range local {
+		localByName[rs.Name] = rs
+	}
+	result := slices.Clone(imported)
+	for i, irs := range result {
+		lrs, ok := localByName[irs.Name]
+		if !ok || lrs.Rules.Update == nil || lrs.Rules.Update.AllowsFetchAndMerge == nil {
+			continue
+		}
+		if enabled := lrs.Rules.Update.IsEnabled(); enabled == nil || !*enabled {
+			continue
+		}
+		if irs.Rules.Update == nil || irs.Rules.Update.AllowsFetchAndMerge != nil {
+			continue
+		}
+		update := *irs.Rules.Update
+		update.AllowsFetchAndMerge = lrs.Rules.Update.AllowsFetchAndMerge
+		result[i].Rules.Update = &update
+	}
+	return result
+}
+
 // DiffRepositorySet compares a RepositorySet-derived repo, computing the
 // minimal override relative to defaults, and patches $.repositories[N].spec.
 func DiffRepositorySet(input DiffInput) (RepoResult, error) {
@@ -88,6 +123,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		imported := input.Imported.Spec
 		imported.Secrets = doc.Resource.Spec.Secrets
 		imported.LabelSync = doc.Resource.Spec.LabelSync
+		imported.Rulesets = preserveUnreturnedRulesetParams(doc.Resource.Spec.Rulesets, imported.Rulesets)
 
 		newOverride := minimalOverride(doc.DefaultsSpec.Spec, imported)
 
@@ -1113,6 +1149,10 @@ func rulesetCreateDiffs(name string, rs manifest.Ruleset) []FieldDiff {
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.target", name), rs.Target)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.enforcement", name), rs.Enforcement)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.non_fast_forward", name), rs.Rules.NonFastForward)
+	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.update", name), rs.Rules.Update.IsEnabled())
+	if rs.Rules.Update != nil {
+		appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.update.allows_fetch_and_merge", name), rs.Rules.Update.AllowsFetchAndMerge)
+	}
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.deletion", name), rs.Rules.Deletion)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), rs.Rules.Creation)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), rs.Rules.RequiredLinearHistory)
@@ -1160,6 +1200,20 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.target", name), local.Target, imported.Target)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.enforcement", name), local.Enforcement, imported.Enforcement)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.non_fast_forward", name), local.Rules.NonFastForward, imported.Rules.NonFastForward)
+	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.update", name), local.Rules.Update.IsEnabled(), imported.Rules.Update.IsEnabled())
+	var localAllowsFetchAndMerge, importedAllowsFetchAndMerge *bool
+	if local.Rules.Update != nil {
+		localAllowsFetchAndMerge = local.Rules.Update.AllowsFetchAndMerge
+	}
+	if imported.Rules.Update != nil {
+		importedAllowsFetchAndMerge = imported.Rules.Update.AllowsFetchAndMerge
+	}
+	appendFieldUpdate(
+		&diffs,
+		fmt.Sprintf("rulesets.%s.rules.update.allows_fetch_and_merge", name),
+		localAllowsFetchAndMerge,
+		importedAllowsFetchAndMerge,
+	)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.deletion", name), local.Rules.Deletion, imported.Rules.Deletion)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), local.Rules.Creation, imported.Rules.Creation)
 	appendFieldUpdate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), local.Rules.RequiredLinearHistory, imported.Rules.RequiredLinearHistory)

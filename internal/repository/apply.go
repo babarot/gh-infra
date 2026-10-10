@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 )
@@ -370,29 +372,87 @@ func (p *Processor) applyRepoPatch(ctx context.Context, fullName string, repo *m
 // applyMergeStrategyBatch batches merge strategy children into a single repos
 // PATCH call. Used during updates when multiple merge strategy fields change
 // together.
+//
+// GitHub requires squash_merge_commit_title and squash_merge_commit_message to
+// be sent together, and merge_commit_title and merge_commit_message to be sent
+// together. If only one half of a coupled pair appears in the diff, fetch the
+// current value of the companion from GitHub so both are always present.
 func (p *Processor) applyMergeStrategyBatch(ctx context.Context, c Change) ApplyResult {
 	fullName := c.Name
 	payload := map[string]any{}
 	for _, child := range c.Children {
-		switch child.Field {
-		case "auto_delete_head_branches":
-			payload["delete_branch_on_merge"] = child.NewValue
-		default:
-			payload[child.Field] = child.NewValue
-		}
+		payload[canonicalAPIField(child.Field)] = child.NewValue
+	}
+
+	if err := p.fillMergeCommitCompanions(ctx, fullName, payload); err != nil {
+		return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
 	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return ApplyResult{Change: c, Err: err}
 	}
-	_, err = p.runner.RunWithStdin(ctx, body,
+	out, err := p.runner.RunWithStdin(ctx, body,
 		"api", fmt.Sprintf("repos/%s", fullName),
 		"--method", "PATCH",
 		"--header", "Content-Type: application/json",
 		"--input", "-",
 	)
-	return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
+	if err != nil {
+		return ApplyResult{Change: c, Err: wrapError(err, fullName, "merge_strategy")}
+	}
+
+	// GitHub silently ignores some settings (e.g. allow_auto_merge on private
+	// repos without branch protection), returning 200 without updating the
+	// stored value. The PATCH response contains the updated repository, so
+	// compare it against what we sent.
+	return ApplyResult{Change: c, Err: verifyPatchResponse(fullName, payload, out)}
+}
+
+// mergeCommitPairs lists the coupled title/message fields that GitHub
+// rejects when only one half is sent in a repos PATCH.
+var mergeCommitPairs = [][2]string{
+	{"squash_merge_commit_title", "squash_merge_commit_message"},
+	{"merge_commit_title", "merge_commit_message"},
+}
+
+// fillMergeCommitCompanions adds the current value of the missing half of each
+// coupled pair to payload. The repository is fetched at most once per call,
+// and only when a pair is incomplete. A companion that GitHub reports as null
+// or empty is left out rather than sent as a guessed value; the PATCH then
+// fails the same way it would have without the companion.
+func (p *Processor) fillMergeCommitCompanions(ctx context.Context, fullName string, payload map[string]any) error {
+	var missing []string
+	for _, pair := range mergeCommitPairs {
+		_, hasTitle := payload[pair[0]]
+		_, hasMessage := payload[pair[1]]
+		switch {
+		case hasTitle && !hasMessage:
+			missing = append(missing, pair[1])
+		case hasMessage && !hasTitle:
+			missing = append(missing, pair[0])
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s", fullName),
+		"--jq", "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}",
+	)
+	if err != nil {
+		return err
+	}
+	var current map[string]*string
+	if err := json.Unmarshal(out, &current); err != nil {
+		return fmt.Errorf("parse merge commit settings: %w", err)
+	}
+	for _, field := range missing {
+		if v := current[field]; v != nil && *v != "" {
+			payload[field] = *v
+		}
+	}
+	return nil
 }
 
 func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manifest.Repository) error {
@@ -870,22 +930,13 @@ func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *ma
 	var rules []map[string]any
 
 	if rs.Rules.PullRequest != nil {
-		pr := rs.Rules.PullRequest
-		params := map[string]any{}
-		if pr.RequiredApprovingReviewCount != nil {
-			params["required_approving_review_count"] = *pr.RequiredApprovingReviewCount
-		}
-		if pr.DismissStaleReviewsOnPush != nil {
-			params["dismiss_stale_reviews_on_push"] = *pr.DismissStaleReviewsOnPush
-		}
-		if pr.RequireCodeOwnerReview != nil {
-			params["require_code_owner_review"] = *pr.RequireCodeOwnerReview
-		}
-		if pr.RequireLastPushApproval != nil {
-			params["require_last_push_approval"] = *pr.RequireLastPushApproval
-		}
-		if pr.RequiredReviewThreadResolution != nil {
-			params["required_review_thread_resolution"] = *pr.RequiredReviewThreadResolution
+		pr := rs.Rules.PullRequest.WithDefaults()
+		params := map[string]any{
+			"required_approving_review_count":   *pr.RequiredApprovingReviewCount,
+			"dismiss_stale_reviews_on_push":     *pr.DismissStaleReviewsOnPush,
+			"require_code_owner_review":         *pr.RequireCodeOwnerReview,
+			"require_last_push_approval":        *pr.RequireLastPushApproval,
+			"required_review_thread_resolution": *pr.RequiredReviewThreadResolution,
 		}
 		rules = append(rules, map[string]any{"type": "pull_request", "parameters": params})
 	}
@@ -909,6 +960,19 @@ func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *ma
 			params["strict_required_status_checks_policy"] = *sc.StrictRequiredStatusChecksPolicy
 		}
 		rules = append(rules, map[string]any{"type": "required_status_checks", "parameters": params})
+	}
+
+	if update := rs.Rules.Update; update != nil && update.Enabled != nil && *update.Enabled {
+		rule := map[string]any{"type": "update"}
+		// Only send the parameter when the manifest sets it. Sending a default
+		// of false would silently turn off a setting that plan never reported,
+		// since plan does not compare fields the manifest leaves unset.
+		if update.AllowsFetchAndMerge != nil {
+			rule["parameters"] = map[string]any{
+				"update_allows_fetch_and_merge": *update.AllowsFetchAndMerge,
+			}
+		}
+		rules = append(rules, rule)
 	}
 
 	// Toggle rules
@@ -1229,7 +1293,7 @@ func wrapError(err error, repo, field string) error {
 		return fmt.Errorf("%s not found", repo)
 	}
 	if errors.Is(err, gh.ErrForbidden) {
-		return fmt.Errorf("no permission to edit %s: check token scopes", repo)
+		return fmt.Errorf("no permission to edit %s %s: check token scopes: %w", repo, field, err)
 	}
 	if errors.Is(err, gh.ErrValidation) {
 		return fmt.Errorf("validation failed for %s %s: %w", repo, field, err)
@@ -1237,9 +1301,50 @@ func wrapError(err error, repo, field string) error {
 	return fmt.Errorf("update %s %s: %w", repo, field, err)
 }
 
+func canonicalAPIField(field string) string {
+	if field == "auto_delete_head_branches" {
+		return "delete_branch_on_merge"
+	}
+	return field
+}
+
 func derefBool(b *bool) bool {
 	if b == nil {
 		return false
 	}
 	return *b
+}
+
+// verifyPatchResponse compares the fields sent in a repos PATCH against the
+// repository returned in the response, and reports every field whose stored
+// value differs from what was sent. Verification is best-effort: if the
+// response cannot be parsed, or a field is absent from it, it is skipped and
+// the next plan will surface any real drift.
+func verifyPatchResponse(fullName string, sent map[string]any, resp []byte) error {
+	var got map[string]any
+	if err := json.Unmarshal(resp, &got); err != nil {
+		logger.Debug("cannot parse PATCH response, skipping verification", "repo", fullName, "err", err)
+		return nil
+	}
+	fields := make([]string, 0, len(sent))
+	for field := range sent {
+		fields = append(fields, field)
+	}
+	slices.Sort(fields)
+
+	var errs []error
+	for _, field := range fields {
+		actual, ok := got[field]
+		if !ok || actual == nil {
+			continue
+		}
+		want := fmt.Sprint(sent[field])
+		if have := fmt.Sprint(actual); have != want {
+			errs = append(errs, fmt.Errorf(
+				"applied %s=%s but GitHub reports %s=%s (setting may not be supported for this repository configuration)",
+				field, want, field, have,
+			))
+		}
+	}
+	return wrapError(errors.Join(errs...), fullName, "merge_strategy")
 }

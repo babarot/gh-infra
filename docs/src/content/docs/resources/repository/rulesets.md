@@ -53,6 +53,7 @@ spec:
             - context: "ci/test"
               app: github-actions
         non_fast_forward: true
+        update: false
         deletion: true
         creation: false
         required_linear_history: false
@@ -166,6 +167,8 @@ Require pull request reviews before merging:
 | `require_last_push_approval` | bool | `false` | Last pusher cannot self-approve |
 | `required_review_thread_resolution` | bool | `false` | All review threads must be resolved |
 
+GitHub requires every parameter of this rule, so the ones you leave out are sent with the defaults above, and `plan` compares against them. A parameter that is set to a non-default value on GitHub but left out of the manifest shows up in `plan` as a change back to the default.
+
 ### `required_status_checks`
 
 Require specific CI checks to pass:
@@ -197,6 +200,30 @@ Simple on/off rules — set to `true` to enable:
 | `creation` | Block creation of matching refs |
 | `required_linear_history` | Require linear commit history (no merge commits) |
 | `required_signatures` | Require signed commits |
+
+### Update Rule
+
+Set `update` to `true` to block updates to matching refs:
+
+```yaml
+update: true
+```
+
+For branch rulesets, use object form to control whether fork branches may pull
+changes from their upstream repository:
+
+```yaml
+update:
+  allows_fetch_and_merge: true
+```
+
+`allows_fetch_and_merge` maps to the REST API
+`update_allows_fetch_and_merge` parameter and is not supported for tag rulesets.
+GitHub may omit this parameter from API responses (for example, on user-owned
+repositories). When it does, `plan` cannot detect drift for this field.
+
+With the bool form (`update: true`), gh-infra does not manage
+`allows_fetch_and_merge`: it neither sends nor compares the parameter.
 
 ## Rulesets vs Classic Branch Protection
 

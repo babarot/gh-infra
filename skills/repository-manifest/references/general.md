@@ -13,7 +13,7 @@ spec:
 
 - `visibility`: `public`, `private`, `internal`
 - `archived`: reversible; set `false` to unarchive
-- `topics`: full list, not additive merge
+- `topics`: full list, not additive merge. Omitted leaves current topics unchanged; `[]` removes all
 
 ## Features
 

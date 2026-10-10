@@ -61,6 +61,9 @@ repositories:
   - name: cli-tool
     spec:
       description: "A CLI tool"     # topics stays [go, cli] (not specified)
+  - name: docs
+    spec:
+      topics: []                    # replaces → no topics
 ```
 
 ### Collections — merged by key

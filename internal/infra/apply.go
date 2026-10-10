@@ -194,11 +194,15 @@ func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]file
 	return fsChanges, opts
 }
 
+// countFileResults counts applied and failed file results. Skipped results
+// (no commit was needed) count as neither.
 func countFileResults(results []fileset.ApplyResult) (succeeded, failed int) {
 	for _, r := range results {
-		if r.Err != nil {
+		switch {
+		case r.Err != nil:
 			failed++
-		} else {
+		case r.Skipped:
+		default:
 			succeeded++
 		}
 	}

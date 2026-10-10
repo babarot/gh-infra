@@ -1036,7 +1036,11 @@ repositories:
 					Target:      &branch,
 					Enforcement: &active,
 					Rules: manifest.RulesetRules{
-						NonFastForward:        manifest.Ptr(true),
+						NonFastForward: manifest.Ptr(true),
+						Update: &manifest.RulesetUpdate{
+							Enabled:             manifest.Ptr(true),
+							AllowsFetchAndMerge: manifest.Ptr(true),
+						},
 						Deletion:              manifest.Ptr(true),
 						Creation:              manifest.Ptr(false),
 						RequiredLinearHistory: manifest.Ptr(false),
@@ -1068,6 +1072,9 @@ repositories:
 	}
 	if !strings.Contains(updated, "rulesets:") {
 		t.Fatalf("expected rulesets override to be written:\n%s", updated)
+	}
+	if !strings.Contains(updated, "allows_fetch_and_merge: true") {
+		t.Fatalf("expected update rule parameters to be written:\n%s", updated)
 	}
 	if !strings.Contains(updated, "non_fast_forward: true") {
 		t.Fatalf("expected ruleset rules to be written:\n%s", updated)
@@ -1346,6 +1353,157 @@ func TestCompareRulesets_Update(t *testing.T) {
 	}
 	if diffs[0].Field != "rulesets.protect-main.enforcement" {
 		t.Errorf("Field = %q, want %q", diffs[0].Field, "rulesets.protect-main.enforcement")
+	}
+}
+
+func TestDiffRepository_PreservesUnreturnedUpdateParameters(t *testing.T) {
+	// GitHub may omit update_allows_fetch_and_merge from responses. When
+	// another ruleset field changes, the rulesets collection is rewritten from
+	// the imported spec; the local allows_fetch_and_merge must survive.
+	branch := manifest.RulesetTargetBranch
+	local := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{
+			{
+				Name:        "main",
+				Target:      &branch,
+				Enforcement: manifest.Ptr("active"),
+				Rules: manifest.RulesetRules{
+					Update: &manifest.RulesetUpdate{
+						Enabled:             manifest.Ptr(true),
+						AllowsFetchAndMerge: manifest.Ptr(true),
+					},
+				},
+			},
+		},
+	}
+	importedRulesets := []manifest.Ruleset{
+		{
+			Name:        "main",
+			Target:      &branch,
+			Enforcement: manifest.Ptr("evaluate"),
+			Rules: manifest.RulesetRules{
+				Update: &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
+			},
+		},
+	}
+	imported := manifest.Repository{
+		Spec: manifest.RepositorySpec{Rulesets: importedRulesets},
+	}
+
+	doc := &manifest.RepositoryDocument{
+		Resource:   &manifest.Repository{Spec: local},
+		SourcePath: "/tmp/test.yaml",
+		DocIndex:   0,
+	}
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  rulesets:
+    - name: main
+      target: branch
+      enforcement: active
+      rules:
+        update:
+          allows_fetch_and_merge: true
+`)
+
+	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
+	rp, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepository error: %v", err)
+	}
+
+	if len(rp.Diffs) != 1 || rp.Diffs[0].Field != "rulesets.main.enforcement" {
+		t.Fatalf("expected only rulesets.main.enforcement diff, got %+v", rp.Diffs)
+	}
+	updated := string(mb["/tmp/test.yaml"])
+	if !strings.Contains(updated, "enforcement: evaluate") {
+		t.Errorf("expected enforcement to be updated:\n%s", updated)
+	}
+	if !strings.Contains(updated, "allows_fetch_and_merge: true") {
+		t.Errorf("expected allows_fetch_and_merge to be preserved:\n%s", updated)
+	}
+	if importedRulesets[0].Rules.Update.AllowsFetchAndMerge != nil {
+		t.Error("imported rulesets must not be modified")
+	}
+}
+
+func TestDiffRepository_ImportsReturnedUpdateParameters(t *testing.T) {
+	// When GitHub does return the parameter, its value wins.
+	branch := manifest.RulesetTargetBranch
+	local := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{
+			{
+				Name:   "main",
+				Target: &branch,
+				Rules: manifest.RulesetRules{
+					Update: &manifest.RulesetUpdate{
+						Enabled:             manifest.Ptr(true),
+						AllowsFetchAndMerge: manifest.Ptr(true),
+					},
+				},
+			},
+		},
+	}
+	imported := manifest.Repository{
+		Spec: manifest.RepositorySpec{
+			Rulesets: []manifest.Ruleset{
+				{
+					Name:   "main",
+					Target: &branch,
+					Rules: manifest.RulesetRules{
+						Update: &manifest.RulesetUpdate{
+							Enabled:             manifest.Ptr(true),
+							AllowsFetchAndMerge: manifest.Ptr(false),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	doc := &manifest.RepositoryDocument{
+		Resource:   &manifest.Repository{Spec: local},
+		SourcePath: "/tmp/test.yaml",
+		DocIndex:   0,
+	}
+
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  rulesets:
+    - name: main
+      target: branch
+      rules:
+        update:
+          allows_fetch_and_merge: true
+`)
+
+	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
+	rp, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepository error: %v", err)
+	}
+	if len(rp.Diffs) != 1 || rp.Diffs[0].Field != "rulesets.main.rules.update.allows_fetch_and_merge" {
+		t.Fatalf("expected only allows_fetch_and_merge diff, got %+v", rp.Diffs)
+	}
+	if updated := string(mb["/tmp/test.yaml"]); !strings.Contains(updated, "allows_fetch_and_merge: false") {
+		t.Errorf("expected allows_fetch_and_merge to be imported as false:\n%s", updated)
 	}
 }
 

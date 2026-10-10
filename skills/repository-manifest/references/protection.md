@@ -64,6 +64,19 @@ Simple on/off rules — set to `true` to enable:
 - `required_linear_history` — require linear commit history
 - `required_signatures` — require signed commits
 
+The `update` rule accepts either bool form or object form:
+
+```yaml
+update: true
+```
+
+```yaml
+update:
+  allows_fetch_and_merge: true
+```
+
+`allows_fetch_and_merge` is only supported for branch rulesets. With the bool form, gh-infra does not manage `allows_fetch_and_merge` (it neither sends nor compares it).
+
 ### Conditions
 
 Use `fnmatch`-style patterns. Special values: `~DEFAULT_BRANCH`, `~ALL`.
@@ -73,6 +86,7 @@ Use `fnmatch`-style patterns. Special values: `~DEFAULT_BRANCH`, `~ALL`.
 - each ruleset `name` must be unique
 - each bypass actor must set exactly one of `role`, `team`, `app`, `org-admin`, `custom-role`
 - `bypass_mode`: `always`, `pull_request`, `exempt`
+- `pull_request` parameters left out are sent as `0` / `false` (GitHub requires all of them), and plan compares against those defaults
 
 ## Classic Branch Protection
 

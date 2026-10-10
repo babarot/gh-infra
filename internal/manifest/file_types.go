@@ -93,6 +93,7 @@ type FileEntry struct {
 	Patches        []string          `yaml:"patches,omitempty"`
 	Vars           map[string]string `yaml:"vars,omitempty"`
 	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=additive authoritative create_only"`
+	Executable     *bool             `yaml:"executable,omitempty"`
 	DirScope       string            `yaml:"-"`
 	OriginalSource string            `yaml:"-"` // local file path set during source resolution (import --into)
 

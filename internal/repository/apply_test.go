@@ -890,6 +890,45 @@ func TestApplyRuleset_Delete(t *testing.T) {
 	}
 }
 
+func TestBuildRulesetPayload_PullRequestFillsDefaults(t *testing.T) {
+	rs := &manifest.Ruleset{
+		Name: "protect-main",
+		Rules: manifest.RulesetRules{
+			PullRequest: &manifest.RulesetPullRequest{
+				RequiredApprovingReviewCount: manifest.Ptr(1),
+			},
+		},
+	}
+
+	payload, err := buildRulesetPayload(context.Background(), rs, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	rules, ok := payload["rules"].([]map[string]any)
+	if !ok || len(rules) != 1 || rules[0]["type"] != "pull_request" {
+		t.Fatalf("rules = %v, want one pull_request rule", payload["rules"])
+	}
+	params, ok := rules[0]["parameters"].(map[string]any)
+	if !ok {
+		t.Fatalf("parameters is not map[string]any, got %T", rules[0]["parameters"])
+	}
+	want := map[string]any{
+		"required_approving_review_count":   1,
+		"dismiss_stale_reviews_on_push":     false,
+		"require_code_owner_review":         false,
+		"require_last_push_approval":        false,
+		"required_review_thread_resolution": false,
+	}
+	if len(params) != len(want) {
+		t.Errorf("parameters = %v, want %v", params, want)
+	}
+	for k, v := range want {
+		if params[k] != v {
+			t.Errorf("parameters[%q] = %v, want %v", k, params[k], v)
+		}
+	}
+}
+
 func TestBuildRulesetPayload(t *testing.T) {
 	rs := &manifest.Ruleset{
 		Name:        "protect-main",
@@ -914,7 +953,11 @@ func TestBuildRulesetPayload(t *testing.T) {
 					{Context: "ci/test"},
 				},
 			},
-			NonFastForward:     manifest.Ptr(true),
+			NonFastForward: manifest.Ptr(true),
+			Update: &manifest.RulesetUpdate{
+				Enabled:             manifest.Ptr(true),
+				AllowsFetchAndMerge: manifest.Ptr(true),
+			},
 			Deletion:           manifest.Ptr(true),
 			Creation:           manifest.Ptr(false),
 			RequiredSignatures: manifest.Ptr(true),
@@ -944,7 +987,7 @@ func TestBuildRulesetPayload(t *testing.T) {
 		t.Fatalf("rules is not []map[string]any, got %T", payload["rules"])
 	}
 
-	// Should have: pull_request, required_status_checks, non_fast_forward, deletion, required_signatures
+	// Should have: pull_request, required_status_checks, non_fast_forward, update, deletion, required_signatures
 	// NOT creation (false)
 	ruleTypes := make(map[string]bool)
 	for _, r := range rules {
@@ -952,13 +995,63 @@ func TestBuildRulesetPayload(t *testing.T) {
 			ruleTypes[typ] = true
 		}
 	}
-	for _, expected := range []string{"pull_request", "required_status_checks", "non_fast_forward", "deletion", "required_signatures"} {
+	for _, expected := range []string{"pull_request", "required_status_checks", "non_fast_forward", "update", "deletion", "required_signatures"} {
 		if !ruleTypes[expected] {
 			t.Errorf("expected rule type %q not found in payload", expected)
 		}
 	}
 	if ruleTypes["creation"] {
 		t.Error("creation rule should not be in payload when set to false")
+	}
+	for _, rule := range rules {
+		if rule["type"] != "update" {
+			continue
+		}
+		params, ok := rule["parameters"].(map[string]any)
+		if !ok {
+			t.Fatalf("update parameters type = %T, want map[string]any", rule["parameters"])
+		}
+		if got := params["update_allows_fetch_and_merge"]; got != true {
+			t.Errorf("update_allows_fetch_and_merge = %v, want true", got)
+		}
+	}
+}
+
+func TestBuildRulesetPayload_UpdateWithoutParameters(t *testing.T) {
+	// Bool-form update must not send update_allows_fetch_and_merge; sending a
+	// default false would silently turn off a setting plan never reported.
+	tests := []struct {
+		name   string
+		target *string
+	}{
+		{"tag", manifest.Ptr(manifest.RulesetTargetTag)},
+		{"branch", manifest.Ptr(manifest.RulesetTargetBranch)},
+		{"target unset", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rs := &manifest.Ruleset{
+				Name:   "protect",
+				Target: tt.target,
+				Rules: manifest.RulesetRules{
+					Update: &manifest.RulesetUpdate{Enabled: manifest.Ptr(true)},
+				},
+			}
+			payload, err := buildRulesetPayload(context.Background(), rs, nil)
+			if err != nil {
+				t.Fatalf("buildRulesetPayload: %v", err)
+			}
+			rules, ok := payload["rules"].([]map[string]any)
+			if !ok {
+				t.Fatalf("rules is not []map[string]any, got %T", payload["rules"])
+			}
+			if len(rules) != 1 {
+				t.Fatalf("rules length = %d, want 1", len(rules))
+			}
+			if _, ok := rules[0]["parameters"]; ok {
+				t.Fatalf("update rule should not contain parameters: %#v", rules[0])
+			}
+		})
 	}
 }
 
@@ -1201,8 +1294,16 @@ func TestApplyRepoPatch_Empty(t *testing.T) {
 	}
 }
 
+const mergeCommitSettingsKey = "api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}"
+
 func TestApplyMergeStrategyBatch(t *testing.T) {
-	mock := &gh.MockRunner{}
+	// squash_merge_commit_title is present but squash_merge_commit_message is not,
+	// so the fix fetches the companion message before issuing the PATCH.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			mergeCommitSettingsKey: []byte(`{"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES","merge_commit_title":"MERGE_MESSAGE","merge_commit_message":"PR_TITLE"}`),
+		},
+	}
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
@@ -1233,14 +1334,14 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 
-	// Should be exactly 1 API call (batched PATCH)
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	// Expect 2 calls: 1 fetch for the missing companion + 1 batched PATCH.
+	if len(mock.Called) != 2 {
+		t.Fatalf("expected 2 gh calls, got %d", len(mock.Called))
 	}
 
-	body := mock.CalledStdin[0]
+	body := mock.CalledStdin[1]
 	if body == nil {
-		t.Fatal("expected stdin body, got nil")
+		t.Fatal("expected stdin body on PATCH call, got nil")
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1251,6 +1352,9 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 	}
 	if payload["squash_merge_commit_title"] != "PR_TITLE" {
 		t.Errorf("squash_merge_commit_title = %v, want PR_TITLE", payload["squash_merge_commit_title"])
+	}
+	if payload["squash_merge_commit_message"] != "COMMIT_MESSAGES" {
+		t.Errorf("squash_merge_commit_message = %v, want COMMIT_MESSAGES (fetched companion)", payload["squash_merge_commit_message"])
 	}
 	// auto_delete_head_branches should be mapped to delete_branch_on_merge
 	if payload["delete_branch_on_merge"] != true {
@@ -1658,6 +1762,260 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 	}
 }
 
+func TestApplyMergeStrategyBatch_Verification(t *testing.T) {
+	const patchKey = "api repos/myorg/myrepo --method PATCH --header Content-Type: application/json --input -"
+
+	tests := []struct {
+		name      string
+		children  []Change
+		response  string
+		wantErrs  []string
+		wantNoErr bool
+	}{
+		{
+			name:     "silently ignored bool",
+			children: []Change{{Field: "allow_auto_merge", NewValue: true}},
+			response: `{"allow_auto_merge":false}`,
+			wantErrs: []string{"allow_auto_merge=true but GitHub reports allow_auto_merge=false"},
+		},
+		{
+			name:     "silently ignored when setting false",
+			children: []Change{{Field: "allow_auto_merge", NewValue: false}},
+			response: `{"allow_auto_merge":true}`,
+			wantErrs: []string{"allow_auto_merge=false but GitHub reports allow_auto_merge=true"},
+		},
+		{
+			name:     "uses API field name",
+			children: []Change{{Field: "auto_delete_head_branches", NewValue: true}},
+			response: `{"delete_branch_on_merge":false}`,
+			wantErrs: []string{"delete_branch_on_merge=true but GitHub reports delete_branch_on_merge=false"},
+		},
+		{
+			name: "reports every mismatch including strings",
+			children: []Change{
+				{Field: "allow_auto_merge", NewValue: true},
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+			},
+			response: `{"allow_auto_merge":false,"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}`,
+			wantErrs: []string{"allow_auto_merge=true", "squash_merge_commit_title=PR_TITLE", "squash_merge_commit_message=PR_BODY"},
+		},
+		{
+			name: "applied as sent",
+			children: []Change{
+				{Field: "allow_auto_merge", NewValue: true},
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+			},
+			response:  `{"allow_auto_merge":true,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"PR_BODY"}`,
+			wantNoErr: true,
+		},
+		{
+			name:      "unparsable response is skipped",
+			children:  []Change{{Field: "allow_auto_merge", NewValue: true}},
+			response:  ``,
+			wantNoErr: true,
+		},
+		{
+			name:      "field absent from response is skipped",
+			children:  []Change{{Field: "allow_auto_merge", NewValue: true}},
+			response:  `{}`,
+			wantNoErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{
+				Responses: map[string][]byte{patchKey: []byte(tt.response)},
+			}
+			proc := NewProcessor(mock, nil)
+
+			changes := []Change{
+				{
+					Type:     ChangeUpdate,
+					Resource: "Repository",
+					Name:     "myorg/myrepo",
+					Field:    "merge_strategy",
+					Children: tt.children,
+				},
+			}
+
+			repo := newTestRepo("myorg", "myrepo")
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			if len(results) != 1 {
+				t.Fatalf("expected 1 result, got %d", len(results))
+			}
+			if len(mock.Called) != 1 {
+				t.Errorf("expected 1 gh call (PATCH only), got %d", len(mock.Called))
+			}
+			if tt.wantNoErr {
+				if results[0].Err != nil {
+					t.Fatalf("unexpected error: %v", results[0].Err)
+				}
+				return
+			}
+			if results[0].Err == nil {
+				t.Fatal("expected error for silently ignored setting, got nil")
+			}
+			for _, want := range tt.wantErrs {
+				if !strings.Contains(results[0].Err.Error(), want) {
+					t.Errorf("error = %q, want it to contain %q", results[0].Err, want)
+				}
+			}
+		})
+	}
+}
+
+func TestApplyMergeStrategyBatch_PairedSquashFields(t *testing.T) {
+	// When only squash_merge_commit_message changes, GitHub requires the
+	// companion squash_merge_commit_title to be sent in the same PATCH.
+	// The batch function must fetch the current title and include it.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			mergeCommitSettingsKey: []byte(`{"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES","merge_commit_title":"MERGE_MESSAGE","merge_commit_message":"PR_TITLE"}`),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	// Expect: 1 gh api fetch for the companion title + 1 PATCH
+	if len(mock.Called) != 2 {
+		t.Fatalf("expected 2 gh calls (fetch companion + PATCH), got %d: %v", len(mock.Called), mock.Called)
+	}
+
+	// First call fetches the missing companion.
+	if fetchCall := strings.Join(mock.Called[0], " "); fetchCall != mergeCommitSettingsKey {
+		t.Errorf("expected merge commit settings fetch, got: %s", fetchCall)
+	}
+
+	// Second call is the PATCH; its payload must include both fields.
+	body := mock.CalledStdin[1]
+	if body == nil {
+		t.Fatal("expected stdin body on PATCH call, got nil")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse PATCH payload: %v", err)
+	}
+	if payload["squash_merge_commit_message"] != "PR_BODY" {
+		t.Errorf("squash_merge_commit_message = %v, want PR_BODY", payload["squash_merge_commit_message"])
+	}
+	if payload["squash_merge_commit_title"] != "PR_TITLE" {
+		t.Errorf("squash_merge_commit_title = %v, want PR_TITLE (fetched companion)", payload["squash_merge_commit_title"])
+	}
+}
+
+func TestApplyMergeStrategyBatch_PairedMergeFields(t *testing.T) {
+	// When only merge_commit_title changes, the companion merge_commit_message
+	// must be fetched and sent together.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			mergeCommitSettingsKey: []byte(`{"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES","merge_commit_title":"MERGE_MESSAGE","merge_commit_message":"PR_BODY"}`),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "merge_commit_title", NewValue: "PR_TITLE"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	// First call fetches merge_commit_message, second is the PATCH.
+	if len(mock.Called) != 2 {
+		t.Fatalf("expected 2 gh calls, got %d: %v", len(mock.Called), mock.Called)
+	}
+
+	body := mock.CalledStdin[1]
+	if body == nil {
+		t.Fatal("expected stdin body on PATCH call, got nil")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse PATCH payload: %v", err)
+	}
+	if payload["merge_commit_title"] != "PR_TITLE" {
+		t.Errorf("merge_commit_title = %v, want PR_TITLE", payload["merge_commit_title"])
+	}
+	if payload["merge_commit_message"] != "PR_BODY" {
+		t.Errorf("merge_commit_message = %v, want PR_BODY (fetched companion)", payload["merge_commit_message"])
+	}
+}
+
+func TestApplyMergeStrategyBatch_BothFieldsPresent_NoExtraFetch(t *testing.T) {
+	// When both fields of a pair are present in the diff, no extra fetch is needed.
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "squash_merge_commit_title", NewValue: "PR_TITLE"},
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+
+	// Only the PATCH — no extra fetch.
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call (no extra fetch), got %d: %v", len(mock.Called), mock.Called)
+	}
+	body := mock.CalledStdin[0]
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to parse payload: %v", err)
+	}
+	if payload["squash_merge_commit_title"] != "PR_TITLE" {
+		t.Errorf("squash_merge_commit_title = %v, want PR_TITLE", payload["squash_merge_commit_title"])
+	}
+	if payload["squash_merge_commit_message"] != "PR_BODY" {
+		t.Errorf("squash_merge_commit_message = %v, want PR_BODY", payload["squash_merge_commit_message"])
+	}
+}
+
 func TestApplyMilestone_UpdateWithChildren(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
@@ -1694,5 +2052,172 @@ func TestApplyMilestone_UpdateWithChildren(t *testing.T) {
 	patchCall := strings.Join(mock.Called[1], " ")
 	if !strings.Contains(patchCall, "milestones/1") {
 		t.Errorf("expected PATCH to milestone 1, got: %s", patchCall)
+	}
+}
+
+func TestApplyMergeStrategyBatch_BothPairsIncomplete_SingleFetch(t *testing.T) {
+	// Both pairs are missing a companion; the repository must be fetched only
+	// once and both companions filled from that single response.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			mergeCommitSettingsKey: []byte(`{"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES","merge_commit_title":"MERGE_MESSAGE","merge_commit_message":"PR_TITLE"}`),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+				{Field: "merge_commit_title", NewValue: "PR_TITLE"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+	if len(mock.Called) != 2 {
+		t.Fatalf("expected 2 gh calls (single fetch + PATCH), got %d: %v", len(mock.Called), mock.Called)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(mock.CalledStdin[1], &payload); err != nil {
+		t.Fatalf("failed to parse PATCH payload: %v", err)
+	}
+	want := map[string]any{
+		"squash_merge_commit_title":   "PR_TITLE",
+		"squash_merge_commit_message": "PR_BODY",
+		"merge_commit_title":          "PR_TITLE",
+		"merge_commit_message":        "PR_TITLE",
+	}
+	for k, v := range want {
+		if payload[k] != v {
+			t.Errorf("%s = %v, want %v", k, payload[k], v)
+		}
+	}
+}
+
+func TestApplyMergeStrategyBatch_NullCompanionSkipped(t *testing.T) {
+	// GitHub may return null for the companion. It must not be sent as the
+	// string "null" (or as an empty string); the PATCH carries only the diff.
+	for _, resp := range []string{
+		`{"squash_merge_commit_title":null}`,
+		`{"squash_merge_commit_title":""}`,
+		`{}`,
+	} {
+		t.Run(resp, func(t *testing.T) {
+			mock := &gh.MockRunner{
+				Responses: map[string][]byte{mergeCommitSettingsKey: []byte(resp)},
+			}
+			proc := NewProcessor(mock, nil)
+
+			repo := newTestRepo("myorg", "myrepo")
+			changes := []Change{
+				{
+					Type:     ChangeUpdate,
+					Resource: "Repository",
+					Name:     "myorg/myrepo",
+					Field:    "merge_strategy",
+					Children: []Change{
+						{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+					},
+				},
+			}
+
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			if results[0].Err != nil {
+				t.Fatalf("unexpected error: %v", results[0].Err)
+			}
+			if len(mock.Called) != 2 {
+				t.Fatalf("expected 2 gh calls, got %d: %v", len(mock.Called), mock.Called)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(mock.CalledStdin[1], &payload); err != nil {
+				t.Fatalf("failed to parse PATCH payload: %v", err)
+			}
+			if v, ok := payload["squash_merge_commit_title"]; ok {
+				t.Errorf("squash_merge_commit_title = %v, want it omitted", v)
+			}
+		})
+	}
+}
+
+func TestApplyMergeStrategyBatch_CompanionFetchError(t *testing.T) {
+	mock := &gh.MockRunner{
+		Errors: map[string]error{mergeCommitSettingsKey: fmt.Errorf("boom")},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "merge_commit_title", NewValue: "PR_TITLE"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err == nil {
+		t.Fatal("expected error when companion fetch fails, got nil")
+	}
+	if len(mock.Called) != 1 {
+		t.Errorf("expected no PATCH after failed fetch, got %d calls: %v", len(mock.Called), mock.Called)
+	}
+}
+
+func TestApplyMergeStrategyBatch_CompanionVerified(t *testing.T) {
+	// The fetched companion is part of the PATCH payload and is therefore
+	// verified against the response. A response that echoes the stored value
+	// must not be reported as a mismatch.
+	const patchKey = "api repos/myorg/myrepo --method PATCH --header Content-Type: application/json --input -"
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			mergeCommitSettingsKey: []byte(`{"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}`),
+			patchKey:               []byte(`{"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"PR_BODY"}`),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	changes := []Change{
+		{
+			Type:     ChangeUpdate,
+			Resource: "Repository",
+			Name:     "myorg/myrepo",
+			Field:    "merge_strategy",
+			Children: []Change{
+				{Field: "squash_merge_commit_message", NewValue: "PR_BODY"},
+			},
+		},
+	}
+
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatalf("unexpected error: %v", results[0].Err)
+	}
+}
+
+func TestWrapError_ForbiddenKeepsAPIMessage(t *testing.T) {
+	apiErr := fmt.Errorf("%w: %w", gh.ErrForbidden, &gh.ExitError{
+		APIError: &gh.APIError{Status: 403, Message: "Upgrade to GitHub Pro or make this repository public to enable this feature."},
+	})
+	err := wrapError(apiErr, "o/r", "ruleset:main")
+	if !strings.Contains(err.Error(), "check token scopes") {
+		t.Errorf("error = %q, want the token scope hint", err)
+	}
+	if !strings.Contains(err.Error(), "Upgrade to GitHub Pro") {
+		t.Errorf("error = %q, want GitHub's message", err)
 	}
 }
