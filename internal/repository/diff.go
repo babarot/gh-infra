@@ -1062,12 +1062,17 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 	a := desired.Spec.Actions
 	return dc.group("actions", func(cc *[]Change) {
 		appendChildChanged(cc, "enabled", a.Enabled, current.Actions.Enabled)
-		appendChildChanged(cc, "allowed_actions", a.AllowedActions, current.Actions.AllowedActions)
-		appendChildChanged(cc, "sha_pinning_required", a.SHAPinningRequired, current.Actions.SHAPinningRequired)
+		// GitHub omits allowed_actions and rejects these settings while Actions
+		// is disabled, so comparing them would only report unappliable drift.
+		if !a.Disabled() {
+			appendChildChanged(cc, "allowed_actions", a.AllowedActions, current.Actions.AllowedActions)
+			appendChildChanged(cc, "sha_pinning_required", a.SHAPinningRequired, current.Actions.SHAPinningRequired)
+		}
 		appendChildChanged(cc, "workflow_permissions", a.WorkflowPermissions, current.Actions.WorkflowPermissions)
 		appendChildChanged(cc, "can_approve_pull_requests", a.CanApprovePullRequests, current.Actions.CanApprovePullRequests)
 
-		if a.SelectedActions != nil {
+		// selected-actions endpoints only work while allowed_actions is "selected".
+		if a.SelectedActions != nil && !a.Disabled() {
 			sa := a.SelectedActions
 			var currentSA CurrentSelectedActions
 			if current.Actions.SelectedActions != nil {

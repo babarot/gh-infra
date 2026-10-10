@@ -2301,6 +2301,67 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 	}
 }
 
+func TestDiffActions_DisabledIgnoresPermissionFields(t *testing.T) {
+	// GitHub omits allowed_actions for a disabled repo, so fields inherited
+	// from defaults must not show up as perpetual drift.
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled:            manifest.Ptr(false),
+		AllowedActions:     manifest.Ptr("all"),
+		SHAPinningRequired: manifest.Ptr(false),
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+			VerifiedAllowed:    manifest.Ptr(true),
+			PatternsAllowed:    []string{"actions/*"},
+		},
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:            false,
+		AllowedActions:     "",
+		SHAPinningRequired: false,
+	}
+
+	for _, c := range Diff(context.Background(), desired, current) {
+		if c.Resource == manifest.ResourceActions {
+			t.Errorf("expected no actions changes when actions is disabled, got %+v", c.Details)
+		}
+	}
+}
+
+func TestDiffActions_DisablingReportsOnlyEnabled(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled:        manifest.Ptr(false),
+		AllowedActions: manifest.Ptr("all"),
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:        true,
+		AllowedActions: "local_only",
+	}
+
+	var actionsChange *Change
+	changes := Diff(context.Background(), desired, current)
+	for i := range changes {
+		if changes[i].Resource == manifest.ResourceActions {
+			actionsChange = &changes[i]
+			break
+		}
+	}
+	if actionsChange == nil {
+		t.Fatal("expected actions change, got none")
+		return
+	}
+	if len(actionsChange.Details) != 1 {
+		t.Fatalf("expected 1 child change, got %d: %+v", len(actionsChange.Details), actionsChange.Details)
+	}
+	got := actionsChange.Details[0]
+	if got.Field != "enabled" || got.OldValue != true || got.NewValue != false {
+		t.Errorf("child change = %s: %v -> %v, want enabled: true -> false", got.Field, got.OldValue, got.NewValue)
+	}
+}
+
 func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 	tests := []struct {
 		name        string

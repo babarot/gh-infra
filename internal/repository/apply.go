@@ -278,7 +278,8 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 		if err := p.applyActionsWorkflow(ctx, owner, name, a); err != nil {
 			return err
 		}
-		if a.SelectedActions != nil {
+		// selected-actions only accepts writes while allowed_actions is "selected".
+		if a.SelectedActions != nil && !a.Disabled() {
 			if err := p.applyActionsSelectedActions(ctx, owner, name, a); err != nil {
 				return err
 			}
@@ -1103,16 +1104,19 @@ func (p *Processor) applyActionsPermissions(ctx context.Context, owner, name str
 	if a.Enabled == nil {
 		return nil // nothing to apply (empty actions block)
 	}
-	// GitHub API requires "enabled" in every PUT to this endpoint.
+	// GitHub API requires "enabled" in every PUT to this endpoint and rejects
+	// the other fields (409) unless enabled is true.
 	// Validation ensures enabled is always set when other actions fields are present.
 	payload := map[string]any{
 		"enabled": *a.Enabled,
 	}
-	if a.AllowedActions != nil {
-		payload["allowed_actions"] = *a.AllowedActions
-	}
-	if a.SHAPinningRequired != nil {
-		payload["sha_pinning_required"] = *a.SHAPinningRequired
+	if !a.Disabled() {
+		if a.AllowedActions != nil {
+			payload["allowed_actions"] = *a.AllowedActions
+		}
+		if a.SHAPinningRequired != nil {
+			payload["sha_pinning_required"] = *a.SHAPinningRequired
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
