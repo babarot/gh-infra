@@ -18,9 +18,12 @@ type FileSetMetadata struct {
 	Owner string `yaml:"owner" validate:"required"`
 }
 
-// Identity returns a unique identifier for this FileSet.
-// For kind: File (expanded), this is "owner/name".
-// For kind: FileSet without a name, it derives from sorted repo names.
+// Identity returns "owner/name" when metadata.name is set (kind: File sets it
+// to the target repository), and otherwise "owner/" plus the sorted repository
+// names joined by "+". It names the FileSet in plan output and derives the
+// default commit message, PR branch, and PR body. It is not unique: unnamed
+// FileSets listing the same repositories, and kind: File manifests for the same
+// repository, share it.
 func (fs *FileSet) Identity() string {
 	if fs.Metadata.Name != "" {
 		return fs.Metadata.Owner + "/" + fs.Metadata.Name
@@ -31,6 +34,37 @@ func (fs *FileSet) Identity() string {
 	}
 	sort.Strings(names)
 	return fs.Metadata.Owner + "/" + strings.Join(names, "+")
+}
+
+// PRBranch returns the branch that via: pull_request commits to: spec.branch,
+// or DefaultPRBranch of the Identity when it is unset.
+func (fs *FileSet) PRBranch() string {
+	if fs.Spec.Branch != "" {
+		return fs.Spec.Branch
+	}
+	return DefaultPRBranch(fs.Identity())
+}
+
+// DefaultPRBranch returns the pull_request branch for a FileSet identity
+// without spec.branch, e.g. "gh-infra/sync-my-org-ci" for "my-org/ci".
+func DefaultPRBranch(identity string) string {
+	return "gh-infra/sync-" + sanitizeBranchName(identity)
+}
+
+// sanitizeBranchName converts an identity string into a valid Git branch name component.
+func sanitizeBranchName(s string) string {
+	s = strings.ReplaceAll(s, "/", "-")
+	s = strings.ReplaceAll(s, " ", "-")
+	s = strings.ReplaceAll(s, "..", "")
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '~', '^', ':', '?', '*', '[', '\\':
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.Trim(s, "-.")
+	return s
 }
 
 type FileSetSpec struct {

@@ -1,6 +1,9 @@
 package manifest
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -784,5 +787,124 @@ func TestValidateActions_InvalidWorkflowPermissions(t *testing.T) {
 	err := repo.Validate()
 	if err == nil {
 		t.Fatal("expected error for invalid workflow_permissions value")
+	}
+}
+
+// fileSetDoc returns a kind: FileSet document owned by "org". name may be
+// empty; spec holds extra spec lines such as "via: pull_request".
+func fileSetDoc(name string, repos []string, spec ...string) string {
+	var b strings.Builder
+	b.WriteString("apiVersion: gh-infra/v1\nkind: FileSet\nmetadata:\n  owner: org\n")
+	if name != "" {
+		fmt.Fprintf(&b, "  name: %s\n", name)
+	}
+	b.WriteString("spec:\n  repositories:\n")
+	for _, r := range repos {
+		fmt.Fprintf(&b, "    - %s\n", r)
+	}
+	b.WriteString("  files:\n    - path: a.txt\n      content: a\n")
+	for _, line := range spec {
+		fmt.Fprintf(&b, "  %s\n", line)
+	}
+	return b.String()
+}
+
+// fileDoc returns a kind: File document for org/<repo>.
+func fileDoc(repo string, spec ...string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "apiVersion: gh-infra/v1\nkind: File\nmetadata:\n  owner: org\n  name: %s\n", repo)
+	b.WriteString("spec:\n  files:\n    - path: a.txt\n      content: a\n")
+	for _, line := range spec {
+		fmt.Fprintf(&b, "  %s\n", line)
+	}
+	return b.String()
+}
+
+func TestParseResultValidate_PRBranches(t *testing.T) {
+	const pr = "via: pull_request"
+	ab := []string{"a", "b"}
+	tests := []struct {
+		name    string
+		docs    []string
+		wantErr string // empty means no error expected
+	}{
+		{
+			name:    "unnamed pull_request FileSets with the same repositories",
+			docs:    []string{fileSetDoc("", ab, pr), fileSetDoc("", ab, pr)},
+			wantErr: `on org/a from branch "gh-infra/sync-org-a+b"`,
+		},
+		{
+			name: "distinct metadata.name",
+			docs: []string{fileSetDoc("ci", ab, pr), fileSetDoc("hooks", ab, pr)},
+		},
+		{
+			name:    "same explicit branch on a shared repository",
+			docs:    []string{fileSetDoc("ci", []string{"a"}, pr, "branch: sync"), fileSetDoc("hooks", []string{"b", "a"}, pr, "branch: sync")},
+			wantErr: `on org/a from branch "sync"`,
+		},
+		{
+			name: "distinct explicit branches",
+			docs: []string{fileSetDoc("", ab, pr, "branch: sync-ci"), fileSetDoc("", ab, pr, "branch: sync-hooks")},
+		},
+		{
+			name:    "explicit branch equal to another FileSet's default branch",
+			docs:    []string{fileSetDoc("", ab, pr), fileSetDoc("hooks", ab, pr, "branch: gh-infra/sync-org-a+b")},
+			wantErr: `on org/a from branch "gh-infra/sync-org-a+b"`,
+		},
+		{
+			name:    "repository names differing only in case",
+			docs:    []string{fileSetDoc("ci", []string{"Repo"}, pr, "branch: sync"), fileSetDoc("hooks", []string{"repo"}, pr, "branch: sync")},
+			wantErr: `from branch "sync"`,
+		},
+		{
+			name: "push FileSets with the same repositories",
+			docs: []string{fileSetDoc("", ab), fileSetDoc("", ab, "via: push")},
+		},
+		{
+			name: "push and pull_request FileSets with the same repositories",
+			docs: []string{fileSetDoc("", ab), fileSetDoc("", ab, pr)},
+		},
+		{
+			name: "same identity without a shared repository",
+			docs: []string{fileSetDoc("shared", []string{"a"}, pr), fileSetDoc("shared", []string{"b"}, pr)},
+		},
+		{
+			name:    "kind: File manifests for one repository",
+			docs:    []string{fileDoc("a", pr), fileDoc("a", pr)},
+			wantErr: `on org/a from branch "gh-infra/sync-org-a"`,
+		},
+		{
+			name: "kind: File manifests for one repository with distinct branches",
+			docs: []string{fileDoc("a", pr, "branch: sync-ci"), fileDoc("a", pr, "branch: sync-hooks")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "files.yaml")
+			if err := os.WriteFile(path, []byte(strings.Join(tt.docs, "---\n")), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			parsed, err := ParseAll(path, fileOpts())
+			if err != nil {
+				t.Fatalf("ParseAll: %v", err)
+			}
+
+			err = parsed.Validate()
+
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			for _, want := range []string{tt.wantErr, path + ", document 1)", path + ", document 2)"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+		})
 	}
 }

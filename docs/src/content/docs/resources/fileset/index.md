@@ -47,9 +47,12 @@ spec:
 ```yaml
 metadata:
   owner: babarot    # GitHub owner or organization
+  name: shared-ci   # optional
 ```
 
 All repositories in the set belong to this owner. Individual repo names are listed in `spec.repositories`.
+
+`name` is optional and does not select repositories. It names the FileSet in plan output and in the default commit message, pull request branch, and pull request body. Without it, the FileSet is named after its owner and sorted repository names, so two unnamed FileSets that list the same repositories share a name. Give each a `name` (or a `branch`) when both use `via: pull_request` (see [Delivery Method](../file/delivery/#pull-request-branch)).
 
 ## Shared Features
 

@@ -64,7 +64,8 @@ Use `FileSet` to distribute shared files to many repositories.
 apiVersion: gh-infra/v1
 kind: FileSet
 metadata:
-  owner: my-org            # no "name" field
+  owner: my-org
+  name: shared-ci          # optional; names the FileSet, does not select repos
 
 spec:
   repositories:

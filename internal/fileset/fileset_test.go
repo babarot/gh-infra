@@ -207,6 +207,62 @@ func TestPlan_MultipleFilesDiffer(t *testing.T) {
 	}
 }
 
+func TestPlan_SameIdentityFileSetsKeepOrigin(t *testing.T) {
+	// hooks/stale is in the repo but not in the authoritative hooks FileSet,
+	// so it is planned as an orphan delete.
+	hookDir := []struct{ Path, Type string }{
+		{Path: "hooks/pre-commit", Type: "file"},
+		{Path: "hooks/stale", Type: "file"},
+	}
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "ci.yml"):           contentsJSON("ci", "sha-ci"),
+			contentsKey("owner/repo", "hooks/pre-commit"): contentsJSON("old hook", "sha-hook"),
+			contentsKey("owner/repo", "hooks"):            dirContentsJSON(hookDir),
+		},
+		Errors: map[string]error{},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+
+	// Both FileSets are unnamed and target the same repo, so they share an Identity.
+	ciFS := makeFileSet("owner", "repo", []manifest.FileEntry{{Path: "ci.yml", Content: "ci"}})[0]
+	hookFS := makeFileSet("owner", "repo", []manifest.FileEntry{{
+		Path:      "hooks/pre-commit",
+		Content:   "new hook",
+		Reconcile: manifest.ReconcileAuthoritative,
+		DirScope:  "hooks",
+	}})[0]
+
+	changes, err := p.Plan(context.Background(), []*manifest.FileSet{ciFS, hookFS}, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]struct {
+		fileSet    *manifest.FileSet
+		changeType ChangeType
+	}{
+		"ci.yml":           {ciFS, ChangeNoOp},
+		"hooks/pre-commit": {hookFS, ChangeUpdate},
+		"hooks/stale":      {hookFS, ChangeDelete},
+	}
+	if len(changes) != len(want) {
+		t.Fatalf("expected %d changes, got %d: %+v", len(want), len(changes), changes)
+	}
+	for _, c := range changes {
+		w, ok := want[c.Path]
+		if !ok {
+			t.Errorf("unexpected change for %s", c.Path)
+			continue
+		}
+		if c.Type != w.changeType {
+			t.Errorf("%s: type = %s, want %s", c.Path, c.Type, w.changeType)
+		}
+		if c.FileSet != w.fileSet {
+			t.Errorf("%s: planned by the wrong FileSet", c.Path)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Apply tests
 // ---------------------------------------------------------------------------

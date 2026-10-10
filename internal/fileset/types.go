@@ -1,5 +1,7 @@
 package fileset
 
+import "github.com/babarot/gh-infra/internal/manifest"
+
 // State represents the current state of a file in a repository.
 type State struct {
 	Path    string
@@ -10,7 +12,13 @@ type State struct {
 
 // Change represents a planned change for a file.
 type Change struct {
-	FileSetID   string // org/owner that owns this FileSet
+	// FileSet is the FileSet that planned this change. Apply matches changes
+	// on it rather than FileSetID, which distinct FileSets can share.
+	FileSet *manifest.FileSet
+	// FileSetID is the FileSet's Identity(): it names the FileSet in plan
+	// output and JSON and derives the default commit message, PR branch, and
+	// PR body. It is not unique across FileSets.
+	FileSetID   string
 	Target      string // owner/repo
 	Path        string
 	Type        ChangeType
