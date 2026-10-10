@@ -505,12 +505,12 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 			appendIfSet(&children, "rules.creation", drs.Rules.Creation)
 			appendIfSet(&children, "rules.required_linear_history", drs.Rules.RequiredLinearHistory)
 			appendIfSet(&children, "rules.required_signatures", drs.Rules.RequiredSignatures)
-			if drs.Rules.PullRequest != nil {
+			if drs.Rules.PullRequestEnabled() {
 				children = append(children, Change{
 					Type: ChangeCreate, Field: "rules.pull_request", NewValue: "enabled",
 				})
 			}
-			if drs.Rules.RequiredStatusChecks != nil {
+			if drs.Rules.StatusChecksEnabled() {
 				children = append(children, Change{
 					Type: ChangeCreate, Field: "rules.required_status_checks", NewValue: "enabled",
 				})
@@ -541,8 +541,12 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		appendChildChanged(&fieldChanges, "enforcement", drs.Enforcement, crs.Enforcement)
 		appendChildChanged(&fieldChanges, "target", drs.Target, crs.Target)
 
+		// On an existing ruleset, what the manifest leaves out keeps its
+		// current value (apply builds the update from the current ruleset),
+		// so only what it sets is compared.
+
 		// bypass_actors
-		if !rulesetBypassActorsEqual(ctx, drs.BypassActors, crs.BypassActors, resolver) {
+		if drs.HasBypassActors() && !rulesetBypassActorsEqual(ctx, drs.BypassActors, crs.BypassActors, resolver) {
 			fieldChanges = append(fieldChanges, Change{
 				Type: ChangeUpdate, Field: "bypass_actors",
 				OldValue: fmt.Sprintf("%d actors", len(crs.BypassActors)),
@@ -551,7 +555,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		}
 
 		// conditions
-		if !rulesetConditionsEqual(drs.Conditions, crs.Conditions) {
+		if drs.Conditions != nil && !rulesetConditionsEqual(drs.Conditions, crs.Conditions) {
 			oldCond, newCond := "(none)", "(none)"
 			if crs.Conditions != nil && crs.Conditions.RefName != nil {
 				oldCond = formatConditions(crs.Conditions.RefName.Include, crs.Conditions.RefName.Exclude)
@@ -586,15 +590,21 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		appendChildChanged(&fieldChanges, "rules.required_signatures", drs.Rules.RequiredSignatures, crs.Rules.RequiredSignatures)
 
 		// pull_request rule
-		if drs.Rules.PullRequest != nil {
+		switch {
+		case drs.Rules.PullRequestDisabled():
+			if crs.Rules.PullRequest != nil {
+				fieldChanges = append(fieldChanges, Change{
+					Type: ChangeDelete, Field: "rules.pull_request", OldValue: "enabled",
+				})
+			}
+		case drs.Rules.PullRequestEnabled():
 			if crs.Rules.PullRequest == nil {
 				fieldChanges = append(fieldChanges, Change{
 					Type: ChangeCreate, Field: "rules.pull_request", NewValue: "enabled",
 				})
 			} else {
-				// Unset parameters are sent with their defaults, so compare
-				// the same effective values here.
-				pr := drs.Rules.PullRequest.WithDefaults()
+				// Unset parameters keep their current values on update.
+				pr := drs.Rules.PullRequest
 				cpr := crs.Rules.PullRequest
 				appendChildChanged(&fieldChanges, "rules.pull_request.required_approving_review_count", pr.RequiredApprovingReviewCount, cpr.RequiredApprovingReviewCount)
 				appendChildChanged(&fieldChanges, "rules.pull_request.dismiss_stale_reviews_on_push", pr.DismissStaleReviewsOnPush, cpr.DismissStaleReviewsOnPush)
@@ -605,7 +615,14 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		}
 
 		// required_status_checks rule
-		if drs.Rules.RequiredStatusChecks != nil {
+		switch {
+		case drs.Rules.StatusChecksDisabled():
+			if crs.Rules.RequiredStatusChecks != nil {
+				fieldChanges = append(fieldChanges, Change{
+					Type: ChangeDelete, Field: "rules.required_status_checks", OldValue: "enabled",
+				})
+			}
+		case drs.Rules.StatusChecksEnabled():
 			if crs.Rules.RequiredStatusChecks == nil {
 				fieldChanges = append(fieldChanges, Change{
 					Type: ChangeCreate, Field: "rules.required_status_checks", NewValue: "enabled",
@@ -619,7 +636,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 						OldValue: csc.StrictRequiredStatusChecksPolicy, NewValue: *sc.StrictRequiredStatusChecksPolicy,
 					})
 				}
-				if !rulesetStatusChecksEqual(ctx, sc.Contexts, csc.Contexts, resolver) {
+				if sc.Contexts != nil && !rulesetStatusChecksEqual(ctx, sc.Contexts, csc.Contexts, resolver) {
 					fieldChanges = append(fieldChanges, Change{
 						Type: ChangeUpdate, Field: "rules.required_status_checks.contexts",
 						OldValue: statusCheckContexts(csc.Contexts), NewValue: desiredStatusCheckContexts(sc.Contexts),

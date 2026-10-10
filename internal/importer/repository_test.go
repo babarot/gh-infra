@@ -1877,3 +1877,82 @@ func TestCompareFeatures_PullRequestsNoDiff(t *testing.T) {
 		}
 	}
 }
+
+func TestDiffRepository_KeepsRulesetRemovalForms(t *testing.T) {
+	branch := manifest.RulesetTargetBranch
+	local := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{{
+			Name:            "main",
+			Target:          &branch,
+			BypassActorsSet: true,
+			Rules: manifest.RulesetRules{
+				Deletion:             manifest.Ptr(true),
+				PullRequest:          &manifest.RulesetPullRequest{Disabled: true},
+				RequiredStatusChecks: &manifest.RulesetStatusChecks{Disabled: true},
+			},
+		}},
+	}
+	imported := manifest.Repository{Spec: manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{{
+			Name:   "main",
+			Target: &branch,
+			Rules:  manifest.RulesetRules{Deletion: manifest.Ptr(true)},
+		}},
+	}}
+	doc := &manifest.RepositoryDocument{
+		Resource:   &manifest.Repository{Spec: local},
+		SourcePath: "/tmp/test.yaml",
+	}
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  rulesets:
+    - name: main
+      target: branch
+      bypass_actors: []
+      rules:
+        deletion: true
+        pull_request: false
+        required_status_checks: false
+`)
+	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
+	rp, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepository error: %v", err)
+	}
+	if len(rp.Diffs) != 0 {
+		t.Fatalf("GitHub matches the manifest, expected no diffs, got %+v", rp.Diffs)
+	}
+	if got := string(mb["/tmp/test.yaml"]); got != string(yamlData) {
+		t.Errorf("manifest should be left as is, got:\n%s", got)
+	}
+}
+
+func TestCompareRulesets_RemovedRuleStillOnGitHub(t *testing.T) {
+	local := []manifest.Ruleset{{Name: "main", Rules: manifest.RulesetRules{
+		PullRequest: &manifest.RulesetPullRequest{Disabled: true},
+	}}}
+	imported := preserveUnreturnedRulesetParams(local, []manifest.Ruleset{{Name: "main", Rules: manifest.RulesetRules{
+		PullRequest: &manifest.RulesetPullRequest{RequiredApprovingReviewCount: manifest.Ptr(1)},
+	}}})
+	diffs := compareRulesets(local, imported)
+	if len(diffs) != 1 || diffs[0].Field != "rulesets.main.rules.pull_request" || diffs[0].Old != "disabled" {
+		t.Errorf("expected pull_request disabled -> enabled, got %+v", diffs)
+	}
+}
+
+func TestMinimalRulesets_IgnoresBypassActorsPresence(t *testing.T) {
+	actors := []manifest.RulesetBypassActor{{Role: "admin", BypassMode: "always"}}
+	defaults := []manifest.Ruleset{{Name: "main", BypassActors: actors, BypassActorsSet: true}}
+	imported := []manifest.Ruleset{{Name: "main", BypassActors: actors}}
+	if got := minimalRulesets(defaults, imported); len(got) != 0 {
+		t.Errorf("same ruleset as defaults should not be an override, got %+v", got)
+	}
+}

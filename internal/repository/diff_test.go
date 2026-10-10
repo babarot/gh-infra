@@ -1932,47 +1932,64 @@ func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 	}
 }
 
-func TestDiff_Rulesets_PullRequestUnsetParamsUseDefaults(t *testing.T) {
-	desiredWithCount := func(count int) *manifest.Repository {
-		d := baseDesired()
-		d.Spec.Rulesets = []manifest.Ruleset{
-			{
-				Name: "protect-main",
-				Rules: manifest.RulesetRules{
-					PullRequest: &manifest.RulesetPullRequest{
-						RequiredApprovingReviewCount: manifest.Ptr(count),
-					},
-				},
-			},
-		}
-		return d
-	}
-	currentWith := func(pr CurrentRulesetPullRequest) *CurrentState {
+func TestDiff_Rulesets_OnlySetFieldsAreCompared(t *testing.T) {
+	current := func() *CurrentState {
 		c := baseState()
-		c.Rulesets["protect-main"] = &CurrentRuleset{
-			ID:    1,
-			Name:  "protect-main",
-			Rules: CurrentRulesetRules{PullRequest: &pr},
+		c.Rulesets["main"] = &CurrentRuleset{
+			ID: 1, Name: "main", Target: "branch", Enforcement: "evaluate",
+			BypassActors: []CurrentRulesetBypassActor{{ActorID: 5, ActorType: "RepositoryRole", BypassMode: "always"}},
+			Conditions:   &CurrentRulesetConditions{RefName: &CurrentRulesetRefCondition{Include: []string{"~DEFAULT_BRANCH"}}},
+			Rules: CurrentRulesetRules{
+				Deletion: true,
+				PullRequest: &CurrentRulesetPullRequest{
+					RequiredApprovingReviewCount: 1,
+					DismissStaleReviewsOnPush:    true,
+				},
+				RequiredStatusChecks: &CurrentRulesetStatusChecks{},
+			},
 		}
 		return c
 	}
+	desired := func(rs manifest.Ruleset) *manifest.Repository {
+		d := baseDesired()
+		rs.Name = "main"
+		d.Spec.Rulesets = []manifest.Ruleset{rs}
+		return d
+	}
 
-	t.Run("non-default current value is planned back to the default", func(t *testing.T) {
-		changes := Diff(context.Background(), desiredWithCount(1), currentWith(CurrentRulesetPullRequest{
-			RequiredApprovingReviewCount: 1,
-			DismissStaleReviewsOnPush:    true,
-		}))
-		fields := collectChildFields(changes)
-		if !fields["rules.pull_request.dismiss_stale_reviews_on_push"] {
-			t.Errorf("expected dismiss_stale_reviews_on_push change, got %v", fields)
-		}
-		if fields["rules.pull_request.required_approving_review_count"] {
-			t.Error("did not expect review count change")
+	t.Run("omitted fields and unset parameters are not compared", func(t *testing.T) {
+		changes := Diff(context.Background(), desired(manifest.Ruleset{
+			Rules: manifest.RulesetRules{PullRequest: &manifest.RulesetPullRequest{RequiredApprovingReviewCount: manifest.Ptr(1)}},
+		}), current())
+		if len(changes) != 0 {
+			t.Errorf("expected no changes, got %v", changes)
 		}
 	})
 
-	t.Run("default current values are no change", func(t *testing.T) {
-		changes := Diff(context.Background(), desiredWithCount(0), currentWith(CurrentRulesetPullRequest{}))
+	t.Run("explicit empty bypass_actors removes them", func(t *testing.T) {
+		changes := Diff(context.Background(), desired(manifest.Ruleset{BypassActorsSet: true}), current())
+		if !collectChildFields(changes)["bypass_actors"] {
+			t.Errorf("expected bypass_actors change, got %v", changes)
+		}
+	})
+
+	t.Run("false removes pull_request and required_status_checks", func(t *testing.T) {
+		changes := Diff(context.Background(), desired(manifest.Ruleset{Rules: manifest.RulesetRules{
+			PullRequest:          &manifest.RulesetPullRequest{Disabled: true},
+			RequiredStatusChecks: &manifest.RulesetStatusChecks{Disabled: true},
+		}}), current())
+		fields := collectChildFields(changes)
+		if !fields["rules.pull_request"] || !fields["rules.required_status_checks"] {
+			t.Errorf("expected both rules removed, got %v", changes)
+		}
+	})
+
+	t.Run("false on a rule that does not exist is no change", func(t *testing.T) {
+		c := current()
+		c.Rulesets["main"].Rules.PullRequest = nil
+		changes := Diff(context.Background(), desired(manifest.Ruleset{Rules: manifest.RulesetRules{
+			PullRequest: &manifest.RulesetPullRequest{Disabled: true},
+		}}), c)
 		if len(changes) != 0 {
 			t.Errorf("expected no changes, got %v", changes)
 		}
