@@ -14,8 +14,11 @@ type State struct {
 type Change struct {
 	// FileSet is the FileSet that planned this change. Apply matches changes
 	// on it rather than FileSetID, which distinct FileSets can share.
-	FileSet     *manifest.FileSet
-	FileSetID   string // org/owner that owns this FileSet
+	FileSet *manifest.FileSet
+	// FileSetID is the FileSet's Identity(): it names the FileSet in plan
+	// output and JSON and derives the default commit message, PR branch, and
+	// PR body. It is not unique across FileSets.
+	FileSetID   string
 	Target      string // owner/repo
 	Path        string
 	Type        ChangeType

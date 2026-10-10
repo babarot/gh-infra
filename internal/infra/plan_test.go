@@ -2,6 +2,8 @@ package infra
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,5 +102,31 @@ func TestPlanResult_FailedTargetsError(t *testing.T) {
 		if !strings.Contains(err.Error(), s) {
 			t.Errorf("error %q does not contain %q", err, s)
 		}
+	}
+}
+
+// Plan (and so apply) rejects FileSets that would overwrite each other's PR
+// branch before fetching anything from GitHub.
+func TestPlan_RejectsSharedPRBranch(t *testing.T) {
+	doc := `apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: repo
+spec:
+  files:
+    - path: a.txt
+      content: a
+  via: pull_request
+`
+	path := filepath.Join(t.TempDir(), "files.yaml")
+	if err := os.WriteFile(path, []byte(doc+"---\n"+doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Plan(PlanOptions{Paths: []string{path}, DryRun: true})
+
+	if err == nil || !strings.Contains(err.Error(), `from branch "gh-infra/sync-org-repo"`) {
+		t.Fatalf("expected shared PR branch error, got %v", err)
 	}
 }

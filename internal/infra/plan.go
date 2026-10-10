@@ -91,6 +91,9 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		}
 		parsed.Merge(result)
 	}
+	if err := parsed.Validate(); err != nil {
+		return nil, err
+	}
 
 	// Print deprecation warnings
 	for _, w := range parsed.Warnings {

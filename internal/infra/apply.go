@@ -35,6 +35,10 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 		defer restore()
 	}
 
+	if err := checkFileChangesMatched(result.Parsed.FileSets, result.FileChanges); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 
 	p.Phase("Applying changes to GitHub API ...")
@@ -189,9 +193,26 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 	return outcome, nil
 }
 
+// checkFileChangesMatched returns an error if a change with work to do was not
+// planned by one of fileSets. Apply hands each FileSet only its own changes, so
+// such a change would otherwise be dropped without a word.
+func checkFileChangesMatched(fileSets []*manifest.FileSet, changes []fileset.Change) error {
+	planned := make(map[*manifest.FileSet]bool, len(fileSets))
+	for _, fs := range fileSets {
+		planned[fs] = true
+	}
+	for _, c := range changes {
+		if c.Type != fileset.ChangeNoOp && !planned[c.FileSet] {
+			return fmt.Errorf("internal error: planned %s of %s in %s belongs to no parsed FileSet", c.Type, c.Path, c.Target)
+		}
+	}
+	return nil
+}
+
 func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]fileset.Change, fileset.ApplyOptions) {
 	var fsChanges []fileset.Change
 	for _, c := range allChanges {
+		// Plan and Apply share the *FileSet pointers in parsed.FileSets.
 		if c.FileSet == fs {
 			fsChanges = append(fsChanges, c)
 		}

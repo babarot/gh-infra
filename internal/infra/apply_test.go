@@ -54,41 +54,6 @@ func TestFileSetApplyArgs(t *testing.T) {
 	}
 }
 
-func TestFileSetApplyArgs_SameOwnerDifferentName(t *testing.T) {
-	fs1 := &manifest.FileSet{
-		Metadata: manifest.FileSetMetadata{Name: "repo-a", Owner: "org"},
-		Spec: manifest.FileSetSpec{
-			Repositories: []manifest.FileSetRepository{{Name: "repo-a"}},
-		},
-	}
-	fs2 := &manifest.FileSet{
-		Metadata: manifest.FileSetMetadata{Name: "repo-b", Owner: "org"},
-		Spec: manifest.FileSetSpec{
-			Repositories: []manifest.FileSetRepository{{Name: "repo-b"}},
-		},
-	}
-	allChanges := []fileset.Change{
-		{FileSet: fs1, FileSetID: fs1.Identity(), Target: "org/repo-a", Path: "a.txt"},
-		{FileSet: fs2, FileSetID: fs2.Identity(), Target: "org/repo-b", Path: "b.txt"},
-	}
-
-	changes1, _ := fileSetApplyArgs(fs1, allChanges)
-	changes2, _ := fileSetApplyArgs(fs2, allChanges)
-
-	if len(changes1) != 1 {
-		t.Fatalf("fs1: expected 1 change, got %d", len(changes1))
-	}
-	if changes1[0].Target != "org/repo-a" {
-		t.Errorf("fs1: changes[0].Target = %q, want org/repo-a", changes1[0].Target)
-	}
-	if len(changes2) != 1 {
-		t.Fatalf("fs2: expected 1 change, got %d", len(changes2))
-	}
-	if changes2[0].Target != "org/repo-b" {
-		t.Errorf("fs2: changes[0].Target = %q, want org/repo-b", changes2[0].Target)
-	}
-}
-
 func TestFileSetApplyArgs_NoMatch(t *testing.T) {
 	fs := &manifest.FileSet{
 		Metadata: manifest.FileSetMetadata{Name: "myrepo", Owner: "org"},
@@ -157,6 +122,29 @@ func TestFileSetApplyArgs_SameIdentity(t *testing.T) {
 	}
 	if hookOpts.CommitMessage != "chore: sync pre-commit hook" {
 		t.Errorf("hook CommitMessage = %q", hookOpts.CommitMessage)
+	}
+}
+
+func TestCheckFileChangesMatched(t *testing.T) {
+	planned := &manifest.FileSet{Metadata: manifest.FileSetMetadata{Owner: "org"}}
+	unknown := &manifest.FileSet{Metadata: manifest.FileSetMetadata{Owner: "org"}}
+	tests := []struct {
+		name    string
+		change  fileset.Change
+		wantErr bool
+	}{
+		{"change from a parsed FileSet", fileset.Change{FileSet: planned, Type: fileset.ChangeUpdate}, false},
+		{"no-op from an unknown FileSet", fileset.Change{FileSet: unknown, Type: fileset.ChangeNoOp}, false},
+		{"update from an unknown FileSet", fileset.Change{FileSet: unknown, Type: fileset.ChangeUpdate}, true},
+		{"delete without a FileSet", fileset.Change{Type: fileset.ChangeDelete}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkFileChangesMatched([]*manifest.FileSet{planned}, []fileset.Change{tt.change})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }
 
