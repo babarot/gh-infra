@@ -17,7 +17,7 @@ type ExitError struct {
 
 func (e *ExitError) Error() string {
 	if e.APIError != nil {
-		return fmt.Sprintf("%s (HTTP %d)", e.APIError.Message, e.APIError.Status)
+		return fmt.Sprintf("%s (HTTP %d)", e.APIError.summary(), e.APIError.Status)
 	}
 	// Non-API errors: show stderr without the full command
 	stderr := strings.TrimPrefix(e.Stderr, "gh: ")
@@ -29,9 +29,30 @@ func (e *ExitError) Error() string {
 
 // APIError represents a parsed GitHub API error response.
 type APIError struct {
-	Status  int
-	Message string
-	Errors  []string
+	Status           int
+	Message          string
+	Errors           []string
+	DocumentationURL string
+}
+
+// summary returns the message and the error details on one line. GitHub
+// puts some details in the message after a blank line, and others in the
+// errors field, so both are kept.
+func (a *APIError) summary() string {
+	msg := strings.Join(strings.Fields(a.Message), " ")
+	if a.DocumentationURL != "" {
+		msg = strings.ReplaceAll(msg, "See `documentation_url`.", "See "+a.DocumentationURL+".")
+	}
+	var details []string
+	for _, e := range a.Errors {
+		if e != "" && !strings.Contains(msg, e) {
+			details = append(details, e)
+		}
+	}
+	if len(details) > 0 {
+		msg += ": " + strings.Join(details, "; ")
+	}
+	return msg
 }
 
 var (
@@ -57,9 +78,10 @@ func tryParseAPIError(stderr string) *APIError {
 
 	// Parse with errors as an array of objects (common case).
 	var raw struct {
-		Message string `json:"message"`
-		Status  any    `json:"status"` // may be int or string
-		Errors  json.RawMessage
+		Message          string `json:"message"`
+		Status           any    `json:"status"` // may be int or string
+		Errors           json.RawMessage
+		DocumentationURL string `json:"documentation_url"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
 		return nil
@@ -69,32 +91,67 @@ func tryParseAPIError(stderr string) *APIError {
 	}
 
 	apiErr := &APIError{
-		Message: raw.Message,
-	}
-
-	// errors field may be a string or an array of objects — handle both.
-	if len(raw.Errors) > 0 {
-		// Try array of objects first: [{"message":"..."}]
-		var errObjs []struct {
-			Message string `json:"message"`
-		}
-		if json.Unmarshal(raw.Errors, &errObjs) == nil {
-			for _, e := range errObjs {
-				apiErr.Errors = append(apiErr.Errors, e.Message)
-			}
-		} else {
-			// Fall back to plain string: "some error message"
-			var errStr string
-			if json.Unmarshal(raw.Errors, &errStr) == nil && errStr != "" {
-				apiErr.Errors = append(apiErr.Errors, errStr)
-			}
-		}
+		Message:          raw.Message,
+		DocumentationURL: raw.DocumentationURL,
+		Errors:           parseErrorDetails(raw.Errors),
 	}
 
 	// Infer HTTP status from the status field or message.
 	apiErr.Status = inferHTTPStatus(raw.Status, raw.Message)
 
 	return apiErr
+}
+
+// parseErrorDetails reads the errors field of an API error response, which
+// may be a string, an array of strings, or an array of objects. Objects
+// without a message, such as {"resource":"Label","field":"name",
+// "code":"already_exists"}, are described by their resource, field and code.
+func parseErrorDetails(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		if s == "" {
+			return nil
+		}
+		return []string{s}
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return nil
+	}
+	var details []string
+	for _, item := range items {
+		var str string
+		if json.Unmarshal(item, &str) == nil {
+			if str != "" {
+				details = append(details, str)
+			}
+			continue
+		}
+		var obj struct {
+			Message  string `json:"message"`
+			Resource string `json:"resource"`
+			Field    string `json:"field"`
+			Code     string `json:"code"`
+		}
+		if json.Unmarshal(item, &obj) != nil {
+			continue
+		}
+		switch {
+		case obj.Message != "":
+			details = append(details, obj.Message)
+		case obj.Code != "":
+			subject := strings.Trim(obj.Resource+"."+obj.Field, ".")
+			if subject == "" {
+				details = append(details, obj.Code)
+			} else {
+				details = append(details, subject+": "+obj.Code)
+			}
+		}
+	}
+	return details
 }
 
 // extractJSON returns the leading JSON object from s, or "" if none found.

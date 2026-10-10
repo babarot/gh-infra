@@ -1,6 +1,8 @@
 package gh
 
 import (
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -99,6 +101,54 @@ func TestTryParseAPIError_ErrorsAsString(t *testing.T) {
 	}
 	if got.Errors[0] != "Fork PR approval is not allowed for private repositories." {
 		t.Errorf("errors[0]: got %q", got.Errors[0])
+	}
+}
+
+func TestTryParseAPIError_ErrorDetailForms(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   []string
+	}{
+		{
+			name:   "array of strings",
+			stderr: `{"message":"Validation Failed","errors":["a is invalid","b is missing"]}`,
+			want:   []string{"a is invalid", "b is missing"},
+		},
+		{
+			name:   "objects without message use resource, field and code",
+			stderr: `{"message":"Validation Failed","errors":[{"resource":"Label","field":"name","code":"already_exists"},{"code":"custom"}]}`,
+			want:   []string{"Label.name: already_exists", "custom"},
+		},
+		{
+			name:   "empty entries are skipped",
+			stderr: `{"message":"Validation Failed","errors":[{"message":""},""]}`,
+			want:   nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tryParseAPIError(tt.stderr)
+			if got == nil {
+				t.Fatal("expected non-nil APIError")
+			}
+			if strings.Join(got.Errors, "|") != strings.Join(tt.want, "|") {
+				t.Errorf("errors = %q, want %q", got.Errors, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildCommandError_RulesetValidationMessage(t *testing.T) {
+	// Real response from creating a ruleset with an incomplete pull_request rule.
+	stdout := `{"message":"Invalid request.\n\nInvalid property /rules/0: data matches no possible input. See ` + "`documentation_url`" + `.","documentation_url":"https://docs.github.com/rest/repos/rules#create-a-repository-ruleset","status":"422"}`
+	err := buildCommandError("gh api repos/o/r/rulesets", 1, stdout, "")
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+	want := "Invalid request. Invalid property /rules/0: data matches no possible input. See https://docs.github.com/rest/repos/rules#create-a-repository-ruleset. (HTTP 422)"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), want)
 	}
 }
 
@@ -265,6 +315,35 @@ func TestExitError_Error(t *testing.T) {
 				ExitCode: 1,
 				Stderr:   `{"message":"Not Found"}`,
 				APIError: &APIError{Status: 404, Message: "Not Found"},
+			},
+			want: "Not Found (HTTP 404)",
+		},
+		{
+			name: "details after a blank line stay on one line with the docs URL",
+			err: ExitError{
+				APIError: &APIError{
+					Status:           422,
+					Message:          "Invalid request.\n\nInvalid property /rules/0: data matches no possible input. See `documentation_url`.",
+					DocumentationURL: "https://docs.github.com/rest/repos/rules#create-a-repository-ruleset",
+				},
+			},
+			want: "Invalid request. Invalid property /rules/0: data matches no possible input. See https://docs.github.com/rest/repos/rules#create-a-repository-ruleset. (HTTP 422)",
+		},
+		{
+			name: "errors are appended to the message",
+			err: ExitError{
+				APIError: &APIError{
+					Status:  422,
+					Message: "Validation Failed",
+					Errors:  []string{"Fork PR approval is not allowed for private repositories."},
+				},
+			},
+			want: "Validation Failed: Fork PR approval is not allowed for private repositories. (HTTP 422)",
+		},
+		{
+			name: "errors already in the message are not repeated",
+			err: ExitError{
+				APIError: &APIError{Status: 404, Message: "Not Found", Errors: []string{"Not Found"}},
 			},
 			want: "Not Found (HTTP 404)",
 		},
