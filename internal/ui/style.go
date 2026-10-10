@@ -13,6 +13,9 @@ var (
 	Cyan   = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	Bold   = lipgloss.NewStyle().Bold(true)
 	Dim    = lipgloss.NewStyle().Faint(true)
+
+	// hyperlinks controls the OSC 8 links around repository names.
+	hyperlinks = true
 )
 
 func init() {
@@ -21,8 +24,10 @@ func init() {
 	}
 }
 
-// DisableStyles resets all styles to plain text (no color, no formatting).
+// DisableStyles resets all styles to plain text (no color, no formatting,
+// no hyperlinks).
 func DisableStyles() {
+	hyperlinks = false
 	Green = lipgloss.NewStyle()
 	Red = lipgloss.NewStyle()
 	Yellow = lipgloss.NewStyle()

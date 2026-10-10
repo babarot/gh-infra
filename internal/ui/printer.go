@@ -219,12 +219,12 @@ func (p *StandardPrinter) Legend(creates, updates, deletes bool) {
 }
 
 func (p *StandardPrinter) ActionHeader(name, action string) {
-	display := repoStyle(name).Render(name)
+	display := repoStyle(name, p.linkRepos()).Render(name)
 	fmt.Fprintf(p.out, "%s%s %s %s\n", Indent(IndentRoot), Dim.Render("#"), display, Dim.Render(action))
 }
 
 func (p *StandardPrinter) GroupHeader(icon, name string) {
-	display := repoStyle(name).Render(name)
+	display := repoStyle(name, p.linkRepos()).Render(name)
 	fmt.Fprintf(p.out, "%s%s %s\n", Indent(IndentRoot), renderIcon(icon), display)
 }
 
@@ -356,10 +356,17 @@ func formatDiffStat(added, removed int) string {
 	return " " + strings.Join(parts, " ")
 }
 
+// linkRepos reports whether repository names get hyperlinks. They are left
+// out when styles are disabled (NO_COLOR, plan --ci) or stdout is not a
+// terminal, since the escape sequences would end up in logs and copied text.
+func (p *StandardPrinter) linkRepos() bool {
+	return hyperlinks && p.isOutTerminal()
+}
+
 // repoStyle returns a bold style with an OSC 8 hyperlink to the GitHub repo.
-// If name does not contain a slash, returns plain Bold.
-func repoStyle(name string) lipgloss.Style {
-	if !strings.Contains(name, "/") {
+// If link is false or name does not contain a slash, returns plain Bold.
+func repoStyle(name string, link bool) lipgloss.Style {
+	if !link || !strings.Contains(name, "/") {
 		return Bold
 	}
 	return Bold.Hyperlink("https://github.com/" + name)
