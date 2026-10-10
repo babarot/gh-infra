@@ -2932,3 +2932,96 @@ func TestRepository_NullMilestonesRejected(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestLabels_NamesDifferingOnlyInCase(t *testing.T) {
+	parse := func(t *testing.T, content string) ([]*Repository, error) {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "labels.yaml")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return ParsePath(path)
+	}
+
+	for _, tt := range []struct {
+		name    string
+		content string
+	}{
+		{"repository", `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  labels:
+    - name: Bug
+      color: d73a4a
+    - name: bug
+      color: d73a4a
+`},
+		{"defaults", `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: Bug
+        color: d73a4a
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+`},
+		{"entry", `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+repositories:
+  - name: repo
+    spec:
+      labels:
+        - name: Bug
+          color: d73a4a
+        - name: bug
+          color: d73a4a
+`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parse(t, tt.content)
+			if err == nil || !strings.Contains(err.Error(), "same label on GitHub") {
+				t.Errorf("expected a same-label error, got %v", err)
+			}
+		})
+	}
+
+	t.Run("entry overrides defaults by name ignoring case", func(t *testing.T) {
+		repos, err := parse(t, `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+    spec:
+      labels:
+        - name: Bug
+          color: ff0000
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		labels := repos[0].Spec.Labels
+		if len(labels) != 1 || labels[0].Name != "Bug" || labels[0].Color != "ff0000" {
+			t.Errorf("labels = %+v, want one label Bug ff0000", labels)
+		}
+	})
+}

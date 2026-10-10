@@ -1967,3 +1967,21 @@ func TestMinimalLabels_ComparesDescriptionByValue(t *testing.T) {
 		t.Errorf("nil and empty descriptions should compare equal, got %+v", diffs)
 	}
 }
+
+func TestLabels_CaseOnlyDifference(t *testing.T) {
+	local := []manifest.Label{{Name: "bug", Color: "d73a4a"}}
+	imported := []manifest.Label{{Name: "Bug", Color: "d73a4a"}}
+
+	diffs := compareLabels(local, imported)
+	if len(diffs) != 1 {
+		t.Fatalf("expected one diff for the label, got %+v", diffs)
+	}
+	if diffs[0].Field != "labels.Bug" || diffs[0].Old != "bug #d73a4a" || diffs[0].New != "Bug #d73a4a" {
+		t.Errorf("diff = %+v, want labels.Bug: bug #d73a4a -> Bug #d73a4a", diffs[0])
+	}
+
+	got := minimalLabels(local, imported)
+	if len(got) != 1 || got[0].Name != "Bug" {
+		t.Errorf("minimalLabels = %+v, want GitHub's casing Bug as an override", got)
+	}
+}

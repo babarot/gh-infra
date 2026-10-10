@@ -2656,3 +2656,31 @@ func TestDiffLabels_OmittedDescriptionIsLeftAsIs(t *testing.T) {
 		t.Error(`description: "" should be planned as clearing it`)
 	}
 }
+
+func TestDiffLabels_CaseOnlyDifferenceIsARename(t *testing.T) {
+	d := baseDesired()
+	d.Spec.Labels = []manifest.Label{{Name: "Bug", Color: "d73a4a"}}
+	c := baseState()
+	c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a"}
+
+	for _, mode := range []string{manifest.CollectionReconcileAdditive, manifest.CollectionReconcileAuthoritative} {
+		t.Run(mode, func(t *testing.T) {
+			changes := diffLabels("org/repo", d, c, mode)
+			if len(changes) != 1 {
+				t.Fatalf("expected one change, got %v", changes)
+			}
+			ch := changes[0]
+			if ch.Type != ChangeUpdate || ch.Field != "Bug" {
+				t.Fatalf("expected an update of Bug, got %v", ch)
+			}
+			if len(ch.Details) != 1 || ch.Details[0].Field != "name" || ch.Details[0].OldValue != "bug" || ch.Details[0].NewValue != "Bug" {
+				t.Errorf("expected a name child bug -> Bug, got %v", ch.Details)
+			}
+		})
+	}
+
+	d.Spec.Labels = []manifest.Label{{Name: "bug", Color: "d73a4a"}}
+	if changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAuthoritative); len(changes) != 0 {
+		t.Errorf("same name: expected no changes, got %v", changes)
+	}
+}

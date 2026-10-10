@@ -39,7 +39,7 @@ Examples:
 - `visibility`: scalar replace
 - `reconcile.labels`, `reconcile.rulesets`, `reconcile.branch_protection`: merged by collection
 - `topics`, `milestones`: list replace
-- `labels`, `branch_protection`, `rulesets`, `secrets`, `variables`: merged by key
+- `labels`, `branch_protection`, `rulesets`, `secrets`, `variables`: merged by key (label names ignoring case: an entry's `Bug` replaces the defaults' `bug`)
 - any collection written as `[]` in an entry means none (the defaults are not inherited); omitted inherits; under authoritative reconcile, `[]` deletes every label / ruleset / branch protection rule on the repo (plan warns)
 - `features`, `merge_strategy`, `actions`: map merge by key (individual fields like `enabled`, `allowed_actions` are independently overridable)
 - `features.pull_requests`: map merge by key (`enabled` and `creation` are independently overridable)

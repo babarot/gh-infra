@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Validate checks that the Repository has valid field values.
@@ -12,6 +13,9 @@ func (r *Repository) Validate() error {
 		return err
 	}
 	name := r.Metadata.Name
+	if err := checkLabelNames(name+": spec.labels", r.Spec.Labels); err != nil {
+		return err
+	}
 	if r.Reconcile != nil {
 		if r.Reconcile.Labels != nil {
 			if r.Spec.LabelSync != nil {
@@ -109,6 +113,21 @@ func (r *Repository) Validate() error {
 				return fmt.Errorf("%s: actions.selected_actions can only be used when allowed_actions is \"selected\" (add \"allowed_actions: selected\")", name)
 			}
 		}
+	}
+	return nil
+}
+
+// checkLabelNames rejects two labels whose names differ only in case:
+// GitHub label names are unique case-insensitively, so they are the same
+// label there.
+func checkLabelNames(path string, labels []Label) error {
+	seen := make(map[string]string, len(labels))
+	for _, l := range labels {
+		key := strings.ToLower(l.Name)
+		if prev, ok := seen[key]; ok && prev != l.Name {
+			return fmt.Errorf("%s: %q and %q are the same label on GitHub (label names are case-insensitive)", path, prev, l.Name)
+		}
+		seen[key] = l.Name
 	}
 	return nil
 }
