@@ -33,6 +33,10 @@ spec:
 | `allowed_actions` | string | `all`, `local_only`, `selected` | Which Actions are allowed to run |
 | `sha_pinning_required` | bool | | Require actions to be pinned to a full commit SHA instead of tags or branches |
 
+:::note
+While `enabled: false`, gh-infra neither applies nor compares `allowed_actions`, `sha_pinning_required` or `selected_actions`: GitHub rejects `allowed_actions` for a repository with Actions disabled and stops reporting it. Values set there, including ones inherited from a `RepositorySet`'s defaults, take effect again once `enabled` is `true`.
+:::
+
 :::tip
 `sha_pinning_required: true` is a strong supply-chain hardening default for repositories that use third-party actions.
 :::
