@@ -65,3 +65,19 @@ spec:
 - A commit that changes a mode uses the Git Data API and is NOT signed/Verified; it is rejected on branches requiring signed commits. Other commits stay on `createCommitOnBranch` (Verified)
 - `create_only`: the mode is applied only on creation
 - Errors: executable file in an empty repository; `executable` on a symlink or submodule path
+
+## Templated Messages
+
+`commit_message`, `pr_title`, `pr_body` support `<% %>` with `.Repo.*` and `.Source.URL` (from env `GH_INFRA_SOURCE_URL`; empty if unset). `.Vars` is not available.
+
+```yaml
+spec:
+  commit_message: |-
+    ci: sync CI workflow
+
+    <% if .Source.URL %>Source: <% .Source.URL %><% end %>
+```
+
+- First line = commit headline, rest = body; empty body is dropped. Default `pr_title` uses only the headline.
+- Guard `.Source.URL` with `if`, otherwise an unset env var leaves a dangling `Source: ` line.
+- Messages render only at apply time; `plan` does not show or validate them, so template errors surface during `apply`.
