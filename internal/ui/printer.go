@@ -577,6 +577,14 @@ func (p *StandardPrinter) ConfirmWithDiff(title string, diffEntries []DiffEntry)
 // DefaultPrinter is the package-level printer instance.
 var DefaultPrinter Printer = NewStandardPrinter()
 
+// SetDefaultPrinter replaces DefaultPrinter and returns a function that
+// restores the previous one.
+func SetDefaultPrinter(p Printer) (restore func()) {
+	prev := DefaultPrinter
+	DefaultPrinter = p
+	return func() { DefaultPrinter = prev }
+}
+
 // OutputMode returns the apply output mode.
 // Set via GH_INFRA_OUTPUT env var: "stream" or "spinner" (default).
 func OutputMode() string {

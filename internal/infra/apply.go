@@ -18,10 +18,22 @@ type ApplyOptions struct {
 	Stream bool // true = stream output mode instead of spinner
 }
 
-// Apply executes planned changes against GitHub.
-func Apply(result *PlanResult, opts ApplyOptions) error {
+// ApplyOutcome holds the result of each applied change.
+type ApplyOutcome struct {
+	RepoResults []repository.ApplyResult
+	FileResults []fileset.ApplyResult
+}
+
+// Apply executes planned changes against GitHub. The outcome is returned
+// even when some changes failed (with an error), so the caller can report
+// each result.
+func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 	eng := result.engine
 	p := eng.printer
+	if eng.quiet {
+		restore := ui.SetDefaultPrinter(p)
+		defer restore()
+	}
 
 	ctx := context.Background()
 
@@ -144,7 +156,7 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 		// would repeat the same message in a separate block.
 
 		if ctx.Err() != nil {
-			return context.Canceled
+			return nil, context.Canceled
 		}
 
 		s, f := repository.CountApplyResults(allRepoResults)
@@ -169,11 +181,12 @@ func Apply(result *PlanResult, opts ApplyOptions) error {
 	summaryMsg += "."
 	p.Summary(summaryMsg)
 
+	outcome := &ApplyOutcome{RepoResults: allRepoResults, FileResults: allFileResults}
 	if totalFailed > 0 {
-		return fmt.Errorf("apply had errors")
+		return outcome, fmt.Errorf("apply had errors")
 	}
 
-	return nil
+	return outcome, nil
 }
 
 func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]fileset.Change, fileset.ApplyOptions) {

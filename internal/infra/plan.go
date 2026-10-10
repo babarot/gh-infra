@@ -19,9 +19,10 @@ type PlanOptions struct {
 	Paths         []string
 	FilterRepo    string
 	FailOnUnknown bool
-	ForceSecrets  bool // only meaningful when followed by Apply
-	DryRun        bool // true = plan only (skip secret resolution)
-	ShowDiff      bool // emit unified diff for each file change in plan output
+	ForceSecrets  bool   // only meaningful when followed by Apply
+	DryRun        bool   // true = plan only (skip secret resolution)
+	ShowDiff      bool   // emit unified diff for each file change in plan output
+	Output        string // OutputText (default) or OutputJSON; JSON prints nothing while planning
 }
 
 // PlanResult holds the outcome of the plan phase.
@@ -41,6 +42,12 @@ type PlanResult struct {
 	// fetched or planned. Their changes are missing from this result.
 	FailedTargets []string
 
+	// TargetErrors are the errors behind FailedTargets.
+	TargetErrors []ui.TaskError
+
+	// Warnings are the warnings from parsing the manifests.
+	Warnings []string
+
 	engine *engine // unexported runtime context for Apply
 }
 
@@ -54,7 +61,14 @@ func (r *PlanResult) Printer() ui.Printer {
 
 // Plan parses manifests, fetches current state, computes diffs, and prints the plan.
 func Plan(opts PlanOptions) (*PlanResult, error) {
-	p := ui.NewStandardPrinter()
+	var p ui.Printer = ui.NewStandardPrinter()
+	if opts.Output == OutputJSON {
+		// Print nothing but the document: silence this printer, and the
+		// package printer that the progress fallback and tracker use.
+		p = discardPrinter()
+		restore := ui.SetDefaultPrinter(p)
+		defer restore()
+	}
 
 	paths, err := manifest.ResolvePaths(opts.Paths)
 	if err != nil {
@@ -101,6 +115,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	resolver := manifest.NewResolver(runner, resolverOwner)
 
 	eng := newEngine(runner, resolver, p)
+	eng.quiet = opts.Output == OutputJSON
 
 	displayPaths := make([]string, len(paths))
 	for i, path := range paths {
@@ -192,6 +207,8 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		Parsed:        parsed,
 		HasChanges:    hasRepo || hasFile,
 		FailedTargets: failedTargets(tracker.Errors()),
+		TargetErrors:  tracker.Errors(),
+		Warnings:      parsed.Warnings,
 		engine:        eng,
 	}
 

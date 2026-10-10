@@ -17,6 +17,7 @@ func newPlanCmd() *cobra.Command {
 		ci            bool
 		failOnUnknown bool
 		showDiff      bool
+		output        string
 	)
 
 	cmd := &cobra.Command{
@@ -28,6 +29,7 @@ func newPlanCmd() *cobra.Command {
 				CI:            ci,
 				FailOnUnknown: failOnUnknown,
 				ShowDiff:      showDiff,
+				Output:        output,
 			})
 		},
 	}
@@ -36,6 +38,7 @@ func newPlanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&ci, "ci", false, "Exit with code 1 if changes are detected")
 	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
 	cmd.Flags().BoolVar(&showDiff, "diff", false, "Show unified diff for FileSet file changes (prints full content)")
+	cmd.Flags().StringVarP(&output, "output", "o", infra.OutputText, "Output format: text or json")
 
 	return cmd
 }
@@ -45,9 +48,13 @@ type planCommandOptions struct {
 	CI            bool
 	FailOnUnknown bool
 	ShowDiff      bool
+	Output        string
 }
 
 func runPlan(paths []string, opts planCommandOptions) error {
+	if err := infra.ValidateOutput(opts.Output); err != nil {
+		return err
+	}
 	if opts.CI {
 		ui.DisableStyles()
 	}
@@ -58,6 +65,7 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		FailOnUnknown: opts.FailOnUnknown,
 		DryRun:        true,
 		ShowDiff:      opts.ShowDiff,
+		Output:        opts.Output,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -67,10 +75,23 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		return err
 	}
 
+	if opts.Output == infra.OutputJSON {
+		if err := result.PlanDocument(opts.ShowDiff).Write(os.Stdout); err != nil {
+			return err
+		}
+	}
+
 	// A plan that skipped repositories is incomplete, so fail even when the
 	// remaining repositories have no changes.
 	if err := result.FailedTargetsError(); err != nil {
 		return err
+	}
+
+	if result.HasChanges && opts.Output == infra.OutputJSON {
+		if opts.CI {
+			os.Exit(1)
+		}
+		return nil
 	}
 
 	if result.HasChanges {

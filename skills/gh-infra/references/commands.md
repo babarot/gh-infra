@@ -39,6 +39,7 @@ Flags:
 - `--ci`: exit 1 if changes are detected
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
+- `-o`, `--output json`: print only a JSON document on stdout (summary, changes, warnings, errors); prefer it over parsing text
 
 Exit status:
 
@@ -57,6 +58,7 @@ Flags:
 - `--auto-approve`: skip confirmation prompt
 - `--force-secrets`: re-send all declared secrets
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
+- `-o`, `--output json`: print only a JSON document with a `status` per change; requires `--auto-approve`
 
 Exit status: 1 if any change fails or any repository could not be fetched (those repos are skipped; the rest are still applied).
 

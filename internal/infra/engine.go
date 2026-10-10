@@ -13,6 +13,7 @@ type engine struct {
 	repo    *repository.Processor
 	file    *fileset.Processor
 	printer ui.Printer
+	quiet   bool // machine-readable output: print nothing
 }
 
 func newEngine(runner gh.Runner, resolver *manifest.Resolver, printer ui.Printer) *engine {

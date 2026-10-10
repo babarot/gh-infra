@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,7 @@ func newApplyCmd() *cobra.Command {
 		autoApprove   bool
 		forceSecrets  bool
 		failOnUnknown bool
+		output        string
 	)
 
 	cmd := &cobra.Command{
@@ -28,6 +30,7 @@ func newApplyCmd() *cobra.Command {
 				AutoApprove:   autoApprove,
 				ForceSecrets:  forceSecrets,
 				FailOnUnknown: failOnUnknown,
+				Output:        output,
 			})
 		},
 	}
@@ -36,6 +39,7 @@ func newApplyCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip confirmation prompt")
 	cmd.Flags().BoolVar(&forceSecrets, "force-secrets", false, "Always re-set all secrets (even if they already exist)")
 	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
+	cmd.Flags().StringVarP(&output, "output", "o", infra.OutputText, "Output format: text or json (json requires --auto-approve)")
 
 	return cmd
 }
@@ -45,15 +49,25 @@ type applyCommandOptions struct {
 	AutoApprove   bool
 	ForceSecrets  bool
 	FailOnUnknown bool
+	Output        string
 }
 
 func runApply(paths []string, opts applyCommandOptions) error {
+	if err := infra.ValidateOutput(opts.Output); err != nil {
+		return err
+	}
+	jsonOutput := opts.Output == infra.OutputJSON
+	if jsonOutput && !opts.AutoApprove {
+		return errors.New("--output json requires --auto-approve, since the confirmation prompt cannot be shown")
+	}
+
 	result, err := infra.Plan(infra.PlanOptions{
 		Paths:         paths,
 		FilterRepo:    opts.FilterRepo,
 		FailOnUnknown: opts.FailOnUnknown,
 		ForceSecrets:  opts.ForceSecrets,
 		DryRun:        false,
+		Output:        opts.Output,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -64,6 +78,11 @@ func runApply(paths []string, opts applyCommandOptions) error {
 	}
 
 	if !result.HasChanges {
+		if jsonOutput {
+			if err := result.ApplyDocument(nil).Write(os.Stdout); err != nil {
+				return err
+			}
+		}
 		return result.FailedTargetsError()
 	}
 
@@ -83,9 +102,18 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		applySkipSelections(result.FileChanges, diffEntries)
 	}
 
-	if err := infra.Apply(result, infra.ApplyOptions{
-		Stream: ui.OutputMode() == "stream",
-	}); err != nil {
+	outcome, err := infra.Apply(result, infra.ApplyOptions{
+		Stream: ui.OutputMode() == "stream" && !jsonOutput,
+	})
+	if errors.Is(err, context.Canceled) {
+		return err
+	}
+	if jsonOutput {
+		if werr := result.ApplyDocument(outcome).Write(os.Stdout); werr != nil {
+			return werr
+		}
+	}
+	if err != nil {
 		return err
 	}
 

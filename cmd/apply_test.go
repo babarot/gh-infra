@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/fileset"
@@ -96,5 +97,14 @@ func TestApplySkipSelections_DifferentTargets(t *testing.T) {
 	}
 	if changes[1].Type != fileset.ChangeUpdate {
 		t.Errorf("repo-b: expected FileUpdate (not skipped), got %s", changes[1].Type)
+	}
+}
+
+func TestRunApply_OutputValidation(t *testing.T) {
+	if err := runApply([]string{"."}, applyCommandOptions{Output: "json"}); err == nil || !strings.Contains(err.Error(), "--auto-approve") {
+		t.Errorf("json without --auto-approve: err = %v, want it to ask for --auto-approve", err)
+	}
+	if err := runApply([]string{"."}, applyCommandOptions{Output: "yaml", AutoApprove: true}); err == nil || !strings.Contains(err.Error(), "invalid output format") {
+		t.Errorf("unknown format: err = %v, want invalid output format", err)
 	}
 }

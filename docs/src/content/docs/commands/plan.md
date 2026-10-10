@@ -33,6 +33,7 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `--ci` | Exit with code 1 if changes detected (useful for CI drift detection) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
 | `--diff` | Show a unified diff for each FileSet file change, capped at 500 lines per file. Deleted files show no diff |
+| `-o, --output <format>` | `text` (default) or `json`. See [JSON output](../json-output/) |
 
 ## Exit status
 
