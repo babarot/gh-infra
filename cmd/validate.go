@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/ui"
@@ -53,6 +54,13 @@ func runValidate(args []string, failOnUnknown bool) error {
 	}
 	if err := parsed.Validate(); err != nil {
 		return err
+	}
+	for _, fs := range parsed.FileSets {
+		for _, target := range fs.Spec.Repositories {
+			if err := fileset.CheckMessages(fs, fs.RepoFullName(target.Name)); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Print deprecation warnings

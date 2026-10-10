@@ -84,4 +84,4 @@ spec:
 
 - First line = commit headline, rest = body; empty body is dropped. Default `pr_title` uses only the headline.
 - Guard `.Source.URL` with `if`, otherwise an unset env var leaves a dangling `Source: ` line.
-- Messages render only at apply time; `plan` does not show or validate them, so template errors surface during `apply`.
+- Messages are rendered for the commit at apply time and are not shown in `plan`; `plan` and `validate` render them for each target repository to catch template errors before anything is written.

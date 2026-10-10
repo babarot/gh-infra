@@ -1131,3 +1131,20 @@ func TestApplyToEmptyRepo_MultiLineMessageKeepsPathInHeadline(t *testing.T) {
 		t.Errorf("expected Contents API call with %q, got %q", want, mock.Called)
 	}
 }
+
+func TestPlan_MessageTemplateErrorFailsPlan(t *testing.T) {
+	mock := &gh.MockRunner{}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
+		{Path: ".github/ci.yml", Content: "name: CI"},
+	})
+	fileSets[0].Spec.PRBody = "Sync for <% .Repo.Nme %>"
+
+	_, err := p.Plan(context.Background(), fileSets, "", nil)
+	if err == nil || !strings.Contains(err.Error(), "pr_body for owner/repo") {
+		t.Fatalf("expected a pr_body template error from plan, got %v", err)
+	}
+	if len(mock.Called) != 0 {
+		t.Errorf("expected no API calls before the error, got %v", mock.Called)
+	}
+}

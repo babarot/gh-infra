@@ -80,7 +80,7 @@ Only regular files can be marked: a symlink or submodule at the path is reported
 
 ## Templated messages
 
-`commit_message`, `pr_title`, and `pr_body` accept `<% %>` expressions, rendered per target repository at apply time:
+`commit_message`, `pr_title`, and `pr_body` accept `<% %>` expressions, rendered per target repository at apply time. `plan` and `validate` also render them, so a template error is reported before anything is written:
 
 | Variable | Value |
 |---|---|

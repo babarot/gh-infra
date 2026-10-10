@@ -2,9 +2,12 @@ package fileset
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 	"strings"
 	"text/template"
+
+	"github.com/babarot/gh-infra/internal/manifest"
 )
 
 // Template delimiters — <% %> avoids conflicts with Go template {{ }},
@@ -107,4 +110,23 @@ func copyVars(m map[string]string) map[string]string {
 	cp := make(map[string]string, len(m))
 	maps.Copy(cp, m)
 	return cp
+}
+
+// CheckMessages renders the FileSet's commit_message, pr_title and pr_body
+// for repo, so a template error is reported by plan and validate rather than
+// partway through apply (e.g. after the PR branch was committed to).
+func CheckMessages(fs *manifest.FileSet, repo string) error {
+	for _, m := range []struct{ field, text string }{
+		{"commit_message", fs.Spec.CommitMessage},
+		{"pr_title", fs.Spec.PRTitle},
+		{"pr_body", fs.Spec.PRBody},
+	} {
+		if !HasTemplate(m.text, nil) {
+			continue
+		}
+		if _, err := RenderCommitMessage(m.text, repo, ""); err != nil {
+			return fmt.Errorf("%s for %s: %w", m.field, repo, err)
+		}
+	}
+	return nil
 }
