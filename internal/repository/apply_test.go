@@ -1511,7 +1511,13 @@ func TestApplyActionsPermissions_DisabledSendsOnlyEnabled(t *testing.T) {
 }
 
 func TestApplyAllSettings_ActionsDisabledSkipsSelectedActions(t *testing.T) {
-	mock := &gh.MockRunner{}
+	// A valid GET response keeps a missing guard from failing on JSON parsing
+	// instead of on the assertion below.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/actions/permissions/selected-actions": []byte(`{"github_owned_allowed":false,"verified_allowed":false,"patterns_allowed":[]}`),
+		},
+	}
 	proc := NewProcessor(mock, nil)
 
 	repo := newTestRepo("myorg", "myrepo")
@@ -1530,6 +1536,58 @@ func TestApplyAllSettings_ActionsDisabledSkipsSelectedActions(t *testing.T) {
 		if call := strings.Join(args, " "); strings.Contains(call, "selected-actions") {
 			t.Errorf("unexpected selected-actions call while actions disabled: %s", call)
 		}
+	}
+}
+
+func TestApply_DisablingActionsSendsOnlyEnabled(t *testing.T) {
+	// Settings inherited from defaults stay in the manifest when Actions is
+	// disabled; plan and apply together must send only enabled: false.
+	repo := baseDesired()
+	repo.Spec.Actions = &manifest.Actions{
+		Enabled:            manifest.Ptr(false),
+		AllowedActions:     manifest.Ptr("selected"),
+		SHAPinningRequired: manifest.Ptr(true),
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+		},
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:            true,
+		AllowedActions:     "selected",
+		SHAPinningRequired: false,
+		SelectedActions:    &CurrentSelectedActions{GithubOwnedAllowed: false},
+	}
+
+	changes := Diff(context.Background(), repo, current)
+
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	for _, r := range results {
+		if r.Err != nil {
+			t.Fatalf("unexpected error applying %s: %v", r.Change.Field, r.Err)
+		}
+	}
+	for _, args := range mock.Called {
+		if call := strings.Join(args, " "); strings.Contains(call, "selected-actions") {
+			t.Errorf("unexpected selected-actions call while actions disabled: %s", call)
+		}
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d: %v", len(mock.Called), mock.Called)
+	}
+	wantArgs := []string{"api", "repos/org/repo/actions/permissions", "--method", "PUT", "--header", "Content-Type: application/json", "--input", "-"}
+	if !reflect.DeepEqual(mock.Called[0], wantArgs) {
+		t.Errorf("args = %v, want %v", mock.Called[0], wantArgs)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(mock.CalledStdin[0], &payload); err != nil {
+		t.Fatalf("failed to parse stdin payload: %v", err)
+	}
+	want := map[string]any{"enabled": false}
+	if !reflect.DeepEqual(payload, want) {
+		t.Errorf("payload = %v, want %v", payload, want)
 	}
 }
 

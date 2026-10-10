@@ -282,10 +282,12 @@ type Actions struct {
 	ForkPRApproval         *string          `yaml:"fork_pr_approval,omitempty"        validate:"omitempty,oneof=first_time_contributors_new_to_github first_time_contributors all_external_contributors"`
 }
 
-// Disabled reports whether Actions is explicitly disabled, in which case GitHub
-// rejects allowed_actions, sha_pinning_required and selected actions.
+// Disabled reports whether Actions is explicitly turned off. GitHub then
+// stops reporting allowed_actions and rejects it with 409, and
+// sha_pinning_required and selected actions have no effect, so callers
+// neither send nor compare them.
 func (a *Actions) Disabled() bool {
-	return a.Enabled != nil && !*a.Enabled
+	return a != nil && a.Enabled != nil && !*a.Enabled
 }
 
 type SelectedActions struct {
