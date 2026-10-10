@@ -50,3 +50,18 @@ spec:
 ```
 
 If the PR branch already exists, gh-infra updates that PR.
+
+## File Modes
+
+```yaml
+spec:
+  files:
+    - path: .githooks/pre-commit
+      source: ./templates/pre-commit
+      executable: true   # 100755; false = 100644; omitted = keep current mode
+```
+
+- plan diffs the mode too: a content-identical file shows `mode 100644 → 100755`
+- A commit that changes a mode uses the Git Data API and is NOT signed/Verified; it is rejected on branches requiring signed commits. Other commits stay on `createCommitOnBranch` (Verified)
+- `create_only`: the mode is applied only on creation
+- Errors: executable file in an empty repository; `executable` on a symlink or submodule path

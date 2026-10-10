@@ -31,6 +31,8 @@ type FileItem struct {
 	Added   int
 	Removed int
 	Reason  string // skip reason (if set, line is dimmed and reason replaces diff stat)
+	OldMode string // file mode before the change; empty for a new file
+	NewMode string // file mode after the change; set only when the mode changes
 }
 
 // ResultItem represents an apply result for PrintResult.
@@ -315,6 +317,13 @@ func (p *StandardPrinter) PrintFileChange(item FileItem) {
 		return
 	}
 	stat := formatDiffStat(item.Added, item.Removed)
+	if item.NewMode != "" {
+		mode := "mode " + item.NewMode
+		if item.OldMode != "" {
+			mode = fmt.Sprintf("mode %s %s %s", item.OldMode, IconArrow, item.NewMode)
+		}
+		stat += " " + Yellow.Render(mode)
+	}
 	fmt.Fprintf(p.out, "%s%s %-*s %s\n",
 		ind, icon, p.subItemWidth(), item.Path, stat)
 }

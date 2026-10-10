@@ -27,6 +27,7 @@ spec:
 - Replace the base entry for that repo only
 - If override omits `vars`, base `vars` are inherited
 - If override omits `patches`, base `patches` are inherited
+- If override omits `executable`, base `executable` is inherited
 - If override sets `patches`, it replaces the base patch list
 
 Use `FileSet` for shared files across many repos. Use separate `File` resources when repos diverge heavily and need cleaner per-repo history.

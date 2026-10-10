@@ -92,6 +92,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			tracker.UpdateStatus(fullName, s)
 		}
 		var out []Change
+		var modes *modeLookup // fetched on first use by a file with `executable` set
 		for _, file := range u.files {
 			updateStatus("fetching file " + file.Path + "...")
 			// Template rendering (deep copy vars to avoid data races)
@@ -130,6 +131,14 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 				plan = p.planCreateOnly
 			}
 			change, err := plan(ctx, u.fileSetName, fullName, file)
+			if err == nil && change.Mode != "" {
+				if modes == nil {
+					modes, err = p.newModeLookup(ctx, fullName)
+				}
+				if err == nil {
+					err = resolveMode(ctx, modes, &change)
+				}
+			}
 			if err != nil {
 				// The file's current state is unknown, so skip this repo
 				// rather than plan a create over a file that may exist.
@@ -197,6 +206,18 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 	return changes, nil
 }
 
+// fileMode returns the file mode that `executable` asks for, or "" when it is unset.
+func fileMode(executable *bool) string {
+	switch {
+	case executable == nil:
+		return ""
+	case *executable:
+		return ModeExecutable
+	default:
+		return ModeFile
+	}
+}
+
 // planCreateOnly handles reconcile: create_only — create if missing, NoOp if exists.
 func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string, file manifest.FileEntry) (Change, error) {
 	current, err := p.fetchCurrentFile(ctx, repo, file.Path)
@@ -210,6 +231,7 @@ func (p *Processor) planCreateOnly(ctx context.Context, fileSetName, repo string
 			Path:      file.Path,
 			Type:      ChangeCreate,
 			Desired:   file.Content,
+			Mode:      fileMode(file.Executable),
 		}, nil
 	}
 	return Change{
@@ -232,6 +254,7 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 			Path:      file.Path,
 			Type:      ChangeCreate,
 			Desired:   file.Content,
+			Mode:      fileMode(file.Executable),
 		}, nil
 	}
 
@@ -245,6 +268,9 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 			Target:    repo,
 			Path:      file.Path,
 			Type:      ChangeNoOp,
+			Current:   current.Content,
+			Desired:   current.Content,
+			Mode:      fileMode(file.Executable),
 		}, nil
 	}
 
@@ -257,6 +283,7 @@ func (p *Processor) planFile(ctx context.Context, fileSetName, repo string, file
 		Current:   current.Content,
 		Desired:   file.Content,
 		SHA:       current.SHA,
+		Mode:      fileMode(file.Executable),
 	}, nil
 }
 
