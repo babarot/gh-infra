@@ -100,6 +100,7 @@ type RepositorySpec struct {
 
 	BranchProtectionSet bool `yaml:"-"`
 	LabelsSet           bool `yaml:"-"`
+	MilestonesSet       bool `yaml:"-"`
 	RulesetsSet         bool `yaml:"-"`
 	SecretsSet          bool `yaml:"-"`
 	TopicsSet           bool `yaml:"-"`
@@ -144,6 +145,12 @@ func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
 		s.LabelsSet = true
 		if v == nil {
 			return fmt.Errorf("labels must be a sequence; use [] with reconcile.labels=authoritative to delete all labels")
+		}
+	}
+	if v, ok := fields["milestones"]; ok {
+		s.MilestonesSet = true
+		if v == nil {
+			return fmt.Errorf("milestones must be a sequence; use [] to inherit no milestones from defaults")
 		}
 	}
 	if v, ok := fields["rulesets"]; ok {
