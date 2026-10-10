@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.15.2](https://github.com/babarot/gh-infra/compare/v0.15.1...v0.15.2) - 2026-10-10
+### Bug fixes
+- Match label names case-insensitively, as GitHub does by @babarot in https://github.com/babarot/gh-infra/pull/211
+- Write [] on import for a RepositorySet entry with none of a default collection by @babarot in https://github.com/babarot/gh-infra/pull/213
+- fix: send only enabled when disabling Actions by @wpfleger96 in https://github.com/babarot/gh-infra/pull/210
+- fix: apply each FileSet's changes under its own settings by @wpfleger96 in https://github.com/babarot/gh-infra/pull/203
+
 ## [v0.15.1](https://github.com/babarot/gh-infra/compare/v0.15.0...v0.15.1) - 2026-10-10
 ### Bug fixes
 - Keep what the manifest leaves out when updating a ruleset by @babarot in https://github.com/babarot/gh-infra/pull/204
