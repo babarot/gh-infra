@@ -203,6 +203,23 @@ For implementation details and exact safety rules, see [Import Into Manifests](.
 | Files with inline content (`content: \|`) | YAML content block updated in-place |
 | Files with `reconcile: create_only` | Imported (updates the local master template for future repos) |
 
+#### RepositorySet entries
+
+For a `RepositorySet` entry, import writes only what differs from `defaults.spec`. When the repository has none of a collection that the defaults have (`labels`, `rulesets`, `branch_protection`, `variables`, `topics`), import writes it as `[]` so the entry does not inherit the defaults:
+
+```
+  ~ my-org/my-cli
+      ~ labels      (defaults) → []
+```
+
+An entry cannot drop single default items. When the repository has only some of the defaults' labels, rulesets, branch protection rules or variables, import cannot write that, and shows a warning naming the missing items instead. `plan` will then create them. To keep the repository without them, change the defaults or manage the repository with its own `Repository` manifest.
+
+```
+  # my-org/my-cli (repos/set.yaml) cannot be fully imported
+  ⚠ my-org/my-cli
+      ⚠ labels      in defaults but not on GitHub: kind/docs (an entry cannot drop default items, so plan will create them)
+```
+
 ### What Gets Skipped
 
 | Source | Reason |
