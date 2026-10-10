@@ -38,3 +38,17 @@ func TestRunValidate_RejectsSharedPRBranchAcrossPaths(t *testing.T) {
 		t.Fatalf("expected shared PR branch error, got %v", err)
 	}
 }
+
+func TestRunValidate_RejectsBadMessageTemplate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fs.yaml")
+	content := prFileSetYAML + "  commit_message: \"sync <% .Repo.Nme %>\"\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runValidate([]string{path}, false)
+
+	if err == nil || !strings.Contains(err.Error(), "commit_message for org/repo") {
+		t.Fatalf("expected a commit_message template error, got %v", err)
+	}
+}

@@ -16,6 +16,7 @@ type ApplyOptions struct {
 	FileSetID     string
 	PRTitle       string // custom PR title (pull_request only)
 	PRBody        string // custom PR body (pull_request only)
+	SourceURL     string // provenance URL for <% .Source.URL %> in templates
 }
 
 // Apply executes the planned file changes using Git Data API.
@@ -117,10 +118,15 @@ func groupChangesByTarget(changes []Change) map[string][]Change {
 	return grouped
 }
 
-// resolveCommitMessage returns the commit message from opts or a default.
-func resolveCommitMessage(opts ApplyOptions) string {
-	if opts.CommitMessage != "" {
-		return opts.CommitMessage
+// resolveCommitMessage returns the commit message from opts or a default,
+// rendering any <% %> template expressions against the given repo.
+func resolveCommitMessage(opts ApplyOptions, repo string) (string, error) {
+	msg := opts.CommitMessage
+	if msg == "" {
+		msg = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
 	}
-	return fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
+	if !HasTemplate(msg, nil) {
+		return msg, nil
+	}
+	return RenderCommitMessage(msg, repo, opts.SourceURL)
 }

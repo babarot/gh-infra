@@ -93,6 +93,10 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 		updateStatus := func(s string) {
 			tracker.UpdateStatus(fullName, s)
 		}
+		if err := CheckMessages(u.fileSet, fullName); err != nil {
+			tracker.Error(fullName, err)
+			return unitResult{err: err}
+		}
 		var out []Change
 		var modes *modeLookup // fetched on first use by a file with `executable` set
 		for _, file := range u.files {
