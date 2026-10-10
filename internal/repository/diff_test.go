@@ -1932,6 +1932,53 @@ func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 	}
 }
 
+func TestDiff_Rulesets_PullRequestUnsetParamsUseDefaults(t *testing.T) {
+	desiredWithCount := func(count int) *manifest.Repository {
+		d := baseDesired()
+		d.Spec.Rulesets = []manifest.Ruleset{
+			{
+				Name: "protect-main",
+				Rules: manifest.RulesetRules{
+					PullRequest: &manifest.RulesetPullRequest{
+						RequiredApprovingReviewCount: manifest.Ptr(count),
+					},
+				},
+			},
+		}
+		return d
+	}
+	currentWith := func(pr CurrentRulesetPullRequest) *CurrentState {
+		c := baseState()
+		c.Rulesets["protect-main"] = &CurrentRuleset{
+			ID:    1,
+			Name:  "protect-main",
+			Rules: CurrentRulesetRules{PullRequest: &pr},
+		}
+		return c
+	}
+
+	t.Run("non-default current value is planned back to the default", func(t *testing.T) {
+		changes := Diff(context.Background(), desiredWithCount(1), currentWith(CurrentRulesetPullRequest{
+			RequiredApprovingReviewCount: 1,
+			DismissStaleReviewsOnPush:    true,
+		}))
+		fields := collectChildFields(changes)
+		if !fields["rules.pull_request.dismiss_stale_reviews_on_push"] {
+			t.Errorf("expected dismiss_stale_reviews_on_push change, got %v", fields)
+		}
+		if fields["rules.pull_request.required_approving_review_count"] {
+			t.Error("did not expect review count change")
+		}
+	})
+
+	t.Run("default current values are no change", func(t *testing.T) {
+		changes := Diff(context.Background(), desiredWithCount(0), currentWith(CurrentRulesetPullRequest{}))
+		if len(changes) != 0 {
+			t.Errorf("expected no changes, got %v", changes)
+		}
+	})
+}
+
 // ─── Rulesets diff WITH resolver ───
 
 func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {

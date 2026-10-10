@@ -890,6 +890,45 @@ func TestApplyRuleset_Delete(t *testing.T) {
 	}
 }
 
+func TestBuildRulesetPayload_PullRequestFillsDefaults(t *testing.T) {
+	rs := &manifest.Ruleset{
+		Name: "protect-main",
+		Rules: manifest.RulesetRules{
+			PullRequest: &manifest.RulesetPullRequest{
+				RequiredApprovingReviewCount: manifest.Ptr(1),
+			},
+		},
+	}
+
+	payload, err := buildRulesetPayload(context.Background(), rs, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	rules, ok := payload["rules"].([]map[string]any)
+	if !ok || len(rules) != 1 || rules[0]["type"] != "pull_request" {
+		t.Fatalf("rules = %v, want one pull_request rule", payload["rules"])
+	}
+	params, ok := rules[0]["parameters"].(map[string]any)
+	if !ok {
+		t.Fatalf("parameters is not map[string]any, got %T", rules[0]["parameters"])
+	}
+	want := map[string]any{
+		"required_approving_review_count":   1,
+		"dismiss_stale_reviews_on_push":     false,
+		"require_code_owner_review":         false,
+		"require_last_push_approval":        false,
+		"required_review_thread_resolution": false,
+	}
+	if len(params) != len(want) {
+		t.Errorf("parameters = %v, want %v", params, want)
+	}
+	for k, v := range want {
+		if params[k] != v {
+			t.Errorf("parameters[%q] = %v, want %v", k, params[k], v)
+		}
+	}
+}
+
 func TestBuildRulesetPayload(t *testing.T) {
 	rs := &manifest.Ruleset{
 		Name:        "protect-main",

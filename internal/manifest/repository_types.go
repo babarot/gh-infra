@@ -393,6 +393,28 @@ type RulesetPullRequest struct {
 	RequiredReviewThreadResolution *bool `yaml:"required_review_thread_resolution,omitempty"`
 }
 
+// WithDefaults returns a copy with every unset parameter filled with GitHub's
+// default (0 or false). The rulesets API requires all of them, and the update
+// replaces the whole rule, so plan and apply both use these effective values.
+func (p RulesetPullRequest) WithDefaults() RulesetPullRequest {
+	if p.RequiredApprovingReviewCount == nil {
+		p.RequiredApprovingReviewCount = Ptr(0)
+	}
+	if p.DismissStaleReviewsOnPush == nil {
+		p.DismissStaleReviewsOnPush = Ptr(false)
+	}
+	if p.RequireCodeOwnerReview == nil {
+		p.RequireCodeOwnerReview = Ptr(false)
+	}
+	if p.RequireLastPushApproval == nil {
+		p.RequireLastPushApproval = Ptr(false)
+	}
+	if p.RequiredReviewThreadResolution == nil {
+		p.RequiredReviewThreadResolution = Ptr(false)
+	}
+	return p
+}
+
 type RulesetStatusChecks struct {
 	StrictRequiredStatusChecksPolicy *bool                `yaml:"strict_required_status_checks_policy,omitempty"`
 	Contexts                         []RulesetStatusCheck `yaml:"contexts"`

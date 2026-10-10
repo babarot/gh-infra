@@ -167,6 +167,8 @@ Require pull request reviews before merging:
 | `require_last_push_approval` | bool | `false` | Last pusher cannot self-approve |
 | `required_review_thread_resolution` | bool | `false` | All review threads must be resolved |
 
+GitHub requires every parameter of this rule, so the ones you leave out are sent with the defaults above, and `plan` compares against them. A parameter that is set to a non-default value on GitHub but left out of the manifest shows up in `plan` as a change back to the default.
+
 ### `required_status_checks`
 
 Require specific CI checks to pass:

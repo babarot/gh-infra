@@ -930,22 +930,13 @@ func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *ma
 	var rules []map[string]any
 
 	if rs.Rules.PullRequest != nil {
-		pr := rs.Rules.PullRequest
-		params := map[string]any{}
-		if pr.RequiredApprovingReviewCount != nil {
-			params["required_approving_review_count"] = *pr.RequiredApprovingReviewCount
-		}
-		if pr.DismissStaleReviewsOnPush != nil {
-			params["dismiss_stale_reviews_on_push"] = *pr.DismissStaleReviewsOnPush
-		}
-		if pr.RequireCodeOwnerReview != nil {
-			params["require_code_owner_review"] = *pr.RequireCodeOwnerReview
-		}
-		if pr.RequireLastPushApproval != nil {
-			params["require_last_push_approval"] = *pr.RequireLastPushApproval
-		}
-		if pr.RequiredReviewThreadResolution != nil {
-			params["required_review_thread_resolution"] = *pr.RequiredReviewThreadResolution
+		pr := rs.Rules.PullRequest.WithDefaults()
+		params := map[string]any{
+			"required_approving_review_count":   *pr.RequiredApprovingReviewCount,
+			"dismiss_stale_reviews_on_push":     *pr.DismissStaleReviewsOnPush,
+			"require_code_owner_review":         *pr.RequireCodeOwnerReview,
+			"require_last_push_approval":        *pr.RequireLastPushApproval,
+			"required_review_thread_resolution": *pr.RequiredReviewThreadResolution,
 		}
 		rules = append(rules, map[string]any{"type": "pull_request", "parameters": params})
 	}
