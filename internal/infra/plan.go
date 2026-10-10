@@ -94,7 +94,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 
 	// Print deprecation warnings
 	for _, w := range parsed.Warnings {
-		p.Warning("deprecation", w)
+		p.Warning("warning", w)
 	}
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {

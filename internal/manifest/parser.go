@@ -230,6 +230,7 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 		if err := repo.Validate(); err != nil {
 			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 		}
+		warnings = append(warnings, emptyOverrideWarnings(set.Defaults, entry.Spec, repo)...)
 		repos = append(repos, repo)
 		docs = append(docs, &RepositoryDocument{
 			Resource:          repo,
@@ -320,6 +321,29 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 	warnings := collectFileSetWarnings(fs.Spec)
 
 	return &fs, warnings, nil
+}
+
+// emptyOverrideWarnings warns when an entry's [] drops the defaults' entries
+// of a collection that is reconciled authoritatively, since every such item
+// on the repository is then planned for deletion. Until v0.16.0 an entry's []
+// inherited the defaults instead.
+func emptyOverrideWarnings(defaults *RepositorySetDefaults, entry RepositorySpec, repo *Repository) []string {
+	if defaults == nil {
+		return nil
+	}
+	name := repo.Metadata.FullName()
+	var warnings []string
+	check := func(field, item string, set bool, entryLen, defaultsLen int, mode string) {
+		if set && entryLen == 0 && defaultsLen > 0 && mode == CollectionReconcileAuthoritative {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: %s: [] does not inherit the defaults, so with authoritative reconcile every %s on the repository is planned for deletion; remove the line to inherit the defaults",
+				name, field, item))
+		}
+	}
+	check("labels", "label", entry.LabelsSet, len(entry.Labels), len(defaults.Spec.Labels), LabelsReconcileMode(repo.Reconcile, repo.Spec.LabelSync))
+	check("rulesets", "ruleset", entry.RulesetsSet, len(entry.Rulesets), len(defaults.Spec.Rulesets), RulesetsReconcileMode(repo.Reconcile))
+	check("branch_protection", "branch protection rule", entry.BranchProtectionSet, len(entry.BranchProtection), len(defaults.Spec.BranchProtection), BranchProtectionReconcileMode(repo.Reconcile))
+	return warnings
 }
 
 func repositoryWarnings(spec RepositorySpec) []string {
@@ -422,31 +446,35 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.Actions != nil {
 		result.Actions = mergeActions(result.Actions, override.Actions)
 	}
+	// A collection written as [] in an entry means the repository has none:
+	// the defaults' entries are not inherited. A non-empty list is merged by
+	// key with the defaults; leaving it out inherits them.
 	if override.BranchProtectionSet {
-		result.BranchProtection = mergeBranchProtection(result.BranchProtection, override.BranchProtection)
+		result.BranchProtection = mergeOrEmpty(result.BranchProtection, override.BranchProtection, mergeBranchProtection)
 		result.BranchProtectionSet = true
 	}
 	if override.RulesetsSet {
-		result.Rulesets = mergeRulesets(result.Rulesets, override.Rulesets)
+		result.Rulesets = mergeOrEmpty(result.Rulesets, override.Rulesets, mergeRulesets)
 		result.RulesetsSet = true
 	}
 	if override.SecretsSet {
-		result.Secrets = mergeSecrets(result.Secrets, override.Secrets)
+		result.Secrets = mergeOrEmpty(result.Secrets, override.Secrets, mergeSecrets)
 		result.SecretsSet = true
 	}
 	if override.VariablesSet {
-		result.Variables = mergeVariables(result.Variables, override.Variables)
+		result.Variables = mergeOrEmpty(result.Variables, override.Variables, mergeVariables)
 		result.VariablesSet = true
 	}
 	if override.LabelsSet {
-		result.Labels = mergeLabels(result.Labels, override.Labels)
+		result.Labels = mergeOrEmpty(result.Labels, override.Labels, mergeLabels)
 		result.LabelsSet = true
 	}
 	if override.LabelSync != nil {
 		result.LabelSync = override.LabelSync
 	}
-	if len(override.Milestones) > 0 {
+	if override.MilestonesSet || len(override.Milestones) > 0 { // replaces the defaults' list
 		result.Milestones = override.Milestones
+		result.MilestonesSet = true
 	}
 
 	return result
@@ -647,6 +675,15 @@ func mergeByKeyWith[T any](base, override []T, key func(T) string, merge func(ba
 		}
 	}
 	return result
+}
+
+// mergeOrEmpty returns an empty collection when override is empty (the entry
+// wrote []), and merges override into base otherwise.
+func mergeOrEmpty[T any](base, override []T, merge func(base, override []T) []T) []T {
+	if len(override) == 0 {
+		return []T{}
+	}
+	return merge(base, override)
 }
 
 // mergeLabels merges two label slices by name. Override labels take precedence

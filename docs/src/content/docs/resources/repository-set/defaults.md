@@ -68,7 +68,7 @@ repositories:
 
 ### Collections — merged by key
 
-Collections with a natural key field are merged. Entries with the same key are merged or overridden; new entries are appended. Omitting the collection entirely inherits the full default.
+Collections with a natural key field are merged. Entries with the same key are merged or overridden; new entries are appended. Omitting the collection entirely inherits the full default. Writing it as `[]` means the repository has none of it: the defaults are not inherited.
 
 | Collection | Key field | Same-key behavior |
 |---|---|---|
@@ -77,6 +77,21 @@ Collections with a natural key field are merged. Entries with the same key are m
 | `rulesets` | `name` | Entry replaced |
 | `secrets` | `name` | Entry replaced |
 | `variables` | `name` | Entry replaced |
+
+`milestones` is not merged: a non-empty list replaces the defaults' list, and `[]` means none.
+
+```yaml
+repositories:
+  - name: no-deploy
+    spec:
+      secrets: []        # none of the default secrets
+```
+
+With `reconcile.labels`, `reconcile.rulesets` or `reconcile.branch_protection` set to `authoritative`, `[]` plans the deletion of every label, ruleset or branch protection rule on that repository, as it does in a single `Repository`. `plan` warns when an entry's `[]` drops the defaults this way.
+
+:::caution[Changed in v0.16.0]
+Before v0.16.0, an entry's `[]` inherited the defaults. If you wrote `[]` to inherit them, remove the line.
+:::
 
 #### Labels
 

@@ -70,7 +70,7 @@ repositories:
           state: open
 ```
 
-In this example, `inherits-milestones` gets both default milestones, while `custom-milestones` gets only its own `alpha` milestone.
+In this example, `inherits-milestones` gets both default milestones, while `custom-milestones` gets only its own `alpha` milestone. An entry with `milestones: []` gets none of the defaults.
 
 ## Plan Output
 

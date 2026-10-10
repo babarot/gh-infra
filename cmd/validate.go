@@ -54,7 +54,7 @@ func runValidate(args []string, failOnUnknown bool) error {
 
 	// Print deprecation warnings
 	for _, w := range parsed.Warnings {
-		p.Warning("deprecation", w)
+		p.Warning("warning", w)
 	}
 
 	p.Success("Valid", fmt.Sprintf("%d repositories, %d filesets defined", len(parsed.Repositories), len(parsed.FileSets)))
