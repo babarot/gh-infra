@@ -1,6 +1,8 @@
 package importer
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1983,5 +1985,177 @@ func TestLabels_CaseOnlyDifference(t *testing.T) {
 	got := minimalLabels(local, imported)
 	if len(got) != 1 || got[0].Name != "Bug" {
 		t.Errorf("minimalLabels = %+v, want GitHub's casing Bug as an override", got)
+	}
+}
+
+// importSetEntry runs DiffRepositorySet for the first entry of a RepositorySet
+// manifest and returns the result and the updated YAML.
+func importSetEntry(t *testing.T, content string, imported manifest.RepositorySpec) (RepoResult, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := manifest.ParseAll(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mb := map[string][]byte{path: []byte(content)}
+	rp, err := DiffRepositorySet(DiffInput{
+		Repos:         parsed.RepositoryDocs[:1],
+		Imported:      &manifest.Repository{Spec: imported},
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rp, string(mb[path])
+}
+
+func TestDiffRepositorySet_NoneOnGitHubWritesEmpty(t *testing.T) {
+	const defaults = `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    topics: [go]
+    labels:
+      - name: bug
+        color: d73a4a
+    variables:
+      - name: ENV
+        value: prod
+    branch_protection:
+      - pattern: main
+        required_reviews: 1
+    rulesets:
+      - name: main
+        rules:
+          non_fast_forward: true
+repositories:
+  - name: repo
+`
+	for _, tt := range []struct {
+		name    string
+		content string
+	}{
+		{"without spec", defaults},
+		{"with spec", defaults + "    spec:\n      description: hello\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			imported := manifest.RepositorySpec{}
+			if tt.name == "with spec" {
+				imported.Description = manifest.Ptr("hello")
+			}
+			rp, updated := importSetEntry(t, tt.content, imported)
+
+			fields := map[string]bool{}
+			for _, d := range rp.Diffs {
+				fields[d.Field] = true
+			}
+			for _, key := range []string{"topics", "labels", "variables", "branch_protection", "rulesets"} {
+				if !fields[key] {
+					t.Errorf("expected a %s diff, got %+v", key, rp.Diffs)
+				}
+				if !strings.Contains(updated, key+": []") {
+					t.Errorf("expected %s: [] in:\n%s", key, updated)
+				}
+			}
+			if len(rp.Warnings) != 0 {
+				t.Errorf("expected no warnings, got %+v", rp.Warnings)
+			}
+
+			// Importing again over the written YAML changes nothing.
+			again, after := importSetEntry(t, updated, imported)
+			if again.HasChanges() || after != updated {
+				t.Errorf("second import: diffs %+v\n%s", again.Diffs, after)
+			}
+		})
+	}
+}
+
+func TestDiffRepositorySet_EntryAlreadyEmpty(t *testing.T) {
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+    spec:
+      labels: []
+`
+	rp, updated := importSetEntry(t, content, manifest.RepositorySpec{})
+	if rp.HasChanges() || updated != content {
+		t.Errorf("expected no changes, got %+v\n%s", rp.Diffs, updated)
+	}
+}
+
+func TestDiffRepositorySet_PartialDefaultsWarns(t *testing.T) {
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: a
+        color: aaaaaa
+      - name: b
+        color: bbbbbb
+      - name: c
+        color: cccccc
+    variables:
+      - name: X
+        value: "1"
+      - name: Y
+        value: "2"
+repositories:
+  - name: repo
+`
+	imported := manifest.RepositorySpec{
+		Labels:    []manifest.Label{{Name: "A", Color: "aaaaaa"}, {Name: "b", Color: "bbbbbb"}},
+		Variables: []manifest.Variable{{Name: "X", Value: "1"}},
+	}
+	rp, _ := importSetEntry(t, content, imported)
+
+	got := map[string]string{}
+	for _, w := range rp.Warnings {
+		if w.Target != "org/repo" {
+			t.Errorf("warning target = %q", w.Target)
+		}
+		got[w.Field] = w.Message
+	}
+	if len(got) != 2 || !strings.Contains(got["labels"], "not on GitHub: c ") || !strings.Contains(got["variables"], "not on GitHub: Y ") {
+		t.Errorf("warnings = %+v", rp.Warnings)
+	}
+}
+
+func TestDiffRepositorySet_EntryItemsGoneFromGitHub(t *testing.T) {
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+    spec:
+      description: hello
+      labels:
+        - name: own
+          color: "111111"
+`
+	_, updated := importSetEntry(t, content, manifest.RepositorySpec{Description: manifest.Ptr("hello")})
+	if !strings.Contains(updated, "      description: hello\n      labels: []\n") {
+		t.Errorf("expected labels: [] next to description:\n%s", updated)
 	}
 }
