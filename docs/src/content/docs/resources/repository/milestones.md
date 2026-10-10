@@ -20,9 +20,11 @@ spec:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `title` | string | yes | Milestone title (must be unique within the list) |
-| `description` | string | no | Description of the milestone's purpose |
-| `state` | string | no | `open` (default) or `closed` |
-| `due_on` | string | no | Due date in `YYYY-MM-DD` format (e.g., `2026-06-01`) |
+| `description` | string | no | Description of the milestone's purpose. `""` clears it |
+| `state` | string | no | `open` or `closed`. A new milestone is created `open` when this is left out |
+| `due_on` | string | no | Due date in `YYYY-MM-DD` format (e.g., `2026-06-01`). `""` clears it |
+
+On an existing milestone, a field you leave out keeps its current value, and `plan` compares only the fields you set. For example, a milestone listed with only its `title` is left as it is, open or closed.
 
 ## Additive Only
 
@@ -68,7 +70,7 @@ repositories:
           state: open
 ```
 
-In this example, `inherits-milestones` gets both default milestones, while `custom-milestones` gets only its own `alpha` milestone.
+In this example, `inherits-milestones` gets both default milestones, while `custom-milestones` gets only its own `alpha` milestone. An entry with `milestones: []` gets none of the defaults.
 
 ## Plan Output
 

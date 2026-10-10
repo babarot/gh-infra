@@ -33,6 +33,10 @@ spec:
 | `allowed_actions` | string | `all`, `local_only`, `selected` | Which Actions are allowed to run |
 | `sha_pinning_required` | bool | | Require actions to be pinned to a full commit SHA instead of tags or branches |
 
+:::note
+While `enabled: false`, gh-infra neither applies nor compares `allowed_actions`, `sha_pinning_required` or `selected_actions`: GitHub rejects `allowed_actions` for a repository with Actions disabled and stops reporting it. Values set there, including ones inherited from a `RepositorySet`'s defaults, take effect again once `enabled` is `true`.
+:::
+
 :::tip
 `sha_pinning_required: true` is a strong supply-chain hardening default for repositories that use third-party actions.
 :::
@@ -80,7 +84,9 @@ spec:
 |-------|------|-------------|
 | `github_owned_allowed` | bool | Allow GitHub-owned actions (`actions/*`, `github/*`) |
 | `verified_allowed` | bool | Allow actions by Marketplace verified creators |
-| `patterns_allowed` | list | Glob patterns for allowed actions (e.g. `actions/*`, `owner/repo@*`) |
+| `patterns_allowed` | list | Glob patterns for allowed actions (e.g. `actions/*`, `owner/repo@*`). `[]` removes all patterns |
+
+A field you leave out of `selected_actions` keeps its current value on GitHub, and `plan` compares only the fields you set.
 
 ## Fork PR Approval
 

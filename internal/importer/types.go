@@ -57,8 +57,18 @@ type FieldDiff struct {
 // RepoResult is a per-Repository/RepositorySet change plan.
 type RepoResult struct {
 	Diffs         []FieldDiff       // field-level diffs (for display)
+	Warnings      []RepoWarning     // what import could not write (for display)
 	ManifestEdits map[string][]byte // YAML patch results (path → updated bytes)
 	UpdatedDocs   int
+}
+
+// RepoWarning is something about a repository's GitHub state that import
+// cannot write into the manifest.
+type RepoWarning struct {
+	Target     string // owner/repo
+	SourcePath string
+	Field      string // e.g. "labels"
+	Message    string
 }
 
 // HasChanges reports whether any diffs were detected.
@@ -69,6 +79,7 @@ func (rp RepoResult) HasChanges() bool {
 // Result is the aggregate change plan across all targets.
 type Result struct {
 	RepoDiffs     []FieldDiff       // all repo-level diffs
+	RepoWarnings  []RepoWarning     // all repo-level warnings
 	FileChanges   []Change          // file-level changes
 	ManifestEdits map[string][]byte // YAML patch results (path → final bytes)
 	UpdatedDocs   int
@@ -77,6 +88,7 @@ type Result struct {
 // AddRepoResult merges a RepoPlan into this IntoPlan.
 func (p *Result) AddRepoResult(rp RepoResult) {
 	p.RepoDiffs = append(p.RepoDiffs, rp.Diffs...)
+	p.RepoWarnings = append(p.RepoWarnings, rp.Warnings...)
 	maps.Copy(p.ManifestEdits, rp.ManifestEdits)
 	p.UpdatedDocs += rp.UpdatedDocs
 }

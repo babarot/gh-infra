@@ -1152,7 +1152,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("new label", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
+			{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 		}
 		c := baseState()
 
@@ -1171,7 +1171,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("update label color", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "bug", Color: "FF0000", Description: "A bug"},
+			{Name: "bug", Color: "FF0000", Description: manifest.Ptr("A bug")},
 		}
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
@@ -1194,7 +1194,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("update label description", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "bug", Color: "d73a4a", Description: "Updated desc"},
+			{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("Updated desc")},
 		}
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "Old desc"}
@@ -1214,7 +1214,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("label same values no change", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "bug", Color: "d73a4a", Description: "A bug"},
+			{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 		}
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
@@ -1343,7 +1343,7 @@ func TestDiff_Milestones(t *testing.T) {
 	t.Run("new milestone", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Milestones = []manifest.Milestone{
-			{Title: "v1.0", Description: "First release", State: manifest.Ptr("open")},
+			{Title: "v1.0", Description: manifest.Ptr("First release"), State: manifest.Ptr("open")},
 		}
 		c := baseState()
 
@@ -1399,7 +1399,7 @@ func TestDiff_Milestones(t *testing.T) {
 	t.Run("milestone same values no change", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Milestones = []manifest.Milestone{
-			{Title: "v1.0", Description: "Desc", State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
+			{Title: "v1.0", Description: manifest.Ptr("Desc"), State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
 		}
 		c := baseState()
 		c.Milestones["v1.0"] = &CurrentMilestone{Number: 1, Title: "v1.0", Description: "Desc", State: "open", DueOn: "2026-06-01"}
@@ -1932,47 +1932,64 @@ func TestDiff_Rulesets_UpdatePullRequest(t *testing.T) {
 	}
 }
 
-func TestDiff_Rulesets_PullRequestUnsetParamsUseDefaults(t *testing.T) {
-	desiredWithCount := func(count int) *manifest.Repository {
-		d := baseDesired()
-		d.Spec.Rulesets = []manifest.Ruleset{
-			{
-				Name: "protect-main",
-				Rules: manifest.RulesetRules{
-					PullRequest: &manifest.RulesetPullRequest{
-						RequiredApprovingReviewCount: manifest.Ptr(count),
-					},
-				},
-			},
-		}
-		return d
-	}
-	currentWith := func(pr CurrentRulesetPullRequest) *CurrentState {
+func TestDiff_Rulesets_OnlySetFieldsAreCompared(t *testing.T) {
+	current := func() *CurrentState {
 		c := baseState()
-		c.Rulesets["protect-main"] = &CurrentRuleset{
-			ID:    1,
-			Name:  "protect-main",
-			Rules: CurrentRulesetRules{PullRequest: &pr},
+		c.Rulesets["main"] = &CurrentRuleset{
+			ID: 1, Name: "main", Target: "branch", Enforcement: "evaluate",
+			BypassActors: []CurrentRulesetBypassActor{{ActorID: 5, ActorType: "RepositoryRole", BypassMode: "always"}},
+			Conditions:   &CurrentRulesetConditions{RefName: &CurrentRulesetRefCondition{Include: []string{"~DEFAULT_BRANCH"}}},
+			Rules: CurrentRulesetRules{
+				Deletion: true,
+				PullRequest: &CurrentRulesetPullRequest{
+					RequiredApprovingReviewCount: 1,
+					DismissStaleReviewsOnPush:    true,
+				},
+				RequiredStatusChecks: &CurrentRulesetStatusChecks{},
+			},
 		}
 		return c
 	}
+	desired := func(rs manifest.Ruleset) *manifest.Repository {
+		d := baseDesired()
+		rs.Name = "main"
+		d.Spec.Rulesets = []manifest.Ruleset{rs}
+		return d
+	}
 
-	t.Run("non-default current value is planned back to the default", func(t *testing.T) {
-		changes := Diff(context.Background(), desiredWithCount(1), currentWith(CurrentRulesetPullRequest{
-			RequiredApprovingReviewCount: 1,
-			DismissStaleReviewsOnPush:    true,
-		}))
-		fields := collectChildFields(changes)
-		if !fields["rules.pull_request.dismiss_stale_reviews_on_push"] {
-			t.Errorf("expected dismiss_stale_reviews_on_push change, got %v", fields)
-		}
-		if fields["rules.pull_request.required_approving_review_count"] {
-			t.Error("did not expect review count change")
+	t.Run("omitted fields and unset parameters are not compared", func(t *testing.T) {
+		changes := Diff(context.Background(), desired(manifest.Ruleset{
+			Rules: manifest.RulesetRules{PullRequest: &manifest.RulesetPullRequest{RequiredApprovingReviewCount: manifest.Ptr(1)}},
+		}), current())
+		if len(changes) != 0 {
+			t.Errorf("expected no changes, got %v", changes)
 		}
 	})
 
-	t.Run("default current values are no change", func(t *testing.T) {
-		changes := Diff(context.Background(), desiredWithCount(0), currentWith(CurrentRulesetPullRequest{}))
+	t.Run("explicit empty bypass_actors removes them", func(t *testing.T) {
+		changes := Diff(context.Background(), desired(manifest.Ruleset{BypassActorsSet: true}), current())
+		if !collectChildFields(changes)["bypass_actors"] {
+			t.Errorf("expected bypass_actors change, got %v", changes)
+		}
+	})
+
+	t.Run("false removes pull_request and required_status_checks", func(t *testing.T) {
+		changes := Diff(context.Background(), desired(manifest.Ruleset{Rules: manifest.RulesetRules{
+			PullRequest:          &manifest.RulesetPullRequest{Disabled: true},
+			RequiredStatusChecks: &manifest.RulesetStatusChecks{Disabled: true},
+		}}), current())
+		fields := collectChildFields(changes)
+		if !fields["rules.pull_request"] || !fields["rules.required_status_checks"] {
+			t.Errorf("expected both rules removed, got %v", changes)
+		}
+	})
+
+	t.Run("false on a rule that does not exist is no change", func(t *testing.T) {
+		c := current()
+		c.Rulesets["main"].Rules.PullRequest = nil
+		changes := Diff(context.Background(), desired(manifest.Ruleset{Rules: manifest.RulesetRules{
+			PullRequest: &manifest.RulesetPullRequest{Disabled: true},
+		}}), c)
 		if len(changes) != 0 {
 			t.Errorf("expected no changes, got %v", changes)
 		}
@@ -2284,6 +2301,69 @@ func TestDiffActions_DetectsChanges(t *testing.T) {
 	}
 }
 
+func TestDiffActions_DisabledIgnoresPermissionFields(t *testing.T) {
+	// GitHub omits allowed_actions for a disabled repo, so fields inherited
+	// from defaults must not show up as perpetual drift.
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled:            manifest.Ptr(false),
+		AllowedActions:     manifest.Ptr("all"),
+		SHAPinningRequired: manifest.Ptr(true),
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+			VerifiedAllowed:    manifest.Ptr(true),
+			PatternsAllowed:    []string{"actions/*"},
+		},
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:            false,
+		AllowedActions:     "",
+		SHAPinningRequired: false,
+	}
+
+	for _, c := range Diff(context.Background(), desired, current) {
+		if c.Resource == manifest.ResourceActions {
+			t.Errorf("expected no actions changes when actions is disabled, got %+v", c.Details)
+		}
+	}
+}
+
+func TestDiffActions_DisablingReportsOnlyEnabled(t *testing.T) {
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled:            manifest.Ptr(false),
+		AllowedActions:     manifest.Ptr("all"),
+		SHAPinningRequired: manifest.Ptr(true),
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:            true,
+		AllowedActions:     "local_only",
+		SHAPinningRequired: false,
+	}
+
+	var actionsChange *Change
+	changes := Diff(context.Background(), desired, current)
+	for i := range changes {
+		if changes[i].Resource == manifest.ResourceActions {
+			actionsChange = &changes[i]
+			break
+		}
+	}
+	if actionsChange == nil {
+		t.Fatal("expected actions change, got none")
+		return
+	}
+	if len(actionsChange.Details) != 1 {
+		t.Fatalf("expected 1 child change, got %d: %+v", len(actionsChange.Details), actionsChange.Details)
+	}
+	got := actionsChange.Details[0]
+	if got.Field != "enabled" || got.OldValue != true || got.NewValue != false {
+		t.Errorf("child change = %s: %v -> %v, want enabled: true -> false", got.Field, got.OldValue, got.NewValue)
+	}
+}
+
 func TestValidateDependencies_MergeCommitPairs(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -2561,5 +2641,109 @@ func TestDiffActions_ChildOrder(t *testing.T) {
 		if strings.HasPrefix(c.Field, "selected_actions.") {
 			sawSelected = true
 		}
+	}
+}
+
+func TestDiff_BranchProtection_OnlySetFieldsAreCompared(t *testing.T) {
+	current := baseState()
+	current.BranchProtection = map[string]*CurrentBranchProtection{
+		"main": {Pattern: "main", RequiredReviews: 1, RestrictPushes: true, RequireStatusChecks: &CurrentStatusChecks{Strict: true, Contexts: []string{"ci"}}},
+	}
+
+	desired := baseDesired()
+	desired.Spec.BranchProtection = []manifest.BranchProtection{{
+		Pattern:             "main",
+		RequireStatusChecks: &manifest.StatusChecks{Strict: true},
+	}}
+	if changes := Diff(context.Background(), desired, current); len(changes) != 0 {
+		t.Errorf("omitted contexts should not be compared, got %v", changes)
+	}
+
+	desired.Spec.BranchProtection[0].RestrictPushes = manifest.Ptr(false)
+	if !collectChildFields(Diff(context.Background(), desired, current))["restrict_pushes"] {
+		t.Error("restrict_pushes should be compared when set")
+	}
+}
+
+func TestDiffMilestones_OnlySetFieldsAreCompared(t *testing.T) {
+	current := baseState()
+	current.Milestones = map[string]*CurrentMilestone{
+		"v1": {Number: 1, Title: "v1", Description: "first", State: "closed", DueOn: "2026-01-01"},
+	}
+
+	desired := baseDesired()
+	desired.Spec.Milestones = []manifest.Milestone{{Title: "v1"}}
+	if changes := diffMilestones("o/r", desired, current); len(changes) != 0 {
+		t.Errorf("a title-only milestone should not change anything, got %v", changes)
+	}
+
+	desired.Spec.Milestones = []manifest.Milestone{{Title: "v1", State: manifest.Ptr("open"), Description: manifest.Ptr(""), DueOn: manifest.Ptr("")}}
+	changes := diffMilestones("o/r", desired, current)
+	if len(changes) != 1 || len(changes[0].Details) != 3 {
+		t.Fatalf("expected state, description and due_on changes, got %v", changes)
+	}
+
+	// After apply, the same manifest plans nothing.
+	current.Milestones["v1"] = &CurrentMilestone{Number: 1, Title: "v1", State: "open"}
+	if changes := diffMilestones("o/r", desired, current); len(changes) != 0 {
+		t.Errorf("plan should converge after apply, got %v", changes)
+	}
+}
+
+func TestDiffActions_PatternsAllowedOnlyWhenSet(t *testing.T) {
+	current := baseState()
+	current.Actions.SelectedActions = &CurrentSelectedActions{PatternsAllowed: []string{"octo/*"}}
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{SelectedActions: &manifest.SelectedActions{}}
+	if changes := diffActions("o/r", desired, current); len(changes) != 0 {
+		t.Errorf("omitted patterns_allowed should not be compared, got %v", changes)
+	}
+	desired.Spec.Actions.SelectedActions.PatternsAllowed = []string{}
+	if !collectChildFields(diffActions("o/r", desired, current))["selected_actions.patterns_allowed"] {
+		t.Error("patterns_allowed: [] should be planned as clearing the patterns")
+	}
+}
+
+func TestDiffLabels_OmittedDescriptionIsLeftAsIs(t *testing.T) {
+	current := baseState()
+	current.Labels = map[string]*CurrentLabel{"bug": {Name: "bug", Color: "d73a4a", Description: "Something isn't working"}}
+	desired := baseDesired()
+
+	desired.Spec.Labels = []manifest.Label{{Name: "bug", Color: "d73a4a"}}
+	if changes := diffLabels("o/r", desired, current, manifest.CollectionReconcileAdditive); len(changes) != 0 {
+		t.Errorf("omitted description should not be compared, got %v", changes)
+	}
+
+	desired.Spec.Labels = []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("")}}
+	if !collectChildFields(diffLabels("o/r", desired, current, manifest.CollectionReconcileAdditive))["description"] {
+		t.Error(`description: "" should be planned as clearing it`)
+	}
+}
+
+func TestDiffLabels_CaseOnlyDifferenceIsARename(t *testing.T) {
+	d := baseDesired()
+	d.Spec.Labels = []manifest.Label{{Name: "Bug", Color: "d73a4a"}}
+	c := baseState()
+	c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a"}
+
+	for _, mode := range []string{manifest.CollectionReconcileAdditive, manifest.CollectionReconcileAuthoritative} {
+		t.Run(mode, func(t *testing.T) {
+			changes := diffLabels("org/repo", d, c, mode)
+			if len(changes) != 1 {
+				t.Fatalf("expected one change, got %v", changes)
+			}
+			ch := changes[0]
+			if ch.Type != ChangeUpdate || ch.Field != "Bug" {
+				t.Fatalf("expected an update of Bug, got %v", ch)
+			}
+			if len(ch.Details) != 1 || ch.Details[0].Field != "name" || ch.Details[0].OldValue != "bug" || ch.Details[0].NewValue != "Bug" {
+				t.Errorf("expected a name child bug -> Bug, got %v", ch.Details)
+			}
+		})
+	}
+
+	d.Spec.Labels = []manifest.Label{{Name: "bug", Color: "d73a4a"}}
+	if changes := diffLabels("org/repo", d, c, manifest.CollectionReconcileAuthoritative); len(changes) != 0 {
+		t.Errorf("same name: expected no changes, got %v", changes)
 	}
 }

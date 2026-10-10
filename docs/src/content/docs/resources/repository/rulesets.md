@@ -103,11 +103,35 @@ spec:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | *required* | Ruleset name (must be unique within the repository) |
-| `target` | string | `branch` | What the ruleset applies to: `branch` or `tag` |
-| `enforcement` | string | `active` | `active` (enforced), `evaluate` (dry-run, logged but not enforced), or `disabled` |
-| `bypass_actors` | list | `[]` | Actors who can bypass this ruleset |
+| `target` | string | `branch` on create | What the ruleset applies to: `branch` or `tag` |
+| `enforcement` | string | `active` on create | `active` (enforced), `evaluate` (dry-run, logged but not enforced), or `disabled` |
+| `bypass_actors` | list | `[]` on create | Actors who can bypass this ruleset. `[]` removes all actors from an existing ruleset |
 | `conditions` | object | — | Which branches or tags the ruleset applies to |
 | `rules` | object | *required* | The rules to enforce |
+
+The defaults apply when a ruleset is created. See [Updating an existing ruleset](#updating-an-existing-ruleset) for what happens to settings you leave out afterwards.
+
+## Updating an existing ruleset
+
+GitHub replaces the whole ruleset on update, so gh-infra reads the current ruleset and changes only what the manifest sets. Everything the manifest leaves out keeps its current value:
+
+- `target`, `enforcement`, `bypass_actors`, and `conditions`
+- rules the manifest does not mention, including rule types gh-infra does not model (such as `merge_queue` or `commit_message_pattern`)
+- parameters the manifest does not set, including ones gh-infra does not model (such as `pull_request.allowed_merge_methods`)
+
+`plan` compares only what the manifest sets, which is what `apply` changes.
+
+To remove something, say so in the manifest:
+
+```yaml
+bypass_actors: []          # remove all bypass actors
+rules:
+  deletion: false          # toggle rules and update: false removes them
+  pull_request: false      # remove the pull_request rule
+  required_status_checks: false
+```
+
+Because settings you leave out are kept, a change made on GitHub to one of them stays and does not show up in `plan`. For example, a ruleset switched to `disabled` in the GitHub UI stays disabled if the manifest does not set `enforcement`. Set `enforcement` (and anything else you want enforced) explicitly. `reconcile.rulesets: authoritative` controls which rulesets exist, not the rules inside a ruleset you declare.
 
 ## Bypass Actors
 
@@ -167,7 +191,7 @@ Require pull request reviews before merging:
 | `require_last_push_approval` | bool | `false` | Last pusher cannot self-approve |
 | `required_review_thread_resolution` | bool | `false` | All review threads must be resolved |
 
-GitHub requires every parameter of this rule, so the ones you leave out are sent with the defaults above, and `plan` compares against them. A parameter that is set to a non-default value on GitHub but left out of the manifest shows up in `plan` as a change back to the default.
+GitHub requires every parameter of this rule. When the rule is created, the ones you leave out are sent with the defaults above. On an existing rule, the ones you leave out keep their current values. Set `pull_request: false` to remove the rule.
 
 ### `required_status_checks`
 
@@ -189,9 +213,11 @@ rules:
 | `contexts[].context` | string | Name of the required status check |
 | `contexts[].app` | string | *(optional)* GitHub App slug that must provide this check. Omit to accept any provider |
 
+On an existing rule, leaving out `contexts` or `strict_required_status_checks_policy` keeps the current value. Set `required_status_checks: false` to remove the rule.
+
 ### Toggle Rules
 
-Simple on/off rules — set to `true` to enable:
+Simple on/off rules. Set to `true` to enable, `false` to remove; leaving one out keeps the current state:
 
 | Field | Description |
 |-------|-------------|
@@ -223,7 +249,8 @@ GitHub may omit this parameter from API responses (for example, on user-owned
 repositories). When it does, `plan` cannot detect drift for this field.
 
 With the bool form (`update: true`), gh-infra does not manage
-`allows_fetch_and_merge`: it neither sends nor compares the parameter.
+`allows_fetch_and_merge`: it neither compares nor changes the parameter, and an
+existing value is kept.
 
 ## Rulesets vs Classic Branch Protection
 

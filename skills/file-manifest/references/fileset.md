@@ -7,6 +7,7 @@ apiVersion: gh-infra/v1
 kind: FileSet
 metadata:
   owner: my-org
+  name: shared-ci     # optional
 spec:
   repositories:
     - repo-a
@@ -20,6 +21,12 @@ spec:
       content: |
         * @username
 ```
+
+## Name
+
+- `metadata.name` is optional and does not select repos
+- It names the FileSet in plan output and the default commit message, PR branch (`gh-infra/sync-<owner>-<name>`), and PR body
+- Unnamed: named `<owner>/<repo-a>+<repo-b>` (sorted). Two unnamed FileSets listing the same repos share it, which is rejected when both use `via: pull_request`; set `name` or `branch`
 
 ## Overrides
 

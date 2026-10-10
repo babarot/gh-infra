@@ -2779,3 +2779,249 @@ repositories:
 		t.Errorf("NEW_SECRET not appended: got %+v", secrets[2])
 	}
 }
+
+func TestMergeBranchProtectionEntry_StatusChecksKeepDefaultContexts(t *testing.T) {
+	base := BranchProtection{Pattern: "main", RequireStatusChecks: &StatusChecks{Strict: false, Contexts: []string{"ci"}}}
+	got := mergeBranchProtectionEntry(base, BranchProtection{Pattern: "main", RequireStatusChecks: &StatusChecks{Strict: true}})
+	if !got.RequireStatusChecks.Strict || len(got.RequireStatusChecks.Contexts) != 1 || got.RequireStatusChecks.Contexts[0] != "ci" {
+		t.Errorf("status checks = %+v, want strict from the entry and contexts from defaults", got.RequireStatusChecks)
+	}
+	got = mergeBranchProtectionEntry(base, BranchProtection{Pattern: "main", RequireStatusChecks: &StatusChecks{Contexts: []string{"build"}}})
+	if len(got.RequireStatusChecks.Contexts) != 1 || got.RequireStatusChecks.Contexts[0] != "build" {
+		t.Errorf("contexts = %v, want the entry's", got.RequireStatusChecks.Contexts)
+	}
+}
+
+func TestMergeSelectedActions_EmptyPatternsClearDefaults(t *testing.T) {
+	base := &SelectedActions{PatternsAllowed: []string{"octo/*"}}
+	if got := mergeSelectedActions(base, &SelectedActions{PatternsAllowed: []string{}}); got.PatternsAllowed == nil || len(got.PatternsAllowed) != 0 {
+		t.Errorf("patterns = %v, want [] to clear the defaults", got.PatternsAllowed)
+	}
+	if got := mergeSelectedActions(base, &SelectedActions{}); len(got.PatternsAllowed) != 1 {
+		t.Errorf("patterns = %v, want the defaults kept when omitted", got.PatternsAllowed)
+	}
+}
+
+func TestRepositorySet_EmptyCollectionsDoNotInheritDefaults(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+    rulesets:
+      - name: main
+        rules:
+          deletion: true
+    branch_protection:
+      - pattern: main
+        required_reviews: 1
+    secrets:
+      - name: TOKEN
+        value: x
+    variables:
+      - name: ENV
+        value: prod
+    milestones:
+      - title: v1
+repositories:
+  - name: inherit
+    spec:
+      description: inherits everything
+  - name: none
+    spec:
+      labels: []
+      rulesets: []
+      branch_protection: []
+      secrets: []
+      variables: []
+      milestones: []
+  - name: merged
+    spec:
+      labels:
+        - name: extra
+          color: ffffff
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inherit, none, merged := repos[0].Spec, repos[1].Spec, repos[2].Spec
+
+	if len(inherit.Labels) != 1 || len(inherit.Rulesets) != 1 || len(inherit.BranchProtection) != 1 ||
+		len(inherit.Secrets) != 1 || len(inherit.Variables) != 1 || len(inherit.Milestones) != 1 {
+		t.Errorf("omitted collections should inherit the defaults: %+v", inherit)
+	}
+	if len(none.Labels)+len(none.Rulesets)+len(none.BranchProtection)+len(none.Secrets)+len(none.Variables)+len(none.Milestones) != 0 {
+		t.Errorf("[] should not inherit the defaults: %+v", none)
+	}
+	if !none.LabelsSet || !none.RulesetsSet || !none.BranchProtectionSet || !none.SecretsSet || !none.VariablesSet || !none.MilestonesSet {
+		t.Errorf("[] collections should stay set: %+v", none)
+	}
+	if len(merged.Labels) != 2 {
+		t.Errorf("a non-empty list should be merged with the defaults, got %+v", merged.Labels)
+	}
+}
+
+func TestRepositorySet_EmptyAuthoritativeOverrideWarns(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  reconcile:
+    labels: authoritative
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+    rulesets:
+      - name: main
+        rules:
+          deletion: true
+repositories:
+  - name: none
+    spec:
+      labels: []
+      rulesets: []
+`
+	path := filepath.Join(dir, "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ParseAll(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var labels, rulesets bool
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "org/none: labels: []") && strings.Contains(w, "every label") {
+			labels = true
+		}
+		if strings.Contains(w, "rulesets: []") {
+			rulesets = true
+		}
+	}
+	if !labels {
+		t.Errorf("expected a warning for labels: [] under authoritative, got %v", result.Warnings)
+	}
+	if rulesets {
+		t.Errorf("rulesets are additive here, no warning expected, got %v", result.Warnings)
+	}
+}
+
+func TestRepository_NullMilestonesRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "repo.yaml")
+	content := "apiVersion: v1\nkind: Repository\nmetadata:\n  owner: org\n  name: repo\nspec:\n  milestones:\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParsePath(path); err == nil || !strings.Contains(err.Error(), "milestones must be a sequence") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestLabels_NamesDifferingOnlyInCase(t *testing.T) {
+	parse := func(t *testing.T, content string) ([]*Repository, error) {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "labels.yaml")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return ParsePath(path)
+	}
+
+	for _, tt := range []struct {
+		name    string
+		content string
+	}{
+		{"repository", `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  labels:
+    - name: Bug
+      color: d73a4a
+    - name: bug
+      color: d73a4a
+`},
+		{"defaults", `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: Bug
+        color: d73a4a
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+`},
+		{"entry", `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+repositories:
+  - name: repo
+    spec:
+      labels:
+        - name: Bug
+          color: d73a4a
+        - name: bug
+          color: d73a4a
+`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parse(t, tt.content)
+			if err == nil || !strings.Contains(err.Error(), "same label on GitHub") {
+				t.Errorf("expected a same-label error, got %v", err)
+			}
+		})
+	}
+
+	t.Run("entry overrides defaults by name ignoring case", func(t *testing.T) {
+		repos, err := parse(t, `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+    spec:
+      labels:
+        - name: Bug
+          color: ff0000
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		labels := repos[0].Spec.Labels
+		if len(labels) != 1 || labels[0].Name != "Bug" || labels[0].Color != "ff0000" {
+			t.Errorf("labels = %+v, want one label Bug ff0000", labels)
+		}
+	})
+}

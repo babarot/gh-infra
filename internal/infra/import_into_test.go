@@ -602,3 +602,31 @@ func TestPrintImportPlan_TemplateSkipReasonOverridesCreateOnly(t *testing.T) {
 		t.Fatalf("did not expect create_only to override template skip reason:\n%s", out)
 	}
 }
+
+func TestPrintImportPlan_RepoWarnings(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	printImportPlan(p, &importer.Result{
+		RepoDiffs: []importer.FieldDiff{{Target: "org/a", SourcePath: "set.yaml", Field: "labels", Old: "(defaults)", New: "[]"}},
+		RepoWarnings: []importer.RepoWarning{
+			{Target: "org/a", SourcePath: "set.yaml", Field: "rulesets", Message: "in defaults but not on GitHub: main"},
+			{Target: "org/b", SourcePath: "set.yaml", Field: "labels", Message: "in defaults but not on GitHub: c"},
+		},
+	})
+
+	out := buf.String()
+	for _, want := range []string{
+		"org/a (set.yaml) will be updated",
+		"in defaults but not on GitHub: main",
+		"org/b (set.yaml) cannot be fully imported",
+		"in defaults but not on GitHub: c",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in:\n%s", want, out)
+		}
+	}
+	if (&ImportDiff{Plan: &importer.Result{RepoWarnings: []importer.RepoWarning{{Target: "org/b"}}}}).HasChanges() {
+		t.Error("warnings alone are not changes")
+	}
+}

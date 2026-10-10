@@ -66,7 +66,7 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 	if opts.Via == manifest.ViaPullRequest {
 		prBranch := opts.Branch
 		if prBranch == "" {
-			prBranch = fmt.Sprintf("gh-infra/sync-%s", sanitizeBranchName(opts.FileSetID))
+			prBranch = manifest.DefaultPRBranch(opts.FileSetID)
 		}
 		statusFn("creating PR branch...")
 		if err := p.createBranchAt(ctx, repo, prBranch, headSHA); err != nil {
@@ -576,20 +576,4 @@ func splitCommitMessage(msg string) (headline, body string) {
 	headline, body, _ = strings.Cut(msg, "\n")
 	body = strings.TrimLeft(body, "\n")
 	return
-}
-
-// sanitizeBranchName converts an identity string into a valid Git branch name component.
-func sanitizeBranchName(s string) string {
-	s = strings.ReplaceAll(s, "/", "-")
-	s = strings.ReplaceAll(s, " ", "-")
-	s = strings.ReplaceAll(s, "..", "")
-	s = strings.Map(func(r rune) rune {
-		switch r {
-		case '~', '^', ':', '?', '*', '[', '\\':
-			return -1
-		}
-		return r
-	}, s)
-	s = strings.Trim(s, "-.")
-	return s
 }

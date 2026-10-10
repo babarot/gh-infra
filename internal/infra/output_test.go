@@ -167,11 +167,16 @@ func TestApplyDocument(t *testing.T) {
 
 func TestValidateOutput(t *testing.T) {
 	for _, ok := range []string{"", "text", "json"} {
-		if err := ValidateOutput(ok); err != nil {
+		if err := ValidateOutput(ok, OutputJSON); err != nil {
 			t.Errorf("ValidateOutput(%q) = %v", ok, err)
 		}
 	}
-	if err := ValidateOutput("yaml"); err == nil {
-		t.Error("ValidateOutput(yaml) should fail")
+	for _, bad := range []string{"yaml", "markdown"} {
+		if err := ValidateOutput(bad, OutputJSON); err == nil {
+			t.Errorf("ValidateOutput(%q) should fail when only json is allowed", bad)
+		}
+	}
+	if err := ValidateOutput("markdown", OutputJSON, OutputMarkdown); err != nil {
+		t.Errorf("ValidateOutput(markdown) = %v", err)
 	}
 }

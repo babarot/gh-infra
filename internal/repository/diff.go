@@ -386,6 +386,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 			appendIfSet(&children, "dismiss_stale_reviews", dbp.DismissStaleReviews)
 			appendIfSet(&children, "require_code_owner_reviews", dbp.RequireCodeOwnerReviews)
 			appendIfSet(&children, "enforce_admins", dbp.EnforceAdmins)
+			appendIfSet(&children, "restrict_pushes", dbp.RestrictPushes)
 			appendIfSet(&children, "allow_force_pushes", dbp.AllowForcePushes)
 			appendIfSet(&children, "allow_deletions", dbp.AllowDeletions)
 			if dbp.RequireStatusChecks != nil {
@@ -413,7 +414,11 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 		appendChildChanged(&fieldChanges, "required_reviews", dbp.RequiredReviews, cbp.RequiredReviews)
 		appendChildChanged(&fieldChanges, "dismiss_stale_reviews", dbp.DismissStaleReviews, cbp.DismissStaleReviews)
 		appendChildChanged(&fieldChanges, "require_code_owner_reviews", dbp.RequireCodeOwnerReviews, cbp.RequireCodeOwnerReviews)
+		// On a protected branch, what the manifest leaves out keeps its
+		// current value (apply builds the update from the current
+		// protection), so only what it sets is compared.
 		appendChildChanged(&fieldChanges, "enforce_admins", dbp.EnforceAdmins, cbp.EnforceAdmins)
+		appendChildChanged(&fieldChanges, "restrict_pushes", dbp.RestrictPushes, cbp.RestrictPushes)
 		appendChildChanged(&fieldChanges, "allow_force_pushes", dbp.AllowForcePushes, cbp.AllowForcePushes)
 		appendChildChanged(&fieldChanges, "allow_deletions", dbp.AllowDeletions, cbp.AllowDeletions)
 
@@ -436,7 +441,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 						OldValue: cbp.RequireStatusChecks.Strict, NewValue: dbp.RequireStatusChecks.Strict,
 					})
 				}
-				if !stringSliceEqual(dbp.RequireStatusChecks.Contexts, cbp.RequireStatusChecks.Contexts) {
+				if dbp.RequireStatusChecks.Contexts != nil && !stringSliceEqual(dbp.RequireStatusChecks.Contexts, cbp.RequireStatusChecks.Contexts) {
 					fieldChanges = append(fieldChanges, Change{
 						Type: ChangeUpdate, Field: "require_status_checks.contexts",
 						OldValue: cbp.RequireStatusChecks.Contexts, NewValue: dbp.RequireStatusChecks.Contexts,
@@ -505,12 +510,12 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 			appendIfSet(&children, "rules.creation", drs.Rules.Creation)
 			appendIfSet(&children, "rules.required_linear_history", drs.Rules.RequiredLinearHistory)
 			appendIfSet(&children, "rules.required_signatures", drs.Rules.RequiredSignatures)
-			if drs.Rules.PullRequest != nil {
+			if drs.Rules.PullRequestEnabled() {
 				children = append(children, Change{
 					Type: ChangeCreate, Field: "rules.pull_request", NewValue: "enabled",
 				})
 			}
-			if drs.Rules.RequiredStatusChecks != nil {
+			if drs.Rules.StatusChecksEnabled() {
 				children = append(children, Change{
 					Type: ChangeCreate, Field: "rules.required_status_checks", NewValue: "enabled",
 				})
@@ -541,8 +546,12 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		appendChildChanged(&fieldChanges, "enforcement", drs.Enforcement, crs.Enforcement)
 		appendChildChanged(&fieldChanges, "target", drs.Target, crs.Target)
 
+		// On an existing ruleset, what the manifest leaves out keeps its
+		// current value (apply builds the update from the current ruleset),
+		// so only what it sets is compared.
+
 		// bypass_actors
-		if !rulesetBypassActorsEqual(ctx, drs.BypassActors, crs.BypassActors, resolver) {
+		if drs.HasBypassActors() && !rulesetBypassActorsEqual(ctx, drs.BypassActors, crs.BypassActors, resolver) {
 			fieldChanges = append(fieldChanges, Change{
 				Type: ChangeUpdate, Field: "bypass_actors",
 				OldValue: fmt.Sprintf("%d actors", len(crs.BypassActors)),
@@ -551,7 +560,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		}
 
 		// conditions
-		if !rulesetConditionsEqual(drs.Conditions, crs.Conditions) {
+		if drs.Conditions != nil && !rulesetConditionsEqual(drs.Conditions, crs.Conditions) {
 			oldCond, newCond := "(none)", "(none)"
 			if crs.Conditions != nil && crs.Conditions.RefName != nil {
 				oldCond = formatConditions(crs.Conditions.RefName.Include, crs.Conditions.RefName.Exclude)
@@ -586,15 +595,21 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		appendChildChanged(&fieldChanges, "rules.required_signatures", drs.Rules.RequiredSignatures, crs.Rules.RequiredSignatures)
 
 		// pull_request rule
-		if drs.Rules.PullRequest != nil {
+		switch {
+		case drs.Rules.PullRequestDisabled():
+			if crs.Rules.PullRequest != nil {
+				fieldChanges = append(fieldChanges, Change{
+					Type: ChangeDelete, Field: "rules.pull_request", OldValue: "enabled",
+				})
+			}
+		case drs.Rules.PullRequestEnabled():
 			if crs.Rules.PullRequest == nil {
 				fieldChanges = append(fieldChanges, Change{
 					Type: ChangeCreate, Field: "rules.pull_request", NewValue: "enabled",
 				})
 			} else {
-				// Unset parameters are sent with their defaults, so compare
-				// the same effective values here.
-				pr := drs.Rules.PullRequest.WithDefaults()
+				// Unset parameters keep their current values on update.
+				pr := drs.Rules.PullRequest
 				cpr := crs.Rules.PullRequest
 				appendChildChanged(&fieldChanges, "rules.pull_request.required_approving_review_count", pr.RequiredApprovingReviewCount, cpr.RequiredApprovingReviewCount)
 				appendChildChanged(&fieldChanges, "rules.pull_request.dismiss_stale_reviews_on_push", pr.DismissStaleReviewsOnPush, cpr.DismissStaleReviewsOnPush)
@@ -605,7 +620,14 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 		}
 
 		// required_status_checks rule
-		if drs.Rules.RequiredStatusChecks != nil {
+		switch {
+		case drs.Rules.StatusChecksDisabled():
+			if crs.Rules.RequiredStatusChecks != nil {
+				fieldChanges = append(fieldChanges, Change{
+					Type: ChangeDelete, Field: "rules.required_status_checks", OldValue: "enabled",
+				})
+			}
+		case drs.Rules.StatusChecksEnabled():
 			if crs.Rules.RequiredStatusChecks == nil {
 				fieldChanges = append(fieldChanges, Change{
 					Type: ChangeCreate, Field: "rules.required_status_checks", NewValue: "enabled",
@@ -619,7 +641,7 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 						OldValue: csc.StrictRequiredStatusChecksPolicy, NewValue: *sc.StrictRequiredStatusChecksPolicy,
 					})
 				}
-				if !rulesetStatusChecksEqual(ctx, sc.Contexts, csc.Contexts, resolver) {
+				if sc.Contexts != nil && !rulesetStatusChecksEqual(ctx, sc.Contexts, csc.Contexts, resolver) {
 					fieldChanges = append(fieldChanges, Change{
 						Type: ChangeUpdate, Field: "rules.required_status_checks.contexts",
 						OldValue: statusCheckContexts(csc.Contexts), NewValue: desiredStatusCheckContexts(sc.Contexts),
@@ -922,22 +944,37 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 
 	var changes []Change
 
+	// GitHub label names are unique case-insensitively, so match by
+	// lowercase name; a difference only in case renames the label.
+	currentByKey := make(map[string]*CurrentLabel, len(current.Labels))
+	for labelName, cl := range current.Labels {
+		currentByKey[strings.ToLower(labelName)] = cl
+	}
+
 	desiredSet := make(map[string]bool)
 	for _, dl := range desired.Spec.Labels {
-		desiredSet[dl.Name] = true
-		cl, exists := current.Labels[dl.Name]
+		desiredSet[strings.ToLower(dl.Name)] = true
+		cl, exists := currentByKey[strings.ToLower(dl.Name)]
 		if !exists {
 			changes = append(changes, Change{
 				Type:     ChangeCreate,
 				Resource: manifest.ResourceLabel,
 				Name:     name,
 				Field:    dl.Name,
-				NewValue: labelSummary(dl.Color, dl.Description),
+				NewValue: labelSummary(dl.Color, derefStr(dl.Description)),
 			})
 			continue
 		}
 
 		var children []Change
+		if dl.Name != cl.Name {
+			children = append(children, Change{
+				Type:     ChangeUpdate,
+				Field:    "name",
+				OldValue: cl.Name,
+				NewValue: dl.Name,
+			})
+		}
 		if dl.Color != cl.Color {
 			children = append(children, Change{
 				Type:     ChangeUpdate,
@@ -946,14 +983,8 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 				NewValue: dl.Color,
 			})
 		}
-		if dl.Description != cl.Description {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "description",
-				OldValue: cl.Description,
-				NewValue: dl.Description,
-			})
-		}
+		// An omitted description is left as it is; "" clears it.
+		appendChildChanged(&children, "description", dl.Description, cl.Description)
 		if len(children) > 0 {
 			changes = append(changes, Change{
 				Type:     ChangeUpdate,
@@ -968,7 +999,7 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 	// Authoritative mode: delete labels not in the manifest
 	if reconcileMode == manifest.CollectionReconcileAuthoritative {
 		for labelName, cl := range current.Labels {
-			if !desiredSet[labelName] {
+			if !desiredSet[strings.ToLower(labelName)] {
 				changes = append(changes, Change{
 					Type:     ChangeDelete,
 					Resource: manifest.ResourceLabel,
@@ -994,12 +1025,6 @@ func diffMilestones(name string, desired *manifest.Repository, current *CurrentS
 	var changes []Change
 
 	for _, dm := range desired.Spec.Milestones {
-		desiredState := manifest.MilestoneState(dm.State)
-		desiredDueOn := ""
-		if dm.DueOn != nil {
-			desiredDueOn = *dm.DueOn
-		}
-
 		cm, exists := current.Milestones[dm.Title]
 		if !exists {
 			changes = append(changes, Change{
@@ -1007,36 +1032,18 @@ func diffMilestones(name string, desired *manifest.Repository, current *CurrentS
 				Resource: manifest.ResourceMilestone,
 				Name:     name,
 				Field:    dm.Title,
-				NewValue: milestoneSummary(desiredState, desiredDueOn, dm.Description),
+				NewValue: milestoneSummary(manifest.MilestoneState(dm.State), derefStr(dm.DueOn), derefStr(dm.Description)),
 			})
 			continue
 		}
 
+		// On an existing milestone, what the manifest leaves out keeps its
+		// value (apply sends a partial update), so only what it sets is
+		// compared. due_on: "" and description: "" clear.
 		var children []Change
-		if desiredState != cm.State {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "state",
-				OldValue: cm.State,
-				NewValue: desiredState,
-			})
-		}
-		if dm.Description != cm.Description {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "description",
-				OldValue: cm.Description,
-				NewValue: dm.Description,
-			})
-		}
-		if desiredDueOn != cm.DueOn {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "due_on",
-				OldValue: cm.DueOn,
-				NewValue: desiredDueOn,
-			})
-		}
+		appendChildChanged(&children, "state", dm.State, cm.State)
+		appendChildChanged(&children, "description", dm.Description, cm.Description)
+		appendChildChanged(&children, "due_on", dm.DueOn, cm.DueOn)
 		if len(children) > 0 {
 			changes = append(changes, Change{
 				Type:     ChangeUpdate,
@@ -1070,12 +1077,19 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 	a := desired.Spec.Actions
 	return dc.group("actions", func(cc *[]Change) {
 		appendChildChanged(cc, "enabled", a.Enabled, current.Actions.Enabled)
-		appendChildChanged(cc, "allowed_actions", a.AllowedActions, current.Actions.AllowedActions)
-		appendChildChanged(cc, "sha_pinning_required", a.SHAPinningRequired, current.Actions.SHAPinningRequired)
+		// While Actions is disabled GitHub omits allowed_actions and rejects it,
+		// and sha_pinning_required has no effect, so comparing them would only
+		// report drift apply can't fix.
+		if !a.Disabled() {
+			appendChildChanged(cc, "allowed_actions", a.AllowedActions, current.Actions.AllowedActions)
+			appendChildChanged(cc, "sha_pinning_required", a.SHAPinningRequired, current.Actions.SHAPinningRequired)
+		}
 		appendChildChanged(cc, "workflow_permissions", a.WorkflowPermissions, current.Actions.WorkflowPermissions)
 		appendChildChanged(cc, "can_approve_pull_requests", a.CanApprovePullRequests, current.Actions.CanApprovePullRequests)
 
-		if a.SelectedActions != nil {
+		// Skipped while disabled too: the selected-actions endpoints require
+		// allowed_actions to be "selected".
+		if a.SelectedActions != nil && !a.Disabled() {
 			sa := a.SelectedActions
 			var currentSA CurrentSelectedActions
 			if current.Actions.SelectedActions != nil {
@@ -1083,7 +1097,8 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 			}
 			appendChildChanged(cc, "selected_actions.github_owned_allowed", sa.GithubOwnedAllowed, currentSA.GithubOwnedAllowed)
 			appendChildChanged(cc, "selected_actions.verified_allowed", sa.VerifiedAllowed, currentSA.VerifiedAllowed)
-			if !stringSliceEqual(sa.PatternsAllowed, currentSA.PatternsAllowed) {
+			// patterns_allowed left out keeps the current patterns; [] clears.
+			if sa.PatternsAllowed != nil && !stringSliceEqual(sa.PatternsAllowed, currentSA.PatternsAllowed) {
 				*cc = append(*cc, Change{
 					Type:     ChangeUpdate,
 					Field:    "selected_actions.patterns_allowed",

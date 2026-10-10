@@ -37,6 +37,11 @@ func (d *ImportDiff) HasChanges() bool {
 	return d.Plan.HasChanges()
 }
 
+// HasWarnings reports whether import found repository state it cannot write.
+func (d *ImportDiff) HasWarnings() bool {
+	return d.Plan != nil && len(d.Plan.RepoWarnings) > 0
+}
+
 // DiffEntries returns file-level diff entries for the interactive diff viewer.
 // Skip-only entries are excluded (shown in the console plan only).
 func (d *ImportDiff) DiffEntries() []ui.DiffEntry {
@@ -225,7 +230,7 @@ func ImportInto(args []string, into string) (*ImportDiff, error) {
 		printer: printer,
 	}
 
-	if result.HasChanges() {
+	if result.HasChanges() || result.HasWarnings() {
 		printer.Separator()
 		printImportPlan(printer, plan)
 	}
@@ -244,6 +249,12 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 			targets = append(targets, d.Target)
 		}
 	}
+	for _, w := range plan.RepoWarnings {
+		if !seen[w.Target] {
+			seen[w.Target] = true
+			targets = append(targets, w.Target)
+		}
+	}
 	for _, c := range plan.FileChanges {
 		if c.Type == fileset.ChangeNoOp && !isSkipOnlyChange(c) {
 			continue
@@ -254,6 +265,10 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 		}
 	}
 
+	repoWarningsByTarget := make(map[string][]importer.RepoWarning)
+	for _, w := range plan.RepoWarnings {
+		repoWarningsByTarget[w.Target] = append(repoWarningsByTarget[w.Target], w)
+	}
 	repoDiffsByTarget := make(map[string][]importer.FieldDiff)
 	for _, d := range plan.RepoDiffs {
 		repoDiffsByTarget[d.Target] = append(repoDiffsByTarget[d.Target], d)
@@ -268,20 +283,39 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 
 	for _, target := range targets {
 		rDiffs := repoDiffsByTarget[target]
+		rWarnings := repoWarningsByTarget[target]
 		fChanges := fileChangesByTarget[target]
 
 		// Build header: include source file path when available
 		header := target
 		if len(rDiffs) > 0 && rDiffs[0].SourcePath != "" {
 			header = fmt.Sprintf("%s (%s)", target, rDiffs[0].SourcePath)
+		} else if len(rWarnings) > 0 && rWarnings[0].SourcePath != "" {
+			header = fmt.Sprintf("%s (%s)", target, rWarnings[0].SourcePath)
 		}
-		p.ActionHeader(header, "will be updated")
-		p.GroupHeader(ui.IconChange, target)
+		action, icon := "will be updated", ui.IconChange
+		if len(rDiffs) == 0 && len(fChanges) == 0 {
+			action, icon = "cannot be fully imported", ui.IconWarning
+		}
+		p.ActionHeader(header, action)
+		p.GroupHeader(icon, target)
 
+		width := 0
 		if len(rDiffs) > 0 {
 			groups := fieldDiffsToDiffGroups(rDiffs)
-			p.SetColumnWidth(ui.DiffGroupFieldWidth(groups))
+			width = ui.DiffGroupFieldWidth(groups)
+			p.SetColumnWidth(width)
 			ui.RenderDiffGroups(p, groups)
+		}
+
+		if len(rWarnings) > 0 {
+			for _, w := range rWarnings {
+				width = max(width, len(w.Field))
+			}
+			p.SetColumnWidth(width)
+			for _, w := range rWarnings {
+				p.PrintResult(ui.ResultItem{Icon: ui.IconWarning, Field: w.Field, Detail: w.Message})
+			}
 		}
 
 		if len(fChanges) > 0 {

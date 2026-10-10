@@ -54,6 +54,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			DismissStaleReviews:     manifest.Ptr(bp.DismissStaleReviews),
 			RequireCodeOwnerReviews: manifest.Ptr(bp.RequireCodeOwnerReviews),
 			EnforceAdmins:           manifest.Ptr(bp.EnforceAdmins),
+			RestrictPushes:          manifest.Ptr(bp.RestrictPushes),
 			AllowForcePushes:        manifest.Ptr(bp.AllowForcePushes),
 			AllowDeletions:          manifest.Ptr(bp.AllowDeletions),
 		}
@@ -150,11 +151,11 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 	sort.Strings(labelNames)
 	for _, name := range labelNames {
 		label := r.Labels[name]
-		repo.Spec.Labels = append(repo.Spec.Labels, manifest.Label{
-			Name:        label.Name,
-			Description: label.Description,
-			Color:       label.Color,
-		})
+		ml := manifest.Label{Name: label.Name, Color: label.Color}
+		if label.Description != "" {
+			ml.Description = manifest.Ptr(label.Description)
+		}
+		repo.Spec.Labels = append(repo.Spec.Labels, ml)
 	}
 
 	msNames := make([]string, 0, len(r.Milestones))
@@ -165,9 +166,11 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 	for _, title := range msNames {
 		ms := r.Milestones[title]
 		m := manifest.Milestone{
-			Title:       ms.Title,
-			Description: ms.Description,
-			State:       manifest.Ptr(ms.State),
+			Title: ms.Title,
+			State: manifest.Ptr(ms.State),
+		}
+		if ms.Description != "" {
+			m.Description = manifest.Ptr(ms.Description)
 		}
 		if ms.DueOn != "" {
 			m.DueOn = manifest.Ptr(ms.DueOn)

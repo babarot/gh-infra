@@ -12,8 +12,10 @@ spec:
 ```
 
 - `title` must be unique in the list
-- `state`: `open` (default when omitted) or `closed`
-- `due_on`: `YYYY-MM-DD` format; converted to `T00:00:00Z` for the API
+- `state`: `open` or `closed`; omitted means `open` only when the milestone is created
+- `due_on`: `YYYY-MM-DD` format; converted to `T00:00:00Z` for the API; `""` clears it
+- `description: ""` clears the description
+- on an existing milestone, omitted fields keep their values (the update is a partial PATCH) and plan compares only what is set
 
 ## Behavior
 

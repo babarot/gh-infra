@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Validate checks that the Repository has valid field values.
@@ -12,6 +13,9 @@ func (r *Repository) Validate() error {
 		return err
 	}
 	name := r.Metadata.Name
+	if err := checkLabelNames(name+": spec.labels", r.Spec.Labels); err != nil {
+		return err
+	}
 	if r.Reconcile != nil {
 		if r.Reconcile.Labels != nil {
 			if r.Spec.LabelSync != nil {
@@ -113,6 +117,21 @@ func (r *Repository) Validate() error {
 	return nil
 }
 
+// checkLabelNames rejects two labels whose names differ only in case:
+// GitHub label names are unique case-insensitively, so they are the same
+// label there.
+func checkLabelNames(path string, labels []Label) error {
+	seen := make(map[string]string, len(labels))
+	for _, l := range labels {
+		key := strings.ToLower(l.Name)
+		if prev, ok := seen[key]; ok && prev != l.Name {
+			return fmt.Errorf("%s: %q and %q are the same label on GitHub (label names are case-insensitive)", path, prev, l.Name)
+		}
+		seen[key] = l.Name
+	}
+	return nil
+}
+
 // Validate checks that the File has valid field values.
 func (f *File) Validate() error {
 	// Recursive tag-based validation for metadata and spec
@@ -154,4 +173,45 @@ func (fs *FileSet) Validate() error {
 		}
 	}
 	return nil
+}
+
+// Validate checks rules that span documents and files, so callers run it on
+// the result merged from every manifest path.
+//
+// Two via: pull_request FileSets that commit to the same branch of the same
+// repository are rejected: apply resets the PR branch to the default branch
+// before committing, so the second FileSet would discard the first's commit
+// while the first still reported success.
+func (r *ParseResult) Validate() error {
+	type prTarget struct{ repo, branch string }
+	claimedBy := make(map[prTarget]*FileSet)
+	for _, fs := range r.FileSets {
+		if fs.Spec.Via != ViaPullRequest {
+			continue
+		}
+		branch := fs.PRBranch()
+		for _, repo := range fs.Spec.Repositories {
+			fullName := fs.RepoFullName(repo.Name)
+			key := prTarget{repo: strings.ToLower(fullName), branch: branch}
+			if first, ok := claimedBy[key]; ok {
+				return fmt.Errorf("FileSets %s and %s both open a pull request on %s from branch %q; "+
+					"applying the second would reset the branch and discard the first's commit. "+
+					"Set a distinct spec.branch on one of them, or a distinct metadata.name (kind: FileSet only)",
+					r.describeFileSet(first), r.describeFileSet(fs), fullName, branch)
+			}
+			claimedBy[key] = fs
+		}
+	}
+	return nil
+}
+
+// describeFileSet names a FileSet by its Identity and, when known, the
+// manifest document it was parsed from.
+func (r *ParseResult) describeFileSet(fs *FileSet) string {
+	for _, doc := range r.FileDocs {
+		if doc.Resource == fs {
+			return fmt.Sprintf("%q (%s, document %d)", fs.Identity(), doc.SourcePath, doc.DocIndex+1)
+		}
+	}
+	return fmt.Sprintf("%q", fs.Identity())
 }

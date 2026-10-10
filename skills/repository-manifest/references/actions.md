@@ -17,6 +17,9 @@ spec:
     fork_pr_approval: all_external_contributors
 ```
 
+- `selected_actions` fields left out keep their current values; `patterns_allowed: []` removes all patterns
+- With `enabled: false`, `allowed_actions`, `sha_pinning_required` and `selected_actions` are neither sent nor compared (GitHub rejects `allowed_actions` while Actions is disabled)
+
 ## Validation Traps
 
 - If any `actions.*` field other than `enabled` is set, `enabled` must also be set

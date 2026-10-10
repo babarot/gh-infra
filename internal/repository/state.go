@@ -429,17 +429,21 @@ func (p *Processor) fetchPrivateVulnerabilityReporting(ctx context.Context, owne
 
 func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string) (map[string]*CurrentBranchProtection, error) {
 	// First get the default branch to check protection
+	// Paginate: a protected branch missed here would look unprotected and be
+	// planned as a create.
 	out, err := p.runner.Run(ctx,
-		"api", fmt.Sprintf("repos/%s/%s/branches", owner, name),
-		"--jq", `[.[] | select(.protected == true) | .name]`,
+		"api", fmt.Sprintf("repos/%s/%s/branches?protected=true&per_page=100", owner, name),
+		"--paginate", "--jq", ".[].name",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("fetch branches for %s/%s: %w", owner, name, err)
 	}
 
 	var protectedBranches []string
-	if err := json.Unmarshal(out, &protectedBranches); err != nil {
-		return nil, nil // no protected branches or parse error
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			protectedBranches = append(protectedBranches, line)
+		}
 	}
 
 	// Fetch per-branch protection rules in parallel. Individual errors are
@@ -488,6 +492,7 @@ func (p *Processor) fetchBranchProtectionRule(ctx context.Context, owner, name, 
 		AllowDeletions *struct {
 			Enabled bool `json:"enabled"`
 		} `json:"allow_deletions"`
+		Restrictions json.RawMessage `json:"restrictions"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("parse branch protection for %s: %w", branch, err)
@@ -517,6 +522,7 @@ func (p *Processor) fetchBranchProtectionRule(ctx context.Context, owner, name, 
 	if raw.AllowDeletions != nil {
 		bp.AllowDeletions = raw.AllowDeletions.Enabled
 	}
+	bp.RestrictPushes = len(raw.Restrictions) > 0 && string(raw.Restrictions) != "null"
 
 	return bp, nil
 }

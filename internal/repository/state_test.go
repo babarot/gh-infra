@@ -51,13 +51,13 @@ func TestFetchRepository(t *testing.T) {
 				"has_pull_requests": true,
 				"pull_request_creation_policy": "collaborators_only"
 			}`),
-			"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
-			"api repos/myorg/myrepo/vulnerability-alerts":                                     []byte(``),
-			"api repos/myorg/myrepo/automated-security-fixes":                                 []byte(`{"enabled": false, "paused": false}`),
-			"api repos/myorg/myrepo/private-vulnerability-reporting":                          []byte(`{"enabled": false}`),
-			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`[]`),
-			"secret list --repo myorg/myrepo --json name --jq .[].name":                       []byte("SECRET1\nSECRET2"),
-			"variable list --repo myorg/myrepo --json name,value":                             []byte(`[{"name":"VAR1","value":"val1"},{"name":"VAR2","value":"val2"}]`),
+			"api repos/myorg/myrepo/immutable-releases":                                            []byte(`{"enabled": false}`),
+			"api repos/myorg/myrepo/vulnerability-alerts":                                          []byte(``),
+			"api repos/myorg/myrepo/automated-security-fixes":                                      []byte(`{"enabled": false, "paused": false}`),
+			"api repos/myorg/myrepo/private-vulnerability-reporting":                               []byte(`{"enabled": false}`),
+			"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte(``),
+			"secret list --repo myorg/myrepo --json name --jq .[].name":                            []byte("SECRET1\nSECRET2"),
+			"variable list --repo myorg/myrepo --json name,value":                                  []byte(`[{"name":"VAR1","value":"val1"},{"name":"VAR2","value":"val2"}]`),
 		},
 	}
 
@@ -381,10 +381,10 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			"merge_commit_title": "MERGE_MESSAGE",
 			"merge_commit_message": "PR_BODY"
 		}`),
-		"api repos/myorg/myrepo/immutable-releases":                                       []byte(`{"enabled": false}`),
-		"api repos/myorg/myrepo/automated-security-fixes":                                 []byte(`{"enabled": false, "paused": false}`),
-		"api repos/myorg/myrepo/private-vulnerability-reporting":                          []byte(`{"enabled": false}`),
-		"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`[]`),
+		"api repos/myorg/myrepo/immutable-releases":                                            []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/automated-security-fixes":                                      []byte(`{"enabled": false, "paused": false}`),
+		"api repos/myorg/myrepo/private-vulnerability-reporting":                               []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte(``),
 	}
 
 	t.Run("commit message settings 404 is ignored", func(t *testing.T) {
@@ -630,12 +630,12 @@ func TestFetchBranchProtection_MultipleBranches(t *testing.T) {
 	// 5 protected branches; ensure all are fetched and returned correctly.
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
-			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`["main","develop","release/1","release/2","release/3"]`),
-			"api repos/myorg/myrepo/branches/main/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
-			"api repos/myorg/myrepo/branches/develop/protection":                              []byte(`{"required_pull_request_reviews":{"required_approving_review_count":2}}`),
-			"api repos/myorg/myrepo/branches/release/1/protection":                            []byte(`{"required_pull_request_reviews":{"required_approving_review_count":3}}`),
-			"api repos/myorg/myrepo/branches/release/2/protection":                            []byte(`{"required_pull_request_reviews":{"required_approving_review_count":4}}`),
-			"api repos/myorg/myrepo/branches/release/3/protection":                            []byte(`{"required_pull_request_reviews":{"required_approving_review_count":5}}`),
+			"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte("main\ndevelop\nrelease/1\nrelease/2\nrelease/3\n"),
+			"api repos/myorg/myrepo/branches/main/protection":                                      []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
+			"api repos/myorg/myrepo/branches/develop/protection":                                   []byte(`{"required_pull_request_reviews":{"required_approving_review_count":2}}`),
+			"api repos/myorg/myrepo/branches/release/1/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":3}}`),
+			"api repos/myorg/myrepo/branches/release/2/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":4}}`),
+			"api repos/myorg/myrepo/branches/release/3/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":5}}`),
 		},
 	}
 
@@ -670,8 +670,8 @@ func TestFetchBranchProtection_IndividualFailureSkipped(t *testing.T) {
 	// Two branches, one fetch fails. The failure must not abort the whole fetch.
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
-			"api repos/myorg/myrepo/branches --jq [.[] | select(.protected == true) | .name]": []byte(`["main","broken"]`),
-			"api repos/myorg/myrepo/branches/main/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
+			"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte("main\nbroken\n"),
+			"api repos/myorg/myrepo/branches/main/protection":                                      []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
 		},
 		Errors: map[string]error{
 			"api repos/myorg/myrepo/branches/broken/protection": fmt.Errorf("%w: not configured", gh.ErrNotFound),

@@ -21,9 +21,11 @@ spec:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | yes | Label name (must be unique within the list) |
+| `name` | string | yes | Label name (must be unique within the list, ignoring case) |
 | `color` | string | yes | Hex color code without `#` prefix (e.g., `d73a4a`) |
-| `description` | string | no | Short description of the label's purpose |
+| `description` | string | no | Short description of the label's purpose. Leaving it out keeps the label's current description; `""` clears it |
+
+GitHub treats label names case-insensitively: `Bug` and `bug` are the same label. gh-infra matches labels the same way, so a manifest `Bug` against a GitHub label `bug` is an update of that label, and a name that differs only in case renames it (`plan` shows `name: bug -> Bug`). Two names in one list that differ only in case are rejected by validation.
 
 ## Reconcile Mode
 

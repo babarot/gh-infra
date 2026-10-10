@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/babarot/gh-infra/internal/fileset"
@@ -12,19 +13,26 @@ import (
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
-// Output formats for plan and apply.
+// Output formats for plan and apply. Markdown is for plan only.
 const (
-	OutputText = "text"
-	OutputJSON = "json"
+	OutputText     = "text"
+	OutputJSON     = "json"
+	OutputMarkdown = "markdown"
 )
 
-// ValidateOutput returns an error if format is not a supported output format.
-func ValidateOutput(format string) error {
-	switch format {
-	case "", OutputText, OutputJSON:
+// ValidateOutput returns an error if format is not one of the given formats.
+// An empty format means text.
+func ValidateOutput(format string, formats ...string) error {
+	if format == "" || format == OutputText || slices.Contains(formats, format) {
 		return nil
 	}
-	return fmt.Errorf("invalid output format %q (use %q or %q)", format, OutputText, OutputJSON)
+	return fmt.Errorf("invalid output format %q (use %s)", format, strings.Join(append([]string{OutputText}, formats...), ", "))
+}
+
+// isMachineOutput reports whether format prints only a document, so nothing
+// else may be printed while planning or applying.
+func isMachineOutput(format string) bool {
+	return format == OutputJSON || format == OutputMarkdown
 }
 
 // documentFormatVersion is bumped only when a field is removed or changes

@@ -1,6 +1,8 @@
 package importer
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -676,16 +678,16 @@ func TestMinimalOverride_TopicsOverride(t *testing.T) {
 func TestMinimalOverride_LabelsOnlyDiff(t *testing.T) {
 	defaults := manifest.RepositorySpec{
 		Labels: []manifest.Label{
-			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
-			{Name: "kind/feature", Color: "425df5", Description: "A feature"},
+			{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
+			{Name: "kind/feature", Color: "425df5", Description: manifest.Ptr("A feature")},
 		},
 	}
 
 	imported := manifest.RepositorySpec{
 		Labels: []manifest.Label{
-			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},         // same
-			{Name: "kind/feature", Color: "FF0000", Description: "A feature"}, // color changed
-			{Name: "custom", Color: "00FF00", Description: "Custom label"},    // new
+			{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},         // same
+			{Name: "kind/feature", Color: "FF0000", Description: manifest.Ptr("A feature")}, // color changed
+			{Name: "custom", Color: "00FF00", Description: manifest.Ptr("Custom label")},    // new
 		},
 	}
 
@@ -704,7 +706,7 @@ func TestMinimalOverride_LabelsOnlyDiff(t *testing.T) {
 
 func TestMinimalOverride_LabelsAllSame(t *testing.T) {
 	labels := []manifest.Label{
-		{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
+		{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 	}
 	defaults := manifest.RepositorySpec{Labels: labels}
 	imported := manifest.RepositorySpec{Labels: labels}
@@ -1670,10 +1672,10 @@ func TestCompareVariables_NoDiff(t *testing.T) {
 
 func TestCompareLabels_Diff(t *testing.T) {
 	local := []manifest.Label{
-		{Name: "bug", Color: "d73a4a", Description: "Old desc"},
+		{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("Old desc")},
 	}
 	imported := []manifest.Label{
-		{Name: "bug", Color: "FF0000", Description: "New desc"},
+		{Name: "bug", Color: "FF0000", Description: manifest.Ptr("New desc")},
 	}
 
 	diffs := compareLabels(local, imported)
@@ -1688,7 +1690,7 @@ func TestCompareLabels_Diff(t *testing.T) {
 func TestCompareLabels_NewOnGitHub(t *testing.T) {
 	local := []manifest.Label{}
 	imported := []manifest.Label{
-		{Name: "kind/feature", Color: "425df5", Description: "A feature"},
+		{Name: "kind/feature", Color: "425df5", Description: manifest.Ptr("A feature")},
 	}
 
 	diffs := compareLabels(local, imported)
@@ -1717,7 +1719,7 @@ func TestCompareLabels_DeletedOnGitHub(t *testing.T) {
 
 func TestCompareLabels_NoDiff(t *testing.T) {
 	labels := []manifest.Label{
-		{Name: "bug", Color: "d73a4a", Description: "A bug"},
+		{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 		{Name: "feature", Color: "425df5"},
 	}
 
@@ -1875,5 +1877,285 @@ func TestCompareFeatures_PullRequestsNoDiff(t *testing.T) {
 		if strings.HasPrefix(d.Field, "features.pull_requests") {
 			t.Errorf("unexpected diff: %s", d.Field)
 		}
+	}
+}
+
+func TestDiffRepository_KeepsRulesetRemovalForms(t *testing.T) {
+	branch := manifest.RulesetTargetBranch
+	local := manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{{
+			Name:            "main",
+			Target:          &branch,
+			BypassActorsSet: true,
+			Rules: manifest.RulesetRules{
+				Deletion:             manifest.Ptr(true),
+				PullRequest:          &manifest.RulesetPullRequest{Disabled: true},
+				RequiredStatusChecks: &manifest.RulesetStatusChecks{Disabled: true},
+			},
+		}},
+	}
+	imported := manifest.Repository{Spec: manifest.RepositorySpec{
+		Rulesets: []manifest.Ruleset{{
+			Name:   "main",
+			Target: &branch,
+			Rules:  manifest.RulesetRules{Deletion: manifest.Ptr(true)},
+		}},
+	}}
+	doc := &manifest.RepositoryDocument{
+		Resource:   &manifest.Repository{Spec: local},
+		SourcePath: "/tmp/test.yaml",
+	}
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  rulesets:
+    - name: main
+      target: branch
+      bypass_actors: []
+      rules:
+        deletion: true
+        pull_request: false
+        required_status_checks: false
+`)
+	mb := map[string][]byte{"/tmp/test.yaml": yamlData}
+	rp, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &imported,
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatalf("DiffRepository error: %v", err)
+	}
+	if len(rp.Diffs) != 0 {
+		t.Fatalf("GitHub matches the manifest, expected no diffs, got %+v", rp.Diffs)
+	}
+	if got := string(mb["/tmp/test.yaml"]); got != string(yamlData) {
+		t.Errorf("manifest should be left as is, got:\n%s", got)
+	}
+}
+
+func TestCompareRulesets_RemovedRuleStillOnGitHub(t *testing.T) {
+	local := []manifest.Ruleset{{Name: "main", Rules: manifest.RulesetRules{
+		PullRequest: &manifest.RulesetPullRequest{Disabled: true},
+	}}}
+	imported := preserveUnreturnedRulesetParams(local, []manifest.Ruleset{{Name: "main", Rules: manifest.RulesetRules{
+		PullRequest: &manifest.RulesetPullRequest{RequiredApprovingReviewCount: manifest.Ptr(1)},
+	}}})
+	diffs := compareRulesets(local, imported)
+	if len(diffs) != 1 || diffs[0].Field != "rulesets.main.rules.pull_request" || diffs[0].Old != "disabled" {
+		t.Errorf("expected pull_request disabled -> enabled, got %+v", diffs)
+	}
+}
+
+func TestMinimalRulesets_IgnoresBypassActorsPresence(t *testing.T) {
+	actors := []manifest.RulesetBypassActor{{Role: "admin", BypassMode: "always"}}
+	defaults := []manifest.Ruleset{{Name: "main", BypassActors: actors, BypassActorsSet: true}}
+	imported := []manifest.Ruleset{{Name: "main", BypassActors: actors}}
+	if got := minimalRulesets(defaults, imported); len(got) != 0 {
+		t.Errorf("same ruleset as defaults should not be an override, got %+v", got)
+	}
+}
+
+func TestMinimalLabels_ComparesDescriptionByValue(t *testing.T) {
+	defaults := []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")}}
+	imported := []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")}}
+	if got := minimalLabels(defaults, imported); len(got) != 0 {
+		t.Errorf("equal labels should not be an override, got %+v", got)
+	}
+	if diffs := compareLabels([]manifest.Label{{Name: "bug", Color: "d73a4a"}}, []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("")}}); len(diffs) != 0 {
+		t.Errorf("nil and empty descriptions should compare equal, got %+v", diffs)
+	}
+}
+
+func TestLabels_CaseOnlyDifference(t *testing.T) {
+	local := []manifest.Label{{Name: "bug", Color: "d73a4a"}}
+	imported := []manifest.Label{{Name: "Bug", Color: "d73a4a"}}
+
+	diffs := compareLabels(local, imported)
+	if len(diffs) != 1 {
+		t.Fatalf("expected one diff for the label, got %+v", diffs)
+	}
+	if diffs[0].Field != "labels.Bug" || diffs[0].Old != "bug #d73a4a" || diffs[0].New != "Bug #d73a4a" {
+		t.Errorf("diff = %+v, want labels.Bug: bug #d73a4a -> Bug #d73a4a", diffs[0])
+	}
+
+	got := minimalLabels(local, imported)
+	if len(got) != 1 || got[0].Name != "Bug" {
+		t.Errorf("minimalLabels = %+v, want GitHub's casing Bug as an override", got)
+	}
+}
+
+// importSetEntry runs DiffRepositorySet for the first entry of a RepositorySet
+// manifest and returns the result and the updated YAML.
+func importSetEntry(t *testing.T, content string, imported manifest.RepositorySpec) (RepoResult, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "set.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := manifest.ParseAll(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mb := map[string][]byte{path: []byte(content)}
+	rp, err := DiffRepositorySet(DiffInput{
+		Repos:         parsed.RepositoryDocs[:1],
+		Imported:      &manifest.Repository{Spec: imported},
+		ManifestBytes: mb,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rp, string(mb[path])
+}
+
+func TestDiffRepositorySet_NoneOnGitHubWritesEmpty(t *testing.T) {
+	const defaults = `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    topics: [go]
+    labels:
+      - name: bug
+        color: d73a4a
+    variables:
+      - name: ENV
+        value: prod
+    branch_protection:
+      - pattern: main
+        required_reviews: 1
+    rulesets:
+      - name: main
+        rules:
+          non_fast_forward: true
+repositories:
+  - name: repo
+`
+	for _, tt := range []struct {
+		name    string
+		content string
+	}{
+		{"without spec", defaults},
+		{"with spec", defaults + "    spec:\n      description: hello\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			imported := manifest.RepositorySpec{}
+			if tt.name == "with spec" {
+				imported.Description = manifest.Ptr("hello")
+			}
+			rp, updated := importSetEntry(t, tt.content, imported)
+
+			fields := map[string]bool{}
+			for _, d := range rp.Diffs {
+				fields[d.Field] = true
+			}
+			for _, key := range []string{"topics", "labels", "variables", "branch_protection", "rulesets"} {
+				if !fields[key] {
+					t.Errorf("expected a %s diff, got %+v", key, rp.Diffs)
+				}
+				if !strings.Contains(updated, key+": []") {
+					t.Errorf("expected %s: [] in:\n%s", key, updated)
+				}
+			}
+			if len(rp.Warnings) != 0 {
+				t.Errorf("expected no warnings, got %+v", rp.Warnings)
+			}
+
+			// Importing again over the written YAML changes nothing.
+			again, after := importSetEntry(t, updated, imported)
+			if again.HasChanges() || after != updated {
+				t.Errorf("second import: diffs %+v\n%s", again.Diffs, after)
+			}
+		})
+	}
+}
+
+func TestDiffRepositorySet_EntryAlreadyEmpty(t *testing.T) {
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+    spec:
+      labels: []
+`
+	rp, updated := importSetEntry(t, content, manifest.RepositorySpec{})
+	if rp.HasChanges() || updated != content {
+		t.Errorf("expected no changes, got %+v\n%s", rp.Diffs, updated)
+	}
+}
+
+func TestDiffRepositorySet_PartialDefaultsWarns(t *testing.T) {
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: a
+        color: aaaaaa
+      - name: b
+        color: bbbbbb
+      - name: c
+        color: cccccc
+    variables:
+      - name: X
+        value: "1"
+      - name: Y
+        value: "2"
+repositories:
+  - name: repo
+`
+	imported := manifest.RepositorySpec{
+		Labels:    []manifest.Label{{Name: "A", Color: "aaaaaa"}, {Name: "b", Color: "bbbbbb"}},
+		Variables: []manifest.Variable{{Name: "X", Value: "1"}},
+	}
+	rp, _ := importSetEntry(t, content, imported)
+
+	got := map[string]string{}
+	for _, w := range rp.Warnings {
+		if w.Target != "org/repo" {
+			t.Errorf("warning target = %q", w.Target)
+		}
+		got[w.Field] = w.Message
+	}
+	if len(got) != 2 || !strings.Contains(got["labels"], "not on GitHub: c ") || !strings.Contains(got["variables"], "not on GitHub: Y ") {
+		t.Errorf("warnings = %+v", rp.Warnings)
+	}
+}
+
+func TestDiffRepositorySet_EntryItemsGoneFromGitHub(t *testing.T) {
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    labels:
+      - name: bug
+        color: d73a4a
+repositories:
+  - name: repo
+    spec:
+      description: hello
+      labels:
+        - name: own
+          color: "111111"
+`
+	_, updated := importSetEntry(t, content, manifest.RepositorySpec{Description: manifest.Ptr("hello")})
+	if !strings.Contains(updated, "      description: hello\n      labels: []\n") {
+		t.Errorf("expected labels: [] next to description:\n%s", updated)
 	}
 }

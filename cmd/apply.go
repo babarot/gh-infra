@@ -53,7 +53,7 @@ type applyCommandOptions struct {
 }
 
 func runApply(paths []string, opts applyCommandOptions) error {
-	if err := infra.ValidateOutput(opts.Output); err != nil {
+	if err := infra.ValidateOutput(opts.Output, infra.OutputJSON); err != nil {
 		return err
 	}
 	jsonOutput := opts.Output == infra.OutputJSON

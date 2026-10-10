@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -716,13 +717,29 @@ func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *m
 }
 
 func (p *Processor) applyBranchProtectionViaAPI(ctx context.Context, owner, name string, bp *manifest.BranchProtection) error {
-	payload := buildBranchProtectionPayload(bp)
+	endpoint := fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, bp.Pattern)
+
+	// The PUT replaces the whole protection, so an update is built from the
+	// current one. Read it here instead of trusting the planned change type:
+	// a protected branch that plan missed must not be overwritten from the
+	// manifest alone. 404 means the branch is not protected yet.
+	var payload map[string]any
+	current, err := p.runner.Run(ctx, "api", endpoint)
+	switch {
+	case errors.Is(err, gh.ErrNotFound):
+		payload = buildBranchProtectionPayload(bp)
+	case err != nil:
+		return wrapError(err, owner+"/"+name, "branch_protection:"+bp.Pattern)
+	default:
+		payload, err = buildBranchProtectionUpdatePayload(bp, current)
+		if err != nil {
+			return err
+		}
+	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal branch protection: %w", err)
 	}
-
-	endpoint := fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, bp.Pattern)
 
 	_, err = p.runner.RunWithStdin(ctx, payloadJSON,
 		"api", endpoint,
@@ -732,42 +749,6 @@ func (p *Processor) applyBranchProtectionViaAPI(ctx context.Context, owner, name
 		"--input", "-",
 	)
 	return wrapError(err, owner+"/"+name, "branch_protection:"+bp.Pattern)
-}
-
-func buildBranchProtectionPayload(bp *manifest.BranchProtection) map[string]any {
-	payload := map[string]any{
-		"enforce_admins":     derefBool(bp.EnforceAdmins),
-		"restrictions":       nil,
-		"allow_force_pushes": derefBool(bp.AllowForcePushes),
-		"allow_deletions":    derefBool(bp.AllowDeletions),
-	}
-
-	if bp.RequiredReviews != nil || bp.DismissStaleReviews != nil || bp.RequireCodeOwnerReviews != nil {
-		reviews := map[string]any{}
-		if bp.RequiredReviews != nil {
-			reviews["required_approving_review_count"] = *bp.RequiredReviews
-		}
-		if bp.DismissStaleReviews != nil {
-			reviews["dismiss_stale_reviews"] = *bp.DismissStaleReviews
-		}
-		if bp.RequireCodeOwnerReviews != nil {
-			reviews["require_code_owner_reviews"] = *bp.RequireCodeOwnerReviews
-		}
-		payload["required_pull_request_reviews"] = reviews
-	} else {
-		payload["required_pull_request_reviews"] = nil
-	}
-
-	if bp.RequireStatusChecks != nil {
-		payload["required_status_checks"] = map[string]any{
-			"strict":   bp.RequireStatusChecks.Strict,
-			"contexts": bp.RequireStatusChecks.Contexts,
-		}
-	} else {
-		payload["required_status_checks"] = nil
-	}
-
-	return payload
 }
 
 func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.Repository) error {
@@ -797,17 +778,16 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 		return fmt.Errorf("ruleset %q not found in desired state", rulesetName)
 	}
 
-	payload, err := buildRulesetPayload(ctx, rs, p.resolver)
-	if err != nil {
-		return err
-	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal ruleset payload: %w", err)
-	}
-
 	switch c.Type {
 	case ChangeCreate:
+		payload, err := buildRulesetPayload(ctx, rs, p.resolver)
+		if err != nil {
+			return err
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal ruleset payload: %w", err)
+		}
 		_, err = p.runner.RunWithStdin(ctx, payloadJSON,
 			"api",
 			fmt.Sprintf("repos/%s/%s/rulesets", owner, name),
@@ -819,7 +799,7 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 		return wrapError(err, owner+"/"+name, "ruleset:"+rulesetName)
 
 	case ChangeUpdate:
-		target := "branch"
+		var target string
 		if rs.Target != nil {
 			target = *rs.Target
 		}
@@ -830,6 +810,21 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 		})
 		if err != nil {
 			return err
+		}
+		// The PUT replaces the whole ruleset, so build it from the current
+		// one. Never fall back to the manifest alone: that would reset or
+		// drop everything the manifest leaves out.
+		current, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/rulesets/%d", owner, name, rulesetID))
+		if err != nil {
+			return wrapError(err, owner+"/"+name, "ruleset:"+rulesetName)
+		}
+		payload, err := buildRulesetUpdatePayload(ctx, rs, current, p.resolver)
+		if err != nil {
+			return err
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal ruleset payload: %w", err)
 		}
 		_, err = p.runner.RunWithStdin(ctx, payloadJSON,
 			"api",
@@ -852,145 +847,45 @@ func (p *Processor) resolveRulesetID(ctx context.Context, lookup rulesetLookup) 
 	}
 
 	var rulesets []struct {
-		ID     int    `json:"id"`
-		Name   string `json:"name"`
-		Target string `json:"target"`
+		ID         int    `json:"id"`
+		Name       string `json:"name"`
+		Target     string `json:"target"`
+		SourceType string `json:"source_type"`
 	}
 	if err := json.Unmarshal(out, &rulesets); err != nil {
 		return 0, fmt.Errorf("parse rulesets list for %s: %w", lookup.Repo, err)
 	}
 
+	// An empty Target matches any target. Organization and enterprise
+	// rulesets are listed too, but cannot be updated at the repository level.
 	var matches []int
+	var targets []string
 	for _, rs := range rulesets {
-		if rs.Name == lookup.RulesetName && rs.Target == lookup.Target {
+		if rs.SourceType == "Organization" || rs.SourceType == "Enterprise" {
+			continue
+		}
+		if rs.Name == lookup.RulesetName && (lookup.Target == "" || rs.Target == lookup.Target) {
 			matches = append(matches, rs.ID)
+			targets = append(targets, rs.Target)
 		}
 	}
 
+	desc := fmt.Sprintf("%q", lookup.RulesetName)
+	if lookup.Target != "" {
+		desc += fmt.Sprintf(" (target=%s)", lookup.Target)
+	}
 	switch len(matches) {
 	case 0:
-		return 0, fmt.Errorf("ruleset %q (target=%s) not found in %s", lookup.RulesetName, lookup.Target, lookup.Repo)
+		return 0, fmt.Errorf("ruleset %s not found in %s", desc, lookup.Repo)
 	case 1:
 		return matches[0], nil
 	default:
-		return 0, fmt.Errorf("multiple rulesets named %q (target=%s) found in %s; cannot determine which to update", lookup.RulesetName, lookup.Target, lookup.Repo)
-	}
-}
-
-func buildRulesetPayload(ctx context.Context, rs *manifest.Ruleset, resolver *manifest.Resolver) (map[string]any, error) {
-	target := "branch"
-	if rs.Target != nil {
-		target = *rs.Target
-	}
-	enforcement := "active"
-	if rs.Enforcement != nil {
-		enforcement = *rs.Enforcement
-	}
-
-	payload := map[string]any{
-		"name":        rs.Name,
-		"target":      target,
-		"enforcement": enforcement,
-	}
-
-	// bypass_actors (resolve names → IDs)
-	if len(rs.BypassActors) > 0 && resolver != nil {
-		resolved, err := resolver.ResolveBypassActors(ctx, rs.BypassActors)
-		if err != nil {
-			return nil, fmt.Errorf("resolve bypass actors: %w", err)
+		hint := ""
+		if lookup.Target == "" {
+			hint = fmt.Sprintf(" (targets: %s; set target in the manifest)", strings.Join(targets, ", "))
 		}
-		actors := make([]map[string]any, len(resolved))
-		for i, a := range resolved {
-			actors[i] = map[string]any{
-				"actor_id":    a.ActorID,
-				"actor_type":  a.ActorType,
-				"bypass_mode": a.BypassMode,
-			}
-		}
-		payload["bypass_actors"] = actors
-	} else {
-		payload["bypass_actors"] = []map[string]any{}
+		return 0, fmt.Errorf("multiple rulesets named %s found in %s%s; cannot determine which to update", desc, lookup.Repo, hint)
 	}
-
-	// conditions
-	if rs.Conditions != nil && rs.Conditions.RefName != nil {
-		exclude := rs.Conditions.RefName.Exclude
-		if exclude == nil {
-			exclude = []string{}
-		}
-		payload["conditions"] = map[string]any{
-			"ref_name": map[string]any{
-				"include": rs.Conditions.RefName.Include,
-				"exclude": exclude,
-			},
-		}
-	}
-
-	// rules
-	var rules []map[string]any
-
-	if rs.Rules.PullRequest != nil {
-		pr := rs.Rules.PullRequest.WithDefaults()
-		params := map[string]any{
-			"required_approving_review_count":   *pr.RequiredApprovingReviewCount,
-			"dismiss_stale_reviews_on_push":     *pr.DismissStaleReviewsOnPush,
-			"require_code_owner_review":         *pr.RequireCodeOwnerReview,
-			"require_last_push_approval":        *pr.RequireLastPushApproval,
-			"required_review_thread_resolution": *pr.RequiredReviewThreadResolution,
-		}
-		rules = append(rules, map[string]any{"type": "pull_request", "parameters": params})
-	}
-
-	if rs.Rules.RequiredStatusChecks != nil && resolver != nil {
-		sc := rs.Rules.RequiredStatusChecks
-		resolvedChecks, err := resolver.ResolveStatusChecks(ctx, sc.Contexts)
-		if err != nil {
-			return nil, fmt.Errorf("resolve status checks: %w", err)
-		}
-		checks := make([]map[string]any, len(resolvedChecks))
-		for i, rc := range resolvedChecks {
-			check := map[string]any{"context": rc.Context}
-			if rc.IntegrationID != 0 {
-				check["integration_id"] = rc.IntegrationID
-			}
-			checks[i] = check
-		}
-		params := map[string]any{"required_status_checks": checks}
-		if sc.StrictRequiredStatusChecksPolicy != nil {
-			params["strict_required_status_checks_policy"] = *sc.StrictRequiredStatusChecksPolicy
-		}
-		rules = append(rules, map[string]any{"type": "required_status_checks", "parameters": params})
-	}
-
-	if update := rs.Rules.Update; update != nil && update.Enabled != nil && *update.Enabled {
-		rule := map[string]any{"type": "update"}
-		// Only send the parameter when the manifest sets it. Sending a default
-		// of false would silently turn off a setting that plan never reported,
-		// since plan does not compare fields the manifest leaves unset.
-		if update.AllowsFetchAndMerge != nil {
-			rule["parameters"] = map[string]any{
-				"update_allows_fetch_and_merge": *update.AllowsFetchAndMerge,
-			}
-		}
-		rules = append(rules, rule)
-	}
-
-	// Toggle rules
-	toggles := map[string]*bool{
-		"non_fast_forward":        rs.Rules.NonFastForward,
-		"deletion":                rs.Rules.Deletion,
-		"creation":                rs.Rules.Creation,
-		"required_linear_history": rs.Rules.RequiredLinearHistory,
-		"required_signatures":     rs.Rules.RequiredSignatures,
-	}
-	for ruleType, enabled := range toggles {
-		if enabled != nil && *enabled {
-			rules = append(rules, map[string]any{"type": ruleType})
-		}
-	}
-
-	payload["rules"] = rules
-	return payload, nil
 }
 
 func (p *Processor) applySecret(ctx context.Context, c Change, repo *manifest.Repository) error {
@@ -1060,16 +955,41 @@ func (p *Processor) applyLabel(ctx context.Context, c Change, repo *manifest.Rep
 	switch c.Type {
 	case ChangeCreate:
 		args := []string{"label", "create", c.Field, "--repo", fullName, "--color", label.Color}
-		if label.Description != "" {
-			args = append(args, "--description", label.Description)
+		if d := derefStr(label.Description); d != "" {
+			args = append(args, "--description", d)
 		}
 		_, err := p.runner.Run(ctx, args...)
 		return wrapError(err, fullName, "label:"+c.Field)
 	case ChangeUpdate:
-		args := []string{"label", "edit", c.Field, "--repo", fullName}
-		args = append(args, "--color", label.Color)
-		args = append(args, "--description", label.Description)
-		_, err := p.runner.Run(ctx, args...)
+		// Use the REST API: gh label edit never sends an empty description,
+		// so it cannot clear one. Send description only when the manifest
+		// sets it, so an omitted one is left as it is.
+		payload := map[string]any{"color": label.Color}
+		if label.Description != nil {
+			payload["description"] = *label.Description
+		}
+		// GitHub finds the label by its current name; a case-only rename
+		// is planned as a "name" child holding that name.
+		currentName := c.Field
+		for _, d := range c.Details {
+			if d.Field == "name" {
+				if old, ok := d.OldValue.(string); ok {
+					currentName = old
+					payload["new_name"] = label.Name
+				}
+			}
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		_, err = p.runner.RunWithStdin(ctx, body,
+			"api",
+			fmt.Sprintf("repos/%s/labels/%s", fullName, url.PathEscape(currentName)),
+			"--method", "PATCH",
+			"--header", "Content-Type: application/json",
+			"--input", "-",
+		)
 		return wrapError(err, fullName, "label:"+c.Field)
 	}
 
@@ -1093,13 +1013,22 @@ func (p *Processor) applyMilestone(ctx context.Context, c Change, repo *manifest
 		return fmt.Errorf("milestone %q not found in desired state", c.Field)
 	}
 
-	payload := map[string]any{
-		"title":       ms.Title,
-		"description": ms.Description,
-		"state":       manifest.MilestoneState(ms.State),
+	// Send only what the manifest sets: the update is a PATCH, so what is
+	// left out keeps its value.
+	payload := map[string]any{"title": ms.Title}
+	if ms.Description != nil {
+		payload["description"] = *ms.Description
 	}
-	if ms.DueOn != nil && *ms.DueOn != "" {
-		payload["due_on"] = *ms.DueOn + "T00:00:00Z"
+	if ms.State != nil {
+		payload["state"] = *ms.State
+	}
+	if ms.DueOn != nil {
+		switch {
+		case *ms.DueOn != "":
+			payload["due_on"] = *ms.DueOn + "T00:00:00Z"
+		case c.Type == ChangeUpdate:
+			payload["due_on"] = nil // clear
+		}
 	}
 
 	body, err := json.Marshal(payload)
@@ -1187,14 +1116,19 @@ func (p *Processor) applyActionsPermissions(ctx context.Context, owner, name str
 	}
 	// GitHub API requires "enabled" in every PUT to this endpoint.
 	// Validation ensures enabled is always set when other actions fields are present.
+	// While Actions is disabled GitHub rejects allowed_actions with 409 (observed;
+	// not in the API docs) and sha_pinning_required has no effect, so only
+	// enabled is sent.
 	payload := map[string]any{
 		"enabled": *a.Enabled,
 	}
-	if a.AllowedActions != nil {
-		payload["allowed_actions"] = *a.AllowedActions
-	}
-	if a.SHAPinningRequired != nil {
-		payload["sha_pinning_required"] = *a.SHAPinningRequired
+	if !a.Disabled() {
+		if a.AllowedActions != nil {
+			payload["allowed_actions"] = *a.AllowedActions
+		}
+		if a.SHAPinningRequired != nil {
+			payload["sha_pinning_required"] = *a.SHAPinningRequired
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -1233,11 +1167,28 @@ func (p *Processor) applyActionsWorkflow(ctx context.Context, owner, name string
 }
 
 func (p *Processor) applyActionsSelectedActions(ctx context.Context, owner, name string, a *manifest.Actions) error {
-	if a.SelectedActions == nil {
+	// The selected-actions endpoints only work while allowed_actions is
+	// "selected", which a repo with Actions disabled neither reports nor accepts.
+	if a.SelectedActions == nil || a.Disabled() {
 		return nil
 	}
 	sa := a.SelectedActions
+	endpoint := fmt.Sprintf("repos/%s/%s/actions/permissions/selected-actions", owner, name)
+
+	// Start from the current settings so that what the manifest leaves out
+	// keeps its value. 409 means allowed_actions is not "selected" yet, so
+	// there is nothing to keep.
 	payload := map[string]any{}
+	current, err := p.runner.Run(ctx, "api", endpoint)
+	switch {
+	case errors.Is(err, gh.ErrConflict):
+	case err != nil:
+		return wrapError(err, owner+"/"+name, "actions.selected_actions")
+	default:
+		if err := json.Unmarshal(current, &payload); err != nil {
+			return fmt.Errorf("parse current selected actions for %s/%s: %w", owner, name, err)
+		}
+	}
 	if sa.GithubOwnedAllowed != nil {
 		payload["github_owned_allowed"] = *sa.GithubOwnedAllowed
 	}
@@ -1253,7 +1204,7 @@ func (p *Processor) applyActionsSelectedActions(ctx context.Context, owner, name
 	}
 	_, err = p.runner.RunWithStdin(ctx, body,
 		"api",
-		fmt.Sprintf("repos/%s/%s/actions/permissions/selected-actions", owner, name),
+		endpoint,
 		"--method", "PUT",
 		"--header", "Content-Type: application/json",
 		"--input", "-",
@@ -1306,6 +1257,13 @@ func canonicalAPIField(field string) string {
 		return "delete_branch_on_merge"
 	}
 	return field
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func derefBool(b *bool) bool {

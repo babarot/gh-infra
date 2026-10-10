@@ -107,4 +107,7 @@ func TestRunApply_OutputValidation(t *testing.T) {
 	if err := runApply([]string{"."}, applyCommandOptions{Output: "yaml", AutoApprove: true}); err == nil || !strings.Contains(err.Error(), "invalid output format") {
 		t.Errorf("unknown format: err = %v, want invalid output format", err)
 	}
+	if err := runApply([]string{"."}, applyCommandOptions{Output: "markdown", AutoApprove: true}); err == nil || !strings.Contains(err.Error(), "invalid output format") {
+		t.Errorf("markdown is for plan only: err = %v, want invalid output format", err)
+	}
 }

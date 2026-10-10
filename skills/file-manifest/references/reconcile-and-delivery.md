@@ -51,6 +51,10 @@ spec:
 
 If the PR branch already exists, gh-infra updates that PR.
 
+- Default `branch`: `gh-infra/sync-<owner>-<name>`; `<name>` is the repo for `File`, `metadata.name` for `FileSet`, or the sorted repo names joined by `+` for an unnamed `FileSet`
+- Apply resets the PR branch to the default branch before committing, so two `pull_request` resources using the same branch on the same repo are rejected by `validate`/`plan`/`apply` (same explicit `branch`, or no `branch` and the same name: two `File`s for one repo, or unnamed `FileSet`s listing the same repos). Fix: distinct `branch`, or distinct `metadata.name` on a `FileSet`
+- `push` resources may share a repo freely
+
 ## File Modes
 
 ```yaml

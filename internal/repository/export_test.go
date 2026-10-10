@@ -394,9 +394,7 @@ func TestToManifest_Milestones(t *testing.T) {
 	if !ok {
 		t.Fatal("missing milestone 'v1.0'")
 	}
-	if v1.Description != "First release" {
-		t.Errorf("v1.0.Description = %q, want %q", v1.Description, "First release")
-	}
+	assertStringPtr(t, "v1.0.Description", v1.Description, "First release")
 	assertStringPtr(t, "v1.0.State", v1.State, "open")
 	assertStringPtr(t, "v1.0.DueOn", v1.DueOn, "2026-06-01")
 
@@ -407,6 +405,9 @@ func TestToManifest_Milestones(t *testing.T) {
 	assertStringPtr(t, "v2.0.State", v2.State, "closed")
 	if v2.DueOn != nil {
 		t.Errorf("v2.0.DueOn = %v, want nil for empty due_on", v2.DueOn)
+	}
+	if v2.Description != nil {
+		t.Errorf("v2.0.Description = %v, want nil for an empty description", v2.Description)
 	}
 }
 
@@ -438,9 +439,7 @@ func TestToManifest_Labels(t *testing.T) {
 	if bug.Color != "d73a4a" {
 		t.Errorf("bug.Color = %q, want %q", bug.Color, "d73a4a")
 	}
-	if bug.Description != "A bug" {
-		t.Errorf("bug.Description = %q, want %q", bug.Description, "A bug")
-	}
+	assertStringPtr(t, "bug.Description", bug.Description, "A bug")
 
 	feat, ok := labelMap["kind/feature"]
 	if !ok {

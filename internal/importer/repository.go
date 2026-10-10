@@ -9,6 +9,8 @@ import (
 
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/yamledit"
+
+	"github.com/goccy/go-yaml"
 )
 
 // DiffInput holds the inputs for planning a single repository's import.
@@ -90,7 +92,11 @@ func preserveUnreturnedRulesetParams(local, imported []manifest.Ruleset) []manif
 	result := slices.Clone(imported)
 	for i, irs := range result {
 		lrs, ok := localByName[irs.Name]
-		if !ok || lrs.Rules.Update == nil || lrs.Rules.Update.AllowsFetchAndMerge == nil {
+		if !ok {
+			continue
+		}
+		keepRemovalForms(&result[i], lrs)
+		if lrs.Rules.Update == nil || lrs.Rules.Update.AllowsFetchAndMerge == nil {
 			continue
 		}
 		if enabled := lrs.Rules.Update.IsEnabled(); enabled == nil || !*enabled {
@@ -104,6 +110,44 @@ func preserveUnreturnedRulesetParams(local, imported []manifest.Ruleset) []manif
 		result[i].Rules.Update = &update
 	}
 	return result
+}
+
+// keepRemovalForms keeps the local forms that say "this is absent" when
+// GitHub matches them: `pull_request: false`, `required_status_checks:
+// false`, and `bypass_actors: []`. GitHub returns nothing for these, so
+// without this import would see a difference on every run and drop them
+// from the manifest.
+func keepRemovalForms(imported *manifest.Ruleset, local manifest.Ruleset) {
+	if local.Rules.PullRequestDisabled() && imported.Rules.PullRequest == nil {
+		imported.Rules.PullRequest = &manifest.RulesetPullRequest{Disabled: true}
+	}
+	if local.Rules.StatusChecksDisabled() && imported.Rules.RequiredStatusChecks == nil {
+		imported.Rules.RequiredStatusChecks = &manifest.RulesetStatusChecks{Disabled: true}
+	}
+	if local.BypassActorsSet && len(local.BypassActors) == 0 && len(imported.BypassActors) == 0 {
+		imported.BypassActorsSet = true
+	}
+}
+
+// rulesetsEqual compares two rulesets the way the manifest means them: a
+// removed rule equals an absent one, and whether bypass_actors was written
+// does not matter when the actors are the same.
+func rulesetsEqual(a, b manifest.Ruleset) bool {
+	return reflect.DeepEqual(normalizeRuleset(a), normalizeRuleset(b))
+}
+
+func normalizeRuleset(rs manifest.Ruleset) manifest.Ruleset {
+	rs.BypassActorsSet = false
+	if len(rs.BypassActors) == 0 {
+		rs.BypassActors = nil
+	}
+	if rs.Rules.PullRequestDisabled() {
+		rs.Rules.PullRequest = nil
+	}
+	if rs.Rules.StatusChecksDisabled() {
+		rs.Rules.RequiredStatusChecks = nil
+	}
+	return rs
 }
 
 // DiffRepositorySet compares a RepositorySet-derived repo, computing the
@@ -128,18 +172,24 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		newOverride := minimalOverride(doc.DefaultsSpec.Spec, imported)
 
 		// Diff for display: OriginalEntrySpec → newOverride
-		var diffs []FieldDiff
+		var entrySpec manifest.RepositorySpec
 		if doc.OriginalEntrySpec != nil {
-			diffs = compareSpecs(*doc.OriginalEntrySpec, newOverride)
-		} else {
-			diffs = compareSpecs(manifest.RepositorySpec{}, newOverride)
+			entrySpec = *doc.OriginalEntrySpec
+		}
+		diffs := compareSpecs(entrySpec, newOverride)
+		diffs = append(diffs, emptyOverrideDiffs(entrySpec, newOverride)...)
+
+		fullName := doc.Resource.Metadata.FullName()
+		for _, w := range missingDefaultsWarnings(doc.DefaultsSpec.Spec, imported) {
+			w.Target = fullName
+			w.SourcePath = doc.SourcePath
+			plan.Warnings = append(plan.Warnings, w)
 		}
 
 		if len(diffs) == 0 {
 			continue
 		}
 
-		fullName := doc.Resource.Metadata.FullName()
 		for i := range diffs {
 			diffs[i].Target = fullName
 			diffs[i].SourcePath = doc.SourcePath
@@ -159,9 +209,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		}
 		if !specExists {
 			entryPath := fmt.Sprintf("$.repositories[%d]", doc.SetEntryIndex)
-			updated, err := yamledit.Merge(data, doc.DocIndex, entryPath, map[string]any{
-				"spec": newOverride,
-			})
+			updated, err := mergeNewSpec(data, doc.DocIndex, entryPath, newOverride)
 			if err != nil {
 				return plan, fmt.Errorf("yamledit patch for %s doc %d path %s: %w",
 					doc.SourcePath, doc.DocIndex, yamlPath, err)
@@ -190,6 +238,43 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 	}
 
 	return plan, nil
+}
+
+// mergeNewSpec writes spec as the entry's new spec. Marshaling the struct
+// drops empty collections (omitempty), so the ones spec sets to [] are
+// merged in afterwards.
+func mergeNewSpec(data []byte, docIndex int, entryPath string, spec manifest.RepositorySpec) ([]byte, error) {
+	var empty yaml.MapSlice
+	for _, desc := range repositoryFieldDescriptors {
+		if desc.isSet == nil || !desc.isSet(spec) {
+			continue
+		}
+		var n int
+		if desc.kind == fieldStringSlice {
+			n = len(desc.sliceVal(spec))
+		} else {
+			n = reflect.ValueOf(desc.valueVal(spec)).Len()
+		}
+		if n == 0 {
+			empty = append(empty, yaml.MapItem{Key: desc.key, Value: []any{}})
+		}
+	}
+
+	if len(empty) == 0 {
+		return yamledit.Merge(data, docIndex, entryPath, map[string]any{"spec": spec})
+	}
+	// Merging an empty struct would write "spec: {}" in flow style.
+	b, err := yaml.Marshal(spec)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(string(b)) == "{}" {
+		return yamledit.Merge(data, docIndex, entryPath, map[string]any{"spec": empty})
+	}
+	if data, err = yamledit.Merge(data, docIndex, entryPath, map[string]any{"spec": spec}); err != nil {
+		return nil, err
+	}
+	return yamledit.Merge(data, docIndex, entryPath+".spec", empty)
 }
 
 func repositorySetEntrySpecExists(data []byte, docIndex, entryIndex int) (bool, error) {
@@ -262,7 +347,10 @@ type repositoryFieldDescriptor struct {
 	boolVal   func(spec manifest.RepositorySpec) *bool
 	sliceVal  func(spec manifest.RepositorySpec) []string
 	valueVal  func(spec manifest.RepositorySpec) any
-	prefix    string
+	// isSet reports the collection's Set flag: an empty collection that is
+	// set is written as [] instead of removing the key.
+	isSet  func(spec manifest.RepositorySpec) bool
+	prefix string
 }
 
 type repositoryPatchPlan struct {
@@ -350,6 +438,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		sliceVal: func(spec manifest.RepositorySpec) []string {
 			return spec.Topics
 		},
+		isSet: func(spec manifest.RepositorySpec) bool { return spec.TopicsSet },
 	},
 	{
 		diffField: "features.issues",
@@ -556,6 +645,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		valueVal: func(spec manifest.RepositorySpec) any {
 			return spec.BranchProtection
 		},
+		isSet: func(spec manifest.RepositorySpec) bool { return spec.BranchProtectionSet },
 	},
 	{
 		prefix: "rulesets.",
@@ -564,6 +654,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		valueVal: func(spec manifest.RepositorySpec) any {
 			return spec.Rulesets
 		},
+		isSet: func(spec manifest.RepositorySpec) bool { return spec.RulesetsSet },
 	},
 	{
 		prefix: "variables.",
@@ -572,6 +663,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		valueVal: func(spec manifest.RepositorySpec) any {
 			return spec.Variables
 		},
+		isSet: func(spec manifest.RepositorySpec) bool { return spec.VariablesSet },
 	},
 	{
 		prefix: "labels.",
@@ -580,6 +672,7 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		valueVal: func(spec manifest.RepositorySpec) any {
 			return spec.Labels
 		},
+		isSet: func(spec manifest.RepositorySpec) bool { return spec.LabelsSet },
 	},
 }
 
@@ -616,7 +709,8 @@ func (d repositoryFieldDescriptor) matches(field string) bool {
 	if d.diffField != "" {
 		return d.diffField == field
 	}
-	return isPrefixedField(field, d.prefix)
+	// A collection as a whole (e.g. "labels: (defaults) -> []") or one item.
+	return field == d.key || isPrefixedField(field, d.prefix)
 }
 
 func (d repositoryFieldDescriptor) apply(plan *repositoryPatchPlan, spec manifest.RepositorySpec) {
@@ -626,9 +720,13 @@ func (d repositoryFieldDescriptor) apply(plan *repositoryPatchPlan, spec manifes
 	case fieldBool:
 		applyBoolDescriptor(plan, d, d.boolVal(spec))
 	case fieldStringSlice:
+		if d.isSet != nil && d.isSet(spec) && len(d.sliceVal(spec)) == 0 {
+			plan.mergeTarget(d)[d.key] = []string{}
+			return
+		}
 		applyStringSliceDescriptor(plan, d, d.sliceVal(spec))
 	case fieldCollection:
-		applyCollectionDescriptor(plan, d, d.valueVal(spec))
+		applyCollectionDescriptor(plan, d, d.valueVal(spec), d.isSet != nil && d.isSet(spec))
 	}
 }
 
@@ -656,8 +754,12 @@ func applyStringSliceDescriptor(plan *repositoryPatchPlan, desc repositoryFieldD
 	plan.mergeTarget(desc)[desc.key] = value
 }
 
-func applyCollectionDescriptor(plan *repositoryPatchPlan, desc repositoryFieldDescriptor, value any) {
+func applyCollectionDescriptor(plan *repositoryPatchPlan, desc repositoryFieldDescriptor, value any, set bool) {
 	if reflect.ValueOf(value).Len() == 0 {
+		if set {
+			plan.rootMerge[desc.key] = []any{}
+			return
+		}
 		plan.deletes = append(plan.deletes, plan.pathFor(desc))
 		return
 	}
@@ -1157,14 +1259,14 @@ func rulesetCreateDiffs(name string, rs manifest.Ruleset) []FieldDiff {
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), rs.Rules.Creation)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), rs.Rules.RequiredLinearHistory)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_signatures", name), rs.Rules.RequiredSignatures)
-	if rs.Rules.PullRequest != nil {
+	if rs.Rules.PullRequestEnabled() {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.pull_request", name),
 			Old:   nil,
 			New:   "enabled",
 		})
 	}
-	if rs.Rules.RequiredStatusChecks != nil {
+	if rs.Rules.StatusChecksEnabled() {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.required_status_checks", name),
 			Old:   nil,
@@ -1222,18 +1324,18 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 	if !reflect.DeepEqual(local.Rules.PullRequest, imported.Rules.PullRequest) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.pull_request", name),
-			Old:   enabledSummary(local.Rules.PullRequest != nil),
-			New:   enabledSummary(imported.Rules.PullRequest != nil),
+			Old:   enabledSummary(local.Rules.PullRequestEnabled()),
+			New:   enabledSummary(imported.Rules.PullRequestEnabled()),
 		})
 	}
 	if !reflect.DeepEqual(local.Rules.RequiredStatusChecks, imported.Rules.RequiredStatusChecks) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.required_status_checks", name),
-			Old:   enabledSummary(local.Rules.RequiredStatusChecks != nil),
-			New:   enabledSummary(imported.Rules.RequiredStatusChecks != nil),
+			Old:   enabledSummary(local.Rules.StatusChecksEnabled()),
+			New:   enabledSummary(imported.Rules.StatusChecksEnabled()),
 		})
 	}
-	if !reflect.DeepEqual(local.BypassActors, imported.BypassActors) {
+	if (len(local.BypassActors) > 0 || len(imported.BypassActors) > 0) && !reflect.DeepEqual(local.BypassActors, imported.BypassActors) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.bypass_actors", name),
 			Old:   fmt.Sprintf("%d actors", len(local.BypassActors)),
@@ -1317,40 +1419,49 @@ func compareLabels(local, imported []manifest.Label) []FieldDiff {
 	}
 
 	type labelVal struct {
+		Name        string
 		Color       string
 		Description string
 	}
 
+	// Labels are keyed by lowercase name, as GitHub matches them; a
+	// difference only in case is a change of that label.
 	localMap := make(map[string]labelVal)
 	for _, l := range local {
-		localMap[l.Name] = labelVal{Color: l.Color, Description: l.Description}
+		localMap[strings.ToLower(l.Name)] = labelVal{Name: l.Name, Color: l.Color, Description: derefStr(l.Description)}
 	}
 	importedMap := make(map[string]labelVal)
 	for _, l := range imported {
-		importedMap[l.Name] = labelVal{Color: l.Color, Description: l.Description}
+		importedMap[strings.ToLower(l.Name)] = labelVal{Name: l.Name, Color: l.Color, Description: derefStr(l.Description)}
 	}
 
 	var diffs []FieldDiff
 
-	for name, iv := range importedMap {
-		lv, exists := localMap[name]
+	for key, iv := range importedMap {
+		lv, exists := localMap[key]
 		if !exists || lv != iv {
 			var old any
+			newVal := formatLabelSummary(iv.Color, iv.Description)
 			if exists {
-				old = formatLabelSummary(lv.Color, lv.Description)
+				oldVal := formatLabelSummary(lv.Color, lv.Description)
+				if lv.Name != iv.Name {
+					oldVal = lv.Name + " " + oldVal
+					newVal = iv.Name + " " + newVal
+				}
+				old = oldVal
 			}
 			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("labels.%s", name),
+				Field: fmt.Sprintf("labels.%s", iv.Name),
 				Old:   old,
-				New:   formatLabelSummary(iv.Color, iv.Description),
+				New:   newVal,
 			})
 		}
 	}
 
-	for name, lv := range localMap {
-		if _, exists := importedMap[name]; !exists {
+	for key, lv := range localMap {
+		if _, exists := importedMap[key]; !exists {
 			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("labels.%s", name),
+				Field: fmt.Sprintf("labels.%s", lv.Name),
 				Old:   formatLabelSummary(lv.Color, lv.Description),
 				New:   nil,
 			})
@@ -1539,7 +1650,97 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 		override.LabelSync = imported.LabelSync
 	}
 
+	// A collection GitHub has none of, while the defaults have some, is
+	// written as [] so the entry does not inherit the defaults.
+	if len(defaults.Topics) > 0 && len(imported.Topics) == 0 {
+		override.Topics, override.TopicsSet = []string{}, true
+	}
+	if len(defaults.BranchProtection) > 0 && len(imported.BranchProtection) == 0 {
+		override.BranchProtection, override.BranchProtectionSet = []manifest.BranchProtection{}, true
+	}
+	if len(defaults.Rulesets) > 0 && len(imported.Rulesets) == 0 {
+		override.Rulesets, override.RulesetsSet = []manifest.Ruleset{}, true
+	}
+	if len(defaults.Variables) > 0 && len(imported.Variables) == 0 {
+		override.Variables, override.VariablesSet = []manifest.Variable{}, true
+	}
+	if len(defaults.Labels) > 0 && len(imported.Labels) == 0 {
+		override.Labels, override.LabelsSet = []manifest.Label{}, true
+	}
+
 	return override
+}
+
+// emptyOverrideDiffs reports the collections the new override writes as []
+// while the entry did not set them: compareSpecs sees both as empty.
+func emptyOverrideDiffs(entry, override manifest.RepositorySpec) []FieldDiff {
+	var diffs []FieldDiff
+	add := func(field string, entrySet, overrideSet bool, overrideLen int) {
+		if overrideSet && overrideLen == 0 && !entrySet {
+			diffs = append(diffs, FieldDiff{Field: field, Old: "(defaults)", New: "[]"})
+		}
+	}
+	add("topics", entry.TopicsSet, override.TopicsSet, len(override.Topics))
+	add("branch_protection", entry.BranchProtectionSet, override.BranchProtectionSet, len(override.BranchProtection))
+	add("rulesets", entry.RulesetsSet, override.RulesetsSet, len(override.Rulesets))
+	add("variables", entry.VariablesSet, override.VariablesSet, len(override.Variables))
+	add("labels", entry.LabelsSet, override.LabelsSet, len(override.Labels))
+	return diffs
+}
+
+// missingDefaultsWarnings names the default items a repository does not have
+// on GitHub. A RepositorySet entry cannot drop single default items, so
+// import cannot write this and plan will add them back.
+func missingDefaultsWarnings(defaults, imported manifest.RepositorySpec) []RepoWarning {
+	var warnings []RepoWarning
+	check := func(field string, defaultKeys, importedKeys []string) {
+		if len(importedKeys) == 0 {
+			return // written as [] instead
+		}
+		have := make(map[string]bool, len(importedKeys))
+		for _, k := range importedKeys {
+			have[k] = true
+		}
+		var missing []string
+		for _, k := range defaultKeys {
+			if !have[k] {
+				missing = append(missing, k)
+			}
+		}
+		if len(missing) > 0 {
+			warnings = append(warnings, RepoWarning{
+				Field: field,
+				Message: fmt.Sprintf("in defaults but not on GitHub: %s (an entry cannot drop default items, so plan will create them)",
+					strings.Join(missing, ", ")),
+			})
+		}
+	}
+	keys := func(n int, key func(int) string) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = key(i)
+		}
+		return out
+	}
+	check("branch_protection",
+		keys(len(defaults.BranchProtection), func(i int) string { return defaults.BranchProtection[i].Pattern }),
+		keys(len(imported.BranchProtection), func(i int) string { return imported.BranchProtection[i].Pattern }))
+	check("rulesets",
+		keys(len(defaults.Rulesets), func(i int) string { return defaults.Rulesets[i].Name }),
+		keys(len(imported.Rulesets), func(i int) string { return imported.Rulesets[i].Name }))
+	check("variables",
+		keys(len(defaults.Variables), func(i int) string { return defaults.Variables[i].Name }),
+		keys(len(imported.Variables), func(i int) string { return imported.Variables[i].Name }))
+	// Label names are matched ignoring case, as GitHub does.
+	check("labels",
+		keys(len(defaults.Labels), func(i int) string { return strings.ToLower(defaults.Labels[i].Name) }),
+		keys(len(imported.Labels), func(i int) string { return strings.ToLower(imported.Labels[i].Name) }))
+	return warnings
+}
+
+// labelsEqual compares labels by value; Description is a pointer.
+func labelsEqual(a, b manifest.Label) bool {
+	return a.Name == b.Name && a.Color == b.Color && derefStr(a.Description) == derefStr(b.Description)
 }
 
 // minimalLabels returns only the imported labels that are new or different from defaults.
@@ -1548,14 +1749,16 @@ func minimalLabels(defaults, imported []manifest.Label) []manifest.Label {
 		return nil
 	}
 
+	// Keyed by lowercase name, as RepositorySet merges labels; labelsEqual
+	// still compares the name exactly, so GitHub's casing is written.
 	defaultMap := make(map[string]manifest.Label, len(defaults))
 	for _, l := range defaults {
-		defaultMap[l.Name] = l
+		defaultMap[strings.ToLower(l.Name)] = l
 	}
 
 	var result []manifest.Label
 	for _, l := range imported {
-		if dl, ok := defaultMap[l.Name]; !ok || dl != l {
+		if dl, ok := defaultMap[strings.ToLower(l.Name)]; !ok || !labelsEqual(dl, l) {
 			result = append(result, l)
 		}
 	}
@@ -1636,7 +1839,7 @@ func minimalRulesets(defaults, imported []manifest.Ruleset) []manifest.Ruleset {
 
 	var result []manifest.Ruleset
 	for _, rs := range imported {
-		if drs, ok := defaultMap[rs.Name]; !ok || !reflect.DeepEqual(drs, rs) {
+		if drs, ok := defaultMap[rs.Name]; !ok || !rulesetsEqual(drs, rs) {
 			result = append(result, rs)
 		}
 	}

@@ -70,6 +70,7 @@ type CurrentBranchProtection struct {
 	RequireCodeOwnerReviews bool
 	RequireStatusChecks     *CurrentStatusChecks
 	EnforceAdmins           bool
+	RestrictPushes          bool // push restrictions are configured
 	AllowForcePushes        bool
 	AllowDeletions          bool
 }

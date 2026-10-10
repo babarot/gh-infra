@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -508,7 +509,9 @@ func TestApplySkipsNoOp(t *testing.T) {
 }
 
 func TestApplyBranchProtection(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Errors: map[string]error{
+		"api repos/myorg/myrepo/branches/main/protection": fmt.Errorf("%w: Branch not protected", gh.ErrNotFound),
+	}}
 	proc := NewProcessor(mock, nil)
 
 	reviews := 2
@@ -593,7 +596,9 @@ func TestApplyBranchProtection_Delete(t *testing.T) {
 }
 
 func TestApplyBranchProtection_ChildrenAreDisplayOnly(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Responses: map[string][]byte{
+		"api repos/myorg/myrepo/branches/main/protection": []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
+	}}
 	proc := NewProcessor(mock, nil)
 
 	reviews := 2
@@ -621,8 +626,14 @@ func TestApplyBranchProtection_ChildrenAreDisplayOnly(t *testing.T) {
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected parent change to be applied once, got %d calls: %v", len(mock.Called), mock.Called)
+	puts := 0
+	for _, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "--method PUT") {
+			puts++
+		}
+	}
+	if puts != 1 {
+		t.Fatalf("expected parent change to be applied once, got calls: %v", mock.Called)
 	}
 }
 
@@ -802,10 +813,12 @@ func TestApplyRuleset_Create(t *testing.T) {
 
 func TestApplyRuleset_Update(t *testing.T) {
 	// Mock returns list of rulesets for ID resolution
-	listResp := `[{"id":42,"name":"protect-main","target":"branch"}]`
+	listResp := `[{"id":42,"name":"protect-main","target":"branch","source_type":"Repository"}]`
+	getResp := `{"id":42,"name":"protect-main","target":"branch","enforcement":"active","node_id":"X","bypass_actors":[],"rules":[{"type":"deletion"}]}`
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
-			"api repos/myorg/myrepo/rulesets": []byte(listResp),
+			"api repos/myorg/myrepo/rulesets":    []byte(listResp),
+			"api repos/myorg/myrepo/rulesets/42": []byte(getResp),
 		},
 	}
 	proc := NewProcessor(mock, nil)
@@ -839,17 +852,64 @@ func TestApplyRuleset_Update(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 
-	found := false
-	for _, call := range mock.Called {
+	var body []byte
+	for i, call := range mock.Called {
 		joined := strings.Join(call, " ")
 		if strings.Contains(joined, "repos/myorg/myrepo/rulesets/42") &&
 			strings.Contains(joined, "PUT") {
-			found = true
+			body = mock.CalledStdin[i]
 			break
 		}
 	}
-	if !found {
-		t.Errorf("expected PUT to rulesets/42 endpoint, got calls: %v", mock.Called)
+	if body == nil {
+		t.Fatalf("expected PUT to rulesets/42 endpoint, got calls: %v", mock.Called)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(body, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent["enforcement"] != "evaluate" {
+		t.Errorf("enforcement = %v, want evaluate", sent["enforcement"])
+	}
+	if _, ok := sent["node_id"]; ok {
+		t.Error("read-only fields from the GET must not be sent")
+	}
+	if rules, _ := sent["rules"].([]any); len(rules) != 1 {
+		t.Errorf("rules = %v, want the current deletion rule kept", sent["rules"])
+	}
+}
+
+func TestApplyRuleset_UpdateFailsWhenCurrentCannotBeRead(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/o/r/rulesets": []byte(`[{"id":42,"name":"main","target":"branch","source_type":"Repository"}]`),
+		},
+		Errors: map[string]error{
+			"api repos/o/r/rulesets/42": fmt.Errorf("%w: boom", gh.ErrNotFound),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.Rulesets = []manifest.Ruleset{{Name: "main", Enforcement: manifest.Ptr("active")}}
+	results := proc.Apply(context.Background(), []Change{{Type: ChangeUpdate, Resource: "Ruleset[main]", Name: "o/r", Field: "ruleset"}},
+		[]*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 || results[0].Err == nil {
+		t.Fatalf("expected the update to fail, got %+v", results)
+	}
+	for _, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "PUT") {
+			t.Fatal("must not PUT without the current ruleset")
+		}
+	}
+}
+
+func TestResolveRulesetID_NameOnlySkipsOrgRulesets(t *testing.T) {
+	listResp := `[{"id":1,"name":"main","target":"branch","source_type":"Organization"},{"id":2,"name":"main","target":"tag","source_type":"Repository"}]`
+	mock := &gh.MockRunner{Responses: map[string][]byte{"api repos/o/r/rulesets": []byte(listResp)}}
+	proc := NewProcessor(mock, nil)
+	id, err := proc.resolveRulesetID(context.Background(), rulesetLookup{Repo: "o/r", RulesetName: "main"})
+	if err != nil || id != 2 {
+		t.Fatalf("id = %d, err = %v; want the repository tag ruleset 2", id, err)
 	}
 }
 
@@ -1423,6 +1483,114 @@ func TestApplyActionsPermissions_WithSHAPinningRequired(t *testing.T) {
 	}
 }
 
+func TestApplyActionsPermissions_DisabledSendsOnlyEnabled(t *testing.T) {
+	// Fields inherited from defaults must not be sent: GitHub returns 409
+	// "You can't specify 'allowed_actions' unless enabled is true".
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+
+	err := proc.applyActionsPermissions(context.Background(), "myorg", "myrepo", &manifest.Actions{
+		Enabled:            manifest.Ptr(false),
+		AllowedActions:     manifest.Ptr("all"),
+		SHAPinningRequired: manifest.Ptr(false),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(mock.CalledStdin[0], &payload); err != nil {
+		t.Fatalf("failed to parse stdin payload: %v", err)
+	}
+	want := map[string]any{"enabled": false}
+	if !reflect.DeepEqual(payload, want) {
+		t.Errorf("payload = %v, want %v", payload, want)
+	}
+}
+
+func TestApplyAllSettings_ActionsDisabledSkipsSelectedActions(t *testing.T) {
+	// A valid GET response keeps a missing guard from failing on JSON parsing
+	// instead of on the assertion below.
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/myorg/myrepo/actions/permissions/selected-actions": []byte(`{"github_owned_allowed":false,"verified_allowed":false,"patterns_allowed":[]}`),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+
+	repo := newTestRepo("myorg", "myrepo")
+	repo.Spec.Actions = &manifest.Actions{
+		Enabled:        manifest.Ptr(false),
+		AllowedActions: manifest.Ptr("selected"),
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+		},
+	}
+
+	if err := proc.applyAllSettings(context.Background(), repo); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, args := range mock.Called {
+		if call := strings.Join(args, " "); strings.Contains(call, "selected-actions") {
+			t.Errorf("unexpected selected-actions call while actions disabled: %s", call)
+		}
+	}
+}
+
+func TestApply_DisablingActionsSendsOnlyEnabled(t *testing.T) {
+	// Settings inherited from defaults stay in the manifest when Actions is
+	// disabled; plan and apply together must send only enabled: false.
+	repo := baseDesired()
+	repo.Spec.Actions = &manifest.Actions{
+		Enabled:            manifest.Ptr(false),
+		AllowedActions:     manifest.Ptr("selected"),
+		SHAPinningRequired: manifest.Ptr(true),
+		SelectedActions: &manifest.SelectedActions{
+			GithubOwnedAllowed: manifest.Ptr(true),
+		},
+	}
+	current := baseState()
+	current.Actions = CurrentActions{
+		Enabled:            true,
+		AllowedActions:     "selected",
+		SHAPinningRequired: false,
+		SelectedActions:    &CurrentSelectedActions{GithubOwnedAllowed: false},
+	}
+
+	changes := Diff(context.Background(), repo, current)
+
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	for _, r := range results {
+		if r.Err != nil {
+			t.Fatalf("unexpected error applying %s: %v", r.Change.Field, r.Err)
+		}
+	}
+	for _, args := range mock.Called {
+		if call := strings.Join(args, " "); strings.Contains(call, "selected-actions") {
+			t.Errorf("unexpected selected-actions call while actions disabled: %s", call)
+		}
+	}
+	if len(mock.Called) != 1 {
+		t.Fatalf("expected 1 gh call, got %d: %v", len(mock.Called), mock.Called)
+	}
+	wantArgs := []string{"api", "repos/org/repo/actions/permissions", "--method", "PUT", "--header", "Content-Type: application/json", "--input", "-"}
+	if !reflect.DeepEqual(mock.Called[0], wantArgs) {
+		t.Errorf("args = %v, want %v", mock.Called[0], wantArgs)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(mock.CalledStdin[0], &payload); err != nil {
+		t.Fatalf("failed to parse stdin payload: %v", err)
+	}
+	want := map[string]any{"enabled": false}
+	if !reflect.DeepEqual(payload, want) {
+		t.Errorf("payload = %v, want %v", payload, want)
+	}
+}
+
 func TestApplyActionsWorkflow(t *testing.T) {
 	mock := &gh.MockRunner{}
 	proc := NewProcessor(mock, nil)
@@ -1444,26 +1612,71 @@ func TestApplyActionsWorkflow(t *testing.T) {
 }
 
 func TestApplyActionsSelectedActions(t *testing.T) {
-	mock := &gh.MockRunner{}
-	proc := NewProcessor(mock, nil)
+	const endpoint = "api repos/myorg/myrepo/actions/permissions/selected-actions"
+	put := func(t *testing.T, mock *gh.MockRunner) map[string]any {
+		t.Helper()
+		for i, call := range mock.Called {
+			if strings.Contains(strings.Join(call, " "), "--method PUT") {
+				var body map[string]any
+				if err := json.Unmarshal(mock.CalledStdin[i], &body); err != nil {
+					t.Fatal(err)
+				}
+				return body
+			}
+		}
+		t.Fatalf("no PUT, calls: %v", mock.Called)
+		return nil
+	}
 
-	err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
-		SelectedActions: &manifest.SelectedActions{
-			GithubOwnedAllowed: manifest.Ptr(true),
-			VerifiedAllowed:    manifest.Ptr(false),
-			PatternsAllowed:    []string{"actions/*"},
-		},
+	t.Run("keeps what the manifest leaves out", func(t *testing.T) {
+		mock := &gh.MockRunner{Responses: map[string][]byte{
+			endpoint: []byte(`{"github_owned_allowed":false,"verified_allowed":true,"patterns_allowed":["octo/*"]}`),
+		}}
+		proc := NewProcessor(mock, nil)
+		err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
+			SelectedActions: &manifest.SelectedActions{GithubOwnedAllowed: manifest.Ptr(true)},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := put(t, mock)
+		if body["github_owned_allowed"] != true || body["verified_allowed"] != true {
+			t.Errorf("body = %v", body)
+		}
+		if patterns, _ := body["patterns_allowed"].([]any); len(patterns) != 1 {
+			t.Errorf("patterns_allowed = %v, want the current patterns kept", body["patterns_allowed"])
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
-	}
-	call := strings.Join(mock.Called[0], " ")
-	if !strings.Contains(call, "actions/permissions/selected-actions") {
-		t.Errorf("expected selected-actions endpoint, got: %s", call)
-	}
+
+	t.Run("409 means nothing to keep", func(t *testing.T) {
+		mock := &gh.MockRunner{Errors: map[string]error{endpoint: fmt.Errorf("%w: Conflict", gh.ErrConflict)}}
+		proc := NewProcessor(mock, nil)
+		err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
+			SelectedActions: &manifest.SelectedActions{PatternsAllowed: []string{"actions/*"}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body := put(t, mock); len(body) != 1 {
+			t.Errorf("body = %v, want only patterns_allowed", body)
+		}
+	})
+
+	t.Run("other GET errors fail without a PUT", func(t *testing.T) {
+		mock := &gh.MockRunner{Errors: map[string]error{endpoint: fmt.Errorf("%w: no", gh.ErrForbidden)}}
+		proc := NewProcessor(mock, nil)
+		err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
+			SelectedActions: &manifest.SelectedActions{PatternsAllowed: []string{"actions/*"}},
+		})
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		for _, call := range mock.Called {
+			if strings.Contains(strings.Join(call, " "), "PUT") {
+				t.Fatal("must not PUT")
+			}
+		}
+	})
 }
 
 func TestApplyActionsSelectedActions_NilSelectedActions(t *testing.T) {
@@ -1578,7 +1791,7 @@ func TestApplyMilestone_Create(t *testing.T) {
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Milestones = []manifest.Milestone{
-		{Title: "v1.0", Description: "First release", State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
+		{Title: "v1.0", Description: manifest.Ptr("First release"), State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
 	}
 
 	changes := []Change{
@@ -1731,7 +1944,7 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Labels = []manifest.Label{
-		{Name: "enhancement", Color: "eeeeee", Description: "New feature"},
+		{Name: "enhancement", Color: "eeeeee", Description: manifest.Ptr("New feature")},
 	}
 
 	// Label update produces a Change with Children (one per changed field).
@@ -1757,8 +1970,8 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 		t.Fatalf("expected 1 call, got %d", len(mock.Called))
 	}
 	call := strings.Join(mock.Called[0], " ")
-	if !strings.Contains(call, "label edit enhancement") {
-		t.Errorf("expected 'label edit enhancement', got: %s", call)
+	if !strings.Contains(call, "api repos/myorg/myrepo/labels/enhancement --method PATCH") {
+		t.Errorf("expected a PATCH to the enhancement label, got: %s", call)
 	}
 }
 
@@ -2219,5 +2432,141 @@ func TestWrapError_ForbiddenKeepsAPIMessage(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Upgrade to GitHub Pro") {
 		t.Errorf("error = %q, want GitHub's message", err)
+	}
+}
+
+func TestApplyBranchProtection_UsesCurrentEvenWhenPlannedAsCreate(t *testing.T) {
+	// Plan can miss a protected branch; apply reads the protection itself
+	// and keeps what the manifest leaves out.
+	mock := &gh.MockRunner{Responses: map[string][]byte{
+		"api repos/o/r/branches/main/protection": []byte(`{"enforce_admins":{"enabled":true},"required_status_checks":{"strict":true,"checks":[{"context":"ci","app_id":null}]}}`),
+	}}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.BranchProtection = []manifest.BranchProtection{{Pattern: "main", RequiredReviews: manifest.Ptr(1)}}
+	results := proc.Apply(context.Background(), []Change{{Type: ChangeCreate, Resource: "BranchProtection[main]", Name: "o/r", Field: "branch_protection"}},
+		[]*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatal(results[0].Err)
+	}
+	var sent map[string]any
+	for i, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "--method PUT") {
+			if err := json.Unmarshal(mock.CalledStdin[i], &sent); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if sent["enforce_admins"] != true || sent["required_status_checks"] == nil {
+		t.Errorf("payload = %v, want enforce_admins and status checks kept", sent)
+	}
+}
+
+func TestApplyBranchProtection_FailsWhenCurrentCannotBeRead(t *testing.T) {
+	mock := &gh.MockRunner{Errors: map[string]error{
+		"api repos/o/r/branches/main/protection": fmt.Errorf("%w: boom", gh.ErrForbidden),
+	}}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.BranchProtection = []manifest.BranchProtection{{Pattern: "main", RequiredReviews: manifest.Ptr(1)}}
+	results := proc.Apply(context.Background(), []Change{{Type: ChangeUpdate, Resource: "BranchProtection[main]", Name: "o/r", Field: "branch_protection"}},
+		[]*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "PUT") {
+			t.Fatal("must not PUT without the current protection")
+		}
+	}
+}
+
+func TestApplyMilestone_SendsOnlySetFields(t *testing.T) {
+	mock := &gh.MockRunner{Responses: map[string][]byte{
+		"api repos/o/r/milestones?state=all&per_page=100 --paginate": []byte(`[{"number":7,"title":"v1"}]`),
+	}}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.Milestones = []manifest.Milestone{{Title: "v1", DueOn: manifest.Ptr("")}}
+	if err := proc.applyMilestone(context.Background(), Change{Type: ChangeUpdate, Resource: manifest.ResourceMilestone, Field: "v1"}, repo); err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	for i, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "PATCH") {
+			if err := json.Unmarshal(mock.CalledStdin[i], &body); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(body) != 2 || body["title"] != "v1" {
+		t.Fatalf("body = %v, want only title and due_on", body)
+	}
+	if v, ok := body["due_on"]; !ok || v != nil {
+		t.Errorf("due_on = %v, want null to clear", v)
+	}
+}
+
+func TestApplyLabel_UpdateSendsDescriptionOnlyWhenSet(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		description *string
+		want        map[string]any
+	}{
+		{"omitted", nil, map[string]any{"color": "d73a4a"}},
+		{"cleared", manifest.Ptr(""), map[string]any{"color": "d73a4a", "description": ""}},
+		{"set", manifest.Ptr("A bug"), map[string]any{"color": "d73a4a", "description": "A bug"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{}
+			proc := NewProcessor(mock, nil)
+			repo := newTestRepo("o", "r")
+			repo.Spec.Labels = []manifest.Label{{Name: "kind/bug", Color: "d73a4a", Description: tt.description}}
+			if err := proc.applyLabel(context.Background(), Change{Type: ChangeUpdate, Resource: manifest.ResourceLabel, Field: "kind/bug"}, repo); err != nil {
+				t.Fatal(err)
+			}
+			if len(mock.Called) != 1 {
+				t.Fatalf("calls = %v", mock.Called)
+			}
+			call := strings.Join(mock.Called[0], " ")
+			if !strings.Contains(call, "api repos/o/r/labels/kind%2Fbug --method PATCH") {
+				t.Errorf("call = %s, want a PATCH to the escaped label path", call)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(mock.CalledStdin[0], &body); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(body, tt.want) {
+				t.Errorf("body = %v, want %v", body, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyLabel_CaseOnlyRenamePatchesCurrentName(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.Labels = []manifest.Label{{Name: "Kind/Bug", Color: "d73a4a"}}
+	c := Change{
+		Type:     ChangeUpdate,
+		Resource: manifest.ResourceLabel,
+		Field:    "Kind/Bug",
+		Details:  []Change{{Type: ChangeUpdate, Field: "name", OldValue: "kind/bug", NewValue: "Kind/Bug"}},
+	}
+	if err := proc.applyLabel(context.Background(), c, repo); err != nil {
+		t.Fatal(err)
+	}
+	call := strings.Join(mock.Called[0], " ")
+	if !strings.Contains(call, "api repos/o/r/labels/kind%2Fbug --method PATCH") {
+		t.Errorf("call = %s, want a PATCH to the current name", call)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(mock.CalledStdin[0], &body); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"color": "d73a4a", "new_name": "Kind/Bug"}
+	if !reflect.DeepEqual(body, want) {
+		t.Errorf("body = %v, want %v", body, want)
 	}
 }

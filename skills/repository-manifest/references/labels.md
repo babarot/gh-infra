@@ -10,8 +10,10 @@ spec:
       description: "A bug; unintended behavior"
 ```
 
-- `name` must be unique in the list
-- `color` is hex without `#`
+- `name` must be unique in the list, ignoring case (GitHub label names are case-insensitive; `Bug` and `bug` in one list fail validation)
+- a manifest name that differs from the GitHub one only in case is the same label; plan/apply rename it to the manifest's casing
+- `color` is hex without `#` (required)
+- `description` left out keeps the current description of an existing label; `""` clears it
 
 ## Reconcile Mode
 

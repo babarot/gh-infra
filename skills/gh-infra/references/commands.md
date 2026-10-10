@@ -22,7 +22,7 @@ Use `--into` to pull live GitHub state back into existing manifests and local fi
 gh infra validate [path...]
 ```
 
-- Checks YAML syntax and schema only
+- Checks YAML syntax and schema, plus checks across manifests (e.g. two `pull_request` FileSets sharing a branch on one repo)
 - Does not contact GitHub
 - Exits nonzero on validation failure
 - Accepts multiple paths: `gh infra validate ./repos/ ./files/`
@@ -40,6 +40,7 @@ Flags:
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
 - `-o`, `--output json`: print only a JSON document on stdout (summary, changes, warnings, errors); prefer it over parsing text
+- `-o`, `--output markdown`: print only a pull request comment (summary, a collapsed table per repository, warnings, errors)
 
 Exit status:
 

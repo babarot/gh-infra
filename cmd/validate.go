@@ -51,10 +51,13 @@ func runValidate(args []string, failOnUnknown bool) error {
 		}
 		parsed.Merge(result)
 	}
+	if err := parsed.Validate(); err != nil {
+		return err
+	}
 
 	// Print deprecation warnings
 	for _, w := range parsed.Warnings {
-		p.Warning("deprecation", w)
+		p.Warning("warning", w)
 	}
 
 	p.Success("Valid", fmt.Sprintf("%d repositories, %d filesets defined", len(parsed.Repositories), len(parsed.FileSets)))
