@@ -716,13 +716,29 @@ func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *m
 }
 
 func (p *Processor) applyBranchProtectionViaAPI(ctx context.Context, owner, name string, bp *manifest.BranchProtection) error {
-	payload := buildBranchProtectionPayload(bp)
+	endpoint := fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, bp.Pattern)
+
+	// The PUT replaces the whole protection, so an update is built from the
+	// current one. Read it here instead of trusting the planned change type:
+	// a protected branch that plan missed must not be overwritten from the
+	// manifest alone. 404 means the branch is not protected yet.
+	var payload map[string]any
+	current, err := p.runner.Run(ctx, "api", endpoint)
+	switch {
+	case errors.Is(err, gh.ErrNotFound):
+		payload = buildBranchProtectionPayload(bp)
+	case err != nil:
+		return wrapError(err, owner+"/"+name, "branch_protection:"+bp.Pattern)
+	default:
+		payload, err = buildBranchProtectionUpdatePayload(bp, current)
+		if err != nil {
+			return err
+		}
+	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal branch protection: %w", err)
 	}
-
-	endpoint := fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, name, bp.Pattern)
 
 	_, err = p.runner.RunWithStdin(ctx, payloadJSON,
 		"api", endpoint,
@@ -732,42 +748,6 @@ func (p *Processor) applyBranchProtectionViaAPI(ctx context.Context, owner, name
 		"--input", "-",
 	)
 	return wrapError(err, owner+"/"+name, "branch_protection:"+bp.Pattern)
-}
-
-func buildBranchProtectionPayload(bp *manifest.BranchProtection) map[string]any {
-	payload := map[string]any{
-		"enforce_admins":     derefBool(bp.EnforceAdmins),
-		"restrictions":       nil,
-		"allow_force_pushes": derefBool(bp.AllowForcePushes),
-		"allow_deletions":    derefBool(bp.AllowDeletions),
-	}
-
-	if bp.RequiredReviews != nil || bp.DismissStaleReviews != nil || bp.RequireCodeOwnerReviews != nil {
-		reviews := map[string]any{}
-		if bp.RequiredReviews != nil {
-			reviews["required_approving_review_count"] = *bp.RequiredReviews
-		}
-		if bp.DismissStaleReviews != nil {
-			reviews["dismiss_stale_reviews"] = *bp.DismissStaleReviews
-		}
-		if bp.RequireCodeOwnerReviews != nil {
-			reviews["require_code_owner_reviews"] = *bp.RequireCodeOwnerReviews
-		}
-		payload["required_pull_request_reviews"] = reviews
-	} else {
-		payload["required_pull_request_reviews"] = nil
-	}
-
-	if bp.RequireStatusChecks != nil {
-		payload["required_status_checks"] = map[string]any{
-			"strict":   bp.RequireStatusChecks.Strict,
-			"contexts": bp.RequireStatusChecks.Contexts,
-		}
-	} else {
-		payload["required_status_checks"] = nil
-	}
-
-	return payload
 }
 
 func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.Repository) error {

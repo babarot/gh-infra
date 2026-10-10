@@ -676,7 +676,13 @@ func mergeBranchProtectionEntry(base, override BranchProtection) BranchProtectio
 		result.RequireCodeOwnerReviews = override.RequireCodeOwnerReviews
 	}
 	if override.RequireStatusChecks != nil {
-		result.RequireStatusChecks = override.RequireStatusChecks
+		// strict is a plain bool and comes from the entry; contexts only
+		// when the entry sets them, so a set-level list is not lost.
+		sc := *override.RequireStatusChecks
+		if sc.Contexts == nil && base.RequireStatusChecks != nil {
+			sc.Contexts = base.RequireStatusChecks.Contexts
+		}
+		result.RequireStatusChecks = &sc
 	}
 	if override.EnforceAdmins != nil {
 		result.EnforceAdmins = override.EnforceAdmins

@@ -111,3 +111,7 @@ spec:
 ```
 
 Each `pattern` must be unique.
+
+- updating a protected branch changes only what the manifest sets; omitted fields and settings gh-infra does not model (`require_last_push_approval`, dismissal restrictions, bypass and push allowances, `lock_branch`, ...) keep their current values, and plan compares only what is set
+- `require_status_checks.contexts` left out keeps the current checks; written, it replaces them (and drops their app binding); `strict` is `false` when not written
+- `restrict_pushes: true` adds a push restriction, `false` removes it (organization repositories only)

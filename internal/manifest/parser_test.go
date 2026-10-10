@@ -2779,3 +2779,15 @@ repositories:
 		t.Errorf("NEW_SECRET not appended: got %+v", secrets[2])
 	}
 }
+
+func TestMergeBranchProtectionEntry_StatusChecksKeepDefaultContexts(t *testing.T) {
+	base := BranchProtection{Pattern: "main", RequireStatusChecks: &StatusChecks{Strict: false, Contexts: []string{"ci"}}}
+	got := mergeBranchProtectionEntry(base, BranchProtection{Pattern: "main", RequireStatusChecks: &StatusChecks{Strict: true}})
+	if !got.RequireStatusChecks.Strict || len(got.RequireStatusChecks.Contexts) != 1 || got.RequireStatusChecks.Contexts[0] != "ci" {
+		t.Errorf("status checks = %+v, want strict from the entry and contexts from defaults", got.RequireStatusChecks)
+	}
+	got = mergeBranchProtectionEntry(base, BranchProtection{Pattern: "main", RequireStatusChecks: &StatusChecks{Contexts: []string{"build"}}})
+	if len(got.RequireStatusChecks.Contexts) != 1 || got.RequireStatusChecks.Contexts[0] != "build" {
+		t.Errorf("contexts = %v, want the entry's", got.RequireStatusChecks.Contexts)
+	}
+}
