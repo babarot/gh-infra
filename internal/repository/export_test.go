@@ -439,9 +439,7 @@ func TestToManifest_Labels(t *testing.T) {
 	if bug.Color != "d73a4a" {
 		t.Errorf("bug.Color = %q, want %q", bug.Color, "d73a4a")
 	}
-	if bug.Description != "A bug" {
-		t.Errorf("bug.Description = %q, want %q", bug.Description, "A bug")
-	}
+	assertStringPtr(t, "bug.Description", bug.Description, "A bug")
 
 	feat, ok := labelMap["kind/feature"]
 	if !ok {

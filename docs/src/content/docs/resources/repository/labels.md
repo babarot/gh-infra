@@ -23,7 +23,7 @@ spec:
 |-------|------|----------|-------------|
 | `name` | string | yes | Label name (must be unique within the list) |
 | `color` | string | yes | Hex color code without `#` prefix (e.g., `d73a4a`) |
-| `description` | string | no | Short description of the label's purpose |
+| `description` | string | no | Short description of the label's purpose. Leaving it out keeps the label's current description; `""` clears it |
 
 ## Reconcile Mode
 

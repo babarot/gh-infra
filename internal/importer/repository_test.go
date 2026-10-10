@@ -676,16 +676,16 @@ func TestMinimalOverride_TopicsOverride(t *testing.T) {
 func TestMinimalOverride_LabelsOnlyDiff(t *testing.T) {
 	defaults := manifest.RepositorySpec{
 		Labels: []manifest.Label{
-			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
-			{Name: "kind/feature", Color: "425df5", Description: "A feature"},
+			{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
+			{Name: "kind/feature", Color: "425df5", Description: manifest.Ptr("A feature")},
 		},
 	}
 
 	imported := manifest.RepositorySpec{
 		Labels: []manifest.Label{
-			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},         // same
-			{Name: "kind/feature", Color: "FF0000", Description: "A feature"}, // color changed
-			{Name: "custom", Color: "00FF00", Description: "Custom label"},    // new
+			{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},         // same
+			{Name: "kind/feature", Color: "FF0000", Description: manifest.Ptr("A feature")}, // color changed
+			{Name: "custom", Color: "00FF00", Description: manifest.Ptr("Custom label")},    // new
 		},
 	}
 
@@ -704,7 +704,7 @@ func TestMinimalOverride_LabelsOnlyDiff(t *testing.T) {
 
 func TestMinimalOverride_LabelsAllSame(t *testing.T) {
 	labels := []manifest.Label{
-		{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
+		{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 	}
 	defaults := manifest.RepositorySpec{Labels: labels}
 	imported := manifest.RepositorySpec{Labels: labels}
@@ -1670,10 +1670,10 @@ func TestCompareVariables_NoDiff(t *testing.T) {
 
 func TestCompareLabels_Diff(t *testing.T) {
 	local := []manifest.Label{
-		{Name: "bug", Color: "d73a4a", Description: "Old desc"},
+		{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("Old desc")},
 	}
 	imported := []manifest.Label{
-		{Name: "bug", Color: "FF0000", Description: "New desc"},
+		{Name: "bug", Color: "FF0000", Description: manifest.Ptr("New desc")},
 	}
 
 	diffs := compareLabels(local, imported)
@@ -1688,7 +1688,7 @@ func TestCompareLabels_Diff(t *testing.T) {
 func TestCompareLabels_NewOnGitHub(t *testing.T) {
 	local := []manifest.Label{}
 	imported := []manifest.Label{
-		{Name: "kind/feature", Color: "425df5", Description: "A feature"},
+		{Name: "kind/feature", Color: "425df5", Description: manifest.Ptr("A feature")},
 	}
 
 	diffs := compareLabels(local, imported)
@@ -1717,7 +1717,7 @@ func TestCompareLabels_DeletedOnGitHub(t *testing.T) {
 
 func TestCompareLabels_NoDiff(t *testing.T) {
 	labels := []manifest.Label{
-		{Name: "bug", Color: "d73a4a", Description: "A bug"},
+		{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 		{Name: "feature", Color: "425df5"},
 	}
 
@@ -1954,5 +1954,16 @@ func TestMinimalRulesets_IgnoresBypassActorsPresence(t *testing.T) {
 	imported := []manifest.Ruleset{{Name: "main", BypassActors: actors}}
 	if got := minimalRulesets(defaults, imported); len(got) != 0 {
 		t.Errorf("same ruleset as defaults should not be an override, got %+v", got)
+	}
+}
+
+func TestMinimalLabels_ComparesDescriptionByValue(t *testing.T) {
+	defaults := []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")}}
+	imported := []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")}}
+	if got := minimalLabels(defaults, imported); len(got) != 0 {
+		t.Errorf("equal labels should not be an override, got %+v", got)
+	}
+	if diffs := compareLabels([]manifest.Label{{Name: "bug", Color: "d73a4a"}}, []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("")}}); len(diffs) != 0 {
+		t.Errorf("nil and empty descriptions should compare equal, got %+v", diffs)
 	}
 }

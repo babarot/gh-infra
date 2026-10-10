@@ -1152,7 +1152,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("new label", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "kind/bug", Color: "d73a4a", Description: "A bug"},
+			{Name: "kind/bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 		}
 		c := baseState()
 
@@ -1171,7 +1171,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("update label color", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "bug", Color: "FF0000", Description: "A bug"},
+			{Name: "bug", Color: "FF0000", Description: manifest.Ptr("A bug")},
 		}
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
@@ -1194,7 +1194,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("update label description", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "bug", Color: "d73a4a", Description: "Updated desc"},
+			{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("Updated desc")},
 		}
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "Old desc"}
@@ -1214,7 +1214,7 @@ func TestDiff_Labels(t *testing.T) {
 	t.Run("label same values no change", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Labels = []manifest.Label{
-			{Name: "bug", Color: "d73a4a", Description: "A bug"},
+			{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("A bug")},
 		}
 		c := baseState()
 		c.Labels["bug"] = &CurrentLabel{Name: "bug", Color: "d73a4a", Description: "A bug"}
@@ -2638,5 +2638,21 @@ func TestDiffActions_PatternsAllowedOnlyWhenSet(t *testing.T) {
 	desired.Spec.Actions.SelectedActions.PatternsAllowed = []string{}
 	if !collectChildFields(diffActions("o/r", desired, current))["selected_actions.patterns_allowed"] {
 		t.Error("patterns_allowed: [] should be planned as clearing the patterns")
+	}
+}
+
+func TestDiffLabels_OmittedDescriptionIsLeftAsIs(t *testing.T) {
+	current := baseState()
+	current.Labels = map[string]*CurrentLabel{"bug": {Name: "bug", Color: "d73a4a", Description: "Something isn't working"}}
+	desired := baseDesired()
+
+	desired.Spec.Labels = []manifest.Label{{Name: "bug", Color: "d73a4a"}}
+	if changes := diffLabels("o/r", desired, current, manifest.CollectionReconcileAdditive); len(changes) != 0 {
+		t.Errorf("omitted description should not be compared, got %v", changes)
+	}
+
+	desired.Spec.Labels = []manifest.Label{{Name: "bug", Color: "d73a4a", Description: manifest.Ptr("")}}
+	if !collectChildFields(diffLabels("o/r", desired, current, manifest.CollectionReconcileAdditive))["description"] {
+		t.Error(`description: "" should be planned as clearing it`)
 	}
 }

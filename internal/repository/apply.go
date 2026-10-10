@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -954,16 +955,30 @@ func (p *Processor) applyLabel(ctx context.Context, c Change, repo *manifest.Rep
 	switch c.Type {
 	case ChangeCreate:
 		args := []string{"label", "create", c.Field, "--repo", fullName, "--color", label.Color}
-		if label.Description != "" {
-			args = append(args, "--description", label.Description)
+		if d := derefStr(label.Description); d != "" {
+			args = append(args, "--description", d)
 		}
 		_, err := p.runner.Run(ctx, args...)
 		return wrapError(err, fullName, "label:"+c.Field)
 	case ChangeUpdate:
-		args := []string{"label", "edit", c.Field, "--repo", fullName}
-		args = append(args, "--color", label.Color)
-		args = append(args, "--description", label.Description)
-		_, err := p.runner.Run(ctx, args...)
+		// Use the REST API: gh label edit never sends an empty description,
+		// so it cannot clear one. Send description only when the manifest
+		// sets it, so an omitted one is left as it is.
+		payload := map[string]any{"color": label.Color}
+		if label.Description != nil {
+			payload["description"] = *label.Description
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		_, err = p.runner.RunWithStdin(ctx, body,
+			"api",
+			fmt.Sprintf("repos/%s/labels/%s", fullName, url.PathEscape(c.Field)),
+			"--method", "PATCH",
+			"--header", "Content-Type: application/json",
+			"--input", "-",
+		)
 		return wrapError(err, fullName, "label:"+c.Field)
 	}
 

@@ -151,11 +151,11 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 	sort.Strings(labelNames)
 	for _, name := range labelNames {
 		label := r.Labels[name]
-		repo.Spec.Labels = append(repo.Spec.Labels, manifest.Label{
-			Name:        label.Name,
-			Description: label.Description,
-			Color:       label.Color,
-		})
+		ml := manifest.Label{Name: label.Name, Color: label.Color}
+		if label.Description != "" {
+			ml.Description = manifest.Ptr(label.Description)
+		}
+		repo.Spec.Labels = append(repo.Spec.Labels, ml)
 	}
 
 	msNames := make([]string, 0, len(r.Milestones))
