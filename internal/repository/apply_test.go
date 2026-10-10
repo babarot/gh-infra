@@ -2208,3 +2208,16 @@ func TestApplyMergeStrategyBatch_CompanionVerified(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 }
+
+func TestWrapError_ForbiddenKeepsAPIMessage(t *testing.T) {
+	apiErr := fmt.Errorf("%w: %w", gh.ErrForbidden, &gh.ExitError{
+		APIError: &gh.APIError{Status: 403, Message: "Upgrade to GitHub Pro or make this repository public to enable this feature."},
+	})
+	err := wrapError(apiErr, "o/r", "ruleset:main")
+	if !strings.Contains(err.Error(), "check token scopes") {
+		t.Errorf("error = %q, want the token scope hint", err)
+	}
+	if !strings.Contains(err.Error(), "Upgrade to GitHub Pro") {
+		t.Errorf("error = %q, want GitHub's message", err)
+	}
+}

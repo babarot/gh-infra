@@ -1293,7 +1293,7 @@ func wrapError(err error, repo, field string) error {
 		return fmt.Errorf("%s not found", repo)
 	}
 	if errors.Is(err, gh.ErrForbidden) {
-		return fmt.Errorf("no permission to edit %s: check token scopes", repo)
+		return fmt.Errorf("no permission to edit %s %s: check token scopes: %w", repo, field, err)
 	}
 	if errors.Is(err, gh.ErrValidation) {
 		return fmt.Errorf("validation failed for %s %s: %w", repo, field, err)
