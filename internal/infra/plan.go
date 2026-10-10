@@ -22,7 +22,7 @@ type PlanOptions struct {
 	ForceSecrets  bool   // only meaningful when followed by Apply
 	DryRun        bool   // true = plan only (skip secret resolution)
 	ShowDiff      bool   // emit unified diff for each file change in plan output
-	Output        string // OutputText (default) or OutputJSON; JSON prints nothing while planning
+	Output        string // OutputText (default), OutputJSON or OutputMarkdown; the latter two print nothing while planning
 }
 
 // PlanResult holds the outcome of the plan phase.
@@ -62,7 +62,7 @@ func (r *PlanResult) Printer() ui.Printer {
 // Plan parses manifests, fetches current state, computes diffs, and prints the plan.
 func Plan(opts PlanOptions) (*PlanResult, error) {
 	var p ui.Printer = ui.NewStandardPrinter()
-	if opts.Output == OutputJSON {
+	if isMachineOutput(opts.Output) {
 		// Print nothing but the document: silence this printer, and the
 		// package printer that the progress fallback and tracker use.
 		p = discardPrinter()
@@ -115,7 +115,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	resolver := manifest.NewResolver(runner, resolverOwner)
 
 	eng := newEngine(runner, resolver, p)
-	eng.quiet = opts.Output == OutputJSON
+	eng.quiet = isMachineOutput(opts.Output)
 
 	displayPaths := make([]string, len(paths))
 	for i, path := range paths {

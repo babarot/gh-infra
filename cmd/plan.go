@@ -38,7 +38,7 @@ func newPlanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&ci, "ci", false, "Exit with code 1 if changes are detected")
 	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
 	cmd.Flags().BoolVar(&showDiff, "diff", false, "Show unified diff for FileSet file changes (prints full content)")
-	cmd.Flags().StringVarP(&output, "output", "o", infra.OutputText, "Output format: text or json")
+	cmd.Flags().StringVarP(&output, "output", "o", infra.OutputText, "Output format: text, json, or markdown")
 
 	return cmd
 }
@@ -52,7 +52,7 @@ type planCommandOptions struct {
 }
 
 func runPlan(paths []string, opts planCommandOptions) error {
-	if err := infra.ValidateOutput(opts.Output); err != nil {
+	if err := infra.ValidateOutput(opts.Output, infra.OutputJSON, infra.OutputMarkdown); err != nil {
 		return err
 	}
 	if opts.CI {
@@ -75,8 +75,13 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		return err
 	}
 
-	if opts.Output == infra.OutputJSON {
+	switch opts.Output {
+	case infra.OutputJSON:
 		if err := result.PlanDocument(opts.ShowDiff).Write(os.Stdout); err != nil {
+			return err
+		}
+	case infra.OutputMarkdown:
+		if err := result.PlanDocument(opts.ShowDiff).WriteMarkdown(os.Stdout); err != nil {
 			return err
 		}
 	}
@@ -87,7 +92,7 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		return err
 	}
 
-	if result.HasChanges && opts.Output == infra.OutputJSON {
+	if result.HasChanges && opts.Output != infra.OutputText && opts.Output != "" {
 		if opts.CI {
 			os.Exit(1)
 		}
