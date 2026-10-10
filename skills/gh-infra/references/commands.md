@@ -38,6 +38,7 @@ Flags:
 - `-r`, `--repo <owner/repo>`: limit to one repository
 - `--ci`: exit 1 if changes are detected
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
+- `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
 
 Exit status:
 
