@@ -207,6 +207,35 @@ func TestPlan_MultipleFilesDiffer(t *testing.T) {
 	}
 }
 
+func TestPlan_SameIdentityFileSetsKeepOrigin(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "ci.yml"):     contentsJSON("ci", "sha-ci"),
+			contentsKey("owner/repo", "pre-commit"): contentsJSON("old hook", "sha-hook"),
+		},
+		Errors: map[string]error{},
+	}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+
+	// Both FileSets are unnamed and target the same repo, so they share an Identity.
+	ciFS := makeFileSet("owner", "repo", []manifest.FileEntry{{Path: "ci.yml", Content: "ci"}})[0]
+	hookFS := makeFileSet("owner", "repo", []manifest.FileEntry{{Path: "pre-commit", Content: "new hook"}})[0]
+
+	changes, err := p.Plan(context.Background(), []*manifest.FileSet{ciFS, hookFS}, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 changes, got %d", len(changes))
+	}
+	want := map[string]*manifest.FileSet{"ci.yml": ciFS, "pre-commit": hookFS}
+	for _, c := range changes {
+		if c.FileSet != want[c.Path] {
+			t.Errorf("%s: planned by the wrong FileSet", c.Path)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Apply tests
 // ---------------------------------------------------------------------------

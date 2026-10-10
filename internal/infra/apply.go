@@ -192,7 +192,7 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]fileset.Change, fileset.ApplyOptions) {
 	var fsChanges []fileset.Change
 	for _, c := range allChanges {
-		if c.FileSetID == fs.Identity() {
+		if c.FileSet == fs {
 			fsChanges = append(fsChanges, c)
 		}
 	}

@@ -28,6 +28,7 @@ func NewProcessor(runner gh.Runner, writer ProgressWriter) *Processor {
 
 // planUnit represents one (fileSet, repository) pair to process.
 type planUnit struct {
+	fileSet     *manifest.FileSet
 	fileSetName string
 	target      manifest.FileSetRepository
 	files       []manifest.FileEntry
@@ -72,6 +73,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			}
 			files := ResolveFiles(fs, target)
 			units = append(units, planUnit{
+				fileSet:     fs,
 				fileSetName: fs.Identity(),
 				target:      target,
 				files:       files,
@@ -181,8 +183,9 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			}
 		}
 
-		// Tag all changes with the commit strategy for display
+		// Tag all changes with their FileSet (for apply) and commit strategy (for display)
 		for i := range out {
+			out[i].FileSet = u.fileSet
 			out[i].Via = u.via
 		}
 
