@@ -508,7 +508,9 @@ func TestApplySkipsNoOp(t *testing.T) {
 }
 
 func TestApplyBranchProtection(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Errors: map[string]error{
+		"api repos/myorg/myrepo/branches/main/protection": fmt.Errorf("%w: Branch not protected", gh.ErrNotFound),
+	}}
 	proc := NewProcessor(mock, nil)
 
 	reviews := 2
@@ -593,7 +595,9 @@ func TestApplyBranchProtection_Delete(t *testing.T) {
 }
 
 func TestApplyBranchProtection_ChildrenAreDisplayOnly(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Responses: map[string][]byte{
+		"api repos/myorg/myrepo/branches/main/protection": []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
+	}}
 	proc := NewProcessor(mock, nil)
 
 	reviews := 2
@@ -621,8 +625,14 @@ func TestApplyBranchProtection_ChildrenAreDisplayOnly(t *testing.T) {
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected parent change to be applied once, got %d calls: %v", len(mock.Called), mock.Called)
+	puts := 0
+	for _, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "--method PUT") {
+			puts++
+		}
+	}
+	if puts != 1 {
+		t.Fatalf("expected parent change to be applied once, got calls: %v", mock.Called)
 	}
 }
 
@@ -2268,5 +2278,51 @@ func TestWrapError_ForbiddenKeepsAPIMessage(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Upgrade to GitHub Pro") {
 		t.Errorf("error = %q, want GitHub's message", err)
+	}
+}
+
+func TestApplyBranchProtection_UsesCurrentEvenWhenPlannedAsCreate(t *testing.T) {
+	// Plan can miss a protected branch; apply reads the protection itself
+	// and keeps what the manifest leaves out.
+	mock := &gh.MockRunner{Responses: map[string][]byte{
+		"api repos/o/r/branches/main/protection": []byte(`{"enforce_admins":{"enabled":true},"required_status_checks":{"strict":true,"checks":[{"context":"ci","app_id":null}]}}`),
+	}}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.BranchProtection = []manifest.BranchProtection{{Pattern: "main", RequiredReviews: manifest.Ptr(1)}}
+	results := proc.Apply(context.Background(), []Change{{Type: ChangeCreate, Resource: "BranchProtection[main]", Name: "o/r", Field: "branch_protection"}},
+		[]*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err != nil {
+		t.Fatal(results[0].Err)
+	}
+	var sent map[string]any
+	for i, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "--method PUT") {
+			if err := json.Unmarshal(mock.CalledStdin[i], &sent); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if sent["enforce_admins"] != true || sent["required_status_checks"] == nil {
+		t.Errorf("payload = %v, want enforce_admins and status checks kept", sent)
+	}
+}
+
+func TestApplyBranchProtection_FailsWhenCurrentCannotBeRead(t *testing.T) {
+	mock := &gh.MockRunner{Errors: map[string]error{
+		"api repos/o/r/branches/main/protection": fmt.Errorf("%w: boom", gh.ErrForbidden),
+	}}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.BranchProtection = []manifest.BranchProtection{{Pattern: "main", RequiredReviews: manifest.Ptr(1)}}
+	results := proc.Apply(context.Background(), []Change{{Type: ChangeUpdate, Resource: "BranchProtection[main]", Name: "o/r", Field: "branch_protection"}},
+		[]*manifest.Repository{repo}, ui.NoopReporter{})
+	if results[0].Err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "PUT") {
+			t.Fatal("must not PUT without the current protection")
+		}
 	}
 }

@@ -54,6 +54,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			DismissStaleReviews:     manifest.Ptr(bp.DismissStaleReviews),
 			RequireCodeOwnerReviews: manifest.Ptr(bp.RequireCodeOwnerReviews),
 			EnforceAdmins:           manifest.Ptr(bp.EnforceAdmins),
+			RestrictPushes:          manifest.Ptr(bp.RestrictPushes),
 			AllowForcePushes:        manifest.Ptr(bp.AllowForcePushes),
 			AllowDeletions:          manifest.Ptr(bp.AllowDeletions),
 		}

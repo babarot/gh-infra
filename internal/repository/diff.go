@@ -386,6 +386,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 			appendIfSet(&children, "dismiss_stale_reviews", dbp.DismissStaleReviews)
 			appendIfSet(&children, "require_code_owner_reviews", dbp.RequireCodeOwnerReviews)
 			appendIfSet(&children, "enforce_admins", dbp.EnforceAdmins)
+			appendIfSet(&children, "restrict_pushes", dbp.RestrictPushes)
 			appendIfSet(&children, "allow_force_pushes", dbp.AllowForcePushes)
 			appendIfSet(&children, "allow_deletions", dbp.AllowDeletions)
 			if dbp.RequireStatusChecks != nil {
@@ -413,7 +414,11 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 		appendChildChanged(&fieldChanges, "required_reviews", dbp.RequiredReviews, cbp.RequiredReviews)
 		appendChildChanged(&fieldChanges, "dismiss_stale_reviews", dbp.DismissStaleReviews, cbp.DismissStaleReviews)
 		appendChildChanged(&fieldChanges, "require_code_owner_reviews", dbp.RequireCodeOwnerReviews, cbp.RequireCodeOwnerReviews)
+		// On a protected branch, what the manifest leaves out keeps its
+		// current value (apply builds the update from the current
+		// protection), so only what it sets is compared.
 		appendChildChanged(&fieldChanges, "enforce_admins", dbp.EnforceAdmins, cbp.EnforceAdmins)
+		appendChildChanged(&fieldChanges, "restrict_pushes", dbp.RestrictPushes, cbp.RestrictPushes)
 		appendChildChanged(&fieldChanges, "allow_force_pushes", dbp.AllowForcePushes, cbp.AllowForcePushes)
 		appendChildChanged(&fieldChanges, "allow_deletions", dbp.AllowDeletions, cbp.AllowDeletions)
 
@@ -436,7 +441,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 						OldValue: cbp.RequireStatusChecks.Strict, NewValue: dbp.RequireStatusChecks.Strict,
 					})
 				}
-				if !stringSliceEqual(dbp.RequireStatusChecks.Contexts, cbp.RequireStatusChecks.Contexts) {
+				if dbp.RequireStatusChecks.Contexts != nil && !stringSliceEqual(dbp.RequireStatusChecks.Contexts, cbp.RequireStatusChecks.Contexts) {
 					fieldChanges = append(fieldChanges, Change{
 						Type: ChangeUpdate, Field: "require_status_checks.contexts",
 						OldValue: cbp.RequireStatusChecks.Contexts, NewValue: dbp.RequireStatusChecks.Contexts,

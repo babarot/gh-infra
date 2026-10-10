@@ -2580,3 +2580,24 @@ func TestDiffActions_ChildOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestDiff_BranchProtection_OnlySetFieldsAreCompared(t *testing.T) {
+	current := baseState()
+	current.BranchProtection = map[string]*CurrentBranchProtection{
+		"main": {Pattern: "main", RequiredReviews: 1, RestrictPushes: true, RequireStatusChecks: &CurrentStatusChecks{Strict: true, Contexts: []string{"ci"}}},
+	}
+
+	desired := baseDesired()
+	desired.Spec.BranchProtection = []manifest.BranchProtection{{
+		Pattern:             "main",
+		RequireStatusChecks: &manifest.StatusChecks{Strict: true},
+	}}
+	if changes := Diff(context.Background(), desired, current); len(changes) != 0 {
+		t.Errorf("omitted contexts should not be compared, got %v", changes)
+	}
+
+	desired.Spec.BranchProtection[0].RestrictPushes = manifest.Ptr(false)
+	if !collectChildFields(Diff(context.Background(), desired, current))["restrict_pushes"] {
+		t.Error("restrict_pushes should be compared when set")
+	}
+}
