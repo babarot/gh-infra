@@ -23,6 +23,8 @@ One or more paths can be given. When multiple paths are provided, manifests from
 
 Overlapping paths (e.g., `.` and `./repos/`) are rejected to prevent duplicate processing.
 
+Checks that span manifests run on the combined set, e.g. two `pull_request` FileSets that would use the same branch on one repository are rejected (see [Pull request branch](../../resources/file/delivery/#pull-request-branch)).
+
 YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-unknown` to treat them as errors.
 
 ## Flags

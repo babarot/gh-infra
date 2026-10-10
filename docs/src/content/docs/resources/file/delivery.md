@@ -26,7 +26,7 @@ Creates a branch, commits all files, and opens a pull request for review before 
 spec:
   via: pull_request
   commit_message: "ci: sync shared files"  # optional, auto-generated if omitted
-  branch: gh-infra/sync-shared             # optional, auto-generated if omitted
+  branch: gh-infra/sync-shared             # optional, see below
   pr_title: "Sync shared files"            # optional, defaults to commit_message
   pr_body: |                               # optional, supports Markdown
     Automated file sync by gh-infra.
@@ -37,12 +37,18 @@ Use this when changes need review — for example, CI workflows or Dockerfiles t
 
 If a pull request already exists for the branch, gh-infra updates it instead of creating a new one.
 
+### Pull request branch
+
+Without `branch`, the branch is `gh-infra/sync-<owner>-<name>`: `<name>` is the repository for `File` and `metadata.name` for `FileSet`. An unnamed `FileSet` uses its sorted repository names joined by `+`, e.g. `gh-infra/sync-babarot-gomi+gh-infra`.
+
+Each apply resets the branch to the default branch before committing, so two `pull_request` resources that would use the same branch on the same repository are rejected by `validate`, `plan`, and `apply`. This happens when both set the same `branch`, or neither sets one and they share a name: two `File` manifests for one repository, or unnamed `FileSet`s that list the same repositories. Set a distinct `branch`, or a distinct `metadata.name` on a `FileSet`.
+
 ## Related fields
 
 | Field | Used by | Default | Description |
 |---|---|---|---|
 | `commit_message` | both | auto | Commit message for the sync commit |
-| `branch` | `pull_request` | auto | Branch name for the pull request |
+| `branch` | `pull_request` | `gh-infra/sync-<owner>-<name>` | Branch name for the pull request (see [Pull request branch](#pull-request-branch)) |
 | `pr_title` | `pull_request` | value of `commit_message` | Pull request title |
 | `pr_body` | `pull_request` | auto | Pull request body (supports Markdown) |
 

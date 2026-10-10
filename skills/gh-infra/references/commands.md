@@ -22,7 +22,7 @@ Use `--into` to pull live GitHub state back into existing manifests and local fi
 gh infra validate [path...]
 ```
 
-- Checks YAML syntax and schema only
+- Checks YAML syntax and schema, plus checks across manifests (e.g. two `pull_request` FileSets sharing a branch on one repo)
 - Does not contact GitHub
 - Exits nonzero on validation failure
 - Accepts multiple paths: `gh infra validate ./repos/ ./files/`

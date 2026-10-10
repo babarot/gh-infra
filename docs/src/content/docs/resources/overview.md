@@ -22,7 +22,7 @@ apiVersion: gh-infra/v1
 kind: <Repository | RepositorySet | File | FileSet>
 metadata:
   owner: <github-owner>
-  name: <repo-name>       # single-repo resources only
+  name: <repo-name>       # single-repo resources; optional label for FileSet
 
 spec:
   # Resource-specific fields
@@ -35,7 +35,9 @@ spec:
 | **Repository** | required | required | A single repo (`owner/name`) |
 | **File** | required | required | A single repo (`owner/name`) |
 | **RepositorySet** | required | — | All repos listed in `repositories` |
-| **FileSet** | required | — | All repos listed in `repositories` |
+| **FileSet** | required | optional | All repos listed in `repositories` |
+
+A FileSet's `metadata.name` does not select repositories. It names the FileSet in plan output and in the defaults for its commit message, pull request branch (`gh-infra/sync-<owner>-<name>`), and pull request body. Without it, the FileSet is named `<owner>/<repo-a>+<repo-b>` after its sorted repository names (see [Delivery Method](../file/delivery/#pull-request-branch)).
 
 ## File Organization
 
