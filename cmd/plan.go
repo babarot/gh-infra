@@ -16,6 +16,7 @@ func newPlanCmd() *cobra.Command {
 		repo          string
 		ci            bool
 		failOnUnknown bool
+		showDiff      bool
 	)
 
 	cmd := &cobra.Command{
@@ -26,6 +27,7 @@ func newPlanCmd() *cobra.Command {
 				FilterRepo:    repo,
 				CI:            ci,
 				FailOnUnknown: failOnUnknown,
+				ShowDiff:      showDiff,
 			})
 		},
 	}
@@ -33,6 +35,7 @@ func newPlanCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&repo, "repo", "r", "", "Target specific repository only")
 	cmd.Flags().BoolVar(&ci, "ci", false, "Exit with code 1 if changes are detected")
 	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
+	cmd.Flags().BoolVar(&showDiff, "diff", false, "Show unified diff for FileSet file changes (prints full content)")
 
 	return cmd
 }
@@ -41,6 +44,7 @@ type planCommandOptions struct {
 	FilterRepo    string
 	CI            bool
 	FailOnUnknown bool
+	ShowDiff      bool
 }
 
 func runPlan(paths []string, opts planCommandOptions) error {
@@ -53,6 +57,7 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		FilterRepo:    opts.FilterRepo,
 		FailOnUnknown: opts.FailOnUnknown,
 		DryRun:        true,
+		ShowDiff:      opts.ShowDiff,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

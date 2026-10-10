@@ -32,6 +32,7 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `-r, --repo <owner/repo>` | Target a specific repository |
 | `--ci` | Exit with code 1 if changes detected (useful for CI drift detection) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
+| `--diff` | Show a unified diff for each FileSet file change, capped at 500 lines per file. Deleted files show no diff |
 
 ## Exit status
 
@@ -59,4 +60,7 @@ gh infra plan ./repos/ --repo babarot/my-cli
 
 # CI drift detection
 gh infra plan ./repos/ --ci
+
+# Show the content changes of FileSet files
+gh infra plan ./files/ --diff
 ```
