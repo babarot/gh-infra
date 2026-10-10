@@ -944,10 +944,17 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 
 	var changes []Change
 
+	// GitHub label names are unique case-insensitively, so match by
+	// lowercase name; a difference only in case renames the label.
+	currentByKey := make(map[string]*CurrentLabel, len(current.Labels))
+	for labelName, cl := range current.Labels {
+		currentByKey[strings.ToLower(labelName)] = cl
+	}
+
 	desiredSet := make(map[string]bool)
 	for _, dl := range desired.Spec.Labels {
-		desiredSet[dl.Name] = true
-		cl, exists := current.Labels[dl.Name]
+		desiredSet[strings.ToLower(dl.Name)] = true
+		cl, exists := currentByKey[strings.ToLower(dl.Name)]
 		if !exists {
 			changes = append(changes, Change{
 				Type:     ChangeCreate,
@@ -960,6 +967,14 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 		}
 
 		var children []Change
+		if dl.Name != cl.Name {
+			children = append(children, Change{
+				Type:     ChangeUpdate,
+				Field:    "name",
+				OldValue: cl.Name,
+				NewValue: dl.Name,
+			})
+		}
 		if dl.Color != cl.Color {
 			children = append(children, Change{
 				Type:     ChangeUpdate,
@@ -984,7 +999,7 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 	// Authoritative mode: delete labels not in the manifest
 	if reconcileMode == manifest.CollectionReconcileAuthoritative {
 		for labelName, cl := range current.Labels {
-			if !desiredSet[labelName] {
+			if !desiredSet[strings.ToLower(labelName)] {
 				changes = append(changes, Change{
 					Type:     ChangeDelete,
 					Resource: manifest.ResourceLabel,

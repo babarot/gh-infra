@@ -1359,40 +1359,49 @@ func compareLabels(local, imported []manifest.Label) []FieldDiff {
 	}
 
 	type labelVal struct {
+		Name        string
 		Color       string
 		Description string
 	}
 
+	// Labels are keyed by lowercase name, as GitHub matches them; a
+	// difference only in case is a change of that label.
 	localMap := make(map[string]labelVal)
 	for _, l := range local {
-		localMap[l.Name] = labelVal{Color: l.Color, Description: derefStr(l.Description)}
+		localMap[strings.ToLower(l.Name)] = labelVal{Name: l.Name, Color: l.Color, Description: derefStr(l.Description)}
 	}
 	importedMap := make(map[string]labelVal)
 	for _, l := range imported {
-		importedMap[l.Name] = labelVal{Color: l.Color, Description: derefStr(l.Description)}
+		importedMap[strings.ToLower(l.Name)] = labelVal{Name: l.Name, Color: l.Color, Description: derefStr(l.Description)}
 	}
 
 	var diffs []FieldDiff
 
-	for name, iv := range importedMap {
-		lv, exists := localMap[name]
+	for key, iv := range importedMap {
+		lv, exists := localMap[key]
 		if !exists || lv != iv {
 			var old any
+			newVal := formatLabelSummary(iv.Color, iv.Description)
 			if exists {
-				old = formatLabelSummary(lv.Color, lv.Description)
+				oldVal := formatLabelSummary(lv.Color, lv.Description)
+				if lv.Name != iv.Name {
+					oldVal = lv.Name + " " + oldVal
+					newVal = iv.Name + " " + newVal
+				}
+				old = oldVal
 			}
 			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("labels.%s", name),
+				Field: fmt.Sprintf("labels.%s", iv.Name),
 				Old:   old,
-				New:   formatLabelSummary(iv.Color, iv.Description),
+				New:   newVal,
 			})
 		}
 	}
 
-	for name, lv := range localMap {
-		if _, exists := importedMap[name]; !exists {
+	for key, lv := range localMap {
+		if _, exists := importedMap[key]; !exists {
 			diffs = append(diffs, FieldDiff{
-				Field: fmt.Sprintf("labels.%s", name),
+				Field: fmt.Sprintf("labels.%s", lv.Name),
 				Old:   formatLabelSummary(lv.Color, lv.Description),
 				New:   nil,
 			})
@@ -1595,14 +1604,16 @@ func minimalLabels(defaults, imported []manifest.Label) []manifest.Label {
 		return nil
 	}
 
+	// Keyed by lowercase name, as RepositorySet merges labels; labelsEqual
+	// still compares the name exactly, so GitHub's casing is written.
 	defaultMap := make(map[string]manifest.Label, len(defaults))
 	for _, l := range defaults {
-		defaultMap[l.Name] = l
+		defaultMap[strings.ToLower(l.Name)] = l
 	}
 
 	var result []manifest.Label
 	for _, l := range imported {
-		if dl, ok := defaultMap[l.Name]; !ok || !labelsEqual(dl, l) {
+		if dl, ok := defaultMap[strings.ToLower(l.Name)]; !ok || !labelsEqual(dl, l) {
 			result = append(result, l)
 		}
 	}

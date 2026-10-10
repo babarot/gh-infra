@@ -72,7 +72,7 @@ Collections with a natural key field are merged. Entries with the same key are m
 
 | Collection | Key field | Same-key behavior |
 |---|---|---|
-| `labels` | `name` | Entry replaced |
+| `labels` | `name` (ignoring case) | Entry replaced |
 | `branch_protection` | `pattern` | Fields merged (unspecified fields inherit default) |
 | `rulesets` | `name` | Entry replaced |
 | `secrets` | `name` | Entry replaced |

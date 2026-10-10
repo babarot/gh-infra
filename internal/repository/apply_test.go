@@ -2434,3 +2434,31 @@ func TestApplyLabel_UpdateSendsDescriptionOnlyWhenSet(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyLabel_CaseOnlyRenamePatchesCurrentName(t *testing.T) {
+	mock := &gh.MockRunner{}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.Labels = []manifest.Label{{Name: "Kind/Bug", Color: "d73a4a"}}
+	c := Change{
+		Type:     ChangeUpdate,
+		Resource: manifest.ResourceLabel,
+		Field:    "Kind/Bug",
+		Details:  []Change{{Type: ChangeUpdate, Field: "name", OldValue: "kind/bug", NewValue: "Kind/Bug"}},
+	}
+	if err := proc.applyLabel(context.Background(), c, repo); err != nil {
+		t.Fatal(err)
+	}
+	call := strings.Join(mock.Called[0], " ")
+	if !strings.Contains(call, "api repos/o/r/labels/kind%2Fbug --method PATCH") {
+		t.Errorf("call = %s, want a PATCH to the current name", call)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(mock.CalledStdin[0], &body); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"color": "d73a4a", "new_name": "Kind/Bug"}
+	if !reflect.DeepEqual(body, want) {
+		t.Errorf("body = %v, want %v", body, want)
+	}
+}

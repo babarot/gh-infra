@@ -968,13 +968,24 @@ func (p *Processor) applyLabel(ctx context.Context, c Change, repo *manifest.Rep
 		if label.Description != nil {
 			payload["description"] = *label.Description
 		}
+		// GitHub finds the label by its current name; a case-only rename
+		// is planned as a "name" child holding that name.
+		currentName := c.Field
+		for _, d := range c.Details {
+			if d.Field == "name" {
+				if old, ok := d.OldValue.(string); ok {
+					currentName = old
+					payload["new_name"] = label.Name
+				}
+			}
+		}
 		body, err := json.Marshal(payload)
 		if err != nil {
 			return err
 		}
 		_, err = p.runner.RunWithStdin(ctx, body,
 			"api",
-			fmt.Sprintf("repos/%s/labels/%s", fullName, url.PathEscape(c.Field)),
+			fmt.Sprintf("repos/%s/labels/%s", fullName, url.PathEscape(currentName)),
 			"--method", "PATCH",
 			"--header", "Content-Type: application/json",
 			"--input", "-",

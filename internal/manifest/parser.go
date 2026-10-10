@@ -212,6 +212,19 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 		warnings = append(warnings, repositoryWarnings(set.Repositories[i].Spec)...)
 	}
 
+	// Check label names before merging: merging keys labels by lowercase
+	// name, so names differing only in case would be folded silently.
+	if set.Defaults != nil {
+		if err := checkLabelNames("defaults.spec.labels", set.Defaults.Spec.Labels); err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+		}
+	}
+	for i := range set.Repositories {
+		if err := checkLabelNames(set.Repositories[i].Name+": spec.labels", set.Repositories[i].Spec.Labels); err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+		}
+	}
+
 	var repos []*Repository
 	var docs []*RepositoryDocument
 	for i := range set.Repositories {
@@ -686,10 +699,11 @@ func mergeOrEmpty[T any](base, override []T, merge func(base, override []T) []T)
 	return merge(base, override)
 }
 
-// mergeLabels merges two label slices by name. Override labels take precedence
-// for entries with the same name; new labels are appended.
+// mergeLabels merges two label slices by name, ignoring case as GitHub does.
+// Override labels take precedence (including the casing of the name) for
+// entries with the same name; new labels are appended.
 func mergeLabels(base, override []Label) []Label {
-	return mergeByKey(base, override, func(l Label) string { return l.Name })
+	return mergeByKey(base, override, func(l Label) string { return strings.ToLower(l.Name) })
 }
 
 // mergeBranchProtection merges two branch protection slices by pattern.
