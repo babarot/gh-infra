@@ -1503,26 +1503,71 @@ func TestApplyActionsWorkflow(t *testing.T) {
 }
 
 func TestApplyActionsSelectedActions(t *testing.T) {
-	mock := &gh.MockRunner{}
-	proc := NewProcessor(mock, nil)
+	const endpoint = "api repos/myorg/myrepo/actions/permissions/selected-actions"
+	put := func(t *testing.T, mock *gh.MockRunner) map[string]any {
+		t.Helper()
+		for i, call := range mock.Called {
+			if strings.Contains(strings.Join(call, " "), "--method PUT") {
+				var body map[string]any
+				if err := json.Unmarshal(mock.CalledStdin[i], &body); err != nil {
+					t.Fatal(err)
+				}
+				return body
+			}
+		}
+		t.Fatalf("no PUT, calls: %v", mock.Called)
+		return nil
+	}
 
-	err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
-		SelectedActions: &manifest.SelectedActions{
-			GithubOwnedAllowed: manifest.Ptr(true),
-			VerifiedAllowed:    manifest.Ptr(false),
-			PatternsAllowed:    []string{"actions/*"},
-		},
+	t.Run("keeps what the manifest leaves out", func(t *testing.T) {
+		mock := &gh.MockRunner{Responses: map[string][]byte{
+			endpoint: []byte(`{"github_owned_allowed":false,"verified_allowed":true,"patterns_allowed":["octo/*"]}`),
+		}}
+		proc := NewProcessor(mock, nil)
+		err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
+			SelectedActions: &manifest.SelectedActions{GithubOwnedAllowed: manifest.Ptr(true)},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := put(t, mock)
+		if body["github_owned_allowed"] != true || body["verified_allowed"] != true {
+			t.Errorf("body = %v", body)
+		}
+		if patterns, _ := body["patterns_allowed"].([]any); len(patterns) != 1 {
+			t.Errorf("patterns_allowed = %v, want the current patterns kept", body["patterns_allowed"])
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(mock.Called) != 1 {
-		t.Fatalf("expected 1 gh call, got %d", len(mock.Called))
-	}
-	call := strings.Join(mock.Called[0], " ")
-	if !strings.Contains(call, "actions/permissions/selected-actions") {
-		t.Errorf("expected selected-actions endpoint, got: %s", call)
-	}
+
+	t.Run("409 means nothing to keep", func(t *testing.T) {
+		mock := &gh.MockRunner{Errors: map[string]error{endpoint: fmt.Errorf("%w: Conflict", gh.ErrConflict)}}
+		proc := NewProcessor(mock, nil)
+		err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
+			SelectedActions: &manifest.SelectedActions{PatternsAllowed: []string{"actions/*"}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body := put(t, mock); len(body) != 1 {
+			t.Errorf("body = %v, want only patterns_allowed", body)
+		}
+	})
+
+	t.Run("other GET errors fail without a PUT", func(t *testing.T) {
+		mock := &gh.MockRunner{Errors: map[string]error{endpoint: fmt.Errorf("%w: no", gh.ErrForbidden)}}
+		proc := NewProcessor(mock, nil)
+		err := proc.applyActionsSelectedActions(context.Background(), "myorg", "myrepo", &manifest.Actions{
+			SelectedActions: &manifest.SelectedActions{PatternsAllowed: []string{"actions/*"}},
+		})
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		for _, call := range mock.Called {
+			if strings.Contains(strings.Join(call, " "), "PUT") {
+				t.Fatal("must not PUT")
+			}
+		}
+	})
 }
 
 func TestApplyActionsSelectedActions_NilSelectedActions(t *testing.T) {
@@ -1637,7 +1682,7 @@ func TestApplyMilestone_Create(t *testing.T) {
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Milestones = []manifest.Milestone{
-		{Title: "v1.0", Description: "First release", State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
+		{Title: "v1.0", Description: manifest.Ptr("First release"), State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
 	}
 
 	changes := []Change{
@@ -2324,5 +2369,31 @@ func TestApplyBranchProtection_FailsWhenCurrentCannotBeRead(t *testing.T) {
 		if strings.Contains(strings.Join(call, " "), "PUT") {
 			t.Fatal("must not PUT without the current protection")
 		}
+	}
+}
+
+func TestApplyMilestone_SendsOnlySetFields(t *testing.T) {
+	mock := &gh.MockRunner{Responses: map[string][]byte{
+		"api repos/o/r/milestones?state=all&per_page=100 --paginate": []byte(`[{"number":7,"title":"v1"}]`),
+	}}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.Milestones = []manifest.Milestone{{Title: "v1", DueOn: manifest.Ptr("")}}
+	if err := proc.applyMilestone(context.Background(), Change{Type: ChangeUpdate, Resource: manifest.ResourceMilestone, Field: "v1"}, repo); err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	for i, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "PATCH") {
+			if err := json.Unmarshal(mock.CalledStdin[i], &body); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(body) != 2 || body["title"] != "v1" {
+		t.Fatalf("body = %v, want only title and due_on", body)
+	}
+	if v, ok := body["due_on"]; !ok || v != nil {
+		t.Errorf("due_on = %v, want null to clear", v)
 	}
 }

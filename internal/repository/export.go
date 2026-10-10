@@ -166,9 +166,11 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 	for _, title := range msNames {
 		ms := r.Milestones[title]
 		m := manifest.Milestone{
-			Title:       ms.Title,
-			Description: ms.Description,
-			State:       manifest.Ptr(ms.State),
+			Title: ms.Title,
+			State: manifest.Ptr(ms.State),
+		}
+		if ms.Description != "" {
+			m.Description = manifest.Ptr(ms.Description)
 		}
 		if ms.DueOn != "" {
 			m.DueOn = manifest.Ptr(ms.DueOn)

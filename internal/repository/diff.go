@@ -1016,12 +1016,6 @@ func diffMilestones(name string, desired *manifest.Repository, current *CurrentS
 	var changes []Change
 
 	for _, dm := range desired.Spec.Milestones {
-		desiredState := manifest.MilestoneState(dm.State)
-		desiredDueOn := ""
-		if dm.DueOn != nil {
-			desiredDueOn = *dm.DueOn
-		}
-
 		cm, exists := current.Milestones[dm.Title]
 		if !exists {
 			changes = append(changes, Change{
@@ -1029,36 +1023,18 @@ func diffMilestones(name string, desired *manifest.Repository, current *CurrentS
 				Resource: manifest.ResourceMilestone,
 				Name:     name,
 				Field:    dm.Title,
-				NewValue: milestoneSummary(desiredState, desiredDueOn, dm.Description),
+				NewValue: milestoneSummary(manifest.MilestoneState(dm.State), derefStr(dm.DueOn), derefStr(dm.Description)),
 			})
 			continue
 		}
 
+		// On an existing milestone, what the manifest leaves out keeps its
+		// value (apply sends a partial update), so only what it sets is
+		// compared. due_on: "" and description: "" clear.
 		var children []Change
-		if desiredState != cm.State {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "state",
-				OldValue: cm.State,
-				NewValue: desiredState,
-			})
-		}
-		if dm.Description != cm.Description {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "description",
-				OldValue: cm.Description,
-				NewValue: dm.Description,
-			})
-		}
-		if desiredDueOn != cm.DueOn {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "due_on",
-				OldValue: cm.DueOn,
-				NewValue: desiredDueOn,
-			})
-		}
+		appendChildChanged(&children, "state", dm.State, cm.State)
+		appendChildChanged(&children, "description", dm.Description, cm.Description)
+		appendChildChanged(&children, "due_on", dm.DueOn, cm.DueOn)
 		if len(children) > 0 {
 			changes = append(changes, Change{
 				Type:     ChangeUpdate,
@@ -1105,7 +1081,8 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 			}
 			appendChildChanged(cc, "selected_actions.github_owned_allowed", sa.GithubOwnedAllowed, currentSA.GithubOwnedAllowed)
 			appendChildChanged(cc, "selected_actions.verified_allowed", sa.VerifiedAllowed, currentSA.VerifiedAllowed)
-			if !stringSliceEqual(sa.PatternsAllowed, currentSA.PatternsAllowed) {
+			// patterns_allowed left out keeps the current patterns; [] clears.
+			if sa.PatternsAllowed != nil && !stringSliceEqual(sa.PatternsAllowed, currentSA.PatternsAllowed) {
 				*cc = append(*cc, Change{
 					Type:     ChangeUpdate,
 					Field:    "selected_actions.patterns_allowed",

@@ -217,3 +217,11 @@ func TestBuildCommandError(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildCommandError_Conflict(t *testing.T) {
+	err := buildCommandError("gh api repos/o/r/actions/permissions/selected-actions", 1,
+		`{"message":"Conflict","status":"409"}`, "gh: Conflict (HTTP 409)")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}

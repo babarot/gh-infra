@@ -987,13 +987,22 @@ func (p *Processor) applyMilestone(ctx context.Context, c Change, repo *manifest
 		return fmt.Errorf("milestone %q not found in desired state", c.Field)
 	}
 
-	payload := map[string]any{
-		"title":       ms.Title,
-		"description": ms.Description,
-		"state":       manifest.MilestoneState(ms.State),
+	// Send only what the manifest sets: the update is a PATCH, so what is
+	// left out keeps its value.
+	payload := map[string]any{"title": ms.Title}
+	if ms.Description != nil {
+		payload["description"] = *ms.Description
 	}
-	if ms.DueOn != nil && *ms.DueOn != "" {
-		payload["due_on"] = *ms.DueOn + "T00:00:00Z"
+	if ms.State != nil {
+		payload["state"] = *ms.State
+	}
+	if ms.DueOn != nil {
+		switch {
+		case *ms.DueOn != "":
+			payload["due_on"] = *ms.DueOn + "T00:00:00Z"
+		case c.Type == ChangeUpdate:
+			payload["due_on"] = nil // clear
+		}
 	}
 
 	body, err := json.Marshal(payload)
@@ -1131,7 +1140,22 @@ func (p *Processor) applyActionsSelectedActions(ctx context.Context, owner, name
 		return nil
 	}
 	sa := a.SelectedActions
+	endpoint := fmt.Sprintf("repos/%s/%s/actions/permissions/selected-actions", owner, name)
+
+	// Start from the current settings so that what the manifest leaves out
+	// keeps its value. 409 means allowed_actions is not "selected" yet, so
+	// there is nothing to keep.
 	payload := map[string]any{}
+	current, err := p.runner.Run(ctx, "api", endpoint)
+	switch {
+	case errors.Is(err, gh.ErrConflict):
+	case err != nil:
+		return wrapError(err, owner+"/"+name, "actions.selected_actions")
+	default:
+		if err := json.Unmarshal(current, &payload); err != nil {
+			return fmt.Errorf("parse current selected actions for %s/%s: %w", owner, name, err)
+		}
+	}
 	if sa.GithubOwnedAllowed != nil {
 		payload["github_owned_allowed"] = *sa.GithubOwnedAllowed
 	}
@@ -1147,7 +1171,7 @@ func (p *Processor) applyActionsSelectedActions(ctx context.Context, owner, name
 	}
 	_, err = p.runner.RunWithStdin(ctx, body,
 		"api",
-		fmt.Sprintf("repos/%s/%s/actions/permissions/selected-actions", owner, name),
+		endpoint,
 		"--method", "PUT",
 		"--header", "Content-Type: application/json",
 		"--input", "-",
@@ -1200,6 +1224,13 @@ func canonicalAPIField(field string) string {
 		return "delete_branch_on_merge"
 	}
 	return field
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func derefBool(b *bool) bool {

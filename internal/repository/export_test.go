@@ -394,9 +394,7 @@ func TestToManifest_Milestones(t *testing.T) {
 	if !ok {
 		t.Fatal("missing milestone 'v1.0'")
 	}
-	if v1.Description != "First release" {
-		t.Errorf("v1.0.Description = %q, want %q", v1.Description, "First release")
-	}
+	assertStringPtr(t, "v1.0.Description", v1.Description, "First release")
 	assertStringPtr(t, "v1.0.State", v1.State, "open")
 	assertStringPtr(t, "v1.0.DueOn", v1.DueOn, "2026-06-01")
 
@@ -407,6 +405,9 @@ func TestToManifest_Milestones(t *testing.T) {
 	assertStringPtr(t, "v2.0.State", v2.State, "closed")
 	if v2.DueOn != nil {
 		t.Errorf("v2.0.DueOn = %v, want nil for empty due_on", v2.DueOn)
+	}
+	if v2.Description != nil {
+		t.Errorf("v2.0.Description = %v, want nil for an empty description", v2.Description)
 	}
 }
 

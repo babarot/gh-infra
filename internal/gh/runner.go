@@ -160,6 +160,8 @@ func buildCommandError(cmdStr string, exitCode int, stdout, stderr string) error
 			return exitErr
 		}
 		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrForbidden, exitErr))
+	case 409:
+		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrConflict, exitErr))
 	case 422:
 		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrValidation, exitErr))
 	default:
