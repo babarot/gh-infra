@@ -310,7 +310,9 @@ func diffRepoSettings(name string, desired *manifest.Repository, current *Curren
 	appendChanged(dc, &changes, "archived", desired.Spec.Archived, current.Archived)
 	appendChanged(dc, &changes, "release_immutability", desired.Spec.ReleaseImmutability, current.ReleaseImmutability)
 
-	if len(desired.Spec.Topics) > 0 || len(current.Topics) > 0 {
+	// An omitted topics leaves the current topics alone; topics: [] removes them.
+	topicsSet := desired.Spec.TopicsSet || len(desired.Spec.Topics) > 0
+	if topicsSet && (len(desired.Spec.Topics) > 0 || len(current.Topics) > 0) {
 		if !stringSliceEqual(desired.Spec.Topics, current.Topics) {
 			changes = append(changes, Change{
 				Type:     ChangeUpdate,
@@ -590,14 +592,11 @@ func diffRulesets(ctx context.Context, name string, desired *manifest.Repository
 					Type: ChangeCreate, Field: "rules.pull_request", NewValue: "enabled",
 				})
 			} else {
-				pr := drs.Rules.PullRequest
+				// Unset parameters are sent with their defaults, so compare
+				// the same effective values here.
+				pr := drs.Rules.PullRequest.WithDefaults()
 				cpr := crs.Rules.PullRequest
-				if pr.RequiredApprovingReviewCount != nil && *pr.RequiredApprovingReviewCount != cpr.RequiredApprovingReviewCount {
-					fieldChanges = append(fieldChanges, Change{
-						Type: ChangeUpdate, Field: "rules.pull_request.required_approving_review_count",
-						OldValue: cpr.RequiredApprovingReviewCount, NewValue: *pr.RequiredApprovingReviewCount,
-					})
-				}
+				appendChildChanged(&fieldChanges, "rules.pull_request.required_approving_review_count", pr.RequiredApprovingReviewCount, cpr.RequiredApprovingReviewCount)
 				appendChildChanged(&fieldChanges, "rules.pull_request.dismiss_stale_reviews_on_push", pr.DismissStaleReviewsOnPush, cpr.DismissStaleReviewsOnPush)
 				appendChildChanged(&fieldChanges, "rules.pull_request.require_code_owner_review", pr.RequireCodeOwnerReview, cpr.RequireCodeOwnerReview)
 				appendChildChanged(&fieldChanges, "rules.pull_request.require_last_push_approval", pr.RequireLastPushApproval, cpr.RequireLastPushApproval)

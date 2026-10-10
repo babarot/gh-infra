@@ -27,7 +27,7 @@ spec:
 | `homepage` | string | URL displayed on the repo page |
 | `visibility` | string | `public`, `private`, or `internal` (GitHub Enterprise) |
 | `archived` | bool | `true` to archive (read-only). Reversible — set to `false` to unarchive |
-| `topics` | list | GitHub topics for discoverability |
+| `topics` | list | GitHub topics for discoverability. Omit it to leave the current topics unchanged; `[]` removes all topics |
 
 ### Archiving
 

@@ -86,6 +86,7 @@ Use `fnmatch`-style patterns. Special values: `~DEFAULT_BRANCH`, `~ALL`.
 - each ruleset `name` must be unique
 - each bypass actor must set exactly one of `role`, `team`, `app`, `org-admin`, `custom-role`
 - `bypass_mode`: `always`, `pull_request`, `exempt`
+- `pull_request` parameters left out are sent as `0` / `false` (GitHub requires all of them), and plan compares against those defaults
 
 ## Classic Branch Protection
 
