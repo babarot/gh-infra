@@ -1343,7 +1343,7 @@ func TestDiff_Milestones(t *testing.T) {
 	t.Run("new milestone", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Milestones = []manifest.Milestone{
-			{Title: "v1.0", Description: "First release", State: manifest.Ptr("open")},
+			{Title: "v1.0", Description: manifest.Ptr("First release"), State: manifest.Ptr("open")},
 		}
 		c := baseState()
 
@@ -1399,7 +1399,7 @@ func TestDiff_Milestones(t *testing.T) {
 	t.Run("milestone same values no change", func(t *testing.T) {
 		d := baseDesired()
 		d.Spec.Milestones = []manifest.Milestone{
-			{Title: "v1.0", Description: "Desc", State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
+			{Title: "v1.0", Description: manifest.Ptr("Desc"), State: manifest.Ptr("open"), DueOn: manifest.Ptr("2026-06-01")},
 		}
 		c := baseState()
 		c.Milestones["v1.0"] = &CurrentMilestone{Number: 1, Title: "v1.0", Description: "Desc", State: "open", DueOn: "2026-06-01"}
@@ -2599,5 +2599,44 @@ func TestDiff_BranchProtection_OnlySetFieldsAreCompared(t *testing.T) {
 	desired.Spec.BranchProtection[0].RestrictPushes = manifest.Ptr(false)
 	if !collectChildFields(Diff(context.Background(), desired, current))["restrict_pushes"] {
 		t.Error("restrict_pushes should be compared when set")
+	}
+}
+
+func TestDiffMilestones_OnlySetFieldsAreCompared(t *testing.T) {
+	current := baseState()
+	current.Milestones = map[string]*CurrentMilestone{
+		"v1": {Number: 1, Title: "v1", Description: "first", State: "closed", DueOn: "2026-01-01"},
+	}
+
+	desired := baseDesired()
+	desired.Spec.Milestones = []manifest.Milestone{{Title: "v1"}}
+	if changes := diffMilestones("o/r", desired, current); len(changes) != 0 {
+		t.Errorf("a title-only milestone should not change anything, got %v", changes)
+	}
+
+	desired.Spec.Milestones = []manifest.Milestone{{Title: "v1", State: manifest.Ptr("open"), Description: manifest.Ptr(""), DueOn: manifest.Ptr("")}}
+	changes := diffMilestones("o/r", desired, current)
+	if len(changes) != 1 || len(changes[0].Details) != 3 {
+		t.Fatalf("expected state, description and due_on changes, got %v", changes)
+	}
+
+	// After apply, the same manifest plans nothing.
+	current.Milestones["v1"] = &CurrentMilestone{Number: 1, Title: "v1", State: "open"}
+	if changes := diffMilestones("o/r", desired, current); len(changes) != 0 {
+		t.Errorf("plan should converge after apply, got %v", changes)
+	}
+}
+
+func TestDiffActions_PatternsAllowedOnlyWhenSet(t *testing.T) {
+	current := baseState()
+	current.Actions.SelectedActions = &CurrentSelectedActions{PatternsAllowed: []string{"octo/*"}}
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{SelectedActions: &manifest.SelectedActions{}}
+	if changes := diffActions("o/r", desired, current); len(changes) != 0 {
+		t.Errorf("omitted patterns_allowed should not be compared, got %v", changes)
+	}
+	desired.Spec.Actions.SelectedActions.PatternsAllowed = []string{}
+	if !collectChildFields(diffActions("o/r", desired, current))["selected_actions.patterns_allowed"] {
+		t.Error("patterns_allowed: [] should be planned as clearing the patterns")
 	}
 }

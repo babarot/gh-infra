@@ -2791,3 +2791,13 @@ func TestMergeBranchProtectionEntry_StatusChecksKeepDefaultContexts(t *testing.T
 		t.Errorf("contexts = %v, want the entry's", got.RequireStatusChecks.Contexts)
 	}
 }
+
+func TestMergeSelectedActions_EmptyPatternsClearDefaults(t *testing.T) {
+	base := &SelectedActions{PatternsAllowed: []string{"octo/*"}}
+	if got := mergeSelectedActions(base, &SelectedActions{PatternsAllowed: []string{}}); got.PatternsAllowed == nil || len(got.PatternsAllowed) != 0 {
+		t.Errorf("patterns = %v, want [] to clear the defaults", got.PatternsAllowed)
+	}
+	if got := mergeSelectedActions(base, &SelectedActions{}); len(got.PatternsAllowed) != 1 {
+		t.Errorf("patterns = %v, want the defaults kept when omitted", got.PatternsAllowed)
+	}
+}

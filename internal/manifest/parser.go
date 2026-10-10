@@ -731,7 +731,7 @@ func mergeSelectedActions(base, override *SelectedActions) *SelectedActions {
 	if override.VerifiedAllowed != nil {
 		result.VerifiedAllowed = override.VerifiedAllowed
 	}
-	if len(override.PatternsAllowed) > 0 {
+	if override.PatternsAllowed != nil { // [] clears the defaults' patterns
 		result.PatternsAllowed = override.PatternsAllowed
 	}
 	return &result

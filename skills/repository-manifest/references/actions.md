@@ -17,6 +17,8 @@ spec:
     fork_pr_approval: all_external_contributors
 ```
 
+- `selected_actions` fields left out keep their current values; `patterns_allowed: []` removes all patterns
+
 ## Validation Traps
 
 - If any `actions.*` field other than `enabled` is set, `enabled` must also be set

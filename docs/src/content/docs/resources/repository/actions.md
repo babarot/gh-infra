@@ -80,7 +80,9 @@ spec:
 |-------|------|-------------|
 | `github_owned_allowed` | bool | Allow GitHub-owned actions (`actions/*`, `github/*`) |
 | `verified_allowed` | bool | Allow actions by Marketplace verified creators |
-| `patterns_allowed` | list | Glob patterns for allowed actions (e.g. `actions/*`, `owner/repo@*`) |
+| `patterns_allowed` | list | Glob patterns for allowed actions (e.g. `actions/*`, `owner/repo@*`). `[]` removes all patterns |
+
+A field you leave out of `selected_actions` keeps its current value on GitHub, and `plan` compares only the fields you set.
 
 ## Fork PR Approval
 

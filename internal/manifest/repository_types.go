@@ -610,13 +610,14 @@ func RulesetsReconcileMode(r *RepositoryReconcile) string {
 
 type Milestone struct {
 	Title       string  `yaml:"title"       validate:"required"`
-	Description string  `yaml:"description,omitempty"`
+	Description *string `yaml:"description,omitempty"`
 	State       *string `yaml:"state,omitempty"  validate:"omitempty,oneof=open closed"`
 	DueOn       *string `yaml:"due_on,omitempty"`
 }
 
-// MilestoneState returns the effective milestone state.
-// nil is treated as "open" (safe default).
+// MilestoneState returns the state a new milestone is created with:
+// the manifest's, or GitHub's default "open". An existing milestone keeps its
+// state when the manifest leaves it out.
 func MilestoneState(s *string) string {
 	if s == nil {
 		return "open"

@@ -60,6 +60,7 @@ var (
 	ErrUnauthorized = errors.New("gh: unauthorized (401)")
 	ErrForbidden    = errors.New("gh: forbidden (403)")
 	ErrValidation   = errors.New("gh: validation failed (422)")
+	ErrConflict     = errors.New("gh: conflict (409)")
 	ErrNotInstalled = errors.New("gh: command not found")
 	ErrNotAuthed    = errors.New("gh: not authenticated, run 'gh auth login'")
 )
