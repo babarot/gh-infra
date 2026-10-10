@@ -132,6 +132,25 @@ func TestDiff_RepoSettings(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "topics omitted leaves current topics alone",
+			setup: func(d *manifest.Repository, c *CurrentState) {
+				d.Spec.Topics = nil
+				c.Topics = []string{"go", "cli"}
+			},
+			wantCount: 0,
+		},
+		{
+			name: "topics empty list removes current topics",
+			setup: func(d *manifest.Repository, c *CurrentState) {
+				d.Spec.Topics = []string{}
+				d.Spec.TopicsSet = true
+				c.Topics = []string{"go", "cli"}
+			},
+			wantCount: 1,
+			wantField: "topics",
+			wantType:  ChangeUpdate,
+		},
 	}
 
 	for _, tt := range tests {

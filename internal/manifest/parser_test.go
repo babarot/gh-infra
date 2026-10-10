@@ -397,6 +397,47 @@ repositories:
 	}
 }
 
+func TestRepositorySet_EmptyTopicsOverridesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    topics:
+      - default-topic
+repositories:
+  - name: inherit-repo
+    spec:
+      description: "inherits topics"
+  - name: clear-repo
+    spec:
+      topics: []
+`
+	path := filepath.Join(dir, "topics.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatalf("ParsePath returned error: %v", err)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(repos))
+	}
+
+	inherit, clear := repos[0], repos[1]
+	if !inherit.Spec.TopicsSet || len(inherit.Spec.Topics) != 1 || inherit.Spec.Topics[0] != "default-topic" {
+		t.Errorf("inherit-repo topics = %v (set=%v), want [default-topic]", inherit.Spec.Topics, inherit.Spec.TopicsSet)
+	}
+	if !clear.Spec.TopicsSet || len(clear.Spec.Topics) != 0 {
+		t.Errorf("clear-repo topics = %v (set=%v), want [] set", clear.Spec.Topics, clear.Spec.TopicsSet)
+	}
+}
+
 func TestRepositorySet_FeaturesMerge(t *testing.T) {
 	dir := t.TempDir()
 	content := `
@@ -2195,6 +2236,19 @@ spec:
 `,
 			wantErr: "labels must be a sequence",
 		},
+		{
+			name: "null topics rejected",
+			content: `
+apiVersion: v1
+kind: Repository
+metadata:
+  owner: org
+  name: repo
+spec:
+  topics:
+`,
+			wantErr: "topics must be a sequence",
+		},
 	}
 
 	for _, tt := range tests {
@@ -2243,7 +2297,7 @@ spec:
 	if len(repos) != 1 {
 		t.Fatalf("expected 1 repo, got %d", len(repos))
 	}
-	if repos[0].Spec.LabelsSet || repos[0].Spec.RulesetsSet || repos[0].Spec.BranchProtectionSet {
+	if repos[0].Spec.LabelsSet || repos[0].Spec.RulesetsSet || repos[0].Spec.BranchProtectionSet || repos[0].Spec.TopicsSet {
 		t.Fatalf("omitted collections should remain unset: %+v", repos[0].Spec)
 	}
 }

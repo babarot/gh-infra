@@ -403,8 +403,9 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.Archived != nil {
 		result.Archived = override.Archived
 	}
-	if len(override.Topics) > 0 {
+	if override.TopicsSet || len(override.Topics) > 0 {
 		result.Topics = override.Topics
+		result.TopicsSet = true
 	}
 	if override.Features != nil {
 		result.Features = mergeFeatures(result.Features, override.Features)

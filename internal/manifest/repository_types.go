@@ -102,6 +102,7 @@ type RepositorySpec struct {
 	LabelsSet           bool `yaml:"-"`
 	RulesetsSet         bool `yaml:"-"`
 	SecretsSet          bool `yaml:"-"`
+	TopicsSet           bool `yaml:"-"`
 	VariablesSet        bool `yaml:"-"`
 }
 
@@ -127,6 +128,12 @@ func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
+	if v, ok := fields["topics"]; ok {
+		s.TopicsSet = true
+		if v == nil {
+			return fmt.Errorf("topics must be a sequence; use [] to remove all topics")
+		}
+	}
 	if v, ok := fields["branch_protection"]; ok {
 		s.BranchProtectionSet = true
 		if v == nil {

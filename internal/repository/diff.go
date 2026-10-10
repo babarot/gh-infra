@@ -310,7 +310,9 @@ func diffRepoSettings(name string, desired *manifest.Repository, current *Curren
 	appendChanged(dc, &changes, "archived", desired.Spec.Archived, current.Archived)
 	appendChanged(dc, &changes, "release_immutability", desired.Spec.ReleaseImmutability, current.ReleaseImmutability)
 
-	if len(desired.Spec.Topics) > 0 || len(current.Topics) > 0 {
+	// An omitted topics leaves the current topics alone; topics: [] removes them.
+	topicsSet := desired.Spec.TopicsSet || len(desired.Spec.Topics) > 0
+	if topicsSet && (len(desired.Spec.Topics) > 0 || len(current.Topics) > 0) {
 		if !stringSliceEqual(desired.Spec.Topics, current.Topics) {
 			changes = append(changes, Change{
 				Type:     ChangeUpdate,
