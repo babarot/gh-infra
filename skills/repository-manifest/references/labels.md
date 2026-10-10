@@ -11,7 +11,8 @@ spec:
 ```
 
 - `name` must be unique in the list
-- `color` is hex without `#`
+- `color` is hex without `#` (required)
+- `description` left out keeps the current description of an existing label; `""` clears it
 
 ## Reconcile Mode
 

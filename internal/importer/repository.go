@@ -1365,11 +1365,11 @@ func compareLabels(local, imported []manifest.Label) []FieldDiff {
 
 	localMap := make(map[string]labelVal)
 	for _, l := range local {
-		localMap[l.Name] = labelVal{Color: l.Color, Description: l.Description}
+		localMap[l.Name] = labelVal{Color: l.Color, Description: derefStr(l.Description)}
 	}
 	importedMap := make(map[string]labelVal)
 	for _, l := range imported {
-		importedMap[l.Name] = labelVal{Color: l.Color, Description: l.Description}
+		importedMap[l.Name] = labelVal{Color: l.Color, Description: derefStr(l.Description)}
 	}
 
 	var diffs []FieldDiff
@@ -1584,6 +1584,11 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	return override
 }
 
+// labelsEqual compares labels by value; Description is a pointer.
+func labelsEqual(a, b manifest.Label) bool {
+	return a.Name == b.Name && a.Color == b.Color && derefStr(a.Description) == derefStr(b.Description)
+}
+
 // minimalLabels returns only the imported labels that are new or different from defaults.
 func minimalLabels(defaults, imported []manifest.Label) []manifest.Label {
 	if len(imported) == 0 {
@@ -1597,7 +1602,7 @@ func minimalLabels(defaults, imported []manifest.Label) []manifest.Label {
 
 	var result []manifest.Label
 	for _, l := range imported {
-		if dl, ok := defaultMap[l.Name]; !ok || dl != l {
+		if dl, ok := defaultMap[l.Name]; !ok || !labelsEqual(dl, l) {
 			result = append(result, l)
 		}
 	}

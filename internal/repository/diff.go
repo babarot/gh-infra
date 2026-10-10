@@ -954,7 +954,7 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 				Resource: manifest.ResourceLabel,
 				Name:     name,
 				Field:    dl.Name,
-				NewValue: labelSummary(dl.Color, dl.Description),
+				NewValue: labelSummary(dl.Color, derefStr(dl.Description)),
 			})
 			continue
 		}
@@ -968,14 +968,8 @@ func diffLabels(name string, desired *manifest.Repository, current *CurrentState
 				NewValue: dl.Color,
 			})
 		}
-		if dl.Description != cl.Description {
-			children = append(children, Change{
-				Type:     ChangeUpdate,
-				Field:    "description",
-				OldValue: cl.Description,
-				NewValue: dl.Description,
-			})
-		}
+		// An omitted description is left as it is; "" clears it.
+		appendChildChanged(&children, "description", dl.Description, cl.Description)
 		if len(children) > 0 {
 			changes = append(changes, Change{
 				Type:     ChangeUpdate,

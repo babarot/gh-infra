@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1835,7 +1836,7 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 
 	repo := newTestRepo("myorg", "myrepo")
 	repo.Spec.Labels = []manifest.Label{
-		{Name: "enhancement", Color: "eeeeee", Description: "New feature"},
+		{Name: "enhancement", Color: "eeeeee", Description: manifest.Ptr("New feature")},
 	}
 
 	// Label update produces a Change with Children (one per changed field).
@@ -1861,8 +1862,8 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 		t.Fatalf("expected 1 call, got %d", len(mock.Called))
 	}
 	call := strings.Join(mock.Called[0], " ")
-	if !strings.Contains(call, "label edit enhancement") {
-		t.Errorf("expected 'label edit enhancement', got: %s", call)
+	if !strings.Contains(call, "api repos/myorg/myrepo/labels/enhancement --method PATCH") {
+		t.Errorf("expected a PATCH to the enhancement label, got: %s", call)
 	}
 }
 
@@ -2395,5 +2396,41 @@ func TestApplyMilestone_SendsOnlySetFields(t *testing.T) {
 	}
 	if v, ok := body["due_on"]; !ok || v != nil {
 		t.Errorf("due_on = %v, want null to clear", v)
+	}
+}
+
+func TestApplyLabel_UpdateSendsDescriptionOnlyWhenSet(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		description *string
+		want        map[string]any
+	}{
+		{"omitted", nil, map[string]any{"color": "d73a4a"}},
+		{"cleared", manifest.Ptr(""), map[string]any{"color": "d73a4a", "description": ""}},
+		{"set", manifest.Ptr("A bug"), map[string]any{"color": "d73a4a", "description": "A bug"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{}
+			proc := NewProcessor(mock, nil)
+			repo := newTestRepo("o", "r")
+			repo.Spec.Labels = []manifest.Label{{Name: "kind/bug", Color: "d73a4a", Description: tt.description}}
+			if err := proc.applyLabel(context.Background(), Change{Type: ChangeUpdate, Resource: manifest.ResourceLabel, Field: "kind/bug"}, repo); err != nil {
+				t.Fatal(err)
+			}
+			if len(mock.Called) != 1 {
+				t.Fatalf("calls = %v", mock.Called)
+			}
+			call := strings.Join(mock.Called[0], " ")
+			if !strings.Contains(call, "api repos/o/r/labels/kind%2Fbug --method PATCH") {
+				t.Errorf("call = %s, want a PATCH to the escaped label path", call)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(mock.CalledStdin[0], &body); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(body, tt.want) {
+				t.Errorf("body = %v, want %v", body, tt.want)
+			}
+		})
 	}
 }

@@ -575,9 +575,9 @@ type RulesetStatusCheck struct {
 }
 
 type Label struct {
-	Name        string `yaml:"name"        validate:"required"`
-	Description string `yaml:"description,omitempty"`
-	Color       string `yaml:"color"       validate:"required"`
+	Name        string  `yaml:"name"        validate:"required"`
+	Description *string `yaml:"description,omitempty"` // omitted leaves it as it is; "" clears
+	Color       string  `yaml:"color"       validate:"required"`
 }
 
 // LabelSyncMode returns the effective label sync mode.
