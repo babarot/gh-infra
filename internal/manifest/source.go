@@ -17,6 +17,8 @@ type SourceResolver struct {
 	// RunGH executes a gh CLI command and returns stdout.
 	// Set by the caller to avoid importing the gh package.
 	RunGH func(ctx context.Context, args ...string) ([]byte, error)
+
+	skipRemote bool // leave github:// sources unresolved (ParseOptions.SkipRemoteSources)
 }
 
 // NewSourceResolver creates a SourceResolver that delegates gh CLI calls to the given function.
@@ -40,6 +42,10 @@ func (r *SourceResolver) ResolveFiles(ctx context.Context, files []FileEntry, ya
 		}
 
 		if strings.HasPrefix(entry.Source, githubScheme) {
+			if r.skipRemote {
+				resolved = append(resolved, entry)
+				continue
+			}
 			entries, err := r.resolveGitHub(ctx, entry.Source, entry.Path)
 			if err != nil {
 				return nil, fmt.Errorf("resolve %s: %w", entry.Source, err)

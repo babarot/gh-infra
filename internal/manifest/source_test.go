@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -641,7 +643,7 @@ spec:
 			t.Fatal(err)
 		}
 
-		fs, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
+		fs, _, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -680,7 +682,7 @@ spec:
 			t.Fatal(err)
 		}
 
-		_, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
+		_, _, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
 		if err == nil {
 			t.Fatal("expected error for missing override source")
 		}
@@ -734,4 +736,81 @@ func TestResolveFiles_DuplicatePathError(t *testing.T) {
 			t.Errorf("unexpected error message: %v", err)
 		}
 	})
+}
+
+func TestParseAll_LocalDeps(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("t/ci.yml", "ci")
+	write("t/hooks/pre", "pre")
+	write("p/fix.patch", "--- a/ci.yml\n+++ b/ci.yml\n")
+	write("fs.yaml", `apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - name: a
+      overrides:
+        - path: .hooks
+          source: t/hooks/
+  files:
+    - path: ci.yml
+      source: t/ci.yml
+      patches:
+        - p/fix.patch
+    - path: remote.txt
+      source: github://org/src/remote.txt
+    - path: inline.txt
+      content: x
+---
+apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: b
+spec:
+  files:
+    - path: ci.yml
+      source: t/ci.yml
+`)
+
+	calls := 0
+	resolver := NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
+		calls++
+		return nil, errors.New("no API in this test")
+	})
+	parsed, err := ParseAll(filepath.Join(dir, "fs.yaml"), ParseOptions{Resolver: resolver, SkipRemoteSources: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Errorf("SkipRemoteSources made %d gh calls", calls)
+	}
+	if len(parsed.FileDocs) != 2 {
+		t.Fatalf("expected 2 file documents, got %d", len(parsed.FileDocs))
+	}
+	want := [][]string{
+		{filepath.Join(dir, "t/ci.yml"), filepath.Join(dir, "p/fix.patch"), filepath.Join(dir, "t/hooks")},
+		{filepath.Join(dir, "t/ci.yml")},
+	}
+	for i, d := range parsed.FileDocs {
+		if !reflect.DeepEqual(d.LocalDeps, want[i]) {
+			t.Errorf("doc %d LocalDeps = %v, want %v", i, d.LocalDeps, want[i])
+		}
+	}
+
+	// Without SkipRemoteSources the github:// source is fetched.
+	if _, err := ParseAll(filepath.Join(dir, "fs.yaml"), ParseOptions{Resolver: resolver}); err == nil || calls == 0 {
+		t.Errorf("expected the github:// source to be fetched, err=%v calls=%d", err, calls)
+	}
 }

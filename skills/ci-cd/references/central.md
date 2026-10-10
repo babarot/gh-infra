@@ -51,4 +51,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
 ```
 
+Plan only what a pull request changed, to save API calls with many repositories:
+
+```yaml
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the ref must be in the checkout
+      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --ci
+```
+
+- also selects File/FileSet manifests whose local `source:`/`patches:` files changed; no grep over `source:` lines needed
+- on push: `gh infra apply ./repos/ --changed-since ${{ github.event.before }} --auto-approve`; a failed run is not retried by the next push, so keep the scheduled full drift check
+- `github://` source changes are not detected
+
 Use a fine-grained PAT or GitHub App token. The default `GITHUB_TOKEN` cannot manage other repositories.
