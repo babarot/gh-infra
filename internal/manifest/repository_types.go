@@ -306,6 +306,57 @@ type Ruleset struct {
 	BypassActors []RulesetBypassActor `yaml:"bypass_actors,omitempty"`
 	Conditions   *RulesetConditions   `yaml:"conditions,omitempty"`
 	Rules        RulesetRules         `yaml:"rules"`
+
+	// BypassActorsSet reports whether bypass_actors was present, so that
+	// bypass_actors: [] (remove all) differs from leaving it out (keep).
+	BypassActorsSet bool `yaml:"-"`
+}
+
+// UnmarshalYAML tracks whether bypass_actors was present.
+func (r *Ruleset) UnmarshalYAML(unmarshal func(any) error) error {
+	type raw Ruleset
+	var v raw
+	if err := unmarshal(&v); err != nil {
+		return err
+	}
+	*r = Ruleset(v)
+
+	var fields map[string]any
+	if err := unmarshal(&fields); err != nil {
+		return err
+	}
+	if b, ok := fields["bypass_actors"]; ok {
+		if b == nil {
+			return fmt.Errorf("rulesets[%s].bypass_actors must be a sequence; use [] to remove all bypass actors", r.Name)
+		}
+		r.BypassActorsSet = true
+	}
+	return nil
+}
+
+// MarshalYAML keeps an explicit bypass_actors: [], which omitempty would drop.
+func (r Ruleset) MarshalYAML() (any, error) {
+	out := struct {
+		Name         string                `yaml:"name"`
+		Target       *string               `yaml:"target,omitempty"`
+		Enforcement  *string               `yaml:"enforcement,omitempty"`
+		BypassActors *[]RulesetBypassActor `yaml:"bypass_actors,omitempty"`
+		Conditions   *RulesetConditions    `yaml:"conditions,omitempty"`
+		Rules        RulesetRules          `yaml:"rules"`
+	}{Name: r.Name, Target: r.Target, Enforcement: r.Enforcement, Conditions: r.Conditions, Rules: r.Rules}
+	if r.BypassActorsSet || len(r.BypassActors) > 0 {
+		actors := r.BypassActors
+		if actors == nil {
+			actors = []RulesetBypassActor{}
+		}
+		out.BypassActors = &actors
+	}
+	return out, nil
+}
+
+// HasBypassActors reports whether the manifest sets bypass_actors.
+func (r Ruleset) HasBypassActors() bool {
+	return r.BypassActorsSet || len(r.BypassActors) > 0
 }
 
 type RulesetBypassActor struct {
@@ -385,12 +436,41 @@ func (u *RulesetUpdate) IsEnabled() *bool {
 	return u.Enabled
 }
 
+// RulesetPullRequest is the pull_request rule. It is either an object with
+// parameters, or `false` to remove the rule from an existing ruleset.
 type RulesetPullRequest struct {
 	RequiredApprovingReviewCount   *int  `yaml:"required_approving_review_count,omitempty"`
 	DismissStaleReviewsOnPush      *bool `yaml:"dismiss_stale_reviews_on_push,omitempty"`
 	RequireCodeOwnerReview         *bool `yaml:"require_code_owner_review,omitempty"`
 	RequireLastPushApproval        *bool `yaml:"require_last_push_approval,omitempty"`
 	RequiredReviewThreadResolution *bool `yaml:"required_review_thread_resolution,omitempty"`
+
+	Disabled bool `yaml:"-"` // set by `pull_request: false`
+}
+
+// UnmarshalYAML accepts `false` or an object.
+func (p *RulesetPullRequest) UnmarshalYAML(unmarshal func(any) error) error {
+	disabled, isBool, err := unmarshalFalse(unmarshal, "pull_request")
+	if err != nil || isBool {
+		p.Disabled = disabled
+		return err
+	}
+	type raw RulesetPullRequest
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	*p = RulesetPullRequest(r)
+	return nil
+}
+
+// MarshalYAML emits `false` for a disabled rule.
+func (p RulesetPullRequest) MarshalYAML() (any, error) {
+	if p.Disabled {
+		return false, nil
+	}
+	type raw RulesetPullRequest
+	return raw(p), nil
 }
 
 // WithDefaults returns a copy with every unset parameter filled with GitHub's
@@ -415,9 +495,71 @@ func (p RulesetPullRequest) WithDefaults() RulesetPullRequest {
 	return p
 }
 
+// RulesetStatusChecks is the required_status_checks rule. It is either an
+// object, or `false` to remove the rule from an existing ruleset.
 type RulesetStatusChecks struct {
 	StrictRequiredStatusChecksPolicy *bool                `yaml:"strict_required_status_checks_policy,omitempty"`
 	Contexts                         []RulesetStatusCheck `yaml:"contexts"`
+
+	Disabled bool `yaml:"-"` // set by `required_status_checks: false`
+}
+
+// UnmarshalYAML accepts `false` or an object.
+func (c *RulesetStatusChecks) UnmarshalYAML(unmarshal func(any) error) error {
+	disabled, isBool, err := unmarshalFalse(unmarshal, "required_status_checks")
+	if err != nil || isBool {
+		c.Disabled = disabled
+		return err
+	}
+	type raw RulesetStatusChecks
+	var r raw
+	if err := unmarshal(&r); err != nil {
+		return err
+	}
+	*c = RulesetStatusChecks(r)
+	return nil
+}
+
+// MarshalYAML emits `false` for a disabled rule.
+func (c RulesetStatusChecks) MarshalYAML() (any, error) {
+	if c.Disabled {
+		return false, nil
+	}
+	type raw RulesetStatusChecks
+	return raw(c), nil
+}
+
+// unmarshalFalse reports whether the value is the bool `false`. `true` is an
+// error, since the rule needs its parameters.
+func unmarshalFalse(unmarshal func(any) error, rule string) (disabled, isBool bool, err error) {
+	var b bool
+	if unmarshal(&b) != nil {
+		return false, false, nil
+	}
+	if b {
+		return false, true, fmt.Errorf("%s: true is not supported; set its parameters, or false to remove the rule", rule)
+	}
+	return true, true, nil
+}
+
+// PullRequestEnabled reports whether the manifest enables the pull_request rule.
+func (r RulesetRules) PullRequestEnabled() bool {
+	return r.PullRequest != nil && !r.PullRequest.Disabled
+}
+
+// PullRequestDisabled reports whether the manifest removes the pull_request rule.
+func (r RulesetRules) PullRequestDisabled() bool {
+	return r.PullRequest != nil && r.PullRequest.Disabled
+}
+
+// StatusChecksEnabled reports whether the manifest enables required_status_checks.
+func (r RulesetRules) StatusChecksEnabled() bool {
+	return r.RequiredStatusChecks != nil && !r.RequiredStatusChecks.Disabled
+}
+
+// StatusChecksDisabled reports whether the manifest removes required_status_checks.
+func (r RulesetRules) StatusChecksDisabled() bool {
+	return r.RequiredStatusChecks != nil && r.RequiredStatusChecks.Disabled
 }
 
 type RulesetStatusCheck struct {

@@ -802,10 +802,12 @@ func TestApplyRuleset_Create(t *testing.T) {
 
 func TestApplyRuleset_Update(t *testing.T) {
 	// Mock returns list of rulesets for ID resolution
-	listResp := `[{"id":42,"name":"protect-main","target":"branch"}]`
+	listResp := `[{"id":42,"name":"protect-main","target":"branch","source_type":"Repository"}]`
+	getResp := `{"id":42,"name":"protect-main","target":"branch","enforcement":"active","node_id":"X","bypass_actors":[],"rules":[{"type":"deletion"}]}`
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
-			"api repos/myorg/myrepo/rulesets": []byte(listResp),
+			"api repos/myorg/myrepo/rulesets":    []byte(listResp),
+			"api repos/myorg/myrepo/rulesets/42": []byte(getResp),
 		},
 	}
 	proc := NewProcessor(mock, nil)
@@ -839,17 +841,64 @@ func TestApplyRuleset_Update(t *testing.T) {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
 
-	found := false
-	for _, call := range mock.Called {
+	var body []byte
+	for i, call := range mock.Called {
 		joined := strings.Join(call, " ")
 		if strings.Contains(joined, "repos/myorg/myrepo/rulesets/42") &&
 			strings.Contains(joined, "PUT") {
-			found = true
+			body = mock.CalledStdin[i]
 			break
 		}
 	}
-	if !found {
-		t.Errorf("expected PUT to rulesets/42 endpoint, got calls: %v", mock.Called)
+	if body == nil {
+		t.Fatalf("expected PUT to rulesets/42 endpoint, got calls: %v", mock.Called)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(body, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent["enforcement"] != "evaluate" {
+		t.Errorf("enforcement = %v, want evaluate", sent["enforcement"])
+	}
+	if _, ok := sent["node_id"]; ok {
+		t.Error("read-only fields from the GET must not be sent")
+	}
+	if rules, _ := sent["rules"].([]any); len(rules) != 1 {
+		t.Errorf("rules = %v, want the current deletion rule kept", sent["rules"])
+	}
+}
+
+func TestApplyRuleset_UpdateFailsWhenCurrentCannotBeRead(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			"api repos/o/r/rulesets": []byte(`[{"id":42,"name":"main","target":"branch","source_type":"Repository"}]`),
+		},
+		Errors: map[string]error{
+			"api repos/o/r/rulesets/42": fmt.Errorf("%w: boom", gh.ErrNotFound),
+		},
+	}
+	proc := NewProcessor(mock, nil)
+	repo := newTestRepo("o", "r")
+	repo.Spec.Rulesets = []manifest.Ruleset{{Name: "main", Enforcement: manifest.Ptr("active")}}
+	results := proc.Apply(context.Background(), []Change{{Type: ChangeUpdate, Resource: "Ruleset[main]", Name: "o/r", Field: "ruleset"}},
+		[]*manifest.Repository{repo}, ui.NoopReporter{})
+	if len(results) != 1 || results[0].Err == nil {
+		t.Fatalf("expected the update to fail, got %+v", results)
+	}
+	for _, call := range mock.Called {
+		if strings.Contains(strings.Join(call, " "), "PUT") {
+			t.Fatal("must not PUT without the current ruleset")
+		}
+	}
+}
+
+func TestResolveRulesetID_NameOnlySkipsOrgRulesets(t *testing.T) {
+	listResp := `[{"id":1,"name":"main","target":"branch","source_type":"Organization"},{"id":2,"name":"main","target":"tag","source_type":"Repository"}]`
+	mock := &gh.MockRunner{Responses: map[string][]byte{"api repos/o/r/rulesets": []byte(listResp)}}
+	proc := NewProcessor(mock, nil)
+	id, err := proc.resolveRulesetID(context.Background(), rulesetLookup{Repo: "o/r", RulesetName: "main"})
+	if err != nil || id != 2 {
+		t.Fatalf("id = %d, err = %v; want the repository tag ruleset 2", id, err)
 	}
 }
 

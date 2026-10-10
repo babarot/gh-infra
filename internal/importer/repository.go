@@ -90,7 +90,11 @@ func preserveUnreturnedRulesetParams(local, imported []manifest.Ruleset) []manif
 	result := slices.Clone(imported)
 	for i, irs := range result {
 		lrs, ok := localByName[irs.Name]
-		if !ok || lrs.Rules.Update == nil || lrs.Rules.Update.AllowsFetchAndMerge == nil {
+		if !ok {
+			continue
+		}
+		keepRemovalForms(&result[i], lrs)
+		if lrs.Rules.Update == nil || lrs.Rules.Update.AllowsFetchAndMerge == nil {
 			continue
 		}
 		if enabled := lrs.Rules.Update.IsEnabled(); enabled == nil || !*enabled {
@@ -104,6 +108,44 @@ func preserveUnreturnedRulesetParams(local, imported []manifest.Ruleset) []manif
 		result[i].Rules.Update = &update
 	}
 	return result
+}
+
+// keepRemovalForms keeps the local forms that say "this is absent" when
+// GitHub matches them: `pull_request: false`, `required_status_checks:
+// false`, and `bypass_actors: []`. GitHub returns nothing for these, so
+// without this import would see a difference on every run and drop them
+// from the manifest.
+func keepRemovalForms(imported *manifest.Ruleset, local manifest.Ruleset) {
+	if local.Rules.PullRequestDisabled() && imported.Rules.PullRequest == nil {
+		imported.Rules.PullRequest = &manifest.RulesetPullRequest{Disabled: true}
+	}
+	if local.Rules.StatusChecksDisabled() && imported.Rules.RequiredStatusChecks == nil {
+		imported.Rules.RequiredStatusChecks = &manifest.RulesetStatusChecks{Disabled: true}
+	}
+	if local.BypassActorsSet && len(local.BypassActors) == 0 && len(imported.BypassActors) == 0 {
+		imported.BypassActorsSet = true
+	}
+}
+
+// rulesetsEqual compares two rulesets the way the manifest means them: a
+// removed rule equals an absent one, and whether bypass_actors was written
+// does not matter when the actors are the same.
+func rulesetsEqual(a, b manifest.Ruleset) bool {
+	return reflect.DeepEqual(normalizeRuleset(a), normalizeRuleset(b))
+}
+
+func normalizeRuleset(rs manifest.Ruleset) manifest.Ruleset {
+	rs.BypassActorsSet = false
+	if len(rs.BypassActors) == 0 {
+		rs.BypassActors = nil
+	}
+	if rs.Rules.PullRequestDisabled() {
+		rs.Rules.PullRequest = nil
+	}
+	if rs.Rules.StatusChecksDisabled() {
+		rs.Rules.RequiredStatusChecks = nil
+	}
+	return rs
 }
 
 // DiffRepositorySet compares a RepositorySet-derived repo, computing the
@@ -1157,14 +1199,14 @@ func rulesetCreateDiffs(name string, rs manifest.Ruleset) []FieldDiff {
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.creation", name), rs.Rules.Creation)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_linear_history", name), rs.Rules.RequiredLinearHistory)
 	appendFieldCreate(&diffs, fmt.Sprintf("rulesets.%s.rules.required_signatures", name), rs.Rules.RequiredSignatures)
-	if rs.Rules.PullRequest != nil {
+	if rs.Rules.PullRequestEnabled() {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.pull_request", name),
 			Old:   nil,
 			New:   "enabled",
 		})
 	}
-	if rs.Rules.RequiredStatusChecks != nil {
+	if rs.Rules.StatusChecksEnabled() {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.required_status_checks", name),
 			Old:   nil,
@@ -1222,18 +1264,18 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 	if !reflect.DeepEqual(local.Rules.PullRequest, imported.Rules.PullRequest) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.pull_request", name),
-			Old:   enabledSummary(local.Rules.PullRequest != nil),
-			New:   enabledSummary(imported.Rules.PullRequest != nil),
+			Old:   enabledSummary(local.Rules.PullRequestEnabled()),
+			New:   enabledSummary(imported.Rules.PullRequestEnabled()),
 		})
 	}
 	if !reflect.DeepEqual(local.Rules.RequiredStatusChecks, imported.Rules.RequiredStatusChecks) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.required_status_checks", name),
-			Old:   enabledSummary(local.Rules.RequiredStatusChecks != nil),
-			New:   enabledSummary(imported.Rules.RequiredStatusChecks != nil),
+			Old:   enabledSummary(local.Rules.StatusChecksEnabled()),
+			New:   enabledSummary(imported.Rules.StatusChecksEnabled()),
 		})
 	}
-	if !reflect.DeepEqual(local.BypassActors, imported.BypassActors) {
+	if (len(local.BypassActors) > 0 || len(imported.BypassActors) > 0) && !reflect.DeepEqual(local.BypassActors, imported.BypassActors) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.bypass_actors", name),
 			Old:   fmt.Sprintf("%d actors", len(local.BypassActors)),
@@ -1636,7 +1678,7 @@ func minimalRulesets(defaults, imported []manifest.Ruleset) []manifest.Ruleset {
 
 	var result []manifest.Ruleset
 	for _, rs := range imported {
-		if drs, ok := defaultMap[rs.Name]; !ok || !reflect.DeepEqual(drs, rs) {
+		if drs, ok := defaultMap[rs.Name]; !ok || !rulesetsEqual(drs, rs) {
 			result = append(result, rs)
 		}
 	}
