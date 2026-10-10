@@ -19,6 +19,7 @@ func newApplyCmd() *cobra.Command {
 		forceSecrets  bool
 		failOnUnknown bool
 		output        string
+		changedSince  string
 	)
 
 	cmd := &cobra.Command{
@@ -31,6 +32,7 @@ func newApplyCmd() *cobra.Command {
 				ForceSecrets:  forceSecrets,
 				FailOnUnknown: failOnUnknown,
 				Output:        output,
+				ChangedSince:  changedSince,
 			})
 		},
 	}
@@ -40,6 +42,7 @@ func newApplyCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&forceSecrets, "force-secrets", false, "Always re-set all secrets (even if they already exist)")
 	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
 	cmd.Flags().StringVarP(&output, "output", "o", infra.OutputText, "Output format: text or json (json requires --auto-approve)")
+	cmd.Flags().StringVar(&changedSince, "changed-since", "", "Only manifests changed since this git ref, with the local files they read (e.g. origin/main)")
 
 	return cmd
 }
@@ -50,6 +53,7 @@ type applyCommandOptions struct {
 	ForceSecrets  bool
 	FailOnUnknown bool
 	Output        string
+	ChangedSince  string
 }
 
 func runApply(paths []string, opts applyCommandOptions) error {
@@ -68,6 +72,7 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		ForceSecrets:  opts.ForceSecrets,
 		DryRun:        false,
 		Output:        opts.Output,
+		ChangedSince:  opts.ChangedSince,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

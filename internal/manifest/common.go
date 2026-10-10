@@ -46,6 +46,7 @@ type FileDocument struct {
 	SourcePath string      // file path that was parsed
 	DocIndex   int         // 0-based position in multi-doc YAML
 	Files      []FileEntry // source-resolved files (OriginalSource set); use for import comparisons
+	LocalDeps  []string    // local source: files/directories and patch files this document reads (absolute)
 }
 
 // Merge appends all resources from other into r.

@@ -23,6 +23,7 @@ type PlanOptions struct {
 	DryRun        bool   // true = plan only (skip secret resolution)
 	ShowDiff      bool   // emit unified diff for each file change in plan output
 	Output        string // OutputText (default), OutputJSON or OutputMarkdown; the latter two print nothing while planning
+	ChangedSince  string // git ref: plan only the manifests changed since it (with the local files they read)
 }
 
 // PlanResult holds the outcome of the plan phase.
@@ -80,19 +81,32 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		return runner.Run(ctx, args...)
 	})
 
+	parseOpt := manifest.ParseOptions{
+		FailOnUnknown: opts.FailOnUnknown,
+		Resolver:      sourceResolver,
+	}
 	parsed := &manifest.ParseResult{}
-	for _, path := range paths {
-		result, err := manifest.ParseAll(path, manifest.ParseOptions{
-			FailOnUnknown: opts.FailOnUnknown,
-			Resolver:      sourceResolver,
-		})
+	var total, selected int
+	if opts.ChangedSince != "" {
+		parsed, total, selected, err = parseChanged(context.Background(), paths, opts.ChangedSince, parseOpt)
 		if err != nil {
 			return nil, err
 		}
-		parsed.Merge(result)
-	}
-	if err := parsed.Validate(); err != nil {
-		return nil, err
+		if selected == 0 {
+			p.Message(fmt.Sprintf("No manifests changed since %s.", opts.ChangedSince))
+			return &PlanResult{Parsed: parsed}, nil
+		}
+	} else {
+		for _, path := range paths {
+			result, err := manifest.ParseAll(path, parseOpt)
+			if err != nil {
+				return nil, err
+			}
+			parsed.Merge(result)
+		}
+		if err := parsed.Validate(); err != nil {
+			return nil, err
+		}
 	}
 
 	// Print deprecation warnings
@@ -125,6 +139,9 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		displayPaths[i] = tildePath(path)
 	}
 	p.Phase(fmt.Sprintf("Reading desired state from %s ...", strings.Join(displayPaths, ", ")))
+	if opts.ChangedSince != "" {
+		p.Phase(fmt.Sprintf("Planning %d of %d resources changed since %s ...", selected, total, opts.ChangedSince))
+	}
 	p.Phase("Fetching current state from GitHub API ...")
 	p.BlankLine()
 

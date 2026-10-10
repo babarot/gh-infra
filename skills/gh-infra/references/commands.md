@@ -37,6 +37,7 @@ Flags:
 
 - `-r`, `--repo <owner/repo>`: limit to one repository
 - `--ci`: exit 1 if changes are detected
+- `--changed-since <ref>`: only manifests changed since the git ref (merge base to working tree, plus untracked) and File/FileSet docs whose local `source:` files/dirs or `patches:` files changed; no API calls when nothing changed. Needs the ref in the checkout (`fetch-depth: 0` in CI); every path must be inside the git repo; `github://` source changes are not detected
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
 - `-o`, `--output json`: print only a JSON document on stdout (summary, changes, warnings, errors); prefer it over parsing text
@@ -58,6 +59,7 @@ Flags:
 - `-r`, `--repo <owner/repo>`: limit to one repository
 - `--auto-approve`: skip confirmation prompt
 - `--force-secrets`: re-send all declared secrets
+- `--changed-since <ref>`: same selection as `plan`; a failed run's changes are not retried by the next push, so keep a periodic full plan/apply
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `-o`, `--output json`: print only a JSON document with a `status` per change; requires `--auto-approve`
 

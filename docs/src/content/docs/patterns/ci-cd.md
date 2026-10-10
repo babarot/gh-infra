@@ -82,6 +82,48 @@ jobs:
 
 The `--ci` flag makes `plan` exit with code 1 if any changes are detected. This turns the workflow into a pass/fail check that you can wire up to notifications (Slack, email, etc.) or use as a required status check.
 
+## Planning Only What Changed
+
+Planning every manifest on every pull request costs API calls for every repository. With `--changed-since <ref>`, `plan` and `apply` handle only:
+
+- the manifest files changed since `<ref>` (all documents in them), and
+- the `File` and `FileSet` documents that read a changed local file: a `source:` file, a file added to, changed in or removed from a `source:` directory, or a `patches:` file
+
+"Changed" means changed between the merge base of `<ref>` and the working tree, committed or not, plus untracked files. When nothing changed, the command says so and makes no API calls.
+
+```yaml
+# .github/workflows/infra-plan.yaml
+on:
+  pull_request:
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # --changed-since needs the history of the ref
+      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+On merge, apply what the push changed:
+
+```yaml
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: gh infra apply ./repos/ --changed-since ${{ github.event.before }} --auto-approve
+```
+
+Things to know:
+
+- The ref must be in the checkout. With the default `fetch-depth: 1` it is not, and the command fails.
+- If an `apply --changed-since` run fails, the next push does not include its changes, so they are not retried. Keep a scheduled full `plan --ci` (see [Drift Detection](#drift-detection)) or a periodic full `apply`.
+- Changes to a `github://` source cannot be seen in git; documents using one are handled only when their manifest or local files change.
+- Validation still covers all manifests, so a conflict with an unchanged manifest (for example two FileSets opening a pull request from the same branch) is still reported.
+- Every path argument must be inside the git repository. Requires git 2.30 or later.
+
 ## Combining Both
 
 For a complete setup, use both workflows together:

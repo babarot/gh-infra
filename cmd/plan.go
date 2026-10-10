@@ -18,6 +18,7 @@ func newPlanCmd() *cobra.Command {
 		failOnUnknown bool
 		showDiff      bool
 		output        string
+		changedSince  string
 	)
 
 	cmd := &cobra.Command{
@@ -30,6 +31,7 @@ func newPlanCmd() *cobra.Command {
 				FailOnUnknown: failOnUnknown,
 				ShowDiff:      showDiff,
 				Output:        output,
+				ChangedSince:  changedSince,
 			})
 		},
 	}
@@ -39,6 +41,7 @@ func newPlanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&failOnUnknown, "fail-on-unknown", false, "Error on YAML files with unknown Kind")
 	cmd.Flags().BoolVar(&showDiff, "diff", false, "Show unified diff for FileSet file changes (prints full content)")
 	cmd.Flags().StringVarP(&output, "output", "o", infra.OutputText, "Output format: text, json, or markdown")
+	cmd.Flags().StringVar(&changedSince, "changed-since", "", "Only manifests changed since this git ref, with the local files they read (e.g. origin/main)")
 
 	return cmd
 }
@@ -49,6 +52,7 @@ type planCommandOptions struct {
 	FailOnUnknown bool
 	ShowDiff      bool
 	Output        string
+	ChangedSince  string
 }
 
 func runPlan(paths []string, opts planCommandOptions) error {
@@ -66,6 +70,7 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		DryRun:        true,
 		ShowDiff:      opts.ShowDiff,
 		Output:        opts.Output,
+		ChangedSince:  opts.ChangedSince,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

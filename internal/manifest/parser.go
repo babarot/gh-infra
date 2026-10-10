@@ -27,6 +27,48 @@ func ParsePath(path string) ([]*Repository, error) {
 type ParseOptions struct {
 	FailOnUnknown bool            // Error on files with unknown Kind (default: skip)
 	Resolver      *SourceResolver // Source resolver for File/FileSet entries (required when parsing File/FileSet kinds)
+	// SkipRemoteSources leaves github:// sources unresolved (no API call).
+	// The result is only fit for validation and for selecting documents by
+	// their local dependencies, not for planning.
+	SkipRemoteSources bool
+}
+
+// resolver returns the source resolver to use, honoring SkipRemoteSources.
+func (o ParseOptions) resolver() *SourceResolver {
+	if !o.SkipRemoteSources || o.Resolver == nil {
+		return o.Resolver
+	}
+	r := *o.Resolver
+	r.skipRemote = true
+	return &r
+}
+
+// localDeps returns the local files and directories that files read when
+// resolved: local source: paths and patch file paths, absolute and cleaned.
+// It mirrors ResolveFiles, which reads patches only for entries with a
+// source: and no content:.
+func localDeps(files []FileEntry, yamlDir string) []string {
+	abs := func(p string) string {
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(yamlDir, p)
+		}
+		return filepath.Clean(p)
+	}
+	var deps []string
+	for _, f := range files {
+		if f.Source == "" || f.Content != "" {
+			continue
+		}
+		if !strings.HasPrefix(f.Source, githubScheme) {
+			deps = append(deps, abs(f.Source))
+		}
+		for _, p := range f.Patches {
+			if !strings.ContainsRune(p, '\n') {
+				deps = append(deps, abs(p))
+			}
+		}
+	}
+	return deps
 }
 
 // ParseAll parses a file or directory and returns all resources (Repository + FileSet).
@@ -160,23 +202,23 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if opt.Resolver == nil {
 			return nil, fmt.Errorf("%s: ParseOptions.Resolver is required for File kind", path)
 		}
-		fs, warnings, err := parseFile(data, path, opt.Resolver)
+		fs, warnings, deps, err := parseFile(data, path, opt.resolver())
 		if err != nil {
 			return nil, err
 		}
 		result.FileSets = []*FileSet{fs}
-		result.FileDocs = []*FileDocument{{Resource: fs, SourcePath: path, DocIndex: docIndex, Files: fs.Spec.Files}}
+		result.FileDocs = []*FileDocument{{Resource: fs, SourcePath: path, DocIndex: docIndex, Files: fs.Spec.Files, LocalDeps: deps}}
 		result.Warnings = append(result.Warnings, warnings...)
 	case KindFileSet:
 		if opt.Resolver == nil {
 			return nil, fmt.Errorf("%s: ParseOptions.Resolver is required for FileSet kind", path)
 		}
-		fs, warnings, err := parseFileSet(data, path, opt.Resolver)
+		fs, warnings, deps, err := parseFileSet(data, path, opt.resolver())
 		if err != nil {
 			return nil, err
 		}
 		result.FileSets = []*FileSet{fs}
-		result.FileDocs = []*FileDocument{{Resource: fs, SourcePath: path, DocIndex: docIndex, Files: fs.Spec.Files}}
+		result.FileDocs = []*FileDocument{{Resource: fs, SourcePath: path, DocIndex: docIndex, Files: fs.Spec.Files, LocalDeps: deps}}
 		result.Warnings = append(result.Warnings, warnings...)
 	default:
 		if opt.FailOnUnknown {
@@ -258,14 +300,14 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	return repos, docs, warnings, nil
 }
 
-func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, error) {
+func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, []string, error) {
 	var f File
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&f); err != nil {
-		return nil, nil, fmt.Errorf("parse File in %s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("parse File in %s: %w", path, err)
 	}
 
 	if err := f.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
 
 	// Expand File into a FileSet with a single repository entry.
@@ -285,13 +327,15 @@ func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []
 	}
 
 	if err := fs.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
+
+	deps := localDeps(fs.Spec.Files, filepath.Dir(path))
 
 	// Resolve source references (local files, directories, GitHub URLs)
 	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
 	fs.Spec.Files = resolved
 
@@ -300,23 +344,28 @@ func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []
 	warnings = append(warnings, f.Spec.DeprecationWarnings...)
 	warnings = append(warnings, collectFileSetWarnings(fs.Spec)...)
 
-	return fs, warnings, nil
+	return fs, warnings, deps, nil
 }
 
-func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, error) {
+func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, []string, error) {
 	var fs FileSet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&fs); err != nil {
-		return nil, nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
 	}
 
 	if err := fs.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	deps := localDeps(fs.Spec.Files, filepath.Dir(path))
+	for _, repo := range fs.Spec.Repositories {
+		deps = append(deps, localDeps(repo.Overrides, filepath.Dir(path))...)
 	}
 
 	// Resolve source references (local files, directories, GitHub URLs)
 	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
 	fs.Spec.Files = resolved
 
@@ -324,7 +373,7 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 		if len(repo.Overrides) > 0 {
 			resolvedOverrides, err := resolver.ResolveFiles(context.Background(), repo.Overrides, filepath.Dir(path))
 			if err != nil {
-				return nil, nil, fmt.Errorf("%s: resolve overrides for %s: %w", path, repo.Name, err)
+				return nil, nil, nil, fmt.Errorf("%s: resolve overrides for %s: %w", path, repo.Name, err)
 			}
 			fs.Spec.Repositories[i].Overrides = resolvedOverrides
 		}
@@ -333,7 +382,7 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 	// Collect deprecation warnings
 	warnings := collectFileSetWarnings(fs.Spec)
 
-	return &fs, warnings, nil
+	return &fs, warnings, deps, nil
 }
 
 // emptyOverrideWarnings warns when an entry's [] drops the defaults' entries
