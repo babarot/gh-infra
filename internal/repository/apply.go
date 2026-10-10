@@ -1116,14 +1116,19 @@ func (p *Processor) applyActionsPermissions(ctx context.Context, owner, name str
 	}
 	// GitHub API requires "enabled" in every PUT to this endpoint.
 	// Validation ensures enabled is always set when other actions fields are present.
+	// While Actions is disabled GitHub rejects allowed_actions with 409 (observed;
+	// not in the API docs) and sha_pinning_required has no effect, so only
+	// enabled is sent.
 	payload := map[string]any{
 		"enabled": *a.Enabled,
 	}
-	if a.AllowedActions != nil {
-		payload["allowed_actions"] = *a.AllowedActions
-	}
-	if a.SHAPinningRequired != nil {
-		payload["sha_pinning_required"] = *a.SHAPinningRequired
+	if !a.Disabled() {
+		if a.AllowedActions != nil {
+			payload["allowed_actions"] = *a.AllowedActions
+		}
+		if a.SHAPinningRequired != nil {
+			payload["sha_pinning_required"] = *a.SHAPinningRequired
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -1162,7 +1167,9 @@ func (p *Processor) applyActionsWorkflow(ctx context.Context, owner, name string
 }
 
 func (p *Processor) applyActionsSelectedActions(ctx context.Context, owner, name string, a *manifest.Actions) error {
-	if a.SelectedActions == nil {
+	// The selected-actions endpoints only work while allowed_actions is
+	// "selected", which a repo with Actions disabled neither reports nor accepts.
+	if a.SelectedActions == nil || a.Disabled() {
 		return nil
 	}
 	sa := a.SelectedActions
