@@ -33,6 +33,7 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `--auto-approve` | Skip confirmation prompt |
 | `--force-secrets` | Re-set all secrets (even existing ones) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
+| `-o, --output <format>` | `text` (default) or `json`; `json` requires `--auto-approve`. See [JSON output](../json-output/) |
 
 ## Exit status
 

@@ -121,30 +121,35 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 const maxDiffLines = 500
 
 // printFileDiff emits a colored unified diff block for a single file change.
+func printFileDiff(p ui.Printer, c fileset.Change) {
+	if diff := fileDiff(c); diff != "" {
+		p.PrintDiffBlock(diff)
+	}
+}
+
+// fileDiff returns the unified diff for a single file change, capped at
+// maxDiffLines to prevent flooding, or "" when there is nothing to show.
 // For creates, it diffs empty string against desired content.
 // For deletes, it diffs current content against empty string.
 // For updates, it diffs current against desired.
-// Output is capped at maxDiffLines to prevent terminal flooding.
-func printFileDiff(p ui.Printer, c fileset.Change) {
+func fileDiff(c fileset.Change) string {
 	var current, desired string
 	switch c.Type {
 	case fileset.ChangeCreate:
-		current = ""
 		desired = c.Desired
 	case fileset.ChangeUpdate:
 		current = c.Current
 		desired = c.Desired
 	case fileset.ChangeDelete:
 		current = c.Current
-		desired = ""
 	default:
-		return
+		return ""
 	}
 	diff := ui.GenerateDiff(current, desired, c.Path)
 	if diff == "" {
-		return
+		return ""
 	}
-	p.PrintDiffBlock(ui.TruncateDiff(diff, maxDiffLines))
+	return ui.TruncateDiff(diff, maxDiffLines)
 }
 
 // printApplyResults prints apply results grouped by repo name,
