@@ -57,7 +57,7 @@ jobs:
 - The check fails only when the plan fails (exit `1`). Changes (exit `2`) are shown in the comment, not as a failed check. See [Exit status](#exit-status).
 - When the pull request changes no manifest, the comment says `Plan: no manifests changed since origin/main` and no API calls are made. To skip the workflow for such pull requests, add `paths:` with the manifest directories and every directory the manifests read through `source:` or `patches:` (for example `templates/**`). A workflow filtered by `paths:` cannot be a required check, since it does not run on other pull requests.
 - The job does not run for pull requests from forks, so it cannot be a required check for them either. Do not switch to `pull_request_target` to get around this: it would run the fork's manifests with your token.
-- `plan` only reads from GitHub, but reading secrets, rulesets and Actions settings still needs the permissions listed in [Authentication](#authentication).
+- `plan` only reads from GitHub, but reading the settings the manifests manage needs the read permissions listed in [Authentication](#authentication).
 
 ## Apply on Merge
 

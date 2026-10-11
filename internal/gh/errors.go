@@ -255,7 +255,7 @@ func tryParseGHMessage(stderr string) *APIError {
 	lastOpen := strings.LastIndex(stderr, "(")
 	lastClose := strings.LastIndex(stderr, ")")
 	if lastOpen < 0 || lastClose < 0 || lastClose <= lastOpen {
-		return nil
+		return parseHTTPStatusMessage(stderr)
 	}
 	label := stderr[lastOpen+1 : lastClose]
 
@@ -287,7 +287,7 @@ func tryParseGHMessage(stderr string) *APIError {
 }
 
 // httpStatusMessage matches "HTTP 403: <message>" inside gh's output.
-var httpStatusMessage = regexp.MustCompile(`HTTP (\d{3}): ([^\n]*)`)
+var httpStatusMessage = regexp.MustCompile(`HTTP (\d{3})(?:: ([^\n]*))?`)
 
 // parseHTTPStatusMessage parses "...: HTTP 403: <message> (<url>)".
 func parseHTTPStatusMessage(stderr string) *APIError {

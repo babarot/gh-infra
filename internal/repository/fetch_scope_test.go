@@ -89,6 +89,13 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		{"wiki", manifest.RepositorySpec{Features: &manifest.Features{Wiki: yes}}, nil},
 		{"automated security fixes need alerts", manifest.RepositorySpec{Security: &manifest.Security{AutomatedSecurityFixes: yes}},
 			[]string{"automated_security_fixes", "vulnerability_alerts"}},
+		{"vulnerability alerts", manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: yes}}, []string{"vulnerability_alerts"}},
+		{"private vulnerability reporting", manifest.RepositorySpec{Security: &manifest.Security{PrivateVulnerabilityReporting: yes}}, []string{"private_vulnerability_reporting"}},
+		{"release immutability", manifest.RepositorySpec{ReleaseImmutability: yes}, []string{"release_immutability"}},
+		{"branch protection []", manifest.RepositorySpec{BranchProtectionSet: true}, []string{"branch_protection"}},
+		{"variables", manifest.RepositorySpec{Variables: []manifest.Variable{{Name: "V", Value: "1"}}}, []string{"variables"}},
+		{"milestones", manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1"}}}, []string{"milestones"}},
+		{"label_sync only", manifest.RepositorySpec{LabelSync: manifest.Ptr("mirror")}, []string{"labels"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &gh.MockRunner{Responses: scopeResponses("PUBLIC")}
@@ -123,10 +130,14 @@ func TestFetchRepository_ForbiddenManagedSettingIsAnError(t *testing.T) {
 	rulesetKey := "api repos/myorg/myrepo/rulesets --paginate"
 	protectedKey := "api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name"
 	ruleKey := "api repos/myorg/myrepo/branches/main/protection"
+	labelKey := "label list --repo myorg/myrepo --json name,color,description --limit 1000"
+	immutableKey := "api repos/myorg/myrepo/immutable-releases"
 	errs := map[string]error{
-		secretKey:  forbidden("Resource not accessible by personal access token"),
-		rulesetKey: forbidden("Upgrade to GitHub Pro or make this repository public to enable this feature."),
-		ruleKey:    forbidden("Resource not accessible by personal access token"),
+		secretKey:    forbidden("Resource not accessible by personal access token"),
+		rulesetKey:   forbidden("Upgrade to GitHub Pro or make this repository public to enable this feature."),
+		ruleKey:      forbidden("Resource not accessible by personal access token"),
+		labelKey:     forbidden("Resource not accessible by personal access token"),
+		immutableKey: forbidden("Resource not accessible by personal access token"),
 	}
 	responses := scopeResponses("PRIVATE")
 	responses[protectedKey] = []byte("main\n")
@@ -139,6 +150,8 @@ func TestFetchRepository_ForbiddenManagedSettingIsAnError(t *testing.T) {
 		{"secrets", manifest.RepositorySpec{Secrets: []manifest.Secret{{Name: "S", Value: "v"}}}, "cannot read secrets of myorg/myrepo (the token needs the Secrets permission)"},
 		{"rulesets on a Free private repository", manifest.RepositorySpec{RulesetsSet: true}, "Upgrade to GitHub Pro"},
 		{"branch protection rule", manifest.RepositorySpec{BranchProtectionSet: true}, "cannot read branch protection of myorg/myrepo (the token needs the Administration permission)"},
+		{"labels", manifest.RepositorySpec{LabelsSet: true}, "cannot read labels of myorg/myrepo (the token needs the Issues permission)"},
+		{"release immutability", manifest.RepositorySpec{ReleaseImmutability: manifest.Ptr(true)}, "cannot read release immutability of myorg/myrepo (the token needs the Administration permission)"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &gh.MockRunner{Responses: responses, Errors: errs}
@@ -163,5 +176,23 @@ func TestFetchRepository_ForbiddenManagedSettingIsAnError(t *testing.T) {
 
 	if !errors.Is(forbidden("x"), gh.ErrForbidden) {
 		t.Fatal("helper")
+	}
+}
+
+func TestFetchRepository_ManagedBranchRuleServerErrorIsNotSkipped(t *testing.T) {
+	responses := scopeResponses("PUBLIC")
+	responses["api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name"] = []byte("main\n")
+	errs := map[string]error{"api repos/myorg/myrepo/branches/main/protection": errors.New("HTTP 502: Bad Gateway")}
+
+	spec := manifest.RepositorySpec{BranchProtectionSet: true}
+	_, err := NewProcessor(&gh.MockRunner{Responses: responses, Errors: errs}, nil).FetchRepository(context.Background(), "myorg", "myrepo", &spec, nil)
+	if err == nil || !strings.Contains(err.Error(), "Bad Gateway") {
+		t.Errorf("a rule that could not be read must not look unprotected: err = %v", err)
+	}
+
+	errs["api repos/myorg/myrepo/branches/main/protection"] = fmt.Errorf("%w: gone", gh.ErrNotFound)
+	state, err := NewProcessor(&gh.MockRunner{Responses: responses, Errors: errs}, nil).FetchRepository(context.Background(), "myorg", "myrepo", &spec, nil)
+	if err != nil || len(state.BranchProtection) != 0 {
+		t.Errorf("a rule that is gone is skipped: state %+v, err %v", state, err)
 	}
 }

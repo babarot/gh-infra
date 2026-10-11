@@ -463,8 +463,9 @@ func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name strin
 	}
 
 	// Fetch per-branch protection rules in parallel. A branch whose rule
-	// cannot be read is skipped, unless branch protection is managed and the
-	// rule is forbidden: skipping it would plan a create apply cannot make.
+	// cannot be read is skipped, unless branch protection is managed: then
+	// only a rule that is gone (404) is skipped, since skipping one that
+	// could not be read would plan a create over it.
 	type fetchedRule struct {
 		bp  *CurrentBranchProtection
 		err error
@@ -472,7 +473,7 @@ func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name strin
 	fetched := parallel.Map(ctx, protectedBranches, parallel.DefaultConcurrency, func(ctx context.Context, _ int, branch string) fetchedRule {
 		bp, err := p.fetchBranchProtectionRule(ctx, owner, name, branch)
 		if err != nil {
-			if forbiddenWhenManaged(strict, err) {
+			if strict && !errors.Is(err, gh.ErrNotFound) {
 				return fetchedRule{err: fetchError(strict, "branch protection", owner, name, err)}
 			}
 			return fetchedRule{}
@@ -592,7 +593,8 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 	}
 
 	// Fetch per-ruleset details in parallel. A ruleset that cannot be read is
-	// skipped, unless rulesets are managed and it is forbidden.
+	// skipped, unless rulesets are managed: then only one that is gone (404)
+	// is skipped.
 	type fetchedRuleset struct {
 		rs  *CurrentRuleset
 		err error
@@ -600,7 +602,7 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 	fetched := parallel.Map(ctx, ids, parallel.DefaultConcurrency, func(ctx context.Context, _ int, id int) fetchedRuleset {
 		rs, err := p.fetchRuleset(ctx, owner, name, id)
 		if err != nil {
-			if forbiddenWhenManaged(strict, err) {
+			if strict && !errors.Is(err, gh.ErrNotFound) {
 				return fetchedRuleset{err: fetchError(strict, "rulesets", owner, name, err)}
 			}
 			return fetchedRuleset{}
