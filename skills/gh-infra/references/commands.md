@@ -10,6 +10,7 @@
 ```bash
 gh infra import <owner/repo> [owner/repo ...]
 gh infra import <owner/repo> --into=<path>
+gh infra import --into=<path> --auto-approve   # no prompt (CI, agents)
 ```
 
 Use plain `import` to bootstrap manifests.

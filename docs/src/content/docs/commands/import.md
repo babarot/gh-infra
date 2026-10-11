@@ -24,6 +24,7 @@ When using `--into`, arguments are optional. If omitted, all repositories define
 | Flag | Description |
 |------|-------------|
 | `--into <path>` | Pull GitHub state into existing local manifests (directory or file path) |
+| `--auto-approve` | With `--into`, write without asking, using each file's default action (see [Without a terminal](#without-a-terminal)) |
 
 ## Examples
 
@@ -106,6 +107,16 @@ Press `d` to open a full-screen diff viewer for file-level changes:
 | `q`/`Esc` | Return to confirmation |
 
 Repository setting changes (description, visibility, features, etc.) are shown in the terminal plan output, not in the diff viewer.
+
+### Without a terminal
+
+The confirmation needs a terminal, so in CI or from an AI agent pass `--auto-approve`:
+
+```bash
+gh infra import --into=repos/ --auto-approve
+```
+
+The plan is still printed, then the changes are written with each file's default action, as if you confirmed without opening the diff viewer: `write` for a file used by one target, `patch` for a shared source, and `skip` for files that are skipped by default (for example `reconcile: create_only` files without patches, which are therefore not written). Without `--auto-approve` and without a terminal, import fails before writing anything and suggests the flag.
 
 ### `write` / `patch` / `skip`
 
