@@ -86,6 +86,7 @@ Use `fnmatch`-style patterns. Special values: `~DEFAULT_BRANCH`, `~ALL`.
 - each ruleset `name` must be unique
 - each bypass actor must set exactly one of `role`, `team`, `app`, `org-admin`, `custom-role`
 - `bypass_mode`: `always`, `pull_request`, `exempt`
+- `team` and `custom-role` are resolved in the organization that owns the repository (each repo its own), so manifests for several orgs can share a directory
 - updating an existing ruleset changes only what the manifest sets; omitted `target`, `enforcement`, `bypass_actors`, `conditions`, rules (including types gh-infra does not model) and rule parameters keep their current values, and plan compares only what is set
 - remove with `bypass_actors: []`, a toggle or `update` set to `false`, `pull_request: false`, `required_status_checks: false`
 - `pull_request` parameters left out are `0` / `false` only when the rule is created

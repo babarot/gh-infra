@@ -85,12 +85,8 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 		}
 	}
 
-	// Determine resolver owner from first target.
-	var resolverOwner string
-	if len(opts.Targets) > 0 {
-		resolverOwner = opts.Targets[0].Target.Owner
-	}
-	resolver := manifest.NewResolver(opts.Runner, resolverOwner)
+	// Bound to no owner: ToManifest resolves names against each repository's.
+	resolver := manifest.NewResolver(opts.Runner)
 	proc := repository.NewProcessor(opts.Runner, resolver)
 
 	// Build source reference counts across ALL file documents (not just matched ones)

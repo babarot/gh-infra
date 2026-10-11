@@ -55,9 +55,9 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		return nil, nil, nil
 	}
 
-	diffOpts := DiffOptions{ForceSecrets: opts.ForceSecrets, Resolver: p.resolver}
-
 	results := parallel.Map(ctx, targets, parallel.DefaultConcurrency, func(ctx context.Context, idx int, r *manifest.Repository) repoResult {
+		// Names in rulesets belong to this repository's organization.
+		diffOpts := DiffOptions{ForceSecrets: opts.ForceSecrets, Resolver: p.resolver.For(r.Metadata.Owner)}
 		logger.Debug("fetch start", "repo", r.Metadata.FullName())
 		fullName := r.Metadata.FullName()
 		onStatus := func(status string) {

@@ -2000,7 +2000,7 @@ func TestDiff_Rulesets_OnlySetFieldsAreCompared(t *testing.T) {
 
 func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
 	mock := &gh.MockRunner{}
-	resolver := manifest.NewResolver(mock, "org")
+	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
 	desired.Spec.Rulesets = []manifest.Ruleset{
@@ -2035,7 +2035,7 @@ func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
 
 func TestDiff_Rulesets_BypassActorsChanged(t *testing.T) {
 	mock := &gh.MockRunner{}
-	resolver := manifest.NewResolver(mock, "org")
+	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
 	desired.Spec.Rulesets = []manifest.Ruleset{
@@ -2075,7 +2075,7 @@ func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},
 	}
-	resolver := manifest.NewResolver(mock, "org")
+	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
 	desired.Spec.Rulesets = []manifest.Ruleset{
@@ -2117,7 +2117,7 @@ func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
 
 func TestDiff_Rulesets_StatusChecksNoApp(t *testing.T) {
 	mock := &gh.MockRunner{}
-	resolver := manifest.NewResolver(mock, "org")
+	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
 	desired.Spec.Rulesets = []manifest.Ruleset{
@@ -2163,7 +2163,7 @@ func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},
 	}
-	resolver := manifest.NewResolver(mock, "org")
+	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
 	desired.Spec.Rulesets = []manifest.Ruleset{

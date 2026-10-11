@@ -1026,7 +1026,7 @@ func TestBuildRulesetPayload(t *testing.T) {
 
 	// Use a mock resolver that resolves "admin" → 5
 	mockRunner := &gh.MockRunner{}
-	resolver := manifest.NewResolver(mockRunner, "test-owner")
+	resolver := manifest.NewResolver(mockRunner).For("test-owner")
 	payload, err := buildRulesetPayload(context.Background(), rs, resolver)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1165,7 +1165,7 @@ func TestBuildRulesetPayload_WithResolver(t *testing.T) {
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},
 	}
-	resolver := manifest.NewResolver(mock, "test-owner")
+	resolver := manifest.NewResolver(mock).For("test-owner")
 
 	rs := &manifest.Ruleset{
 		Name:        "protect-main",
