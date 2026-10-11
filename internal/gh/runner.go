@@ -17,6 +17,9 @@ import (
 const (
 	defaultMaxRetries = 3
 	defaultRetryDelay = 1 * time.Second
+
+	// DefaultConcurrency is how many gh processes run at once by default.
+	DefaultConcurrency = 8
 )
 
 // Runner abstracts gh command execution for testability.
@@ -27,15 +30,54 @@ type Runner interface {
 }
 
 // GHRunner executes gh commands as subprocesses with automatic retry.
+// Use one runner for a whole command run: it limits how many gh processes
+// run at once across everything that shares it.
 type GHRunner struct {
 	DryRun     bool
 	MaxRetries uint
+
+	slots chan struct{} // one token per running gh process
 }
 
+// NewRunner returns a runner that runs at most DefaultConcurrency gh
+// processes at once.
 func NewRunner(dryRun bool) *GHRunner {
+	return NewRunnerWithConcurrency(dryRun, DefaultConcurrency)
+}
+
+// NewRunnerWithConcurrency returns a runner that runs at most concurrency gh
+// processes at once (DefaultConcurrency when concurrency < 1).
+func NewRunnerWithConcurrency(dryRun bool, concurrency int) *GHRunner {
+	if concurrency < 1 {
+		concurrency = DefaultConcurrency
+	}
 	return &GHRunner{
 		DryRun:     dryRun,
 		MaxRetries: defaultMaxRetries,
+		slots:      make(chan struct{}, concurrency),
+	}
+}
+
+// Concurrency returns how many gh processes the runner runs at once.
+func (r *GHRunner) Concurrency() int { return cap(r.slots) }
+
+// acquire waits for a free slot, or for ctx to end. A slot is held only
+// while a gh process runs, never across retry delays.
+func (r *GHRunner) acquire(ctx context.Context) error {
+	if r.slots == nil {
+		return nil
+	}
+	select {
+	case r.slots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *GHRunner) release() {
+	if r.slots != nil {
+		<-r.slots
 	}
 }
 
@@ -57,6 +99,10 @@ func (r *GHRunner) runInternal(ctx context.Context, body []byte, args []string) 
 
 	out, err := retry.DoWithData(
 		func() ([]byte, error) {
+			if err := r.acquire(ctx); err != nil {
+				return nil, retry.Unrecoverable(err)
+			}
+			defer r.release()
 			return r.exec(ctx, body, args, cmdStr)
 		},
 		retry.Attempts(r.MaxRetries),

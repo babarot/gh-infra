@@ -3,17 +3,42 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
 var (
-	verbose  bool
-	logLevel string
+	verbose     bool
+	logLevel    string
+	concurrency int
 )
+
+// concurrencyEnvKey sets --concurrency when the flag is not given.
+const concurrencyEnvKey = "GH_INFRA_CONCURRENCY"
+
+// newRunner returns the runner for one command run. Every gh call of the
+// command goes through it, so --concurrency limits all of them together.
+func newRunner() (*gh.GHRunner, error) {
+	n := concurrency
+	if n == 0 {
+		if v := os.Getenv(concurrencyEnvKey); v != "" {
+			parsed, err := strconv.Atoi(v)
+			if err != nil || parsed < 1 {
+				return nil, fmt.Errorf("%s must be a positive integer, got %q", concurrencyEnvKey, v)
+			}
+			n = parsed
+		}
+	}
+	if n < 0 {
+		return nil, fmt.Errorf("--concurrency must be a positive integer, got %d", n)
+	}
+	return gh.NewRunnerWithConcurrency(false, n), nil
+}
 
 func NewRootCmd(version, revision string) *cobra.Command {
 	root := &cobra.Command{
@@ -41,6 +66,8 @@ func NewRootCmd(version, revision string) *cobra.Command {
 
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "V", false, "Show gh command execution details")
 	root.PersistentFlags().StringVar(&logLevel, "log-level", "", "Log level (trace, debug, info, warn, error)")
+	root.PersistentFlags().IntVar(&concurrency, "concurrency", 0,
+		fmt.Sprintf("Maximum number of GitHub API calls (gh processes) at once (default %d, or $%s)", gh.DefaultConcurrency, concurrencyEnvKey))
 
 	root.AddCommand(
 		newPlanCmd(),

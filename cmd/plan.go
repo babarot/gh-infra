@@ -69,7 +69,12 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		ui.DisableStyles()
 	}
 
+	runner, err := newRunner()
+	if err != nil {
+		return err
+	}
 	result, err := infra.Plan(infra.PlanOptions{
+		Runner:        runner,
 		Paths:         paths,
 		FilterRepo:    opts.FilterRepo,
 		FailOnUnknown: opts.FailOnUnknown,

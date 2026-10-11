@@ -16,8 +16,8 @@ import (
 )
 
 // Import fetches current state of the given repositories and outputs them as YAML to stdout.
-// All display is handled internally.
-func Import(args []string) error {
+// All display is handled internally. runner runs every gh call.
+func Import(runner gh.Runner, args []string) error {
 	targets, err := parseArgs(args)
 	if err != nil {
 		return err
@@ -25,7 +25,6 @@ func Import(args []string) error {
 
 	p := ui.NewStandardPrinter()
 
-	runner := gh.NewRunner(false)
 	resolver := manifest.NewResolver(runner, targets[0].Target.Owner)
 	eng := newEngine(runner, resolver, p)
 

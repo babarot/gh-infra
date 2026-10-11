@@ -9,7 +9,7 @@ gh-infra parallelizes API calls across repositories to minimize execution time, 
 1. **Repositories are independent** — operations on different repos never conflict, so they can run in parallel
 2. **Settings within a repo are ordered** — creating a repo must precede setting its description, branch protection, etc.
 3. **Output order is deterministic** — even though work runs in parallel, plan/apply results are always printed in a consistent order
-4. **Concurrency is bounded** — a worker pool limits parallelism to 10 to avoid GitHub API rate limits
+4. **Concurrency is bounded**: a worker pool limits how many repositories are processed at once (10), and the gh runner limits how many `gh` processes run at once across the whole command (8 by default, `--concurrency`), to avoid GitHub's secondary rate limit
 
 ## Phase Overview
 
@@ -191,7 +191,8 @@ flowchart TB
 
 | Point | Mechanism | Why |
 |-------|-----------|-----|
-| Bounded parallelism | `parallel.Map` with worker pool (10 goroutines) | Avoid GitHub API rate limits (5000 req/hr) |
+| Bounded parallelism | `parallel.Map` with worker pool (10 goroutines) | Bound how many repositories are in flight |
+| API concurrency limit | One `gh.GHRunner` per command with a slot per running `gh` process (8 by default, `--concurrency` / `GH_INFRA_CONCURRENCY`) | A repository fetches about a dozen settings at once, so without it close to 100 `gh` processes could run together, which triggers the secondary rate limit and network timeouts. A slot is held only while `gh` runs, not during retry delays |
 | Wait for all fetches | `parallel.Map` blocks until all workers finish | Plan cannot proceed until all repos are fetched |
 | Sub-fetch parallelism | `errgroup.Group` | Branch protection, rulesets, secrets, variables fetched concurrently within a single repo |
 | Result ordering | Pre-allocated `[]T` by index | Goroutines write to their own slot; no mutex needed |
@@ -213,7 +214,7 @@ GitHub enforces two types of rate limits for authenticated requests:
 | **Primary** | 5,000 requests / hour | Per authentication token |
 | **Secondary** | Undisclosed | Short-burst abuse detection per token |
 
-The worker pool size of 5 is primarily designed to avoid triggering the secondary rate limit (sudden bursts of concurrent requests). The primary limit is a hard ceiling on total requests regardless of concurrency.
+The `gh` concurrency limit (8 by default) is what keeps bursts of concurrent requests below the secondary rate limit; lower it with `--concurrency` (1 runs every call in turn) if you still hit it. The primary limit is a hard ceiling on total requests regardless of concurrency.
 
 :::note
 Each authentication token has its own independent quota. A personal access token (PAT) created separately from `gh auth login` counts as a different token with its own 5,000/hr budget. GitHub App installation tokens are also independent.

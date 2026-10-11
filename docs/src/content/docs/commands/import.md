@@ -24,6 +24,7 @@ When using `--into`, arguments are optional. If omitted, all repositories define
 | Flag | Description |
 |------|-------------|
 | `--into <path>` | Pull GitHub state into existing local manifests (directory or file path) |
+| `--concurrency <n>` | Maximum number of `gh` processes (GitHub API calls) at once, across the whole command. Default `8`, or `GH_INFRA_CONCURRENCY`. Lower it if you hit GitHub's secondary rate limit or network timeouts |
 | `--auto-approve` | With `--into`, write without asking, using each file's default action (see [Without a terminal](#without-a-terminal)) |
 
 ## Examples
