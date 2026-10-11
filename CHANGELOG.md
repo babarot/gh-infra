@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.17.0](https://github.com/babarot/gh-infra/compare/v0.16.0...v0.17.0) - 2026-10-11
+### New Features
+- Limit concurrent gh processes and add --concurrency by @babarot in https://github.com/babarot/gh-infra/pull/223
+- Report GitHub API usage at the end of plan, apply and import by @babarot in https://github.com/babarot/gh-infra/pull/225
+### Bug fixes
+- Wait on rate limits instead of failing, and retry network errors longer by @babarot in https://github.com/babarot/gh-infra/pull/224
+- Fetch only the settings a manifest manages, and fail on unreadable ones by @babarot in https://github.com/babarot/gh-infra/pull/231
+- Report what import --into wrote and skipped by @babarot in https://github.com/babarot/gh-infra/pull/232
+### Improvements
+- Show what --changed-since selected in JSON and Markdown output by @babarot in https://github.com/babarot/gh-infra/pull/219
+
 ## [v0.16.0](https://github.com/babarot/gh-infra/compare/v0.15.2...v0.16.0) - 2026-10-11
 ### New Features
 - feat: support template expressions in commit messages by @wpfleger96 in https://github.com/babarot/gh-infra/pull/164
