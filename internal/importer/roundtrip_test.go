@@ -194,6 +194,7 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 		name     string
 		mutate   func(*repository.CurrentState)
 		defaults *manifest.RepositorySpec // nil: a RepositorySet without defaults
+		entry    *manifest.RepositorySpec // the entry's spec before import
 		skip     string
 		wantPlan []string // fields the plan still changes after import
 		wantWarn string   // field a warning names
@@ -213,7 +214,11 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 			defaults: &manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v0"}}}},
 		{name: "defaults match GitHub milestones on the fields they set", mutate: withMilestones,
 			defaults: &manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1"}}}},
-		{name: "no defaults", skip: "#236: import --into writes nothing for RepositorySet entries without defaults"},
+		{name: "no defaults"},
+		{name: "no defaults, the entry differs from GitHub", entry: &manifest.RepositorySpec{
+			Description: manifest.Ptr("old"), Topics: []string{"go"}, Features: &manifest.Features{Wiki: manifest.Ptr(false)}}},
+		{name: "no defaults, the entry has a label GitHub does not", entry: &manifest.RepositorySpec{
+			Labels: append([]manifest.Label{{Name: "extra", Color: "ffffff"}}, base.Spec.Labels...)}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.skip != "" {
@@ -224,11 +229,15 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 				tt.mutate(current)
 			}
 			imported := repository.ToManifest(ctx, current, resolver)
+			entry := map[string]any{"name": "r"}
+			if tt.entry != nil {
+				entry["spec"] = tt.entry
+			}
 			set := map[string]any{
 				"apiVersion":   manifest.APIVersion,
 				"kind":         manifest.KindRepositorySet,
 				"metadata":     map[string]any{"owner": "o"},
-				"repositories": []map[string]any{{"name": "r"}},
+				"repositories": []map[string]any{entry},
 			}
 			if tt.defaults != nil {
 				set["defaults"] = map[string]any{"spec": tt.defaults}

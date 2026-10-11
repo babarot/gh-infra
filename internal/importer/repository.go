@@ -159,8 +159,13 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 	plan := RepoResult{ManifestEdits: make(map[string][]byte)}
 
 	for _, doc := range input.Repos {
-		if !doc.FromSet || doc.DefaultsSpec == nil {
+		if !doc.FromSet {
 			continue
+		}
+		// A set without defaults applies its entries as written.
+		var defaults manifest.RepositorySpec
+		if doc.DefaultsSpec != nil {
+			defaults = doc.DefaultsSpec.Spec
 		}
 
 		imported := input.Imported.Spec
@@ -168,7 +173,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		imported.LabelSync = doc.Resource.Spec.LabelSync
 		imported.Rulesets = preserveUnreturnedRulesetParams(doc.Resource.Spec.Rulesets, imported.Rulesets)
 
-		newOverride := minimalOverride(doc.DefaultsSpec.Spec, imported)
+		newOverride := minimalOverride(defaults, imported)
 
 		// Diff for display: OriginalEntrySpec → newOverride
 		var entrySpec manifest.RepositorySpec
@@ -179,7 +184,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		diffs = append(diffs, emptyOverrideDiffs(entrySpec, newOverride)...)
 
 		fullName := doc.Resource.Metadata.FullName()
-		for _, w := range missingDefaultsWarnings(doc.DefaultsSpec.Spec, imported) {
+		for _, w := range missingDefaultsWarnings(defaults, imported) {
 			w.Target = fullName
 			w.SourcePath = doc.SourcePath
 			plan.Warnings = append(plan.Warnings, w)

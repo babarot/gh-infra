@@ -1234,17 +1234,28 @@ repositories:
 }
 
 func TestDiffRepositorySet_DefaultsNil(t *testing.T) {
-	// When DefaultsSpec is nil, the doc should be skipped.
+	// A set without defaults applies its entries as written, so the entry
+	// gets what GitHub has.
 	doc := &manifest.RepositoryDocument{
 		Resource: &manifest.Repository{
 			Metadata: manifest.RepositoryMetadata{Name: "repo", Owner: "org"},
-			Spec:     manifest.RepositorySpec{},
+			Spec:     manifest.RepositorySpec{Description: manifest.Ptr("old")},
 		},
-		SourcePath:   "/tmp/set.yaml",
-		DocIndex:     0,
-		FromSet:      true,
-		DefaultsSpec: nil, // nil defaults
+		SourcePath:        "/tmp/set.yaml",
+		DocIndex:          0,
+		FromSet:           true,
+		DefaultsSpec:      nil,
+		OriginalEntrySpec: &manifest.RepositorySpec{Description: manifest.Ptr("old")},
 	}
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+repositories:
+  - name: repo
+    spec:
+      description: old
+`)
 
 	imported := &manifest.Repository{
 		Spec: manifest.RepositorySpec{
@@ -1255,13 +1266,19 @@ func TestDiffRepositorySet_DefaultsNil(t *testing.T) {
 	rp, err := DiffRepositorySet(DiffInput{
 		Repos:         []*manifest.RepositoryDocument{doc},
 		Imported:      imported,
-		ManifestBytes: map[string][]byte{"/tmp/set.yaml": []byte("ignored")},
+		ManifestBytes: map[string][]byte{"/tmp/set.yaml": yamlData},
 	})
 	if err != nil {
 		t.Fatalf("DiffRepositorySet error: %v", err)
 	}
-	if rp.HasChanges() {
-		t.Errorf("expected no changes when DefaultsSpec is nil, got %d diffs", len(rp.Diffs))
+	if len(rp.Diffs) != 1 || rp.Diffs[0].Field != "description" {
+		t.Fatalf("want a description diff, got %+v", rp.Diffs)
+	}
+	if got := string(rp.ManifestEdits["/tmp/set.yaml"]); !strings.Contains(got, "description: new") {
+		t.Errorf("entry not updated:\n%s", got)
+	}
+	if len(rp.Warnings) > 0 {
+		t.Errorf("no defaults should not warn, got %+v", rp.Warnings)
 	}
 }
 
