@@ -671,6 +671,15 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		},
 		isSet: func(spec manifest.RepositorySpec) bool { return spec.LabelsSet },
 	},
+	{
+		prefix: "milestones.",
+		key:    "milestones",
+		kind:   fieldCollection,
+		valueVal: func(spec manifest.RepositorySpec) any {
+			return spec.Milestones
+		},
+		isSet: func(spec manifest.RepositorySpec) bool { return spec.MilestonesSet },
+	},
 }
 
 func newRepositoryPatchPlan(basePath string) *repositoryPatchPlan {
@@ -966,6 +975,9 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 
 	// Labels
 	diffs = append(diffs, compareLabels(local.Labels, imported.Labels)...)
+
+	// Milestones
+	diffs = append(diffs, compareMilestones(local.Milestones, imported.Milestones)...)
 
 	return diffs
 }
@@ -1411,6 +1423,73 @@ func compareVariables(local, imported []manifest.Variable) []FieldDiff {
 }
 
 // compareLabels compares label lists.
+// compareMilestones compares milestones by title. On a milestone both have,
+// only the fields local sets are compared, as plan leaves the others as they
+// are on GitHub.
+func compareMilestones(local, imported []manifest.Milestone) []FieldDiff {
+	localMap := make(map[string]manifest.Milestone, len(local))
+	for _, m := range local {
+		localMap[m.Title] = m
+	}
+	importedMap := make(map[string]manifest.Milestone, len(imported))
+	for _, m := range imported {
+		importedMap[m.Title] = m
+	}
+
+	var diffs []FieldDiff
+	for _, im := range imported {
+		lm, exists := localMap[im.Title]
+		if exists && !milestoneDiffers(lm, im) {
+			continue
+		}
+		var old any
+		if exists {
+			old = formatMilestoneSummary(lm)
+		}
+		diffs = append(diffs, FieldDiff{
+			Field: fmt.Sprintf("milestones.%s", im.Title),
+			Old:   old,
+			New:   formatMilestoneSummary(im),
+		})
+	}
+	for _, lm := range local {
+		if _, exists := importedMap[lm.Title]; !exists {
+			diffs = append(diffs, FieldDiff{
+				Field: fmt.Sprintf("milestones.%s", lm.Title),
+				Old:   formatMilestoneSummary(lm),
+				New:   nil,
+			})
+		}
+	}
+	return diffs
+}
+
+// milestoneDiffers reports whether a field local sets differs from imported.
+// An empty value equals an absent one: export does not write "".
+func milestoneDiffers(local, imported manifest.Milestone) bool {
+	differs := func(l, i *string) bool { return l != nil && *l != derefStr(i) }
+	return differs(local.State, imported.State) ||
+		differs(local.Description, imported.Description) ||
+		differs(local.DueOn, imported.DueOn)
+}
+
+func formatMilestoneSummary(m manifest.Milestone) string {
+	var parts []string
+	if m.State != nil {
+		parts = append(parts, *m.State)
+	}
+	if v := derefStr(m.DueOn); v != "" {
+		parts = append(parts, "due:"+v)
+	}
+	if v := derefStr(m.Description); v != "" {
+		parts = append(parts, fmt.Sprintf("%q", v))
+	}
+	if len(parts) == 0 {
+		return "(no fields)"
+	}
+	return strings.Join(parts, " ")
+}
+
 func compareLabels(local, imported []manifest.Label) []FieldDiff {
 	if len(local) == 0 && len(imported) == 0 {
 		return nil
@@ -1607,6 +1686,12 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	if !boolPtrEqual(defaults.Archived, imported.Archived) {
 		override.Archived = imported.Archived
 	}
+	if !boolPtrEqual(defaults.ReleaseImmutability, imported.ReleaseImmutability) {
+		override.ReleaseImmutability = imported.ReleaseImmutability
+	}
+
+	// Security: key-level comparison (matches mergeSecurity behavior).
+	override.Security = minimalSecurity(defaults.Security, imported.Security)
 
 	// List: topics — override if different
 	if !stringSliceEqual(defaults.Topics, imported.Topics) {
@@ -1635,6 +1720,12 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 
 	// Labels: only include labels that differ from or are absent in defaults.
 	override.Labels = minimalLabels(defaults.Labels, imported.Labels)
+
+	// Milestones: an entry's list replaces the defaults' list, so the whole
+	// list is written when it differs.
+	if len(compareMilestones(defaults.Milestones, imported.Milestones)) > 0 {
+		override.Milestones = imported.Milestones
+	}
 
 	// Secrets: always preserve local override (not from import)
 	// The caller already sets imported.Secrets = local.Secrets,
@@ -1665,6 +1756,9 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	if len(defaults.Labels) > 0 && len(imported.Labels) == 0 {
 		override.Labels, override.LabelsSet = []manifest.Label{}, true
 	}
+	if len(defaults.Milestones) > 0 && len(imported.Milestones) == 0 {
+		override.Milestones, override.MilestonesSet = []manifest.Milestone{}, true
+	}
 
 	return override
 }
@@ -1683,6 +1777,7 @@ func emptyOverrideDiffs(entry, override manifest.RepositorySpec) []FieldDiff {
 	add("rulesets", entry.RulesetsSet, override.RulesetsSet, len(override.Rulesets))
 	add("variables", entry.VariablesSet, override.VariablesSet, len(override.Variables))
 	add("labels", entry.LabelsSet, override.LabelsSet, len(override.Labels))
+	add("milestones", entry.MilestonesSet, override.MilestonesSet, len(override.Milestones))
 	return diffs
 }
 
@@ -1919,6 +2014,32 @@ func minimalFeatures(defaults, imported *manifest.Features) *manifest.Features {
 		return nil
 	}
 	return &f
+}
+
+func minimalSecurity(defaults, imported *manifest.Security) *manifest.Security {
+	if imported == nil {
+		return nil
+	}
+	d := derefSecurity(defaults)
+	i := *imported
+	var s manifest.Security
+	any := false
+	if !boolPtrEqual(d.VulnerabilityAlerts, i.VulnerabilityAlerts) {
+		s.VulnerabilityAlerts = i.VulnerabilityAlerts
+		any = true
+	}
+	if !boolPtrEqual(d.AutomatedSecurityFixes, i.AutomatedSecurityFixes) {
+		s.AutomatedSecurityFixes = i.AutomatedSecurityFixes
+		any = true
+	}
+	if !boolPtrEqual(d.PrivateVulnerabilityReporting, i.PrivateVulnerabilityReporting) {
+		s.PrivateVulnerabilityReporting = i.PrivateVulnerabilityReporting
+		any = true
+	}
+	if !any {
+		return nil
+	}
+	return &s
 }
 
 func pullRequestsEqual(a, b *manifest.PullRequests) bool {

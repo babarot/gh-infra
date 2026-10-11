@@ -114,34 +114,116 @@ func TestRoundTrip_ImportIntoRepository(t *testing.T) {
 	}
 }
 
-func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
+func TestRoundTrip_ImportIntoRepositoryMilestones(t *testing.T) {
 	ctx := context.Background()
 	resolver := manifest.NewResolver(rtRunner{})
 	current := rtState()
+	current.Milestones = map[string]*repository.CurrentMilestone{
+		"v1": {Number: 1, Title: "v1", State: "closed", Description: "first", DueOn: "2025-12-31"},
+		"v2": {Number: 2, Title: "v2", State: "open"},
+	}
 	imported := repository.ToManifest(ctx, current, resolver)
 
 	for _, tt := range []struct {
+		name      string
+		local     []manifest.Milestone
+		wantWrite bool
+	}{
+		{name: "a milestone only on GitHub", wantWrite: true, local: []manifest.Milestone{
+			{Title: "v1", State: manifest.Ptr("closed"), Description: manifest.Ptr("first"), DueOn: manifest.Ptr("2025-12-31")}}},
+		{name: "closed and renamed description on GitHub", wantWrite: true, local: []manifest.Milestone{
+			{Title: "v1", State: manifest.Ptr("open"), Description: manifest.Ptr("old")}, {Title: "v2"}}},
+		{name: "a milestone only in the manifest", wantWrite: true, local: []manifest.Milestone{
+			{Title: "v1"}, {Title: "v2"}, {Title: "v3", State: manifest.Ptr("open")}}},
+		{name: "fields the manifest leaves out", local: []manifest.Milestone{{Title: "v1"}, {Title: "v2", Description: manifest.Ptr(""), DueOn: manifest.Ptr("")}}},
+		{name: "no milestones in the manifest", wantWrite: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := repository.ToManifest(ctx, current, resolver)
+			m.Spec.Milestones = tt.local
+			path, data := writeYAML(t, m)
+			parsed, err := manifest.ParseAll(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rp, err := DiffRepository(DiffInput{Repos: parsed.RepositoryDocs, Imported: imported, ManifestBytes: map[string][]byte{path: data}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, wrote := rp.ManifestEdits[path]; wrote != tt.wantWrite {
+				t.Fatalf("wrote = %v, want %v; diffs %+v", wrote, tt.wantWrite, rp.Diffs)
+			}
+			if edited, ok := rp.ManifestEdits[path]; ok {
+				data = edited
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			reparsed, err := manifest.ParseAll(path)
+			if err != nil {
+				t.Fatalf("%v\n%s", err, data)
+			}
+			if changes := repository.Diff(ctx, reparsed.Repositories[0], current, repository.DiffOptions{Resolver: resolver.For(current.Owner)}); len(changes) > 0 {
+				t.Errorf("plan after import changes %+v\n%s", changes, data)
+			}
+			if tt.wantWrite {
+				if d := compareMilestones(reparsed.Repositories[0].Spec.Milestones, imported.Spec.Milestones); len(d) > 0 {
+					t.Errorf("written milestones differ from GitHub: %+v\n%s", d, data)
+				}
+			}
+			again, err := DiffRepository(DiffInput{Repos: reparsed.RepositoryDocs, Imported: imported, ManifestBytes: map[string][]byte{path: data}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(again.Diffs) > 0 {
+				t.Errorf("a second import still reports %+v", again.Diffs)
+			}
+		})
+	}
+}
+
+func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
+	ctx := context.Background()
+	resolver := manifest.NewResolver(rtRunner{})
+	withMilestones := func(s *repository.CurrentState) {
+		s.Milestones = map[string]*repository.CurrentMilestone{"v1": {Number: 1, Title: "v1", State: "closed", DueOn: "2025-12-31"}}
+	}
+	base := repository.ToManifest(ctx, rtState(), resolver) // the import without mutate
+
+	for _, tt := range []struct {
 		name     string
+		mutate   func(*repository.CurrentState)
 		defaults *manifest.RepositorySpec // nil: a RepositorySet without defaults
 		skip     string
 		wantPlan []string // fields the plan still changes after import
 		wantWarn string   // field a warning names
 	}{
 		{name: "defaults match GitHub", defaults: &manifest.RepositorySpec{
-			Description: imported.Spec.Description, Features: imported.Spec.Features, MergeStrategy: imported.Spec.MergeStrategy, Labels: imported.Spec.Labels}},
+			Description: base.Spec.Description, Features: base.Spec.Features, MergeStrategy: base.Spec.MergeStrategy, Labels: base.Spec.Labels}},
 		{name: "defaults differ in features and merge strategy", defaults: &manifest.RepositorySpec{
 			Features: &manifest.Features{Wiki: manifest.Ptr(false), Discussions: manifest.Ptr(true)}, MergeStrategy: &manifest.MergeStrategy{AllowRebaseMerge: manifest.Ptr(true)}}},
 		{name: "defaults have a label GitHub does not", defaults: &manifest.RepositorySpec{
-			Labels: append([]manifest.Label{{Name: "extra", Color: "ffffff"}}, imported.Spec.Labels...)},
+			Labels: append([]manifest.Label{{Name: "extra", Color: "ffffff"}}, base.Spec.Labels...)},
 			wantPlan: []string{"extra"}, wantWarn: "labels"},
-		{name: "defaults differ in security and release immutability", skip: "#235: RepositorySet import does not compare security, release_immutability or milestones",
+		{name: "defaults differ in security and release immutability",
 			defaults: &manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: manifest.Ptr(false)}, ReleaseImmutability: manifest.Ptr(true)}},
+		{name: "defaults differ in milestones", mutate: withMilestones,
+			defaults: &manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1", State: manifest.Ptr("open")}, {Title: "v0"}}}},
+		{name: "defaults have milestones GitHub does not",
+			defaults: &manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v0"}}}},
+		{name: "defaults match GitHub milestones on the fields they set", mutate: withMilestones,
+			defaults: &manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1"}}}},
 		{name: "no defaults", skip: "#236: import --into writes nothing for RepositorySet entries without defaults"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.skip != "" {
 				t.Skip(tt.skip)
 			}
+			current := rtState()
+			if tt.mutate != nil {
+				tt.mutate(current)
+			}
+			imported := repository.ToManifest(ctx, current, resolver)
 			set := map[string]any{
 				"apiVersion":   manifest.APIVersion,
 				"kind":         manifest.KindRepositorySet,
@@ -194,6 +276,13 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 			}
 			if strings.Join(changed, ",") != strings.Join(tt.wantPlan, ",") {
 				t.Errorf("plan after import changes %v, want %v\n%s", changed, tt.wantPlan, data)
+			}
+			// The plan can agree while a value lands in the wrong place, so
+			// the merged entry must also read back as what was imported.
+			if len(tt.wantPlan) == 0 {
+				if d := compareSpecs(reparsed.Repositories[0].Spec, imported.Spec); len(d) > 0 {
+					t.Errorf("merged entry differs from the import: %+v\n%s", d, data)
+				}
 			}
 
 			again, err := DiffRepositorySet(DiffInput{Repos: reparsed.RepositoryDocs, Imported: imported, ManifestBytes: map[string][]byte{path: data}})
