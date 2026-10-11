@@ -42,8 +42,8 @@ Flags:
 - `--changed-since <ref>`: only manifests changed since the git ref (merge base to working tree, plus untracked) and File/FileSet docs whose local `source:` files/dirs or `patches:` files changed; no API calls when nothing changed. Needs the ref in the checkout (`fetch-depth: 0` in CI); every path must be inside the git repo; `github://` source changes are not detected
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
-- `-o`, `--output json`: print only a JSON document on stdout (summary, changes, warnings, errors); prefer it over parsing text
-- `-o`, `--output markdown`: print only a pull request comment (summary, a collapsed table per repository, warnings, errors)
+- `-o`, `--output json`: print only a JSON document on stdout (summary, changes, warnings, errors); prefer it over parsing text. With `--changed-since` it adds `changed_since: {ref, selected, total}`; `selected: 0` means nothing was planned (not "no changes")
+- `-o`, `--output markdown`: print only a pull request comment (summary, a collapsed table per repository, warnings, errors). With `--changed-since`: `Plan: no manifests changed since <ref>` when nothing was selected, otherwise a `Planned N of M resources ...` line
 
 Exit status:
 

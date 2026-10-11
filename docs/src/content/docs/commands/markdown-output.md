@@ -28,6 +28,8 @@ The comment starts with the summary, then has one collapsed block per repository
 </details>
 ```
 
+With [`--changed-since`](../../patterns/ci-cd/#planning-only-what-changed), the summary is followed by `Planned N of M resources changed since <ref>.`, and when nothing changed the heading is `### Plan: no manifests changed since <ref>` instead of `### Plan: no changes`, so the comment shows whether anything was planned.
+
 Values are cut at 200 characters, and diffs at 500 lines per file. The comment is not otherwise limited in size, so a very large plan can go over GitHub's limit of 65,536 characters per comment.
 
 ## Posting it from GitHub Actions

@@ -98,7 +98,7 @@ Planning every manifest on every pull request costs API calls for every reposito
 - the manifest files changed since `<ref>` (all documents in them), and
 - the `File` and `FileSet` documents that read a changed local file: a `source:` file, a file added to, changed in or removed from a `source:` directory, or a `patches:` file
 
-"Changed" means changed between the merge base of `<ref>` and the working tree, committed or not, plus untracked files. When nothing changed, the command says so and makes no API calls.
+"Changed" means changed between the merge base of `<ref>` and the working tree, committed or not, plus untracked files. When nothing changed, the command says so and makes no API calls; with `-o json` the document's `changed_since.selected` is `0`, and with `-o markdown` the comment reads `Plan: no manifests changed since <ref>`.
 
 ```yaml
 # .github/workflows/infra-plan.yaml

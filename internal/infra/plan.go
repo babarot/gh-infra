@@ -54,6 +54,9 @@ type PlanResult struct {
 	// Warnings are the warnings from parsing the manifests.
 	Warnings []string
 
+	// ChangedSince is what --changed-since selected; nil without the flag.
+	ChangedSince *ChangedSince
+
 	engine *engine // unexported runtime context for Apply
 }
 
@@ -92,14 +95,16 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	}
 	parsed := &manifest.ParseResult{}
 	var total, selected int
+	var changedSince *ChangedSince
 	if opts.ChangedSince != "" {
 		parsed, total, selected, err = parseChanged(context.Background(), paths, opts.ChangedSince, parseOpt)
 		if err != nil {
 			return nil, err
 		}
+		changedSince = &ChangedSince{Ref: opts.ChangedSince, Selected: selected, Total: total}
 		if selected == 0 {
 			p.Message(fmt.Sprintf("No manifests changed since %s.", opts.ChangedSince))
-			return &PlanResult{Parsed: parsed}, nil
+			return &PlanResult{Parsed: parsed, ChangedSince: changedSince}, nil
 		}
 	} else {
 		for _, path := range paths {
@@ -226,6 +231,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	hasFile := fileset.HasChanges(fileChanges)
 
 	result := &PlanResult{
+		ChangedSince:  changedSince,
 		RepoChanges:   repoChanges,
 		FileChanges:   fileChanges,
 		TargetRepos:   targetRepos,

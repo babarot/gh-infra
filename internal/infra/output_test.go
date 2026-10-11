@@ -180,3 +180,46 @@ func TestValidateOutput(t *testing.T) {
 		t.Errorf("ValidateOutput(markdown) = %v", err)
 	}
 }
+
+func TestDocument_ChangedSince(t *testing.T) {
+	encode := func(t *testing.T, doc Document) map[string]any {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := doc.Write(&buf); err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	if _, ok := encode(t, (&PlanResult{}).PlanDocument(false))["changed_since"]; ok {
+		t.Error("changed_since should be omitted without --changed-since")
+	}
+
+	none := &PlanResult{ChangedSince: &ChangedSince{Ref: "origin/main", Selected: 0, Total: 77}}
+	for name, doc := range map[string]Document{"plan": none.PlanDocument(false), "apply": none.ApplyDocument(nil)} {
+		cs, ok := encode(t, doc)["changed_since"].(map[string]any)
+		if !ok || cs["ref"] != "origin/main" || cs["selected"] != float64(0) || cs["total"] != float64(77) {
+			t.Errorf("%s: changed_since = %v", name, cs)
+		}
+	}
+}
+
+func TestWriteMarkdown_ChangedSince(t *testing.T) {
+	none := renderMarkdown(t, (&PlanResult{ChangedSince: &ChangedSince{Ref: "origin/<main>", Total: 77}}).PlanDocument(false))
+	if !strings.HasPrefix(none, "### Plan: no manifests changed since <code>origin/&lt;main&gt;</code>\n") || strings.Contains(none, "no changes") {
+		t.Errorf("nothing selected:\n%s", none)
+	}
+
+	some := renderMarkdown(t, (&PlanResult{ChangedSince: &ChangedSince{Ref: "HEAD", Selected: 5, Total: 77}}).PlanDocument(false))
+	if !strings.HasPrefix(some, "### Plan: no changes\n\nPlanned 5 of 77 resources changed since <code>HEAD</code>.\n") {
+		t.Errorf("selected, no changes:\n%s", some)
+	}
+
+	if out := renderMarkdown(t, (&PlanResult{}).PlanDocument(false)); out != "### Plan: no changes\n" {
+		t.Errorf("without --changed-since: %q", out)
+	}
+}
