@@ -4,11 +4,15 @@ LDFLAGS := "-X main.version=$(VERSION) -X main.revision=$(shell git rev-parse --
 
 all: build
 
+# cmd is left out of the coverage profile (and of octocov's code ratio), but
+# its tests still run.
 TEST_EXCLUDE := %/cmd %/cmd/gh-infra
 TEST_PKGS := $(filter-out $(TEST_EXCLUDE),$(shell go list ./...))
+CMD_PKGS := $(filter $(TEST_EXCLUDE),$(shell go list ./...))
 
 test:
-	go test $(TEST_PKGS) -coverprofile=coverage.out -covermode=count
+	go test -race $(TEST_PKGS) -coverprofile=coverage.out -covermode=atomic
+	go test -race $(CMD_PKGS)
 
 lint:
 	golangci-lint run ./...
