@@ -720,3 +720,12 @@ func TestImportDiff_WriteCountsSkippedFromThePlan(t *testing.T) {
 		t.Errorf("Summary() = %q, want %q", got.Summary(), want)
 	}
 }
+
+func TestIsListedChange(t *testing.T) {
+	update := importer.Change{Type: fileset.ChangeUpdate, SuggestedWriteMode: importer.WriteSource, AvailableModes: []importer.WriteMode{importer.WriteSource}}
+	noop := importer.Change{Type: fileset.ChangeNoOp, SuggestedWriteMode: importer.WriteSource, AvailableModes: []importer.WriteMode{importer.WriteSource}}
+	hardSkip := importer.Change{Type: fileset.ChangeNoOp, WriteMode: importer.WriteSkip, SuggestedWriteMode: importer.WriteSkip, Reason: "cannot safely write back to template"}
+	if !isListedChange(update) || isListedChange(noop) || !isListedChange(hardSkip) {
+		t.Errorf("listed: update=%v noop=%v hardSkip=%v", isListedChange(update), isListedChange(noop), isListedChange(hardSkip))
+	}
+}

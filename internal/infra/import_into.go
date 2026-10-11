@@ -272,7 +272,7 @@ func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, erro
 		printer: printer,
 	}
 	for _, c := range plan.FileChanges {
-		if c.Type != fileset.ChangeNoOp || isSkipOnlyChange(c) {
+		if isListedChange(c) {
 			result.shownFiles++
 		}
 	}
@@ -304,7 +304,7 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 		}
 	}
 	for _, c := range plan.FileChanges {
-		if c.Type == fileset.ChangeNoOp && !isSkipOnlyChange(c) {
+		if !isListedChange(c) {
 			continue
 		}
 		if !seen[c.Target] {
@@ -323,7 +323,7 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 	}
 	fileChangesByTarget := make(map[string][]importer.Change)
 	for _, c := range plan.FileChanges {
-		if c.Type == fileset.ChangeNoOp && !isSkipOnlyChange(c) {
+		if !isListedChange(c) {
 			continue
 		}
 		fileChangesByTarget[c.Target] = append(fileChangesByTarget[c.Target], c)
@@ -411,6 +411,12 @@ func localPath(c importer.Change) string { return c.DisplayPathForMode(c.Effecti
 
 func displayPathForPlan(c importer.Change) string {
 	return c.DisplayPathForMode(defaultModeForChange(c))
+}
+
+// isListedChange reports whether the import plan lists c: a change, or a
+// file that cannot be written back (shown with its skip reason).
+func isListedChange(c importer.Change) bool {
+	return c.Type != fileset.ChangeNoOp || isSkipOnlyChange(c)
 }
 
 func isSkipOnlyChange(c importer.Change) bool {

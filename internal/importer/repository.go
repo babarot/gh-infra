@@ -70,7 +70,6 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 
 		input.ManifestBytes[doc.SourcePath] = updated
 		plan.ManifestEdits[doc.SourcePath] = updated
-		plan.UpdatedDocs++
 	}
 
 	return plan, nil
@@ -216,7 +215,6 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 			}
 			input.ManifestBytes[doc.SourcePath] = updated
 			plan.ManifestEdits[doc.SourcePath] = updated
-			plan.UpdatedDocs++
 			continue
 		}
 
@@ -234,7 +232,6 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 
 		input.ManifestBytes[doc.SourcePath] = updated
 		plan.ManifestEdits[doc.SourcePath] = updated
-		plan.UpdatedDocs++
 	}
 
 	return plan, nil
