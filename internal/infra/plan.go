@@ -62,6 +62,8 @@ type PlanResult struct {
 	// ChangedSince is what --changed-since selected; nil without the flag.
 	ChangedSince *ChangedSince
 
+	runner gh.Runner // the command's runner, for the API usage
+
 	engine *engine // unexported runtime context for Apply
 }
 
@@ -112,7 +114,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		changedSince = &ChangedSince{Ref: opts.ChangedSince, Selected: selected, Total: total}
 		if selected == 0 {
 			p.Message(fmt.Sprintf("No manifests changed since %s.", opts.ChangedSince))
-			return &PlanResult{Parsed: parsed, ChangedSince: changedSince}, nil
+			return &PlanResult{Parsed: parsed, ChangedSince: changedSince, runner: runner}, nil
 		}
 	} else {
 		for _, path := range paths {
@@ -250,6 +252,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		TargetErrors:  tracker.Errors(),
 		Warnings:      parsed.Warnings,
 		engine:        eng,
+		runner:        runner,
 	}
 
 	if !result.HasChanges {
@@ -257,6 +260,9 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 			p.Message("\nNo changes computed. Some repositories were skipped due to errors above.")
 		} else {
 			p.Message("\nNo changes. Infrastructure is up-to-date.")
+		}
+		if opts.DryRun {
+			printAPIUsage(p, apiUsage(runner))
 		}
 		return result, nil
 	}
@@ -280,6 +286,9 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	}
 	p.Summary(fmt.Sprintf("Plan: %s", strings.Join(parts, ", ")))
 
+	if opts.DryRun {
+		printAPIUsage(p, apiUsage(runner))
+	}
 	return result, nil
 }
 
@@ -304,4 +313,13 @@ func (r *PlanResult) FailedTargetsError() error {
 	}
 	return fmt.Errorf("could not plan %d %s: %s",
 		len(r.FailedTargets), noun, strings.Join(r.FailedTargets, ", "))
+}
+
+// PrintAPIUsage prints the API usage line for an apply that had nothing to
+// apply (Apply prints it otherwise).
+func (r *PlanResult) PrintAPIUsage() {
+	if r == nil || (r.engine != nil && r.engine.quiet) {
+		return
+	}
+	printAPIUsage(r.Printer(), apiUsage(r.runner))
 }

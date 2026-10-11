@@ -216,6 +216,16 @@ GitHub enforces two types of rate limits for authenticated requests:
 
 The `gh` concurrency limit (8 by default) is what keeps bursts of concurrent requests below the secondary rate limit; lower it with `--concurrency` (1 runs every call in turn) if you still hit it. The primary limit is a hard ceiling on total requests regardless of concurrency.
 
+### Usage report
+
+At the end of `plan`, `apply` and `import`, a dim line on stderr shows what the run used and what is left:
+
+```
+GitHub API: 412 calls; remaining core 4,588/5,000, graphql 4,990/5,000
+```
+
+`calls` counts `gh` processes, retries included; a `--paginate` call can make several HTTP requests. The remaining numbers come from `gh api rate_limit`, which does not count against the limit, and include requests made by anything else using the same token. The JSON output has the same in its `api` field.
+
 ### Waiting on rate limits
 
 When a call hits a rate limit, gh-infra waits and tries again instead of failing the run:

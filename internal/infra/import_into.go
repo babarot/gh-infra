@@ -235,6 +235,7 @@ func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, erro
 		printer.Separator()
 		printImportPlan(printer, plan)
 	}
+	printAPIUsage(printer, apiUsage(runner))
 
 	return result, nil
 }

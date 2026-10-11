@@ -139,6 +139,7 @@ func (r *GHRunner) waitGate(ctx context.Context, waited *time.Duration) error {
 		return rateLimitedError(until, now)
 	}
 	r.notifyWait(until)
+	r.usage.wait(now, until)
 	err := r.sleep(ctx, d)
 	r.notifyWait(time.Time{})
 	*waited += d
