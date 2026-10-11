@@ -72,6 +72,7 @@ With `--output json`, stdout has only the JSON document; the progress, the plan 
 | `warnings` | Deprecations found while parsing, and notes such as a commit that will not be signed. `target` is set when it is about one repository |
 | `errors` | Repositories that could not be planned, with the error. They are left out of `changes` |
 | `changed_since` | Only with `--changed-since`: `ref`, and `selected` / `total`, the number of resources planned and found (each RepositorySet entry counts once, before `--repo`). `selected` is `0` when nothing changed, which tells "nothing was planned" from "planned, no changes" |
+| `api` | GitHub API usage of the run: `calls` (gh processes run, retries included; one call can make several HTTP requests with `--paginate`), `waited_seconds` for rate limits, and `remaining` with `core` (REST) and `graphql`, each `remaining`, `limit` and `reset` (RFC 3339). `remaining` is left out when `gh api rate_limit` is not available |
 
 ### Change entries
 

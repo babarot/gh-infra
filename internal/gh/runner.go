@@ -42,6 +42,7 @@ type GHRunner struct {
 
 	slots chan struct{} // one token per running gh process
 	gate  rateGate      // shared wait while a rate limit is in effect
+	usage usageCounter
 
 	waitMu sync.Mutex
 	onWait func(until time.Time)
@@ -123,6 +124,7 @@ func (r *GHRunner) runInternal(ctx context.Context, body []byte, args []string) 
 		if err := r.acquire(ctx); err != nil {
 			return nil, err
 		}
+		r.usage.call()
 		out, err := r.exec(ctx, body, args, cmdStr)
 		r.release()
 		if err == nil {

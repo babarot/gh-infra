@@ -2,12 +2,15 @@ package infra
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/babarot/gh-infra/internal/fileset"
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
@@ -221,5 +224,41 @@ func TestWriteMarkdown_ChangedSince(t *testing.T) {
 
 	if out := renderMarkdown(t, (&PlanResult{}).PlanDocument(false)); out != "### Plan: no changes\n" {
 		t.Errorf("without --changed-since: %q", out)
+	}
+}
+
+type stubUsage struct{ gh.Runner }
+
+func (stubUsage) Usage() gh.Usage { return gh.Usage{Calls: 412, Waited: time.Minute} }
+func (stubUsage) RateLimits(context.Context) (gh.RateLimit, gh.RateLimit, bool) {
+	reset := time.Date(2026, 1, 1, 10, 42, 0, 0, time.UTC)
+	return gh.RateLimit{Remaining: 4588, Limit: 5000, Reset: reset}, gh.RateLimit{Remaining: 4990, Limit: 5000, Reset: reset}, true
+}
+
+func TestAPIUsage(t *testing.T) {
+	u := apiUsage(stubUsage{})
+	if got, want := formatAPIUsage(u), "GitHub API: 412 calls; remaining core 4,588/5,000, graphql 4,990/5,000; waited 1m0s for rate limits"; got != want {
+		t.Errorf("line = %q\nwant  %q", got, want)
+	}
+
+	var buf bytes.Buffer
+	if err := (&PlanResult{runner: stubUsage{}}).PlanDocument(false).Write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	api, _ := doc["api"].(map[string]any)
+	core, _ := api["remaining"].(map[string]any)["core"].(map[string]any)
+	if api["calls"] != float64(412) || api["waited_seconds"] != float64(60) || core["reset"] != "2026-01-01T10:42:00Z" {
+		t.Errorf("api = %v", api)
+	}
+
+	if apiUsage(nil) != nil {
+		t.Error("a runner without usage has no api field")
+	}
+	if got := thousands(1234567); got != "1,234,567" {
+		t.Errorf("thousands = %s", got)
 	}
 }

@@ -51,6 +51,9 @@ type Document struct {
 	// ChangedSince is set when --changed-since selected what to plan, so
 	// "nothing was planned" can be told from "planned, no changes".
 	ChangedSince *ChangedSince `json:"changed_since,omitempty"`
+
+	// API is the GitHub API usage of the run.
+	API *APIUsage `json:"api,omitempty"`
 }
 
 // ChangedSince records what --changed-since selected. Selected and Total
@@ -157,6 +160,7 @@ func (r *PlanResult) PlanDocument(showDiff bool) Document {
 		Warnings:      []Message{},
 		Errors:        []Message{},
 		ChangedSince:  r.ChangedSince,
+		API:           apiUsage(r.runner),
 	}
 
 	for _, w := range r.Warnings {

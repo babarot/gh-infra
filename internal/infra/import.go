@@ -114,6 +114,7 @@ func Import(runner gh.Runner, args []string) error {
 	}
 	summaryMsg += "."
 	p.Summary(summaryMsg)
+	printAPIUsage(p, apiUsage(runner))
 
 	return nil
 }

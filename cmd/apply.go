@@ -95,6 +95,8 @@ func runApply(paths []string, opts applyCommandOptions) error {
 			if err := result.ApplyDocument(nil).Write(os.Stdout); err != nil {
 				return err
 			}
+		} else {
+			result.PrintAPIUsage()
 		}
 		return result.FailedTargetsError()
 	}

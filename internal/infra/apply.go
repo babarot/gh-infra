@@ -186,6 +186,7 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 	}
 	summaryMsg += "."
 	p.Summary(summaryMsg)
+	printAPIUsage(p, apiUsage(eng.runner))
 
 	outcome := &ApplyOutcome{RepoResults: allRepoResults, FileResults: allFileResults}
 	if totalFailed > 0 {
