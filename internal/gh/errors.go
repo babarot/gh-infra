@@ -12,6 +12,7 @@ type ExitError struct {
 	Cmd      string
 	ExitCode int
 	Stderr   string
+	Stdout   string // for classifying errors (e.g. GraphQL rate limits); not shown
 	APIError *APIError
 }
 
