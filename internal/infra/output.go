@@ -47,6 +47,18 @@ type Document struct {
 	Changes       []ChangeEntry `json:"changes"`
 	Warnings      []Message     `json:"warnings"`
 	Errors        []Message     `json:"errors"`
+
+	// ChangedSince is set when --changed-since selected what to plan, so
+	// "nothing was planned" can be told from "planned, no changes".
+	ChangedSince *ChangedSince `json:"changed_since,omitempty"`
+}
+
+// ChangedSince records what --changed-since selected. Selected and Total
+// count resources (each RepositorySet entry counts once) before --repo.
+type ChangedSince struct {
+	Ref      string `json:"ref"`
+	Selected int    `json:"selected"`
+	Total    int    `json:"total"`
 }
 
 // Summary counts the entries in Document.Changes. Applied, Failed and
@@ -144,6 +156,7 @@ func (r *PlanResult) PlanDocument(showDiff bool) Document {
 		Changes:       []ChangeEntry{},
 		Warnings:      []Message{},
 		Errors:        []Message{},
+		ChangedSince:  r.ChangedSince,
 	}
 
 	for _, w := range r.Warnings {

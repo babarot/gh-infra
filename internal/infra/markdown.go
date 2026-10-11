@@ -18,11 +18,18 @@ const maxCellRunes = 200
 func (d Document) WriteMarkdown(w io.Writer) error {
 	var b strings.Builder
 
-	if len(d.Changes) == 0 && len(d.Errors) == 0 {
+	cs := d.ChangedSince
+	switch {
+	case cs != nil && cs.Selected == 0:
+		fmt.Fprintf(&b, "### Plan: no manifests changed since %s\n", code(cs.Ref))
+	case len(d.Changes) == 0 && len(d.Errors) == 0:
 		b.WriteString("### Plan: no changes\n")
-	} else {
+	default:
 		fmt.Fprintf(&b, "### Plan: %d to create, %d to update, %d to destroy\n",
 			d.Summary.Create, d.Summary.Update, d.Summary.Delete)
+	}
+	if cs != nil && cs.Selected > 0 {
+		fmt.Fprintf(&b, "\nPlanned %d of %d resources changed since %s.\n", cs.Selected, cs.Total, code(cs.Ref))
 	}
 	if len(d.Errors) > 0 {
 		b.WriteString("\nThis plan is incomplete: some repositories could not be planned (see Errors).\n")
