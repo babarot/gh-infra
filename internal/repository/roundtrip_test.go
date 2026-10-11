@@ -74,6 +74,10 @@ func TestRoundTrip_ExportThenPlan(t *testing.T) {
 			s.Features.PullRequestCreation = manifest.PullRequestCreationCollaboratorsOnly
 		}},
 		{"security off", func(s *CurrentState) { s.Security = CurrentSecurity{} }},
+		{"Actions disabled with allowed actions left", func(s *CurrentState) {
+			s.Visibility = "private"
+			s.Actions = CurrentActions{Enabled: false, AllowedActions: "all", WorkflowPermissions: "read"}
+		}},
 		{"selected actions", func(s *CurrentState) {
 			s.Actions = CurrentActions{Enabled: true, AllowedActions: "selected", WorkflowPermissions: "write", CanApprovePullRequests: true,
 				SelectedActions: &CurrentSelectedActions{GithubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"babarot/*"}}}
@@ -93,6 +97,7 @@ func TestRoundTrip_ExportThenPlan(t *testing.T) {
 						{ActorID: 7, ActorType: "Integration", BypassMode: "always"},
 						{ActorID: 5, ActorType: "RepositoryRole", BypassMode: "always"},
 						{ActorID: 1, ActorType: "OrganizationAdmin", BypassMode: "always"},
+						{ActorID: 99, ActorType: "RepositoryRole", BypassMode: "pull_request"}, // a custom role, exported as id:99
 					},
 					Conditions: &CurrentRulesetConditions{RefName: &CurrentRulesetRefCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{"refs/heads/tmp/*"}}},
 					Rules: CurrentRulesetRules{

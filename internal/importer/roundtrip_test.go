@@ -163,7 +163,7 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 			}
 			// Guard against passing because nothing happened: either import
 			// wrote the entry, or the defaults already match GitHub.
-			if len(rp.ManifestEdits) == 0 && len(compareSpecs(*tt.defaults, imported.Spec)) > 0 {
+			if len(rp.ManifestEdits) == 0 && (tt.defaults == nil || len(compareSpecs(*tt.defaults, imported.Spec)) > 0) {
 				// compareSpecs also lists what the defaults leave unset, so
 				// only a write proves the entry was handled.
 				t.Fatalf("import wrote nothing although the defaults differ from GitHub")
@@ -189,7 +189,7 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 				t.Fatalf("%v\n%s", err, data)
 			}
 			var changed []string
-			for _, c := range repository.Diff(ctx, reparsed.Repositories[0], current, repository.DiffOptions{Resolver: resolver.For("o")}) {
+			for _, c := range repository.Diff(ctx, reparsed.Repositories[0], current, repository.DiffOptions{Resolver: resolver.For(current.Owner)}) {
 				changed = append(changed, c.Field)
 			}
 			if strings.Join(changed, ",") != strings.Join(tt.wantPlan, ",") {
