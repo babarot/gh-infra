@@ -42,7 +42,7 @@ Key fields:
 
 - `files`: required
 - `via`: `push` or `pull_request`
-- `commit_message`, `branch`, `pr_title`, `pr_body`: delivery controls
+- `commit_message`, `branch`, `pr_title`, `pr_body`: delivery controls. `commit_message`, `pr_title`, `pr_body` accept `<% .Repo.Name %>`, `<% .Repo.FullName %>`, `<% .Source.URL %>` (env `GH_INFRA_SOURCE_URL`, set in CI); see [references/reconcile-and-delivery.md](./references/reconcile-and-delivery.md)
 - `files[].vars`: template variables
 - `files[].patches`: unified diff patches
 - `files[].reconcile`: `additive`, `authoritative`, `create_only`

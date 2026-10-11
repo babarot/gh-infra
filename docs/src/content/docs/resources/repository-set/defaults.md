@@ -89,7 +89,7 @@ repositories:
 
 With `reconcile.labels`, `reconcile.rulesets` or `reconcile.branch_protection` set to `authoritative`, `[]` plans the deletion of every label, ruleset or branch protection rule on that repository, as it does in a single `Repository`. `plan` warns when an entry's `[]` drops the defaults this way.
 
-:::caution[Changed in v0.16.0]
+:::caution[Changed in v0.15.1]
 Before v0.16.0, an entry's `[]` inherited the defaults. If you wrote `[]` to inherit them, remove the line.
 :::
 

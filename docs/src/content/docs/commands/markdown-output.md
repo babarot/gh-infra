@@ -28,22 +28,12 @@ The comment starts with the summary, then has one collapsed block per repository
 </details>
 ```
 
-With [`--changed-since`](../../patterns/ci-cd/#planning-only-what-changed), the summary is followed by `Planned N of M resources changed since <ref>.`, and when nothing changed the heading is `### Plan: no manifests changed since <ref>` instead of `### Plan: no changes`, so the comment shows whether anything was planned.
+With [`--changed-since`](../../patterns/ci-cd/#only-what-changed), the summary is followed by `Planned N of M resources changed since <ref>.`, and when nothing changed the heading is `### Plan: no manifests changed since <ref>` instead of `### Plan: no changes`, so the comment shows whether anything was planned.
 
 Values are cut at 200 characters, and diffs at 500 lines per file. The comment is not otherwise limited in size, so a very large plan can go over GitHub's limit of 65,536 characters per comment.
 
 ## Posting it from GitHub Actions
 
-```yaml
-- name: Plan
-  run: |
-    set -o pipefail
-    gh infra plan ./repos/ --output markdown > plan.md
-- name: Comment the plan
-  if: ${{ !cancelled() }}
-  env:
-    GH_TOKEN: ${{ github.token }}
-  run: gh pr comment "${{ github.event.pull_request.number }}" --body-file plan.md
-```
+The [Plan on pull request](../../patterns/ci-cd/#plan-on-pull-request) workflow posts this comment on every pull request: it plans only what the pull request changed, keeps one comment per pull request with `gh pr comment --edit-last --create-if-none`, and fails the check only when the plan itself fails. The job needs `pull-requests: write`.
 
-The job needs `pull-requests: write`. To keep one comment per pull request instead of adding one on every push, edit the previous comment, for example with `gh pr comment --edit-last`.
+With `--detailed-exitcode`, `plan` exits with `2` when there are changes, which fails the step; capture the exit status as that workflow does, so the comment is still posted.

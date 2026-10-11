@@ -26,7 +26,7 @@ This is the opposite of the [central management](../central/) pattern — there'
 ## How It Works
 
 1. A developer opens a PR that modifies `.github/infra.yaml`
-2. The team reviews the infrastructure change alongside the code
+2. The team reviews the infrastructure change alongside the code, with the plan posted as a comment
 3. On merge, a GitHub Actions workflow runs `gh infra apply` automatically
 
 ```yaml
@@ -38,12 +38,17 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - run: gh extension install babarot/gh-infra
       - run: gh infra apply .github/infra.yaml --auto-approve
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+The workflows in [CI/CD Integration](../ci-cd/) work here too with `.github/infra.yaml` as the path: plan on pull request with a comment, apply on merge, and drift detection.
+
+`GH_INFRA_TOKEN` is a fine-grained token or GitHub App token for this repository with `Administration: Read and write` (see [Authentication](../ci-cd/#authentication)). The workflow's own `GITHUB_TOKEN` is not enough for a `Repository` manifest, since it has no `administration` permission; it works only when the manifest has nothing but `File` / `FileSet` documents for this repository.
 
 ## When to Use This Pattern
 

@@ -64,10 +64,10 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `files[].reconcile` | `additive` | Per-entry reconcile mode: `additive` (add/update), `authoritative` (add/update/delete), or `create_only` (create if missing, never update) — see [Reconcile](./reconcile/). |
 | `files[].executable` | *(none)* | `true` commits the file as executable (`100755`), `false` as non-executable (`100644`). When omitted, the current mode is kept. See [File modes](./delivery/#file-modes). |
 | `via` | `push` | Delivery method: `push` or `pull_request` — see [Delivery Method](./delivery/). |
-| `commit_message` | auto | Custom commit message |
+| `commit_message` | auto | Custom commit message. Accepts `<% %>` expressions such as `<% .Repo.Name %>` (see [Templated messages](./delivery/#templated-messages)) |
 | `branch` | `gh-infra/sync-<owner>-<name>` | Branch name for `pull_request` mode. Must differ from other `pull_request` resources on the same repository — see [Pull request branch](./delivery/#pull-request-branch) |
-| `pr_title` | `commit_message` | Custom PR title (`pull_request` only) |
-| `pr_body` | auto | Custom PR body (`pull_request` only) |
+| `pr_title` | `commit_message` | Custom PR title (`pull_request` only). Templated like `commit_message` |
+| `pr_body` | auto | Custom PR body (`pull_request` only). Templated like `commit_message` |
 
 File content supports `<% %>` template syntax for per-repo customization — see [Templating](./templating/).
 

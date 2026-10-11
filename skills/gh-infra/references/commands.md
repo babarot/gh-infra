@@ -39,7 +39,7 @@ Flags:
 - `-r`, `--repo <owner/repo>`: limit to one repository
 - `--detailed-exitcode`: exit 0 no changes, 1 error, 2 changes (prefer this in CI)
 - `--ci`: deprecated (warns); exits 1 for changes and errors alike, disables colors. Use `--detailed-exitcode`, and `NO_COLOR=1` for plain output
-- `--changed-since <ref>`: only manifests changed since the git ref (merge base to working tree, plus untracked) and File/FileSet docs whose local `source:` files/dirs or `patches:` files changed; no API calls when nothing changed. Needs the ref in the checkout (`fetch-depth: 0` in CI); every path must be inside the git repo; `github://` source changes are not detected
+- `--changed-since <ref>`: only manifests changed since the git ref (merge base to working tree, plus untracked) and File/FileSet docs whose local `source:` files/dirs or `patches:` files changed; no API calls when nothing changed. Needs the ref in the checkout (`fetch-depth: 0` in CI); every path must be inside the git repo; `github://` source changes are not detected. Nothing changed -> exit 0 (also with `--detailed-exitcode`); a bad ref (e.g. an all-zero `github.event.before`) -> exit 1. CI workflows: see the `ci-cd` skill
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
 - `-o`, `--output json`: print only a JSON document on stdout (summary, changes, warnings, errors); prefer it over parsing text. With `--changed-since` it adds `changed_since: {ref, selected, total}`; `selected: 0` means nothing was planned (not "no changes")

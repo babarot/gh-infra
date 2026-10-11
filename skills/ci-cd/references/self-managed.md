@@ -2,17 +2,19 @@
 
 Use this when each repository owns its own gh-infra manifest.
 
-Typical layout:
-
 ```text
 my-project/
   .github/
     infra.yaml
     workflows/
-      infra.yaml
+      infra-plan.yaml
+      infra-apply.yaml
 ```
 
-Example workflow:
+- workflows: [workflows.md](./workflows.md) with `.github/infra.yaml` instead of `./repos/ ./files/`; `paths: [".github/infra.yaml"]` is a fine trigger filter here (plus any directory the manifest reads through `source:`)
+- token: `.github/infra.yaml` is usually a `Repository` manifest, which needs a fine-grained PAT or GitHub App token for this repository with `Administration: Read and write`. The workflow's own `GITHUB_TOKEN` is enough only if the manifest has nothing but `File` / `FileSet` documents for this repository
+
+Minimal apply-on-merge:
 
 ```yaml
 on:
@@ -22,12 +24,10 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - run: gh extension install babarot/gh-infra
       - run: gh infra apply .github/infra.yaml --auto-approve
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
-
-This is the simplest pattern because the default workflow token can manage the same repository.

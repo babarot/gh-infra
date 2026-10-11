@@ -2,66 +2,15 @@
 
 Use this when one repository manages many target repositories.
 
-Typical layout:
-
 ```text
 github-config/
-  repos/
-  files/
+  repos/      Repository / RepositorySet manifests
+  files/      FileSet manifests
+  templates/  files read through source: / patches:
 ```
 
-Auto-apply example:
-
-```yaml
-on:
-  push:
-    branches: [main]
-    paths:
-      - "repos/**"
-      - "files/**"
-jobs:
-  apply:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: gh extension install babarot/gh-infra
-      - run: |
-          gh infra apply ./repos/ --auto-approve
-          gh infra apply ./files/ --auto-approve
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
-```
-
-Drift detection example:
-
-```yaml
-on:
-  schedule:
-    - cron: "0 9 * * 1"
-jobs:
-  drift:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: gh extension install babarot/gh-infra
-      - run: |
-          gh infra plan ./repos/ --detailed-exitcode
-          gh infra plan ./files/ --detailed-exitcode
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
-```
-
-Plan only what a pull request changed, to save API calls with many repositories:
-
-```yaml
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # the ref must be in the checkout
-      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --detailed-exitcode
-```
-
-- also selects File/FileSet manifests whose local `source:`/`patches:` files changed; no grep over `source:` lines needed
-- on push: `gh infra apply ./repos/ --changed-since ${{ github.event.before }} --auto-approve`; a failed run is not retried by the next push, so keep the scheduled full drift check
-- `github://` source changes are not detected
-
-Use a fine-grained PAT or GitHub App token. The default `GITHUB_TOKEN` cannot manage other repositories.
+- workflows: [workflows.md](./workflows.md) as-is, with `./repos/ ./files/`
+- token: fine-grained PAT or GitHub App token for all target repositories (see SKILL.md "Tokens"); the workflow's `GITHUB_TOKEN` cannot reach other repositories
+- `--changed-since` replaces any script that maps changed templates to manifests (e.g. `grep "source: ./<path>"`): it also selects File/FileSet documents whose local `source:` files/directories or `patches:` files changed
+- `github://` source changes are not detected by `--changed-since`; drift detection covers them
+- many repositories: keep plan and apply on `--changed-since` and leave full plans to the schedule, to stay under the API rate limit

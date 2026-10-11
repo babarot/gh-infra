@@ -108,6 +108,9 @@ Read [references/repository-set.md](./references/repository-set.md) for the exac
 - `reconcile.labels: authoritative`, `reconcile.rulesets: authoritative`, and `reconcile.branch_protection: authoritative` delete undeclared remote entries; review `plan` carefully
 - `reconcile` without a corresponding `spec` collection is no-op; a collection is managed only when it appears in `spec`
 - `label_sync: mirror` is deprecated; use `reconcile.labels: authoritative`
+- fields left out of the manifest are left as they are on GitHub (rulesets, branch protection, milestones, label descriptions, selected actions): to manage part of a ruleset, write only that part
+- in a RepositorySet entry, `labels: []` (or `rulesets`, `branch_protection`, `secrets`, `variables`, `topics`, `milestones`) means none: the defaults are not inherited; under `reconcile.<collection>: authoritative` it deletes every item on that repo. An entry cannot drop a single default item; change the defaults or use a standalone `Repository` (#215)
+- label names are matched ignoring case, as on GitHub; changing only the case renames the label
 - for `gh infra import --into`, use the dedicated `import-into` skill
 - Repository deletion is not supported
 

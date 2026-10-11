@@ -25,10 +25,11 @@ my-repo/
   .github/
     infra.yaml
     workflows/
-      infra.yaml
+      infra-plan.yaml
+      infra-apply.yaml
 ```
 
-Run `gh infra apply .github/infra.yaml --auto-approve` on merge to `main`.
+Plan each pull request with a comment and run `gh infra apply .github/infra.yaml --auto-approve` on merge to `main`; workflows and the token this needs are in the `ci-cd` skill.
 
 ## Choosing
 

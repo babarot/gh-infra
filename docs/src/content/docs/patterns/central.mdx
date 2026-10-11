@@ -30,11 +30,13 @@ Keep all your gh-infra YAML files in a **single dedicated repository** (e.g., `g
 
 ```bash
 # Preview all changes across all repos
-gh infra plan ./repos/
+gh infra plan ./repos/ ./files/
 
 # Apply everything
-gh infra apply ./repos/
+gh infra apply ./repos/ ./files/
 ```
+
+In CI, plan each pull request, apply on merge and check for drift on a schedule, as in [CI/CD Integration](../ci-cd/). The token needs access to every managed repository, so use a fine-grained token or a GitHub App (see [Authentication](../ci-cd/#authentication)).
 
 All changes are reviewed and applied from one place. You get a single `git log` showing the full history of every infrastructure change across all your repositories.
 
