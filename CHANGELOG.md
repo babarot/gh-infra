@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.16.0](https://github.com/babarot/gh-infra/compare/v0.15.2...v0.16.0) - 2026-10-11
+### New Features
+- feat: support template expressions in commit messages by @wpfleger96 in https://github.com/babarot/gh-infra/pull/164
+- Add --changed-since to plan and apply by @babarot in https://github.com/babarot/gh-infra/pull/216
+- Add plan --detailed-exitcode and deprecate --ci by @babarot in https://github.com/babarot/gh-infra/pull/217
+- Add import --into --auto-approve by @babarot in https://github.com/babarot/gh-infra/pull/218
+
 ## [v0.15.2](https://github.com/babarot/gh-infra/compare/v0.15.1...v0.15.2) - 2026-10-10
 ### Bug fixes
 - Match label names case-insensitively, as GitHub does by @babarot in https://github.com/babarot/gh-infra/pull/211
