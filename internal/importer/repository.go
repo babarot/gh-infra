@@ -1193,7 +1193,8 @@ func branchProtectionUpdateDiffs(pattern string, local, imported manifest.Branch
 				New:   imported.RequireStatusChecks.Strict,
 			})
 		}
-		if !reflect.DeepEqual(local.RequireStatusChecks.Contexts, imported.RequireStatusChecks.Contexts) {
+		// YAML reads no contexts back as [] where export may have nil.
+		if !stringSliceEqual(local.RequireStatusChecks.Contexts, imported.RequireStatusChecks.Contexts) {
 			diffs = append(diffs, FieldDiff{
 				Field: fmt.Sprintf("branch_protection.%s.require_status_checks.contexts", pattern),
 				Old:   local.RequireStatusChecks.Contexts,
@@ -1325,7 +1326,7 @@ func rulesetUpdateDiffs(name string, local, imported manifest.Ruleset) []FieldDi
 			New:   enabledSummary(imported.Rules.PullRequestEnabled()),
 		})
 	}
-	if !reflect.DeepEqual(local.Rules.RequiredStatusChecks, imported.Rules.RequiredStatusChecks) {
+	if !rulesetStatusChecksEqual(local.Rules.RequiredStatusChecks, imported.Rules.RequiredStatusChecks) {
 		diffs = append(diffs, FieldDiff{
 			Field: fmt.Sprintf("rulesets.%s.rules.required_status_checks", name),
 			Old:   enabledSummary(local.Rules.StatusChecksEnabled()),
@@ -2049,4 +2050,19 @@ func stringSliceEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// rulesetStatusChecksEqual compares required status checks, treating no
+// contexts as nil or empty alike: YAML reads `contexts: []` back as empty
+// where export may have nil.
+func rulesetStatusChecksEqual(a, b *manifest.RulesetStatusChecks) bool {
+	norm := func(sc *manifest.RulesetStatusChecks) *manifest.RulesetStatusChecks {
+		if sc == nil || len(sc.Contexts) > 0 {
+			return sc
+		}
+		c := *sc
+		c.Contexts = nil
+		return &c
+	}
+	return reflect.DeepEqual(norm(a), norm(b))
 }

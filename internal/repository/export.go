@@ -31,15 +31,17 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			},
 			Features: exportFeatures(r),
 			MergeStrategy: &manifest.MergeStrategy{
-				AllowMergeCommit:         manifest.Ptr(r.MergeStrategy.AllowMergeCommit),
-				AllowSquashMerge:         manifest.Ptr(r.MergeStrategy.AllowSquashMerge),
-				AllowRebaseMerge:         manifest.Ptr(r.MergeStrategy.AllowRebaseMerge),
-				AllowAutoMerge:           manifest.Ptr(r.MergeStrategy.AllowAutoMerge),
-				AutoDeleteHeadBranches:   manifest.Ptr(r.MergeStrategy.AutoDeleteHeadBranches),
-				MergeCommitTitle:         manifest.Ptr(r.MergeStrategy.MergeCommitTitle),
-				MergeCommitMessage:       manifest.Ptr(r.MergeStrategy.MergeCommitMessage),
-				SquashMergeCommitTitle:   manifest.Ptr(r.MergeStrategy.SquashMergeCommitTitle),
-				SquashMergeCommitMessage: manifest.Ptr(r.MergeStrategy.SquashMergeCommitMessage),
+				AllowMergeCommit:       manifest.Ptr(r.MergeStrategy.AllowMergeCommit),
+				AllowSquashMerge:       manifest.Ptr(r.MergeStrategy.AllowSquashMerge),
+				AllowRebaseMerge:       manifest.Ptr(r.MergeStrategy.AllowRebaseMerge),
+				AllowAutoMerge:         manifest.Ptr(r.MergeStrategy.AllowAutoMerge),
+				AutoDeleteHeadBranches: manifest.Ptr(r.MergeStrategy.AutoDeleteHeadBranches),
+				// Empty when GET /repos could not be read: not a value a
+				// manifest accepts, and plan does not compare an omitted one.
+				MergeCommitTitle:         nonEmpty(r.MergeStrategy.MergeCommitTitle),
+				MergeCommitMessage:       nonEmpty(r.MergeStrategy.MergeCommitMessage),
+				SquashMergeCommitTitle:   nonEmpty(r.MergeStrategy.SquashMergeCommitTitle),
+				SquashMergeCommitMessage: nonEmpty(r.MergeStrategy.SquashMergeCommitMessage),
 			},
 		},
 	}
@@ -100,7 +102,9 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 				})
 			}
 		}
-		if rs.Conditions != nil && rs.Conditions.RefName != nil {
+		// A ruleset targeting no branch has an empty include, which a
+		// manifest rejects; leave conditions out (plan does not compare them).
+		if rs.Conditions != nil && rs.Conditions.RefName != nil && len(rs.Conditions.RefName.Include) > 0 {
 			mrs.Conditions = &manifest.RulesetConditions{
 				RefName: &manifest.RulesetRefCondition{
 					Include: rs.Conditions.RefName.Include,
@@ -212,7 +216,9 @@ func exportFeatures(r *CurrentState) *manifest.Features {
 	pr := &manifest.PullRequests{
 		Enabled: manifest.Ptr(r.Features.PullRequests),
 	}
-	if r.Features.PullRequestCreation != "" && r.Features.PullRequestCreation != manifest.PullRequestCreationAll {
+	// The creation policy only applies, and is only written to YAML, while
+	// pull requests are enabled.
+	if r.Features.PullRequests && r.Features.PullRequestCreation != "" && r.Features.PullRequestCreation != manifest.PullRequestCreationAll {
 		pr.Creation = manifest.Ptr(r.Features.PullRequestCreation)
 	}
 	return &manifest.Features{
@@ -222,4 +228,12 @@ func exportFeatures(r *CurrentState) *manifest.Features {
 		Discussions:  manifest.Ptr(r.Features.Discussions),
 		PullRequests: pr,
 	}
+}
+
+// nonEmpty returns a pointer to s, or nil for "".
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
