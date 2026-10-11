@@ -7,6 +7,12 @@ on:
   pull_request:
     paths:
       - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.golangci.yaml'
+      - '.octocov.yaml'
+      - '.github/workflows/build.yaml'
   workflow_dispatch:
 
 jobs:
