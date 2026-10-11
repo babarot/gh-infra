@@ -22,7 +22,7 @@ func TestWrite_ManifestEdits(t *testing.T) {
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -51,7 +51,7 @@ func TestWrite_WriteSource(t *testing.T) {
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -95,7 +95,7 @@ spec:
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -124,7 +124,7 @@ func TestWrite_WriteSkip(t *testing.T) {
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -149,7 +149,7 @@ func TestWrite_NoOpSkipped(t *testing.T) {
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -193,7 +193,7 @@ spec:
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -258,7 +258,7 @@ spec:
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -317,7 +317,7 @@ spec:
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -381,7 +381,7 @@ spec:
 		},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -514,7 +514,7 @@ spec:
 		}},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -569,7 +569,7 @@ spec:
 		}},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -627,7 +627,7 @@ spec:
 		}},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -687,7 +687,7 @@ spec:
 		}},
 	}
 
-	if err := Write(plan); err != nil {
+	if _, err := Write(plan); err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
 
@@ -701,5 +701,31 @@ spec:
 	}
 	if !strings.Contains(result, "content: new-b") {
 		t.Fatalf("expected second document to be updated:\n%s", result)
+	}
+}
+
+func TestWrite_CountsWhatItWrote(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "m.yaml")
+	plan := &Result{
+		ManifestEdits: map[string][]byte{manifest: []byte("apiVersion: gh-infra/v1\n")},
+		FileChanges: []Change{
+			{Type: fileset.ChangeUpdate, WriteMode: WriteSource, LocalTarget: filepath.Join(dir, "a"), Desired: "a"},
+			{Type: fileset.ChangeUpdate, WriteMode: WriteSource, LocalTarget: filepath.Join(dir, "b"), Desired: "b"},
+			{Type: fileset.ChangeUpdate, WriteMode: WriteSkip, LocalTarget: filepath.Join(dir, "c"), Desired: "c"},
+			{Type: fileset.ChangeNoOp, WriteMode: WriteSource, LocalTarget: filepath.Join(dir, "d"), Desired: "d"},
+		},
+	}
+	got, err := Write(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != (WriteResult{Manifests: 1, Sources: 2, FileChanges: 2}) || !got.Wrote() {
+		t.Errorf("result = %+v, want 1 manifest and 2 sources", got)
+	}
+
+	nothing, err := Write(&Result{FileChanges: []Change{{Type: fileset.ChangeUpdate, WriteMode: WriteSkip}}})
+	if err != nil || nothing.Wrote() {
+		t.Errorf("only skipped changes: %+v, %v", nothing, err)
 	}
 }

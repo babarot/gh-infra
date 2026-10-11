@@ -100,11 +100,15 @@ func runImportInto(args []string, intoPath string, autoApprove bool) error {
 		return nil
 	}
 
-	if err := diff.Write(); err != nil {
+	written, err := diff.Write()
+	if err != nil {
 		return err
 	}
-
-	p.Summary(fmt.Sprintf("Import complete! %d documents updated.", diff.Plan.UpdatedDocs))
+	if !written.Wrote() {
+		p.Message("\n" + written.Summary())
+		return nil
+	}
+	p.Summary(written.Summary())
 	return nil
 }
 
