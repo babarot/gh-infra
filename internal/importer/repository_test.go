@@ -3,6 +3,7 @@ package importer
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -2157,5 +2158,81 @@ repositories:
 	_, updated := importSetEntry(t, content, manifest.RepositorySpec{Description: manifest.Ptr("hello")})
 	if !strings.Contains(updated, "      description: hello\n      labels: []\n") {
 		t.Errorf("expected labels: [] next to description:\n%s", updated)
+	}
+}
+
+func TestMinimalOverride_SecurityAndReleaseImmutability(t *testing.T) {
+	defaults := manifest.RepositorySpec{
+		ReleaseImmutability: manifest.Ptr(true),
+		Security:            &manifest.Security{VulnerabilityAlerts: manifest.Ptr(true), AutomatedSecurityFixes: manifest.Ptr(true)},
+	}
+	imported := manifest.RepositorySpec{
+		ReleaseImmutability: manifest.Ptr(false),
+		Security:            &manifest.Security{VulnerabilityAlerts: manifest.Ptr(true), AutomatedSecurityFixes: manifest.Ptr(false)},
+	}
+
+	override := minimalOverride(defaults, imported)
+
+	if override.ReleaseImmutability == nil || *override.ReleaseImmutability {
+		t.Errorf("ReleaseImmutability should be false, got %v", override.ReleaseImmutability)
+	}
+	want := &manifest.Security{AutomatedSecurityFixes: manifest.Ptr(false)}
+	if !reflect.DeepEqual(override.Security, want) {
+		t.Errorf("Security = %+v, want only automated_security_fixes: false", override.Security)
+	}
+	if o := minimalOverride(imported, imported); o.ReleaseImmutability != nil || o.Security != nil {
+		t.Errorf("same as defaults should write nothing, got %v %+v", o.ReleaseImmutability, o.Security)
+	}
+}
+
+func TestMinimalOverride_Milestones(t *testing.T) {
+	gh := []manifest.Milestone{{Title: "v1", State: manifest.Ptr("closed")}}
+	for _, tt := range []struct {
+		name     string
+		defaults []manifest.Milestone
+		want     []manifest.Milestone
+		wantSet  bool
+	}{
+		{name: "same on the fields defaults set", defaults: []manifest.Milestone{{Title: "v1"}}},
+		{name: "state differs", defaults: []manifest.Milestone{{Title: "v1", State: manifest.Ptr("open")}}, want: gh},
+		{name: "extra default milestone", defaults: []manifest.Milestone{{Title: "v1"}, {Title: "v0"}}, want: gh},
+		{name: "no defaults", want: gh},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			o := minimalOverride(manifest.RepositorySpec{Milestones: tt.defaults}, manifest.RepositorySpec{Milestones: gh})
+			if !reflect.DeepEqual(o.Milestones, tt.want) {
+				t.Errorf("Milestones = %+v, want %+v", o.Milestones, tt.want)
+			}
+		})
+	}
+
+	o := minimalOverride(manifest.RepositorySpec{Milestones: gh}, manifest.RepositorySpec{})
+	if !o.MilestonesSet || o.Milestones == nil || len(o.Milestones) != 0 {
+		t.Errorf("GitHub without milestones should write [], got %+v (set %v)", o.Milestones, o.MilestonesSet)
+	}
+}
+
+func TestCompareMilestones(t *testing.T) {
+	gh := []manifest.Milestone{{Title: "v1", State: manifest.Ptr("closed"), DueOn: manifest.Ptr("2025-12-31")}}
+	for _, tt := range []struct {
+		name  string
+		local []manifest.Milestone
+		want  []string
+	}{
+		{name: "fields left out", local: []manifest.Milestone{{Title: "v1"}}},
+		{name: "empty equals absent", local: []manifest.Milestone{{Title: "v1", Description: manifest.Ptr("")}}},
+		{name: "state differs", local: []manifest.Milestone{{Title: "v1", State: manifest.Ptr("open")}}, want: []string{"milestones.v1"}},
+		{name: "only on GitHub", want: []string{"milestones.v1"}},
+		{name: "only in the manifest", local: []manifest.Milestone{{Title: "v1"}, {Title: "v2"}}, want: []string{"milestones.v2"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			for _, d := range compareMilestones(tt.local, gh) {
+				got = append(got, d.Field)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("fields = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
