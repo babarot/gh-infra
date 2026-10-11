@@ -48,7 +48,7 @@ jobs:
 
 The workflows in [CI/CD Integration](../ci-cd/) work here too with `.github/infra.yaml` as the path: plan on pull request with a comment, apply on merge, and drift detection.
 
-`GH_INFRA_TOKEN` is a fine-grained token or GitHub App token for this repository with `Administration: Read and write` (see [Authentication](../ci-cd/#authentication)). The workflow's own `GITHUB_TOKEN` is not enough for a `Repository` manifest, since it has no `administration` permission; it works only when the manifest has nothing but `File` / `FileSet` documents for this repository.
+`GH_INFRA_TOKEN` is a fine-grained token or GitHub App token for this repository with `Administration: Read and write` (see [Authentication](../ci-cd/#authentication)). The workflow's own `GITHUB_TOKEN` cannot have the `administration` permission, so it cannot manage repository settings; it is enough only when the manifest manages nothing but labels and milestones (`issues: write`) and `File` / `FileSet` documents for this repository.
 
 ## When to Use This Pattern
 

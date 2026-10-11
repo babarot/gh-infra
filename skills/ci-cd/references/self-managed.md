@@ -12,7 +12,7 @@ my-project/
 ```
 
 - workflows: [workflows.md](./workflows.md) with `.github/infra.yaml` instead of `./repos/ ./files/`; `paths: [".github/infra.yaml"]` is a fine trigger filter here (plus any directory the manifest reads through `source:`)
-- token: `.github/infra.yaml` is usually a `Repository` manifest, which needs a fine-grained PAT or GitHub App token for this repository with `Administration: Read and write`. The workflow's own `GITHUB_TOKEN` is enough only if the manifest has nothing but `File` / `FileSet` documents for this repository
+- token: `.github/infra.yaml` is usually a `Repository` manifest, which needs a fine-grained PAT or GitHub App token for this repository with `Administration: Read and write`. The workflow's own `GITHUB_TOKEN` (no Administration) is enough only if the manifest manages nothing but labels, milestones (`issues: write`) and `File` / `FileSet` documents for this repository
 
 Minimal apply-on-merge:
 

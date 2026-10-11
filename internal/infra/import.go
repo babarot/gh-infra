@@ -60,7 +60,7 @@ func Import(runner gh.Runner, args []string) error {
 		onStatus := func(s string) {
 			tracker.UpdateStatus(fullName, s)
 		}
-		current, err := eng.repo.FetchRepository(ctx, t.Target.Owner, t.Target.Name, onStatus)
+		current, err := eng.repo.FetchRepository(ctx, t.Target.Owner, t.Target.Name, nil, onStatus)
 		if err != nil {
 			tracker.Error(fullName, fmt.Errorf("fetch failed: %w", err))
 			return fetchResult{err: err}

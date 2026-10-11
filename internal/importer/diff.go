@@ -104,7 +104,7 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 			tracker.UpdateStatus(fullName, s)
 		}
 
-		current, err := proc.FetchRepository(ctx, tm.Target.Owner, tm.Target.Name, onStatus)
+		current, err := proc.FetchRepository(ctx, tm.Target.Owner, tm.Target.Name, nil, onStatus)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return fetchResult{tm: tm, fatal: context.Canceled}

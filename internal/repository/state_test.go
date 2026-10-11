@@ -62,7 +62,7 @@ func TestFetchRepository(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+	state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestFetchRepository_RepoSettingsError(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+	_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 	if err == nil {
 		t.Fatal("expected error from fetchRepoSettings")
 	}
@@ -184,7 +184,7 @@ func TestFetchSecrets(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		secrets, err := p.fetchSecrets(context.Background(), "myorg", "myrepo")
+		secrets, err := p.fetchSecrets(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -203,7 +203,7 @@ func TestFetchSecrets(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		secrets, err := p.fetchSecrets(context.Background(), "myorg", "myrepo")
+		secrets, err := p.fetchSecrets(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -219,7 +219,7 @@ func TestFetchSecrets(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		secrets, err := p.fetchSecrets(context.Background(), "myorg", "myrepo")
+		secrets, err := p.fetchSecrets(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("expected nil error, got %v", err)
 		}
@@ -235,7 +235,7 @@ func TestFetchSecrets(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.fetchSecrets(context.Background(), "myorg", "myrepo")
+		_, err := p.fetchSecrets(context.Background(), "myorg", "myrepo", false)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -250,7 +250,7 @@ func TestFetchVariables(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		vars, err := p.fetchVariables(context.Background(), "myorg", "myrepo")
+		vars, err := p.fetchVariables(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -272,7 +272,7 @@ func TestFetchVariables(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		vars, err := p.fetchVariables(context.Background(), "myorg", "myrepo")
+		vars, err := p.fetchVariables(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -288,7 +288,7 @@ func TestFetchVariables(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		vars, err := p.fetchVariables(context.Background(), "myorg", "myrepo")
+		vars, err := p.fetchVariables(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("expected nil error, got %v", err)
 		}
@@ -304,7 +304,7 @@ func TestFetchVariables(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.fetchVariables(context.Background(), "myorg", "myrepo")
+		_, err := p.fetchVariables(context.Background(), "myorg", "myrepo", false)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -399,7 +399,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error for 404, got: %v", err)
 		}
@@ -420,7 +420,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error for 403, got: %v", err)
 		}
@@ -441,7 +441,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err == nil {
 			t.Fatal("expected error for 500, got nil")
 		}
@@ -462,7 +462,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err == nil {
 			t.Fatal("expected error for 500, got nil")
 		}
@@ -474,7 +474,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 	t.Run("vulnerability alerts 204 means enabled", func(t *testing.T) {
 		mock := &gh.MockRunner{Responses: baseResponses}
 		p := NewProcessor(mock, nil)
-		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -495,7 +495,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error for 404, got: %v", err)
 		}
@@ -516,7 +516,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error for 403, got: %v", err)
 		}
@@ -537,7 +537,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err == nil {
 			t.Fatal("expected error for 500, got nil")
 		}
@@ -558,7 +558,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error for 404, got: %v", err)
 		}
@@ -579,7 +579,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err == nil {
 			t.Fatal("expected error for 500, got nil")
 		}
@@ -595,7 +595,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 
 		mock := &gh.MockRunner{Responses: responses}
 		p := NewProcessor(mock, nil)
-		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -616,7 +616,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
 		if err == nil {
 			t.Fatal("expected error for 500, got nil")
 		}
@@ -640,7 +640,7 @@ func TestFetchBranchProtection_MultipleBranches(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	got, err := p.fetchBranchProtection(context.Background(), "myorg", "myrepo")
+	got, err := p.fetchBranchProtection(context.Background(), "myorg", "myrepo", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -679,7 +679,7 @@ func TestFetchBranchProtection_IndividualFailureSkipped(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	got, err := p.fetchBranchProtection(context.Background(), "myorg", "myrepo")
+	got, err := p.fetchBranchProtection(context.Background(), "myorg", "myrepo", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -710,7 +710,7 @@ func TestFetchRulesets_MultipleRulesets(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo")
+	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -751,7 +751,7 @@ func TestFetchRulesets_IndividualFailureSkipped(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo")
+	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -777,7 +777,7 @@ func TestFetchRulesets_SkipsOrgAndEnterpriseSource(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo")
+	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -856,7 +856,7 @@ func TestFetchMilestones(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		milestones, err := p.fetchMilestones(context.Background(), "myorg", "myrepo")
+		milestones, err := p.fetchMilestones(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -880,7 +880,7 @@ func TestFetchMilestones(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		milestones, err := p.fetchMilestones(context.Background(), "myorg", "myrepo")
+		milestones, err := p.fetchMilestones(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("expected nil error, got %v", err)
 		}
@@ -896,7 +896,7 @@ func TestFetchMilestones(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		_, err := p.fetchMilestones(context.Background(), "myorg", "myrepo")
+		_, err := p.fetchMilestones(context.Background(), "myorg", "myrepo", false)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -909,7 +909,7 @@ func TestFetchMilestones(t *testing.T) {
 			},
 		}
 		p := NewProcessor(mock, nil)
-		milestones, err := p.fetchMilestones(context.Background(), "myorg", "myrepo")
+		milestones, err := p.fetchMilestones(context.Background(), "myorg", "myrepo", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

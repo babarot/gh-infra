@@ -113,6 +113,7 @@ Read [references/repository-set.md](./references/repository-set.md) for the exac
 - label names are matched ignoring case, as on GitHub; changing only the case renames the label
 - for `gh infra import --into`, use the dedicated `import-into` skill
 - Repository deletion is not supported
+- plan reads only the settings the manifest sets; a managed setting the token cannot read (403) fails the repo with `cannot read ...` instead of being treated as empty (rulesets on GitHub Free private repos fail this way)
 
 ## Verification
 

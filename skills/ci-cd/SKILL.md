@@ -39,8 +39,13 @@ Use the three unless the user wants less. Drift detection is also the safety net
 
 ## Tokens
 
-- `Repository` / `RepositorySet` manifests need a fine-grained PAT or GitHub App token with `Administration: Read and write` (gh-infra reads Actions settings of every planned repository, which needs Administration, #221), `Contents: Read and write`, plus `Secrets`, `Variables`, `Issues` (labels, milestones), `Pull requests` (FileSet `via: pull_request`) as used. Store it as a secret (e.g. `GH_INFRA_TOKEN`) and pass it as `GH_TOKEN`
-- the workflow's `GITHUB_TOKEN` works only for `File` / `FileSet` manifests targeting the same repository (`contents: write`, `pull-requests: write` for `via: pull_request`). It has no `administration` permission, so any `Repository` manifest fails with `Resource not accessible by integration`, even in a self-managed repo. It cannot reach other repositories
+- plan/apply read only what a manifest sets, so grant only the permissions for that (fine-grained PAT or GitHub App token, stored as e.g. `GH_INFRA_TOKEN`, passed as `GH_TOKEN`):
+  - repository settings (description, topics, features, merge strategy, visibility): plan needs Metadata (+ Contents: read for merge commit messages / auto-merge / pull requests), apply needs Administration: write
+  - branch protection, Actions settings, release immutability, vulnerability alerts, automated security fixes: Administration read (plan) / write (apply)
+  - rulesets, private vulnerability reporting: plan with Metadata, apply needs Administration: write
+  - labels, milestones: Issues; secrets: Secrets; variables: Variables; File/FileSet: Contents (+ Pull requests for `via: pull_request`)
+- a managed setting the token cannot read fails that repository in plan (`cannot read secrets of org/repo (the token needs the Secrets permission)`); it is not compared as empty. On GitHub Free private repos, managed rulesets fail with GitHub's "Upgrade to GitHub Pro" message
+- the workflow's `GITHUB_TOKEN` cannot have Administration and cannot reach other repositories: for its own repo it can plan and apply labels, milestones (`issues: write`) and File / FileSet (`contents: write`), not repository settings
 - comments and issues created by the workflow itself can use `GH_TOKEN: ${{ github.token }}` on that step
 - never use a broad classic PAT
 

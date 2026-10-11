@@ -63,7 +63,7 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		onStatus := func(status string) {
 			tracker.UpdateStatus(fullName, status)
 		}
-		current, err := p.FetchRepository(ctx, r.Metadata.Owner, r.Metadata.Name, onStatus)
+		current, err := p.FetchRepository(ctx, r.Metadata.Owner, r.Metadata.Name, &r.Spec, onStatus)
 		if err != nil {
 			logger.Error("fetch failed", "repo", fullName, "err", err)
 			tracker.Error(fullName, err)
