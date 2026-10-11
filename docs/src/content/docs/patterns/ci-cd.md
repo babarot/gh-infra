@@ -75,12 +75,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: gh infra plan ./repos/ --ci
+      - run: gh infra plan ./repos/ --detailed-exitcode
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The `--ci` flag makes `plan` exit with code 1 if any changes are detected. This turns the workflow into a pass/fail check that you can wire up to notifications (Slack, email, etc.) or use as a required status check.
+With `--detailed-exitcode`, `plan` exits with `2` when changes are detected and `1` when the plan itself fails (for example, a fetch hits the rate limit), so a workflow can tell drift from a broken run. Either fails the step, which you can wire up to notifications (Slack, email, etc.) or use as a required status check. To react to drift only, check the code:
+
+```yaml
+      - id: plan
+        run: gh infra plan ./repos/ --detailed-exitcode || echo "code=$?" >> "$GITHUB_OUTPUT"
+      - if: steps.plan.outputs.code == '1'
+        run: exit 1   # the plan failed
+      - if: steps.plan.outputs.code == '2'
+        run: echo "drift detected"
+```
 
 ## Planning Only What Changed
 
@@ -102,7 +111,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # --changed-since needs the history of the ref
-      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --ci
+      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --detailed-exitcode
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -119,7 +128,7 @@ On merge, apply what the push changed:
 Things to know:
 
 - The ref must be in the checkout. With the default `fetch-depth: 1` it is not, and the command fails.
-- If an `apply --changed-since` run fails, the next push does not include its changes, so they are not retried. Keep a scheduled full `plan --ci` (see [Drift Detection](#drift-detection)) or a periodic full `apply`.
+- If an `apply --changed-since` run fails, the next push does not include its changes, so they are not retried. Keep a scheduled full `plan --detailed-exitcode` (see [Drift Detection](#drift-detection)) or a periodic full `apply`.
 - Changes to a `github://` source cannot be seen in git; documents using one are handled only when their manifest or local files change.
 - Validation still covers all manifests, so a conflict with an unchanged manifest (for example two FileSets opening a pull request from the same branch) is still reported.
 - Every path argument must be inside the git repository. Requires git 2.30 or later.

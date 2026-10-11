@@ -23,7 +23,7 @@ Read:
 ## Common Building Blocks
 
 - `gh infra apply ... --auto-approve` on merge to `main`
-- `gh infra plan ... --ci` on a schedule for drift detection
+- `gh infra plan ... --detailed-exitcode` on a schedule for drift detection
 - use `GITHUB_TOKEN` only for self-managed single-repo workflows
 - use a fine-grained PAT or GitHub App token for cross-repo central management
 
@@ -59,12 +59,12 @@ Never use a broad classic PAT.
 - gh-infra reads only top-level `*.yaml` / `*.yml` in the target directory
 - if manifests are split across `repos/` and `files/`, run once per directory
 - `--auto-approve` is required in CI
-- `--ci` makes `plan` exit 1 when drift exists
+- `--detailed-exitcode` makes `plan` exit 2 when drift exists and 1 when the plan fails; `--ci` is deprecated (exits 1 for both)
 
 ## Typical Flows
 
 - PR review flow: run `plan` on pull requests touching manifests
 - Auto-apply flow: run `apply --auto-approve` on merge
-- Drift detection flow: run `plan --ci` on a schedule
+- Drift detection flow: run `plan --detailed-exitcode` on a schedule
 
 Use both auto-apply and drift detection unless the user explicitly wants review-only behavior.

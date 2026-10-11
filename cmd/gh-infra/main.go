@@ -15,6 +15,9 @@ var (
 func main() {
 	root := cmd.NewRootCmd(version, revision)
 	if err := root.Execute(); err != nil {
+		if code, ok := cmd.ExitCode(err); ok {
+			os.Exit(code)
+		}
 		ui.FatalError(err)
 		os.Exit(1)
 	}
