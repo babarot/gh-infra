@@ -75,6 +75,9 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		ChangedSince:  opts.ChangedSince,
 	})
 	if err != nil {
+		if errors.Is(err, infra.ErrNoResources) {
+			return nil
+		}
 		if errors.Is(err, context.Canceled) {
 			printCancelled()
 			return nil

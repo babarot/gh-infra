@@ -45,8 +45,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: gh extension install babarot/gh-infra
       - run: |
-          gh infra plan ./repos/ --ci
-          gh infra plan ./files/ --ci
+          gh infra plan ./repos/ --detailed-exitcode
+          gh infra plan ./files/ --detailed-exitcode
         env:
           GITHUB_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
 ```
@@ -57,7 +57,7 @@ Plan only what a pull request changed, to save API calls with many repositories:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # the ref must be in the checkout
-      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --ci
+      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --detailed-exitcode
 ```
 
 - also selects File/FileSet manifests whose local `source:`/`patches:` files changed; no grep over `source:` lines needed

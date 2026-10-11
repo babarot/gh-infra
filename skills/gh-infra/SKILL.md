@@ -117,7 +117,7 @@ Show diff against live GitHub state:
 gh infra plan [path...]
 ```
 
-Use `--ci` for drift-detection workflows.
+Use `--detailed-exitcode` for drift-detection workflows (2 = changes, 1 = error). `--ci` is deprecated.
 
 ### apply
 

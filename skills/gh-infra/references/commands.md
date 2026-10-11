@@ -36,7 +36,8 @@ gh infra plan [path...]
 Flags:
 
 - `-r`, `--repo <owner/repo>`: limit to one repository
-- `--ci`: exit 1 if changes are detected
+- `--detailed-exitcode`: exit 0 no changes, 1 error, 2 changes (prefer this in CI)
+- `--ci`: deprecated (warns); exits 1 for changes and errors alike, disables colors. Use `--detailed-exitcode`, and `NO_COLOR=1` for plain output
 - `--changed-since <ref>`: only manifests changed since the git ref (merge base to working tree, plus untracked) and File/FileSet docs whose local `source:` files/dirs or `patches:` files changed; no API calls when nothing changed. Needs the ref in the checkout (`fetch-depth: 0` in CI); every path must be inside the git repo; `github://` source changes are not detected
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
@@ -46,7 +47,8 @@ Flags:
 Exit status:
 
 - exits 1 if any repository's current state could not be fetched (e.g. token lacks permissions), even with no changes; the failed repos are skipped, never planned as creates
-- with `--ci`, also exits 1 when changes are detected
+- with `--detailed-exitcode`, exits 2 when changes are detected; an error (1) wins over changes; an interrupted plan or paths with no manifests also exit 1
+- with the deprecated `--ci`, exits 1 when changes are detected
 
 ## apply
 

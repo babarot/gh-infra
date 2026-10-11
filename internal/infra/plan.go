@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,6 +14,10 @@ import (
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
 )
+
+// ErrNoResources is returned by Plan when the paths hold no gh-infra
+// manifests. The message has already been printed.
+var ErrNoResources = errors.New("no resources found")
 
 // PlanOptions configures the plan phase.
 type PlanOptions struct {
@@ -116,7 +121,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 
 	if len(parsed.Repositories) == 0 && len(parsed.FileSets) == 0 {
 		p.Message("No resources found in " + strings.Join(paths, ", "))
-		return nil, context.Canceled
+		return nil, ErrNoResources
 	}
 
 	if !opts.DryRun {
