@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -268,7 +270,10 @@ func tryParseGHMessage(stderr string) *APIError {
 
 	status := inferHTTPStatus(nil, label)
 	if status == 0 {
-		return nil
+		// Commands such as `gh secret list` and `gh label` print
+		// "...: HTTP 403: <message> (<url>)", where the parenthesized part
+		// is the request URL rather than a status label.
+		return parseHTTPStatusMessage(stderr)
 	}
 
 	apiErr := &APIError{
@@ -279,4 +284,24 @@ func tryParseGHMessage(stderr string) *APIError {
 		apiErr.Errors = append(apiErr.Errors, msg)
 	}
 	return apiErr
+}
+
+// httpStatusMessage matches "HTTP 403: <message>" inside gh's output.
+var httpStatusMessage = regexp.MustCompile(`HTTP (\d{3}): ([^\n]*)`)
+
+// parseHTTPStatusMessage parses "...: HTTP 403: <message> (<url>)".
+func parseHTTPStatusMessage(stderr string) *APIError {
+	m := httpStatusMessage.FindStringSubmatch(stderr)
+	if m == nil {
+		return nil
+	}
+	status, err := strconv.Atoi(m[1])
+	if err != nil {
+		return nil
+	}
+	msg := strings.TrimSpace(m[2])
+	if i := strings.LastIndex(msg, " (http"); i > 0 && strings.HasSuffix(msg, ")") {
+		msg = strings.TrimSpace(msg[:i])
+	}
+	return &APIError{Status: status, Message: msg}
 }
