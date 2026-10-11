@@ -32,7 +32,7 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `-r, --repo <owner/repo>` | Target a specific repository |
 | `--detailed-exitcode` | Exit with `2` if changes are detected, `1` on error, `0` otherwise (see [Exit status](#exit-status)) |
 | `--ci` | Deprecated: use `--detailed-exitcode`. Exits with `1` if changes are detected, and disables colors |
-| `--changed-since <ref>` | Only the manifests changed since a git ref, and those that read a changed local file. See [Planning only what changed](../../patterns/ci-cd/#planning-only-what-changed) |
+| `--changed-since <ref>` | Only the manifests changed since a git ref, and those that read a changed local file. See [Only what changed](../../patterns/ci-cd/#only-what-changed) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
 | `--diff` | Show a unified diff for each FileSet file change, capped at 500 lines per file. Deleted files show no diff |
 | `-o, --output <format>` | `text` (default), `json`, or `markdown`. See [JSON output](../json-output/) and [Markdown output](../markdown-output/) |

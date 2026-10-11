@@ -119,13 +119,15 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - run: gh extension install babarot/gh-infra
-      - run: gh infra apply ./repos/
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: gh infra apply ./repos/ --auto-approve
 ```
+
+`GH_INFRA_TOKEN` is a fine-grained token or GitHub App token for the repositories (see [Authentication](../../../patterns/ci-cd/#authentication); the workflow's own `GITHUB_TOKEN` cannot run a `Repository` manifest). [CI/CD Integration](../../../patterns/ci-cd/) has the full setup, including a plan comment on each pull request.
 
 `gh` CLI is [preinstalled on all GitHub-hosted runners](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/using-github-cli-in-workflows), so no additional setup is needed.
 

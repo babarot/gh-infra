@@ -89,7 +89,7 @@ Only regular files can be marked: a symlink or submodule at the path is reported
 
 `.Vars` is not available in messages. A multi-line `commit_message` is split Git-style: the first line becomes the commit headline and the rest becomes the body. When `pr_title` is omitted, only the headline is used as the title.
 
-Link each sync commit back to the change that triggered it by setting `GH_INFRA_SOURCE_URL` in CI (for example, to the merged pull request URL). Wrap the line in `if` so nothing is emitted when the variable is unset:
+Link each sync commit back to the change that triggered it by setting `GH_INFRA_SOURCE_URL` in CI, for example to `${{ github.event.head_commit.url }}` in a workflow that applies on push (see [Apply on merge](../../../patterns/ci-cd/#apply-on-merge)). `plan` and `validate` render the messages with an empty URL to check them. Wrap the line in `if` so nothing is emitted when the variable is unset:
 
 ```yaml
 spec:

@@ -88,6 +88,10 @@ gh infra plan
 gh infra apply
 ```
 
+### 4. Run it in CI
+
+Plan each pull request and post the plan as a comment, apply on merge, and check for drift on a schedule. With `--changed-since`, only the repositories a change affects are planned and applied. See [CI/CD Integration](https://babarot.github.io/gh-infra/patterns/ci-cd/) for the workflows.
+
 ## Commands
 
 | Command | Description |

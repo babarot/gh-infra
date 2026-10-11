@@ -84,4 +84,5 @@ spec:
 
 - First line = commit headline, rest = body; empty body is dropped. Default `pr_title` uses only the headline.
 - Guard `.Source.URL` with `if`, otherwise an unset env var leaves a dangling `Source: ` line.
+- In GitHub Actions, set it on the apply job: `env: GH_INFRA_SOURCE_URL: ${{ github.event.head_commit.url }}` (the commit that triggered the apply; empty on `workflow_dispatch`, which the `if` guard handles).
 - Messages are rendered for the commit at apply time and are not shown in `plan`; `plan` and `validate` render them for each target repository to catch template errors before anything is written.

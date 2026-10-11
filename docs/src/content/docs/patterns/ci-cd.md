@@ -4,140 +4,213 @@ sidebar:
   order: 2
 ---
 
-gh-infra is designed to run in CI. The two most common patterns are **auto-apply on merge** and **scheduled drift detection**. Both work with either [central](../central/) or [self-managed](../self-managed/) setups.
+gh-infra is designed to run in CI. The recommended setup is three workflows, which work with either [central](../central/) or [self-managed](../self-managed/) manifests:
 
-## Auto-Apply on Merge
+| Workflow | Runs on | Does |
+|---|---|---|
+| [Plan on pull request](#plan-on-pull-request) | `pull_request` | Plans only what the pull request changed and posts the plan as a comment |
+| [Apply on merge](#apply-on-merge) | `push` to `main` | Applies only what the push changed |
+| [Drift detection](#drift-detection) | `schedule` | Plans everything and opens an issue when GitHub differs from the manifests |
 
-Automatically apply infrastructure changes when YAML files are merged to `main`. This ensures the live GitHub state always matches the declared state.
+The first two use [`--changed-since`](#only-what-changed) to touch only the repositories a change affects, which keeps API usage low with many repositories. The third plans everything, so it also catches changes made outside gh-infra and anything an earlier apply missed.
+
+All examples assume the manifests are in `./repos/` and `./files/`, and that the token is in a secret named `GH_INFRA_TOKEN` (see [Authentication](#authentication)). Pass every manifest directory to one command (`gh infra plan ./repos/ ./files/`): there is one exit status, and checks that span manifests, such as two FileSets opening a pull request from the same branch, cover all of them.
+
+## Plan on Pull Request
+
+```yaml
+# .github/workflows/infra-plan.yaml
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  plan:
+    # PRs from forks get no secrets and a read-only GITHUB_TOKEN; skip them.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # --changed-since needs the history of the base branch
+      - run: gh extension install babarot/gh-infra
+      - id: plan
+        run: |
+          gh infra plan ./repos/ ./files/ \
+            --changed-since origin/${{ github.base_ref }} \
+            --detailed-exitcode -o markdown > plan.md || echo "code=$?" >> "$GITHUB_OUTPUT"
+      - if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}   # comment as github-actions[bot]
+        run: |
+          [ -s plan.md ] || exit 0   # the plan failed before writing anything
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body-file plan.md --edit-last --create-if-none
+      - if: steps.plan.outputs.code == '1'
+        run: exit 1   # the plan itself failed
+```
+
+- The comment is the [Markdown output](../../commands/markdown-output/) of `plan`. `--edit-last --create-if-none` keeps one comment per pull request and updates it on every push. It edits the last comment that github-actions[bot] wrote on the pull request, so another workflow commenting with the same token would be overwritten.
+- The check fails only when the plan fails (exit `1`). Changes (exit `2`) are shown in the comment, not as a failed check. See [Exit status](#exit-status).
+- When the pull request changes no manifest, the comment says `Plan: no manifests changed since origin/main` and no API calls are made. To skip the workflow for such pull requests, add `paths:` with the manifest directories and every directory the manifests read through `source:` or `patches:` (for example `templates/**`). A workflow filtered by `paths:` cannot be a required check, since it does not run on other pull requests.
+- The job does not run for pull requests from forks, so it cannot be a required check for them either. Do not switch to `pull_request_target` to get around this: it would run the fork's manifests with your token.
+- `plan` only reads from GitHub, but reading secrets, rulesets and Actions settings still needs the permissions listed in [Authentication](#authentication).
+
+## Apply on Merge
 
 ```yaml
 # .github/workflows/infra-apply.yaml
 on:
   push:
     branches: [main]
-    paths:
-      - "repos/**"
-      - "files/**"
+  workflow_dispatch:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
+      GH_INFRA_SOURCE_URL: ${{ github.event.head_commit.url }}
     steps:
       - uses: actions/checkout@v4
-      - run: gh infra apply ./repos/ --auto-approve
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          fetch-depth: 0
+      - run: gh extension install babarot/gh-infra
+      - env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A manual run, or the first push of a branch, has no previous
+          # commit to compare with: apply everything.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            gh infra apply ./repos/ ./files/ --auto-approve
+          else
+            gh infra apply ./repos/ ./files/ --changed-since "$BEFORE" --auto-approve
+          fi
 ```
 
-The `--auto-approve` flag skips the interactive confirmation prompt, which is required in non-interactive environments like CI.
-
-## Authentication
-
-The token you use depends on which pattern you follow.
-
-### Self-Managed (single repo)
-
-The default `GITHUB_TOKEN` provided by GitHub Actions is sufficient. It has permissions to modify the repository where the workflow runs — no extra setup needed.
-
-```yaml
-env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Central Management (multiple repos)
-
-The default `GITHUB_TOKEN` **cannot access other repositories**. You need a token with cross-repo permissions:
-
-- **Fine-grained personal access token** — Select the target repositories and grant `Administration: Read and write`, `Contents: Read and write`, and any other permissions you need (e.g., `Secrets: Read and write` for managing secrets).
-- **GitHub App installation token** — Recommended for organizations. Create a GitHub App with the required permissions, install it on the target repos, and generate an installation token in your workflow.
-
-Store the token as a repository secret (e.g., `GH_INFRA_TOKEN`) and pass it to the workflow:
-
-```yaml
-env:
-  GITHUB_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
-```
-
-:::caution
-Never use a classic personal access token with broad scopes. Use a fine-grained token or GitHub App with the minimum permissions required.
-:::
+- `--auto-approve` skips the confirmation prompt, which cannot be shown in CI.
+- `GH_INFRA_SOURCE_URL` is optional: it is the value of `<% .Source.URL %>` in FileSet [commit messages](../../resources/file/delivery/#templated-messages), here the commit that triggered the apply.
+- If you add `paths:` to the trigger, include the directories the manifests read through `source:` or `patches:`, not only the manifest directories. Otherwise a change to a template alone does not start the workflow. Without `paths:`, a push that changes no manifest makes no API calls anyway.
+- If a run fails, the next push does not include its changes, so they are not retried. [Drift detection](#drift-detection) reports them, and `workflow_dispatch` applies everything.
 
 ## Drift Detection
-
-Run `plan` on a schedule to detect when the live GitHub state has drifted from your YAML — for example, when someone changes a setting through the GitHub UI.
 
 ```yaml
 # .github/workflows/infra-drift.yaml
 on:
   schedule:
-    - cron: "0 9 * * 1"   # Every Monday at 9am UTC
+    - cron: "0 9 * * 1"   # every Monday at 9am UTC
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
 jobs:
   drift:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - run: gh infra plan ./repos/ --detailed-exitcode
+      - run: gh extension install babarot/gh-infra
+      - id: plan
+        run: gh infra plan ./repos/ ./files/ --detailed-exitcode -o markdown > plan.md || echo "code=$?" >> "$GITHUB_OUTPUT"
+      - if: steps.plan.outputs.code == '2'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue create --title "Drift detected by gh-infra" --body-file plan.md
+      - if: steps.plan.outputs.code == '1'
+        run: exit 1
 ```
 
-With `--detailed-exitcode`, `plan` exits with `2` when changes are detected and `1` when the plan itself fails (for example, a fetch hits the rate limit), so a workflow can tell drift from a broken run. Either fails the step, which you can wire up to notifications (Slack, email, etc.) or use as a required status check. To react to drift only, check the code:
+- It plans every manifest, without `--changed-since`, so it finds changes made through the GitHub UI and changes a failed apply left behind.
+- Exit `2` (drift) opens an issue with the plan; replace that step with your own notification (Slack, email, and so on). Exit `1` (the plan failed) fails the workflow.
+
+## Importing Changes Made on GitHub
+
+Drift detection reports changes made outside gh-infra. To pull them into the manifests instead, run `import --into` with `--auto-approve` and open a pull request with the result:
+
+```yaml
+# .github/workflows/infra-import.yaml
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_INFRA_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: gh extension install babarot/gh-infra
+      - run: gh infra import --into=./repos/ --auto-approve
+      - run: |
+          [ -n "$(git status --porcelain)" ] || exit 0   # nothing to import
+          branch="gh-infra/import-$(date +%Y%m%d%H%M)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "Import GitHub state"
+          git push -u origin "$branch"
+          gh pr create --head "$branch" --title "Import GitHub state" --body "Changes made on GitHub, pulled into the manifests by gh infra import --into."
+```
+
+- `import --into` only edits the checkout. `--auto-approve` writes each file with its [default action](../../commands/import/#without-a-terminal); review the pull request before merging.
+- `--into` takes one path; run it once per manifest directory (for example also `--into=./files/`).
+- The pull request is opened with `GH_INFRA_TOKEN`, so it runs the [plan workflow](#plan-on-pull-request). One opened with the workflow's `GITHUB_TOKEN` would not trigger other workflows.
+
+## Exit Status
+
+With `--detailed-exitcode`, `plan` exits with:
+
+| Code | Meaning |
+|---|---|
+| `0` | No changes, or `--changed-since` found nothing that changed |
+| `1` | The plan failed: an error, a repository that could not be fetched (for example a rate limit), a bad ref, or paths with no manifests |
+| `2` | Changes were found |
+
+An error wins over changes. A step that runs `plan --detailed-exitcode` fails on both `1` and `2`, so capture the code to treat them differently:
 
 ```yaml
       - id: plan
-        run: gh infra plan ./repos/ --detailed-exitcode || echo "code=$?" >> "$GITHUB_OUTPUT"
+        run: gh infra plan ./repos/ ./files/ --detailed-exitcode || echo "code=$?" >> "$GITHUB_OUTPUT"
       - if: steps.plan.outputs.code == '1'
-        run: exit 1   # the plan failed
-      - if: steps.plan.outputs.code == '2'
-        run: echo "drift detected"
+        run: exit 1
 ```
 
-## Planning Only What Changed
+`--ci` is deprecated: it exits with `1` for both changes and errors. It also disabled colors; set `NO_COLOR=1` for that.
 
-Planning every manifest on every pull request costs API calls for every repository. With `--changed-since <ref>`, `plan` and `apply` handle only:
+## Only What Changed
+
+With `--changed-since <ref>`, `plan` and `apply` handle only:
 
 - the manifest files changed since `<ref>` (all documents in them), and
 - the `File` and `FileSet` documents that read a changed local file: a `source:` file, a file added to, changed in or removed from a `source:` directory, or a `patches:` file
 
 "Changed" means changed between the merge base of `<ref>` and the working tree, committed or not, plus untracked files. When nothing changed, the command says so and makes no API calls; with `-o json` the document's `changed_since.selected` is `0`, and with `-o markdown` the comment reads `Plan: no manifests changed since <ref>`.
 
-```yaml
-# .github/workflows/infra-plan.yaml
-on:
-  pull_request:
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # --changed-since needs the history of the ref
-      - run: gh infra plan ./repos/ --changed-since origin/${{ github.base_ref }} --detailed-exitcode
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-On merge, apply what the push changed:
-
-```yaml
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - run: gh infra apply ./repos/ --changed-since ${{ github.event.before }} --auto-approve
-```
-
-Things to know:
-
 - The ref must be in the checkout. With the default `fetch-depth: 1` it is not, and the command fails.
-- If an `apply --changed-since` run fails, the next push does not include its changes, so they are not retried. Keep a scheduled full `plan --detailed-exitcode` (see [Drift Detection](#drift-detection)) or a periodic full `apply`.
 - Changes to a `github://` source cannot be seen in git; documents using one are handled only when their manifest or local files change.
-- Validation still covers all manifests, so a conflict with an unchanged manifest (for example two FileSets opening a pull request from the same branch) is still reported.
+- Validation still covers all manifests, so a conflict with an unchanged manifest is still reported.
 - Every path argument must be inside the git repository. Requires git 2.30 or later.
 
-## Combining Both
+## Authentication
 
-For a complete setup, use both workflows together:
+The token needs access to every repository the manifests manage.
 
-- **Auto-apply** keeps the live state in sync after intentional changes
-- **Drift detection** catches unintentional changes made outside of gh-infra
+- **Fine-grained personal access token**: select the target repositories and grant `Administration: Read and write` and `Contents: Read and write`, plus what else you manage: `Secrets` and `Variables` for secrets and variables, `Issues` for labels and milestones, `Pull requests` for FileSets with `via: pull_request`.
+- **GitHub App installation token**: recommended for organizations. Create an app with the same permissions, install it on the target repositories, and generate an installation token in the workflow.
 
-This gives you confidence that the YAML files are the true source of truth — not just a snapshot that may have drifted.
+Store it as a secret (for example `GH_INFRA_TOKEN`) and pass it as `GH_TOKEN`.
+
+The default `GITHUB_TOKEN` of a workflow is enough only for `File` and `FileSet` manifests that target the repository running the workflow (with `contents: write`, and `pull-requests: write` for `via: pull_request`). It has no `administration` permission, which gh-infra needs to read the Actions settings of every repository in a `Repository` or `RepositorySet` manifest, so those fail with `Resource not accessible by integration` ([#221](https://github.com/babarot/gh-infra/issues/221)). It also cannot access other repositories.
+
+:::caution
+Never use a classic personal access token with broad scopes. Use a fine-grained token or GitHub App with the minimum permissions required.
+:::

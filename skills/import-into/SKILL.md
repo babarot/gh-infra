@@ -30,9 +30,12 @@ Use this skill when the user wants to:
 
 ```bash
 gh infra import <owner/repo> [owner/repo ...] --into=<path>
+gh infra import --into=<path> --auto-approve   # CI / agents: no prompt
 ```
 
-`<path>` may be a file or a directory of manifests.
+`<path>` may be a file or a directory of manifests. Without repositories, every repository in the manifests is imported.
+
+When running as an agent or in CI, use `--auto-approve`: the confirmation needs a TTY, and without one import fails before writing (the error suggests the flag). `--auto-approve` writes each file with its default action (below), the same as confirming without opening the viewer; `reconcile: create_only` files without patches are skipped. It requires `--into`. Import only edits local files: review with `git diff`, then commit or open a pull request yourself.
 
 ## How It Works
 
@@ -41,7 +44,7 @@ gh infra import <owner/repo> [owner/repo ...] --into=<path>
 3. Fetch live state from GitHub
 4. Diff local vs remote
 5. Show plan output
-6. For file changes, open the interactive diff viewer
+6. For file changes, open the interactive diff viewer (not with `--auto-approve`)
 7. Write approved local changes
 
 ## File Write Modes

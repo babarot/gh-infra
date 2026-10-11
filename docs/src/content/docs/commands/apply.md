@@ -32,7 +32,7 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `-r, --repo <owner/repo>` | Target a specific repository |
 | `--auto-approve` | Skip confirmation prompt |
 | `--force-secrets` | Re-set all secrets (even existing ones) |
-| `--changed-since <ref>` | Only the manifests changed since a git ref, and those that read a changed local file. See [Planning only what changed](../../patterns/ci-cd/#planning-only-what-changed) |
+| `--changed-since <ref>` | Only the manifests changed since a git ref, and those that read a changed local file. See [Only what changed](../../patterns/ci-cd/#only-what-changed) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
 | `-o, --output <format>` | `text` (default) or `json`; `json` requires `--auto-approve`. See [JSON output](../json-output/) |
 
