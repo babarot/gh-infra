@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
@@ -15,7 +16,10 @@ import (
 )
 
 const (
-	defaultMaxRetries = 3
+	// defaultMaxRetries is how many times a call is tried for transient
+	// network errors; the delay doubles from defaultRetryDelay (1s, 2s, 4s,
+	// 8s). Rate limits are waited for separately.
+	defaultMaxRetries = 5
 	defaultRetryDelay = 1 * time.Second
 
 	// DefaultConcurrency is how many gh processes run at once by default.
@@ -37,6 +41,15 @@ type GHRunner struct {
 	MaxRetries uint
 
 	slots chan struct{} // one token per running gh process
+	gate  rateGate      // shared wait while a rate limit is in effect
+
+	waitMu sync.Mutex
+	onWait func(until time.Time)
+
+	// Replaceable in tests.
+	clock      func() time.Time
+	sleep      func(ctx context.Context, d time.Duration) error
+	fetchReset func(ctx context.Context) (time.Time, bool)
 }
 
 // NewRunner returns a runner that runs at most DefaultConcurrency gh
@@ -55,6 +68,9 @@ func NewRunnerWithConcurrency(dryRun bool, concurrency int) *GHRunner {
 		DryRun:     dryRun,
 		MaxRetries: defaultMaxRetries,
 		slots:      make(chan struct{}, concurrency),
+		clock:      time.Now,
+		sleep:      sleepContext,
+		fetchReset: fetchRateLimitReset,
 	}
 }
 
@@ -97,33 +113,57 @@ func (r *GHRunner) runInternal(ctx context.Context, body []byte, args []string) 
 		return nil, nil
 	}
 
-	out, err := retry.DoWithData(
-		func() ([]byte, error) {
-			if err := r.acquire(ctx); err != nil {
-				return nil, retry.Unrecoverable(err)
-			}
-			defer r.release()
-			return r.exec(ctx, body, args, cmdStr)
-		},
-		retry.Attempts(r.MaxRetries),
-		retry.Delay(defaultRetryDelay),
-		retry.DelayType(retry.BackOffDelay),
-		retry.RetryIf(isRetryable),
-		retry.Context(ctx),
-		retry.OnRetry(func(n uint, err error) {
-			logger.Warn("retrying", "attempt", n+1, "cmd", cmdStr, "err", err)
-		}),
-	)
+	var waited time.Duration // rate limit waits of this call
+	for attempt := 1; ; attempt++ {
+		// Wait while another call (or this one) hit a rate limit. No slot is
+		// held while waiting.
+		if err := r.waitGate(ctx, &waited); err != nil {
+			return nil, err
+		}
+		if err := r.acquire(ctx); err != nil {
+			return nil, err
+		}
+		out, err := r.exec(ctx, body, args, cmdStr)
+		r.release()
+		if err == nil {
+			r.gate.succeeded(r.clock())
+			return out, nil
+		}
+		if ctx.Err() != nil {
+			return nil, unwrapUnrecoverable(err)
+		}
 
-	// Unwrap retry-go's "All attempts fail: #1: ..." wrapper
-	// to surface the underlying error directly.
-	if err != nil {
-		if unwrapped := errors.Unwrap(err); unwrapped != nil {
-			err = unwrapped
+		switch classifyRateLimit(err) {
+		case secondaryRateLimit:
+			until := r.gate.secondary(r.clock())
+			logger.Warn("secondary rate limit, waiting", "cmd", cmdStr, "until", until.Format(time.TimeOnly))
+			continue
+		case primaryRateLimit:
+			until := r.primaryReset(ctx)
+			logger.Warn("rate limit, waiting", "cmd", cmdStr, "until", until.Format(time.TimeOnly))
+			continue
+		}
+
+		if !retry.IsRecoverable(err) || !isRetryable(err) || attempt >= int(r.MaxRetries) {
+			return nil, unwrapUnrecoverable(err)
+		}
+		delay := defaultRetryDelay << (attempt - 1)
+		logger.Warn("retrying", "attempt", attempt+1, "cmd", cmdStr, "err", err, "delay", delay)
+		if err := r.sleep(ctx, delay); err != nil {
+			return nil, err
 		}
 	}
+}
 
-	return out, err
+// unwrapUnrecoverable removes the retry.Unrecoverable marker that
+// buildCommandError puts on errors that must not be retried.
+func unwrapUnrecoverable(err error) error {
+	if !retry.IsRecoverable(err) {
+		if inner := errors.Unwrap(err); inner != nil {
+			return inner
+		}
+	}
+	return err
 }
 
 func (r *GHRunner) exec(ctx context.Context, body []byte, args []string, cmdStr string) ([]byte, error) {
@@ -185,6 +225,7 @@ func buildCommandError(cmdStr string, exitCode int, stdout, stderr string) error
 		Cmd:      cmdStr,
 		ExitCode: exitCode,
 		Stderr:   stderr,
+		Stdout:   truncate(stdout, 2000),
 		APIError: apiErr,
 	}
 
@@ -200,9 +241,10 @@ func buildCommandError(cmdStr string, exitCode int, stdout, stderr string) error
 	case 401:
 		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrUnauthorized, exitErr))
 	case 403:
-		// Rate limit is retryable; other 403s are not.
-		if strings.Contains(apiErr.Message, "rate limit") ||
-			strings.Contains(apiErr.Message, "abuse detection") {
+		// Rate limits are waited for and retried; other 403s are not. Judge
+		// by the whole output: a --paginate failure leaves only "HTTP 403"
+		// in the parsed message.
+		if rateLimitKindOf(stderr+"\n"+stdout+"\n"+apiErr.Message) != notRateLimited {
 			return exitErr
 		}
 		return retry.Unrecoverable(fmt.Errorf("%w: %w", ErrForbidden, exitErr))
@@ -237,8 +279,7 @@ func isRetryable(err error) bool {
 			strings.Contains(stderr, "connection reset") ||
 			strings.Contains(stderr, "connection refused") ||
 			strings.Contains(stderr, "tls handshake") ||
-			strings.Contains(stderr, "rate limit") ||
-			strings.Contains(stderr, "abuse detection") ||
+			strings.Contains(stderr, "no such host") ||
 			strings.Contains(stderr, "eof") ||
 			strings.Contains(stderr, "broken pipe")
 	}

@@ -63,13 +63,15 @@ func TestIsRetryable(t *testing.T) {
 			expect: true,
 		},
 		{
-			name:   "rate limit is retryable",
+			// Rate limits are waited for through the gate, not retried
+			// with the short network backoff.
+			name:   "rate limit is not a network retry",
 			err:    &ExitError{Stderr: "API rate limit exceeded"},
-			expect: true,
+			expect: false,
 		},
 		{
-			name:   "abuse detection is retryable",
-			err:    &ExitError{Stderr: "abuse detection mechanism triggered"},
+			name:   "no such host is retryable",
+			err:    &ExitError{Stderr: "dial tcp: lookup api.github.com: no such host"},
 			expect: true,
 		},
 		{

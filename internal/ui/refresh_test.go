@@ -500,3 +500,17 @@ func TestStreamReporter_Wait(t *testing.T) {
 	// Should not panic or block
 	r.Wait()
 }
+
+func TestRefreshModel_Notice(t *testing.T) {
+	m := newRefreshModel([]RefreshTask{{Name: "o/r"}})
+	next, _ := m.Update(noticeMsg{text: "Waiting for the GitHub API rate limit until 10:42:00 ..."})
+	m, _ = next.(refreshModel)
+	if view := m.View().Content; !strings.Contains(view, "Waiting for the GitHub API rate limit until 10:42:00") {
+		t.Errorf("notice missing:\n%s", view)
+	}
+	next, _ = m.Update(noticeMsg{})
+	m, _ = next.(refreshModel)
+	if view := m.View().Content; strings.Contains(view, "Waiting") {
+		t.Errorf("notice should be cleared:\n%s", view)
+	}
+}

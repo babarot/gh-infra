@@ -46,6 +46,7 @@ func Import(runner gh.Runner, args []string) error {
 		}
 	}
 	tracker := ui.RunRefresh(tasks)
+	defer showRateLimitWaits(runner, tracker)()
 
 	ctx, cancel := withTrackerCancelContext(tracker)
 	defer cancel()

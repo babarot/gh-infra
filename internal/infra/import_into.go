@@ -203,6 +203,7 @@ func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, erro
 	printer.BlankLine()
 
 	tracker := ui.RunRefresh(tasks)
+	defer showRateLimitWaits(runner, tracker)()
 	ctx, cancel := withTrackerCancelContext(tracker)
 	defer cancel()
 

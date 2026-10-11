@@ -119,6 +119,7 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 			})
 		}
 		tracker := ui.RunRefresh(allTasks)
+		defer showRateLimitWaits(eng.runner, tracker)()
 		ctx, cancel := withTrackerCancelContext(tracker)
 		defer cancel()
 

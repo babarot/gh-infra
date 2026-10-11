@@ -216,6 +216,20 @@ GitHub enforces two types of rate limits for authenticated requests:
 
 The `gh` concurrency limit (8 by default) is what keeps bursts of concurrent requests below the secondary rate limit; lower it with `--concurrency` (1 runs every call in turn) if you still hit it. The primary limit is a hard ceiling on total requests regardless of concurrency.
 
+### Waiting on rate limits
+
+When a call hits a rate limit, gh-infra waits and tries again instead of failing the run:
+
+- **Secondary rate limit**: it waits 1 minute, then 2, 4 and 8 minutes while the limit keeps being hit, as GitHub asks to wait at least a minute.
+- **Primary rate limit**: it reads when the exhausted limit (REST or GraphQL) resets from `gh api rate_limit`, which does not count against the limit, and waits until then.
+- The wait is shared: once one call hits a limit, every other call of the command waits too before starting another `gh` process, so concurrent calls do not keep hitting it.
+- A call waits at most 15 minutes in total. If the limit resets later than that, the call fails at once with `GitHub API rate limit exceeded; resets at 10:42 (in 38m)`.
+- While waiting, the spinner shows `Waiting for the GitHub API rate limit until 10:42:00 ...`. Ctrl+C stops the wait.
+
+Rate limits are recognized by the message, since GraphQL calls (`gh repo view`) report them with HTTP 200 and some `gh` commands do not show the status.
+
+Transient network errors (timeouts, connection resets, DNS failures) are retried up to 5 times, after 1, 2, 4 and 8 seconds. Other API errors are not retried.
+
 :::note
 Each authentication token has its own independent quota. A personal access token (PAT) created separately from `gh auth login` counts as a different token with its own 5,000/hr budget. GitHub App installation tokens are also independent.
 :::
