@@ -8,10 +8,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/babarot/gh-infra/internal/infra"
+	"github.com/babarot/gh-infra/internal/ui"
 )
 
 func newImportCmd() *cobra.Command {
-	var intoPath string
+	var (
+		intoPath    string
+		autoApprove bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "import <owner/repo> [owner/repo ...]",
@@ -22,8 +26,11 @@ func newImportCmd() *cobra.Command {
 			"defined in the manifests are targeted.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if autoApprove && intoPath == "" {
+				return errors.New("--auto-approve requires --into")
+			}
 			if intoPath != "" {
-				return runImportInto(args, intoPath)
+				return runImportInto(args, intoPath, autoApprove)
 			}
 			if len(args) == 0 {
 				return fmt.Errorf("requires at least 1 arg when --into is not used")
@@ -34,6 +41,8 @@ func newImportCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&intoPath, "into", "",
 		"Pull GitHub state into existing local manifests (dir or file path)")
+	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false,
+		"With --into, write the changes without asking, using the default action for each file")
 
 	return cmd
 }
@@ -50,7 +59,7 @@ func runImport(args []string) error {
 	return nil
 }
 
-func runImportInto(args []string, intoPath string) error {
+func runImportInto(args []string, intoPath string, autoApprove bool) error {
 	diff, err := infra.ImportInto(args, intoPath)
 	if err != nil {
 		return err
@@ -75,18 +84,7 @@ func runImportInto(args []string, intoPath string) error {
 
 	p := diff.Printer()
 
-	fileEntries := diff.DiffEntries()
-
-	var ok bool
-	if len(fileEntries) > 0 {
-		ok, err = p.ConfirmWithDiff("Apply import changes?", fileEntries)
-		if err != nil {
-			return err
-		}
-		diff.ApplySelections(fileEntries)
-	} else {
-		ok, err = p.Confirm("Apply import changes?")
-	}
+	ok, err := confirmImport(p, diff, autoApprove)
 	if err != nil {
 		return err
 	}
@@ -100,4 +98,36 @@ func runImportInto(args []string, intoPath string) error {
 
 	p.Summary(fmt.Sprintf("Import complete! %d documents updated.", diff.Plan.UpdatedDocs))
 	return nil
+}
+
+// confirmImport asks before writing, applying the file actions chosen in the
+// diff viewer. With autoApprove it asks nothing and uses each file's default
+// action, as confirming the viewer without changes would.
+func confirmImport(p ui.Printer, diff importDiff, autoApprove bool) (bool, error) {
+	fileEntries := diff.DiffEntries()
+	if autoApprove {
+		diff.ApplySelections(fileEntries)
+		return true, nil
+	}
+
+	var ok bool
+	var err error
+	if len(fileEntries) > 0 {
+		ok, err = p.ConfirmWithDiff("Apply import changes?", fileEntries)
+		if err == nil {
+			diff.ApplySelections(fileEntries)
+		}
+	} else {
+		ok, err = p.Confirm("Apply import changes?")
+	}
+	if err != nil {
+		return false, fmt.Errorf("import --into needs a terminal to confirm; use --auto-approve to write without asking: %w", err)
+	}
+	return ok, nil
+}
+
+// importDiff is the part of *infra.ImportDiff that confirmImport uses.
+type importDiff interface {
+	DiffEntries() []ui.DiffEntry
+	ApplySelections([]ui.DiffEntry)
 }

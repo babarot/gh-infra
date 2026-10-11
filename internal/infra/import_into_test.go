@@ -630,3 +630,44 @@ func TestPrintImportPlan_RepoWarnings(t *testing.T) {
 		t.Error("warnings alone are not changes")
 	}
 }
+
+// import --into --auto-approve applies DiffEntries() unchanged: each file
+// gets its default action, as confirming the viewer without changes would.
+func TestApplySelections_DefaultsWithoutViewer(t *testing.T) {
+	d := &ImportDiff{Plan: &importer.Result{FileChanges: []importer.Change{
+		{
+			Target: "org/repo", Path: "own.txt", Type: fileset.ChangeUpdate,
+			Current: "old", Desired: "new", LocalTarget: "templates/own.txt",
+			SuggestedWriteMode: importer.WriteSource,
+			AvailableModes:     []importer.WriteMode{importer.WriteSource, importer.WritePatch},
+		},
+		{
+			Target: "org/repo", Path: "shared.txt", Type: fileset.ChangeUpdate,
+			Current: "old", Desired: "new", LocalTarget: "templates/shared.txt",
+			SuggestedWriteMode: importer.WritePatch,
+			AvailableModes:     []importer.WriteMode{importer.WriteSource, importer.WritePatch},
+		},
+		{
+			Target: "org/repo", Path: "seed.txt", Type: fileset.ChangeUpdate,
+			Current: "old", Desired: "new", LocalTarget: "templates/seed.txt",
+			CreateOnly: true, SuggestedWriteMode: importer.WriteSource,
+			AvailableModes: []importer.WriteMode{importer.WriteSource},
+		},
+	}}}
+
+	d.ApplySelections(d.DiffEntries())
+
+	want := map[string]importer.WriteMode{
+		"own.txt":    importer.WriteSource,
+		"shared.txt": importer.WritePatch,
+		"seed.txt":   importer.WriteSkip,
+	}
+	for _, c := range d.Plan.FileChanges {
+		if c.EffectiveWriteMode() != want[c.Path] {
+			t.Errorf("%s: mode = %s, want %s", c.Path, c.EffectiveWriteMode(), want[c.Path])
+		}
+		if c.Path == "seed.txt" && c.Type != fileset.ChangeNoOp {
+			t.Errorf("create_only file without patches should not be written, type = %s", c.Type)
+		}
+	}
+}

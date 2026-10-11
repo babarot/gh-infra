@@ -29,3 +29,10 @@ Keys:
 - `q` / `Esc`: return to confirmation
 
 Repository setting changes are shown in normal plan output, not the diff viewer.
+
+## Non-interactive
+
+- the confirmation needs a TTY; in CI or as an agent use `gh infra import --into=<path> --auto-approve`
+- `--auto-approve` writes with each file's default action (write / patch for shared sources / skip); `reconcile: create_only` files without patches are skipped, not written
+- without a TTY and without the flag, import fails before writing and suggests `--auto-approve`
+- `--auto-approve` without `--into` is an error

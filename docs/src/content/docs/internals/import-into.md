@@ -39,7 +39,7 @@ At a high level, `import --into` does the following:
 3. fetch current GitHub state
 4. build a combined diff result
 5. show a terminal plan
-6. optionally open the diff viewer for file changes
+6. optionally open the diff viewer for file changes (skipped with `--auto-approve`, which keeps each file's default action)
 7. write the selected changes back to local files
 
 Repository-level changes and file-level changes are planned separately, then combined into one import result.
