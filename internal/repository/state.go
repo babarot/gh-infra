@@ -31,11 +31,20 @@ func NewProcessor(runner gh.Runner, resolver *manifest.Resolver) *Processor {
 // If the repository does not exist (404), it returns an empty CurrentState with IsNew=true.
 // Sub-fetches (branch protection, secrets, variables) run in parallel.
 // The optional onStatus callback is invoked with a human-readable label before each sub-fetch.
-func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onStatus func(string)) (*CurrentState, error) {
+//
+// With a spec (plan and apply), only the settings it manages are fetched, so
+// the token needs only their permissions, and a 403 on one of them is an
+// error rather than "none" or a default. With a nil spec (import), everything
+// is fetched and what cannot be read is left empty or at its default.
+func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spec *manifest.RepositorySpec, onStatus func(string)) (*CurrentState, error) {
 	status := func(s string) {
 		if onStatus != nil {
 			onStatus(s)
 		}
+	}
+	strict := spec != nil
+	want := func(manages func(manifest.RepositorySpec) bool) bool {
+		return spec == nil || manages(*spec)
 	}
 
 	status("fetching settings...")
@@ -57,56 +66,73 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		status("fetching branch protection...")
-		var err error
-		bp, err = p.fetchBranchProtection(ctx, owner, name)
-		return err
-	})
+	if want(manifest.RepositorySpec.ManagesBranchProtection) {
+		g.Go(func() error {
+			status("fetching branch protection...")
+			var err error
+			bp, err = p.fetchBranchProtection(ctx, owner, name, strict)
+			return err
+		})
+	}
 
-	g.Go(func() error {
-		status("fetching rulesets...")
-		var err error
-		rulesets, err = p.fetchRulesets(ctx, owner, name)
-		return err
-	})
+	if want(manifest.RepositorySpec.ManagesRulesets) {
+		g.Go(func() error {
+			status("fetching rulesets...")
+			var err error
+			rulesets, err = p.fetchRulesets(ctx, owner, name, strict)
+			return err
+		})
+	}
 
-	g.Go(func() error {
-		status("fetching secrets...")
-		var err error
-		secrets, err = p.fetchSecrets(ctx, owner, name)
-		return err
-	})
+	if want(manifest.RepositorySpec.ManagesSecrets) {
+		g.Go(func() error {
+			status("fetching secrets...")
+			var err error
+			secrets, err = p.fetchSecrets(ctx, owner, name, strict)
+			return err
+		})
+	}
 
-	g.Go(func() error {
-		status("fetching variables...")
-		var err error
-		vars, err = p.fetchVariables(ctx, owner, name)
-		return err
-	})
+	if want(manifest.RepositorySpec.ManagesVariables) {
+		g.Go(func() error {
+			status("fetching variables...")
+			var err error
+			vars, err = p.fetchVariables(ctx, owner, name, strict)
+			return err
+		})
+	}
 
-	g.Go(func() error {
-		status("fetching labels...")
-		var err error
-		labels, err = p.fetchLabels(ctx, owner, name)
-		return err
-	})
+	if want(manifest.RepositorySpec.ManagesLabels) {
+		g.Go(func() error {
+			status("fetching labels...")
+			var err error
+			labels, err = p.fetchLabels(ctx, owner, name, strict)
+			return err
+		})
+	}
 
 	var milestones map[string]*CurrentMilestone
-	g.Go(func() error {
-		status("fetching milestones...")
-		var err error
-		milestones, err = p.fetchMilestones(ctx, owner, name)
-		return err
-	})
+	if want(manifest.RepositorySpec.ManagesMilestones) {
+		g.Go(func() error {
+			status("fetching milestones...")
+			var err error
+			milestones, err = p.fetchMilestones(ctx, owner, name, strict)
+			return err
+		})
+	}
 
 	var actions CurrentActions
-	g.Go(func() error {
-		status("fetching actions...")
-		var err error
-		actions, err = p.fetchActionsSettings(ctx, owner, name)
-		return err
-	})
+	if want(manifest.RepositorySpec.ManagesActions) {
+		g.Go(func() error {
+			status("fetching actions...")
+			var err error
+			actions, err = p.fetchActionsSettings(ctx, owner, name)
+			if err != nil && strict && errors.Is(err, gh.ErrForbidden) {
+				return fetchError(strict, "actions settings", owner, name, err)
+			}
+			return err
+		})
+	}
 
 	var (
 		// Initialize with safe defaults so that 403/404 fallback does not
@@ -121,80 +147,70 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, onS
 		privateVulnerabilityReporting bool
 	)
 
-	// Fetch commit message settings via REST API (not available in gh repo view --json).
-	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
-	g.Go(func() error {
-		status("fetching commit message settings...")
-		s, err := p.fetchCommitMessageSettings(ctx, owner, name)
-		if err != nil {
-			if errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden) {
+	// fetchSetting runs a single-value fetch. 404 (e.g. GHES without the
+	// feature) leaves the default; so does 403, unless the setting is
+	// managed. Other errors propagate.
+	fetchSetting := func(what string, ignoreNotFound bool, fetch func() error) func() error {
+		return func() error {
+			status("fetching " + what + "...")
+			err := fetch()
+			if err == nil {
 				return nil
 			}
-			return fmt.Errorf("fetch commit message settings for %s/%s: %w", owner, name, err)
+			if ignoreNotFound && errors.Is(err, gh.ErrNotFound) {
+				return nil
+			}
+			if errors.Is(err, gh.ErrForbidden) && !strict {
+				return nil
+			}
+			return fetchError(strict, what, owner, name, err)
 		}
-		commitMsgSettings = s
-		return nil
-	})
+	}
 
-	// Fetch release immutability setting via dedicated REST API endpoint.
-	// 404/403 are ignored gracefully (e.g. GHES without support); other errors propagate.
-	g.Go(func() error {
-		status("fetching release immutability...")
-		v, err := p.fetchReleaseImmutability(ctx, owner, name)
-		if err != nil {
-			if errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden) {
-				return nil
+	if want(manifest.RepositorySpec.ManagesCommitMessageSettings) {
+		// Not available in gh repo view --json.
+		g.Go(fetchSetting("commit message settings", true, func() error {
+			s, err := p.fetchCommitMessageSettings(ctx, owner, name)
+			if err == nil {
+				commitMsgSettings = s
 			}
-			return fmt.Errorf("fetch release immutability for %s/%s: %w", owner, name, err)
-		}
-		releaseImmutability = v
-		return nil
-	})
+			return err
+		}))
+	}
 
-	// Fetch vulnerability alerts (Dependabot) setting via dedicated REST API endpoint.
-	// 404 is the documented "disabled" response and is handled inside the fetcher;
-	// 403 is ignored gracefully (e.g. GHES without support); other errors propagate.
-	g.Go(func() error {
-		status("fetching vulnerability alerts...")
-		v, err := p.fetchVulnerabilityAlerts(ctx, owner, name)
-		if err != nil {
-			if errors.Is(err, gh.ErrForbidden) {
-				return nil
-			}
-			return fmt.Errorf("fetch vulnerability alerts for %s/%s: %w", owner, name, err)
-		}
-		vulnerabilityAlerts = v
-		return nil
-	})
+	if want(manifest.RepositorySpec.ManagesReleaseImmutability) {
+		g.Go(fetchSetting("release immutability", true, func() error {
+			v, err := p.fetchReleaseImmutability(ctx, owner, name)
+			releaseImmutability = v
+			return err
+		}))
+	}
 
-	// Fetch Dependabot security updates (automated security fixes) via dedicated endpoint.
-	// 404 may also indicate the feature is unavailable on the repo; treat as disabled.
-	g.Go(func() error {
-		status("fetching automated security fixes...")
-		v, err := p.fetchAutomatedSecurityFixes(ctx, owner, name)
-		if err != nil {
-			if errors.Is(err, gh.ErrForbidden) {
-				return nil
-			}
-			return fmt.Errorf("fetch automated security fixes for %s/%s: %w", owner, name, err)
-		}
-		automatedSecurityFixes = v
-		return nil
-	})
+	// For the security settings, 404 is handled inside the fetchers (it is
+	// the documented "disabled" response).
+	if want(manifest.RepositorySpec.ManagesVulnerabilityAlerts) {
+		g.Go(fetchSetting("vulnerability alerts", false, func() error {
+			v, err := p.fetchVulnerabilityAlerts(ctx, owner, name)
+			vulnerabilityAlerts = v
+			return err
+		}))
+	}
 
-	// Fetch private vulnerability reporting setting via dedicated endpoint.
-	g.Go(func() error {
-		status("fetching private vulnerability reporting...")
-		v, err := p.fetchPrivateVulnerabilityReporting(ctx, owner, name)
-		if err != nil {
-			if errors.Is(err, gh.ErrForbidden) {
-				return nil
-			}
-			return fmt.Errorf("fetch private vulnerability reporting for %s/%s: %w", owner, name, err)
-		}
-		privateVulnerabilityReporting = v
-		return nil
-	})
+	if want(manifest.RepositorySpec.ManagesAutomatedSecurityFixes) {
+		g.Go(fetchSetting("automated security fixes", false, func() error {
+			v, err := p.fetchAutomatedSecurityFixes(ctx, owner, name)
+			automatedSecurityFixes = v
+			return err
+		}))
+	}
+
+	if want(manifest.RepositorySpec.ManagesPrivateVulnerabilityReporting) {
+		g.Go(fetchSetting("private vulnerability reporting", false, func() error {
+			v, err := p.fetchPrivateVulnerabilityReporting(ctx, owner, name)
+			privateVulnerabilityReporting = v
+			return err
+		}))
+	}
 
 	if err := g.Wait(); err != nil {
 		return nil, err
@@ -427,7 +443,7 @@ func (p *Processor) fetchPrivateVulnerabilityReporting(ctx context.Context, owne
 	return raw.Enabled, nil
 }
 
-func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string) (map[string]*CurrentBranchProtection, error) {
+func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string, strict bool) (map[string]*CurrentBranchProtection, error) {
 	// First get the default branch to check protection
 	// Paginate: a protected branch missed here would look unprotected and be
 	// planned as a create.
@@ -446,20 +462,32 @@ func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name strin
 		}
 	}
 
-	// Fetch per-branch protection rules in parallel. Individual errors are
-	// swallowed (skip branch) to preserve existing behavior.
-	fetched := parallel.Map(ctx, protectedBranches, parallel.DefaultConcurrency, func(ctx context.Context, _ int, branch string) *CurrentBranchProtection {
+	// Fetch per-branch protection rules in parallel. A branch whose rule
+	// cannot be read is skipped, unless branch protection is managed: then
+	// only a rule that is gone (404) is skipped, since skipping one that
+	// could not be read would plan a create over it.
+	type fetchedRule struct {
+		bp  *CurrentBranchProtection
+		err error
+	}
+	fetched := parallel.Map(ctx, protectedBranches, parallel.DefaultConcurrency, func(ctx context.Context, _ int, branch string) fetchedRule {
 		bp, err := p.fetchBranchProtectionRule(ctx, owner, name, branch)
 		if err != nil {
-			return nil
+			if strict && !errors.Is(err, gh.ErrNotFound) {
+				return fetchedRule{err: fetchError(strict, "branch protection", owner, name, err)}
+			}
+			return fetchedRule{}
 		}
-		return bp
+		return fetchedRule{bp: bp}
 	})
 
 	result := make(map[string]*CurrentBranchProtection)
-	for i, bp := range fetched {
-		if bp != nil {
-			result[protectedBranches[i]] = bp
+	for i, f := range fetched {
+		if f.err != nil {
+			return nil, f.err
+		}
+		if f.bp != nil {
+			result[protectedBranches[i]] = f.bp
 		}
 	}
 	return result, nil
@@ -527,15 +555,20 @@ func (p *Processor) fetchBranchProtectionRule(ctx context.Context, owner, name, 
 	return bp, nil
 }
 
-func (p *Processor) fetchRulesets(ctx context.Context, owner, name string) (map[string]*CurrentRuleset, error) {
+func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, strict bool) (map[string]*CurrentRuleset, error) {
 	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s/rulesets", owner, name),
 		"--paginate",
 	)
 	if err != nil {
-		// 404/403 means rulesets not available (e.g., free plan private repo, GHES without rulesets)
-		if errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden) {
+		// 404/403 means rulesets not available (e.g., free plan private repo,
+		// GHES without rulesets). When the manifest manages rulesets, a 403 is
+		// reported instead: they could not be applied either.
+		if (errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden)) && !forbiddenWhenManaged(strict, err) {
 			return make(map[string]*CurrentRuleset), nil
+		}
+		if forbiddenWhenManaged(strict, err) {
+			return nil, fetchError(strict, "rulesets", owner, name, err)
 		}
 		// All other errors (429, 5xx) propagate to prevent false diffs
 		return nil, fmt.Errorf("fetch rulesets for %s/%s: %w", owner, name, err)
@@ -559,20 +592,31 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string) (map[
 		ids = append(ids, item.ID)
 	}
 
-	// Fetch per-ruleset details in parallel. Individual errors are swallowed
-	// (skip ruleset) to preserve existing behavior.
-	fetched := parallel.Map(ctx, ids, parallel.DefaultConcurrency, func(ctx context.Context, _ int, id int) *CurrentRuleset {
+	// Fetch per-ruleset details in parallel. A ruleset that cannot be read is
+	// skipped, unless rulesets are managed: then only one that is gone (404)
+	// is skipped.
+	type fetchedRuleset struct {
+		rs  *CurrentRuleset
+		err error
+	}
+	fetched := parallel.Map(ctx, ids, parallel.DefaultConcurrency, func(ctx context.Context, _ int, id int) fetchedRuleset {
 		rs, err := p.fetchRuleset(ctx, owner, name, id)
 		if err != nil {
-			return nil
+			if strict && !errors.Is(err, gh.ErrNotFound) {
+				return fetchedRuleset{err: fetchError(strict, "rulesets", owner, name, err)}
+			}
+			return fetchedRuleset{}
 		}
-		return rs
+		return fetchedRuleset{rs: rs}
 	})
 
 	result := make(map[string]*CurrentRuleset)
-	for _, rs := range fetched {
-		if rs != nil {
-			result[rs.Name] = rs
+	for _, f := range fetched {
+		if f.err != nil {
+			return nil, f.err
+		}
+		if f.rs != nil {
+			result[f.rs.Name] = f.rs
 		}
 	}
 	return result, nil
@@ -708,7 +752,7 @@ func (p *Processor) fetchRuleset(ctx context.Context, owner, name string, id int
 	return rs, nil
 }
 
-func (p *Processor) fetchSecrets(ctx context.Context, owner, name string) ([]string, error) {
+func (p *Processor) fetchSecrets(ctx context.Context, owner, name string, strict bool) ([]string, error) {
 	out, err := p.runner.Run(ctx,
 		"secret", "list",
 		"--repo", owner+"/"+name,
@@ -716,10 +760,10 @@ func (p *Processor) fetchSecrets(ctx context.Context, owner, name string) ([]str
 		"--jq", ".[].name",
 	)
 	if err != nil {
-		if isIgnorableSubresourceError(err) {
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("fetch secrets for %s/%s: %w", owner, name, err)
+		return nil, fetchError(strict, "secrets", owner, name, err)
 	}
 
 	raw := strings.TrimSpace(string(out))
@@ -731,17 +775,17 @@ func (p *Processor) fetchSecrets(ctx context.Context, owner, name string) ([]str
 	return names, nil
 }
 
-func (p *Processor) fetchVariables(ctx context.Context, owner, name string) (map[string]string, error) {
+func (p *Processor) fetchVariables(ctx context.Context, owner, name string, strict bool) (map[string]string, error) {
 	out, err := p.runner.Run(ctx,
 		"variable", "list",
 		"--repo", owner+"/"+name,
 		"--json", "name,value",
 	)
 	if err != nil {
-		if isIgnorableSubresourceError(err) {
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("fetch variables for %s/%s: %w", owner, name, err)
+		return nil, fetchError(strict, "variables", owner, name, err)
 	}
 
 	var vars []struct {
@@ -759,7 +803,7 @@ func (p *Processor) fetchVariables(ctx context.Context, owner, name string) (map
 	return result, nil
 }
 
-func (p *Processor) fetchLabels(ctx context.Context, owner, name string) (map[string]*CurrentLabel, error) {
+func (p *Processor) fetchLabels(ctx context.Context, owner, name string, strict bool) (map[string]*CurrentLabel, error) {
 	out, err := p.runner.Run(ctx,
 		"label", "list",
 		"--repo", owner+"/"+name,
@@ -767,10 +811,10 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string) (map[st
 		"--limit", "1000",
 	)
 	if err != nil {
-		if isIgnorableSubresourceError(err) {
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("fetch labels for %s/%s: %w", owner, name, err)
+		return nil, fetchError(strict, "labels", owner, name, err)
 	}
 
 	var labels []struct {
@@ -793,17 +837,17 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string) (map[st
 	return result, nil
 }
 
-func (p *Processor) fetchMilestones(ctx context.Context, owner, name string) (map[string]*CurrentMilestone, error) {
+func (p *Processor) fetchMilestones(ctx context.Context, owner, name string, strict bool) (map[string]*CurrentMilestone, error) {
 	out, err := p.runner.Run(ctx,
 		"api",
 		fmt.Sprintf("repos/%s/%s/milestones?state=all&per_page=100", owner, name),
 		"--paginate",
 	)
 	if err != nil {
-		if isIgnorableSubresourceError(err) {
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("fetch milestones for %s/%s: %w", owner, name, err)
+		return nil, fetchError(strict, "milestones", owner, name, err)
 	}
 
 	var milestones []struct {
@@ -1004,6 +1048,39 @@ func isRepoNotFound(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "Could not resolve to a Repository")
+}
+
+// forbiddenWhenManaged reports whether err is a 403 for a resource the
+// manifest manages (strict). Such a 403 is an error: treating the resource as
+// absent or as its default would plan changes that apply cannot make.
+func forbiddenWhenManaged(strict bool, err error) bool {
+	return strict && errors.Is(err, gh.ErrForbidden)
+}
+
+// permissionFor names the fine-grained token permission that reads what.
+var permissionFor = map[string]string{
+	"branch protection":        "Administration",
+	"secrets":                  "Secrets",
+	"variables":                "Variables",
+	"labels":                   "Issues",
+	"milestones":               "Issues",
+	"commit message settings":  "Contents",
+	"release immutability":     "Administration",
+	"vulnerability alerts":     "Administration",
+	"automated security fixes": "Administration",
+	"actions settings":         "Administration",
+}
+
+// fetchError wraps a failed fetch of what. A 403 on a managed resource says
+// that it could not be read, and which permission reads it.
+func fetchError(strict bool, what, owner, name string, err error) error {
+	if forbiddenWhenManaged(strict, err) {
+		if perm := permissionFor[what]; perm != "" {
+			return fmt.Errorf("cannot read %s of %s/%s (the token needs the %s permission): %w", what, owner, name, perm, err)
+		}
+		return fmt.Errorf("cannot read %s of %s/%s: %w", what, owner, name, err)
+	}
+	return fmt.Errorf("fetch %s for %s/%s: %w", what, owner, name, err)
 }
 
 // isIgnorableSubresourceError reports whether a sub-resource fetch failure can

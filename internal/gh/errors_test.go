@@ -367,3 +367,23 @@ func TestExitError_Error(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCommandError_HTTPStatusWithURL(t *testing.T) {
+	// gh secret list / gh label: "HTTP 403: <message> (<url>)".
+	err := buildCommandError("gh secret list", 1, "",
+		"failed to get secrets: HTTP 403: Resource not accessible by personal access token (https://api.github.com/repos/o/r/actions/secrets?per_page=100)")
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	exitErr, _ := errors.AsType[*ExitError](err)
+	if exitErr == nil || exitErr.APIError.Message != "Resource not accessible by personal access token" {
+		t.Errorf("message = %+v", exitErr)
+	}
+
+	// A rate limit in the same form is still waited for, not ErrForbidden.
+	err = buildCommandError("gh label list", 1, "",
+		"HTTP 403: API rate limit exceeded for user ID 1. (https://api.github.com/repos/o/r/labels)")
+	if errors.Is(err, ErrForbidden) || classifyRateLimit(err) != primaryRateLimit {
+		t.Errorf("rate limit misclassified: %v", err)
+	}
+}

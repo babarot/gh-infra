@@ -14,7 +14,7 @@ Rulesets and `branch_protection` are independent features. You can use either or
 Repository rulesets are **not available** for private repositories on the GitHub Free plan. On Free plan private repos:
 
 - **`import`** silently omits rulesets from the exported manifest (the Rulesets API returns HTTP 403).
-- **`plan` / `apply`** will fail with an API error if your manifest contains `rulesets` for a Free plan private repo.
+- **`plan`** fails for that repository with GitHub's message (`Upgrade to GitHub Pro or make this repository public to enable this feature.`) if your manifest sets `rulesets` for a Free plan private repo, including `rulesets: []`.
 
 To use rulesets on private repositories, upgrade to GitHub Pro, GitHub Team, or GitHub Enterprise. Alternatively, use classic [`branch_protection`](../branch-protection/) on public repositories.
 :::

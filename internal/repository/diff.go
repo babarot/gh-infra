@@ -366,7 +366,7 @@ func diffMergeStrategy(name string, desired *manifest.Repository, current *Curre
 }
 
 func diffBranchProtection(name string, desired *manifest.Repository, current *CurrentState) []Change {
-	if !desired.Spec.BranchProtectionSet && len(desired.Spec.BranchProtection) == 0 {
+	if !desired.Spec.ManagesBranchProtection() {
 		return nil
 	}
 
@@ -483,7 +483,7 @@ func diffBranchProtection(name string, desired *manifest.Repository, current *Cu
 }
 
 func diffRulesets(ctx context.Context, name string, desired *manifest.Repository, current *CurrentState, resolver *manifest.Resolver) []Change {
-	if !desired.Spec.RulesetsSet && len(desired.Spec.Rulesets) == 0 {
+	if !desired.Spec.ManagesRulesets() {
 		return nil
 	}
 
@@ -938,7 +938,7 @@ func diffVariables(name string, desired *manifest.Repository, current *CurrentSt
 }
 
 func diffLabels(name string, desired *manifest.Repository, current *CurrentState, reconcileMode string) []Change {
-	if !desired.Spec.LabelsSet && len(desired.Spec.Labels) == 0 && desired.Spec.LabelSync == nil {
+	if !desired.Spec.ManagesLabels() {
 		return nil
 	}
 
@@ -1070,7 +1070,7 @@ func milestoneSummary(state, dueOn, description string) string {
 }
 
 func diffActions(name string, desired *manifest.Repository, current *CurrentState) []Change {
-	if desired.Spec.Actions == nil {
+	if !desired.Spec.ManagesActions() {
 		return nil
 	}
 	dc := diffContext{resource: manifest.ResourceActions, name: name}

@@ -57,7 +57,7 @@ jobs:
 - The check fails only when the plan fails (exit `1`). Changes (exit `2`) are shown in the comment, not as a failed check. See [Exit status](#exit-status).
 - When the pull request changes no manifest, the comment says `Plan: no manifests changed since origin/main` and no API calls are made. To skip the workflow for such pull requests, add `paths:` with the manifest directories and every directory the manifests read through `source:` or `patches:` (for example `templates/**`). A workflow filtered by `paths:` cannot be a required check, since it does not run on other pull requests.
 - The job does not run for pull requests from forks, so it cannot be a required check for them either. Do not switch to `pull_request_target` to get around this: it would run the fork's manifests with your token.
-- `plan` only reads from GitHub, but reading secrets, rulesets and Actions settings still needs the permissions listed in [Authentication](#authentication).
+- `plan` only reads from GitHub, but reading the settings the manifests manage needs the read permissions listed in [Authentication](#authentication).
 
 ## Apply on Merge
 
@@ -202,14 +202,26 @@ With `--changed-since <ref>`, `plan` and `apply` handle only:
 
 ## Authentication
 
-The token needs access to every repository the manifests manage.
+The token needs access to every repository the manifests manage, and only the permissions for what they manage: `plan` and `apply` read only the settings a manifest sets. Use one of:
 
-- **Fine-grained personal access token**: select the target repositories and grant `Administration: Read and write` and `Contents: Read and write`, plus what else you manage: `Secrets` and `Variables` for secrets and variables, `Issues` for labels and milestones, `Pull requests` for FileSets with `via: pull_request`.
+- **Fine-grained personal access token**: select the target repositories and grant the permissions below.
 - **GitHub App installation token**: recommended for organizations. Create an app with the same permissions, install it on the target repositories, and generate an installation token in the workflow.
 
 Store it as a secret (for example `GH_INFRA_TOKEN`) and pass it as `GH_TOKEN`.
 
-The default `GITHUB_TOKEN` of a workflow is enough only for `File` and `FileSet` manifests that target the repository running the workflow (with `contents: write`, and `pull-requests: write` for `via: pull_request`). It has no `administration` permission, which gh-infra needs to read the Actions settings of every repository in a `Repository` or `RepositorySet` manifest, so those fail with `Resource not accessible by integration` ([#221](https://github.com/babarot/gh-infra/issues/221)). It also cannot access other repositories.
+| Manifest manages | `plan` reads with | `apply` writes with |
+|---|---|---|
+| description, homepage, visibility, archived, topics, features, merge strategy | Metadata (Contents: read for merge commit messages, auto-merge and pull requests) | Administration: write |
+| branch protection, Actions settings, release immutability, vulnerability alerts, automated security fixes | Administration: read | Administration: write |
+| rulesets, private vulnerability reporting | Metadata | Administration: write |
+| labels, milestones | Issues: read | Issues: write |
+| secrets | Secrets: read | Secrets: write |
+| variables | Variables: read | Variables: write |
+| `File` / `FileSet` | Contents: read | Contents: write (and Pull requests: write for `via: pull_request`) |
+
+If the token cannot read a setting the manifest manages, `plan` fails for that repository and says what it could not read, for example `cannot read secrets of org/repo (the token needs the Secrets permission)`, instead of comparing against nothing. `import` reads everything and leaves out what it cannot read.
+
+The default `GITHUB_TOKEN` of a workflow cannot have the Administration permission and cannot access other repositories. So for the repository running the workflow it can plan and apply labels, milestones (`issues: write`) and `File` / `FileSet` manifests (`contents: write`, plus `pull-requests: write` for `via: pull_request`), but not repository settings. A token without access to a repository at all makes it look like it does not exist, so `plan` shows it as a create.
 
 :::caution
 Never use a classic personal access token with broad scopes. Use a fine-grained token or GitHub App with the minimum permissions required.

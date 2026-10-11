@@ -127,7 +127,7 @@ jobs:
       - run: gh infra apply ./repos/ --auto-approve
 ```
 
-`GH_INFRA_TOKEN` is a fine-grained token or GitHub App token for the repositories (see [Authentication](../../../patterns/ci-cd/#authentication); the workflow's own `GITHUB_TOKEN` cannot run a `Repository` manifest). [CI/CD Integration](../../../patterns/ci-cd/) has the full setup, including a plan comment on each pull request.
+`GH_INFRA_TOKEN` is a fine-grained token or GitHub App token for the repositories with the `Issues` permission (see [Authentication](../../../patterns/ci-cd/#authentication)). For a manifest that manages only the labels of the repository running the workflow, its own `GITHUB_TOKEN` works too, with `permissions: issues: write`. [CI/CD Integration](../../../patterns/ci-cd/) has the full setup, including a plan comment on each pull request.
 
 `gh` CLI is [preinstalled on all GitHub-hosted runners](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/using-github-cli-in-workflows), so no additional setup is needed.
 
