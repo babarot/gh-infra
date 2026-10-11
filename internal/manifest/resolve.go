@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/babarot/gh-infra/internal/gh"
 )
@@ -52,19 +53,73 @@ type ResolvedStatusCheck struct {
 }
 
 // Resolver resolves human-readable names to GitHub API numeric IDs.
+//
+// Teams and custom roles belong to an organization, so names are resolved
+// against the owner of the repository being planned: get a resolver for it
+// with For. NewResolver returns one bound to no owner.
 type Resolver struct {
-	runner   gh.Runner
-	owner    string
-	appCache map[string]int // slug → App ID
+	runner gh.Runner
+	owner  string
+	apps   *appCache // shared by every resolver from For: App slugs are global
 }
 
-// NewResolver creates a new Resolver.
-func NewResolver(runner gh.Runner, owner string) *Resolver {
-	return &Resolver{
-		runner:   runner,
-		owner:    owner,
-		appCache: make(map[string]int),
+// appCache maps GitHub App slugs to App IDs. It is shared across owners and
+// used concurrently.
+type appCache struct {
+	mu  sync.Mutex
+	ids map[string]int
+}
+
+func (c *appCache) get(slug string) (int, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	id, ok := c.ids[slug]
+	return id, ok
+}
+
+func (c *appCache) put(slug string, id int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ids[slug] = id
+}
+
+// slugOf returns the slug cached for id.
+func (c *appCache) slugOf(id int) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for slug, cachedID := range c.ids {
+		if cachedID == id {
+			return slug, true
+		}
 	}
+	return "", false
+}
+
+// NewResolver creates a Resolver bound to no owner; use For to get one for a
+// repository's owner.
+func NewResolver(runner gh.Runner) *Resolver {
+	return &Resolver{
+		runner: runner,
+		apps:   &appCache{ids: make(map[string]int)},
+	}
+}
+
+// For returns a resolver for names in owner's organization, sharing the App
+// cache. For on a nil resolver returns nil, so "no resolver" stays nil.
+func (r *Resolver) For(owner string) *Resolver {
+	if r == nil {
+		return nil
+	}
+	return &Resolver{runner: r.runner, owner: owner, apps: r.apps}
+}
+
+// requireOwner fails when an owner-scoped lookup runs on a resolver from
+// NewResolver without For, instead of querying "orgs//...".
+func (r *Resolver) requireOwner() error {
+	if r.owner == "" {
+		return fmt.Errorf("internal error: resolver has no owner (use Resolver.For)")
+	}
+	return nil
 }
 
 // ResolveBypassActors converts name-based bypass actors to numeric ID form.
@@ -141,7 +196,7 @@ func (r *Resolver) ResolveAppID(ctx context.Context, slug string) (int, error) {
 	if id, ok := parseIDPrefix(slug); ok {
 		return id, nil
 	}
-	if id, ok := r.appCache[slug]; ok {
+	if id, ok := r.apps.get(slug); ok {
 		return id, nil
 	}
 	out, err := r.runner.Run(ctx, "api", fmt.Sprintf("apps/%s", slug))
@@ -154,11 +209,14 @@ func (r *Resolver) ResolveAppID(ctx context.Context, slug string) (int, error) {
 	if err := json.Unmarshal(out, &app); err != nil {
 		return 0, fmt.Errorf("parse app %q response: %w", slug, err)
 	}
-	r.appCache[slug] = app.ID
+	r.apps.put(slug, app.ID)
 	return app.ID, nil
 }
 
 func (r *Resolver) resolveTeamID(ctx context.Context, slug string) (int, error) {
+	if err := r.requireOwner(); err != nil {
+		return 0, err
+	}
 	if id, ok := parseIDPrefix(slug); ok {
 		return id, nil
 	}
@@ -176,6 +234,9 @@ func (r *Resolver) resolveTeamID(ctx context.Context, slug string) (int, error) 
 }
 
 func (r *Resolver) resolveCustomRoleID(ctx context.Context, name string) (int, error) {
+	if err := r.requireOwner(); err != nil {
+		return 0, err
+	}
 	if id, ok := parseIDPrefix(name); ok {
 		return id, nil
 	}
@@ -258,6 +319,9 @@ func (r *Resolver) ReverseStatusCheck(ctx context.Context, context_ string, inte
 }
 
 func (r *Resolver) reverseTeamID(ctx context.Context, id int) (string, error) {
+	if err := r.requireOwner(); err != nil {
+		return "", err
+	}
 	// List teams and find by ID
 	out, err := r.runner.Run(ctx, "api", fmt.Sprintf("orgs/%s/teams", r.owner), "--paginate")
 	if err != nil {
@@ -280,10 +344,11 @@ func (r *Resolver) reverseTeamID(ctx context.Context, id int) (string, error) {
 
 func (r *Resolver) reverseAppID(ctx context.Context, id int, repo string) (string, error) {
 	// Check cache (reverse)
-	for slug, cachedID := range r.appCache {
-		if cachedID == id {
-			return slug, nil
-		}
+	if slug, ok := r.apps.slugOf(id); ok {
+		return slug, nil
+	}
+	if err := r.requireOwner(); err != nil {
+		return "", err
 	}
 	// Discover App slug from check-runs on the repo's default branch
 	out, err := r.runner.Run(ctx, "api",
@@ -299,7 +364,7 @@ func (r *Resolver) reverseAppID(ctx context.Context, id int, repo string) (strin
 		}
 		if err := json.Unmarshal(out, &checkRuns); err == nil {
 			for _, cr := range checkRuns {
-				r.appCache[cr.App.Slug] = cr.App.ID
+				r.apps.put(cr.App.Slug, cr.App.ID)
 				if cr.App.ID == id {
 					return cr.App.Slug, nil
 				}

@@ -145,11 +145,8 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		}
 	}
 
-	var resolverOwner string
-	if len(parsed.Repositories) > 0 {
-		resolverOwner = parsed.Repositories[0].Metadata.Owner
-	}
-	resolver := manifest.NewResolver(runner, resolverOwner)
+	// Bound to no owner: each repository resolves names against its own.
+	resolver := manifest.NewResolver(runner)
 
 	eng := newEngine(runner, resolver, p)
 	eng.quiet = isMachineOutput(opts.Output)

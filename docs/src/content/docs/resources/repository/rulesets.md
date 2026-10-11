@@ -159,6 +159,8 @@ bypass_actors:
 | `custom-role` | Enterprise Cloud custom role name (resolved via API) |
 | `bypass_mode` | `always` (pushes and PRs) or `pull_request` (PRs only) |
 
+Teams and custom roles are looked up in the organization that owns the repository, so one directory of manifests can manage repositories of several organizations.
+
 Exactly one actor type field must be specified per entry. Names are automatically resolved to numeric IDs — see [Ruleset Identity Resolution](../../internals/ruleset-identity-resolution/) for details.
 
 ## Conditions

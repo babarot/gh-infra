@@ -26,7 +26,7 @@ const currentRulesetResp = `{
 
 func updatePayload(t *testing.T, rs manifest.Ruleset) map[string]any {
 	t.Helper()
-	resolver := manifest.NewResolver(&gh.MockRunner{}, "o")
+	resolver := manifest.NewResolver(&gh.MockRunner{}).For("o")
 	payload, err := buildRulesetUpdatePayload(context.Background(), &rs, []byte(currentRulesetResp), resolver)
 	if err != nil {
 		t.Fatal(err)

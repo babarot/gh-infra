@@ -10,6 +10,7 @@ import (
 // ToManifest converts current state to a manifest Repository for export (import command).
 // If resolver is provided, numeric IDs are reverse-resolved to human-readable names.
 func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolver) *manifest.Repository {
+	resolver = resolver.For(r.Owner) // names belong to this repository's organization; nil stays nil
 	repo := &manifest.Repository{
 		APIVersion: manifest.APIVersion,
 		Kind:       manifest.KindRepository,

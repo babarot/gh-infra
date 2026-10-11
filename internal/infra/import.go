@@ -25,7 +25,7 @@ func Import(runner gh.Runner, args []string) error {
 
 	p := ui.NewStandardPrinter()
 
-	resolver := manifest.NewResolver(runner, targets[0].Target.Owner)
+	resolver := manifest.NewResolver(runner)
 	eng := newEngine(runner, resolver, p)
 
 	label := "repository"

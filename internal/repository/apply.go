@@ -780,7 +780,7 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 
 	switch c.Type {
 	case ChangeCreate:
-		payload, err := buildRulesetPayload(ctx, rs, p.resolver)
+		payload, err := buildRulesetPayload(ctx, rs, p.resolver.For(owner))
 		if err != nil {
 			return err
 		}
@@ -818,7 +818,7 @@ func (p *Processor) applyRuleset(ctx context.Context, c Change, repo *manifest.R
 		if err != nil {
 			return wrapError(err, owner+"/"+name, "ruleset:"+rulesetName)
 		}
-		payload, err := buildRulesetUpdatePayload(ctx, rs, current, p.resolver)
+		payload, err := buildRulesetUpdatePayload(ctx, rs, current, p.resolver.For(owner))
 		if err != nil {
 			return err
 		}
