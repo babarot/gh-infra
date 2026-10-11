@@ -34,6 +34,7 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `--force-secrets` | Re-set all secrets (even existing ones) |
 | `--changed-since <ref>` | Only the manifests changed since a git ref, and those that read a changed local file. See [Only what changed](../../patterns/ci-cd/#only-what-changed) |
 | `--fail-on-unknown` | Error on YAML files with unknown Kind (default: silently skip) |
+| `--concurrency <n>` | Maximum number of `gh` processes (GitHub API calls) at once, across the whole command. Default `8`, or `GH_INFRA_CONCURRENCY`. Lower it if you hit GitHub's secondary rate limit or network timeouts |
 | `-o, --output <format>` | `text` (default) or `json`; `json` requires `--auto-approve`. See [JSON output](../json-output/) |
 
 ## Exit status

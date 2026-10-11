@@ -4,6 +4,7 @@
 
 - `-V`, `--verbose`: shorthand for debug logging
 - `--log-level <trace|debug|info|warn|error>`: explicit log level
+- `--concurrency <n>` (or env `GH_INFRA_CONCURRENCY`): max `gh` processes at once across the whole command, default 8; lower it (even 1) on secondary rate limits or network timeouts
 
 ## import
 

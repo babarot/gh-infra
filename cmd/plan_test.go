@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/infra"
 )
 
@@ -83,5 +84,30 @@ func TestFinishPlan_NoResourcesIsNotInterrupted(t *testing.T) {
 	out, _ := io.ReadAll(r)
 	if strings.Contains(string(out), "Interrupted") {
 		t.Errorf("no resources should not print Interrupted, got %q", out)
+	}
+}
+
+func TestNewRunner_Concurrency(t *testing.T) {
+	defer func() { concurrency = 0 }()
+
+	t.Setenv(concurrencyEnvKey, "")
+	if r, err := newRunner(); err != nil || r.Concurrency() != gh.DefaultConcurrency {
+		t.Errorf("default: err=%v", err)
+	}
+
+	t.Setenv(concurrencyEnvKey, "3")
+	if r, err := newRunner(); err != nil || r.Concurrency() != 3 {
+		t.Errorf("env: err=%v", err)
+	}
+
+	concurrency = 2 // the flag wins over the environment
+	if r, err := newRunner(); err != nil || r.Concurrency() != 2 {
+		t.Errorf("flag: err=%v", err)
+	}
+
+	concurrency = 0
+	t.Setenv(concurrencyEnvKey, "zero")
+	if _, err := newRunner(); err == nil {
+		t.Error("expected an error for a non-numeric value")
 	}
 }

@@ -65,7 +65,12 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		return errors.New("--output json requires --auto-approve, since the confirmation prompt cannot be shown")
 	}
 
+	runner, err := newRunner()
+	if err != nil {
+		return err
+	}
 	result, err := infra.Plan(infra.PlanOptions{
+		Runner:        runner,
 		Paths:         paths,
 		FilterRepo:    opts.FilterRepo,
 		FailOnUnknown: opts.FailOnUnknown,

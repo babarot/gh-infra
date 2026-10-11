@@ -29,6 +29,11 @@ type PlanOptions struct {
 	ShowDiff      bool   // emit unified diff for each file change in plan output
 	Output        string // OutputText (default), OutputJSON or OutputMarkdown; the latter two print nothing while planning
 	ChangedSince  string // git ref: plan only the manifests changed since it (with the local files they read)
+
+	// Runner runs every gh call of this plan and the apply that follows.
+	// The command shares one runner so its concurrency limit covers all of
+	// them; nil uses a new default runner.
+	Runner gh.Runner
 }
 
 // PlanResult holds the outcome of the plan phase.
@@ -84,7 +89,10 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		return nil, err
 	}
 
-	runner := gh.NewRunner(false)
+	runner := opts.Runner
+	if runner == nil {
+		runner = gh.NewRunner(false)
+	}
 	sourceResolver := manifest.NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
 		return runner.Run(ctx, args...)
 	})

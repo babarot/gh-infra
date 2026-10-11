@@ -48,7 +48,11 @@ func newImportCmd() *cobra.Command {
 }
 
 func runImport(args []string) error {
-	err := infra.Import(args)
+	runner, err := newRunner()
+	if err != nil {
+		return err
+	}
+	err = infra.Import(runner, args)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			printCancelled()
@@ -60,7 +64,11 @@ func runImport(args []string) error {
 }
 
 func runImportInto(args []string, intoPath string, autoApprove bool) error {
-	diff, err := infra.ImportInto(args, intoPath)
+	runner, err := newRunner()
+	if err != nil {
+		return err
+	}
+	diff, err := infra.ImportInto(runner, args, intoPath)
 	if err != nil {
 		return err
 	}

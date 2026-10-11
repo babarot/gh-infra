@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/babarot/gh-infra/internal/fileset"
-	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/ui"
 )
@@ -36,7 +35,10 @@ func runValidate(args []string, failOnUnknown bool) error {
 
 	p := ui.NewStandardPrinter()
 
-	runner := gh.NewRunner(false)
+	runner, err := newRunner()
+	if err != nil {
+		return err
+	}
 	sourceResolver := manifest.NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
 		return runner.Run(ctx, args...)
 	})

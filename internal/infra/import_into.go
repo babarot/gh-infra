@@ -149,10 +149,10 @@ func (d *ImportDiff) Write() error {
 // ImportInto parses manifests, matches targets, fetches GitHub state,
 // compares it against local manifests, and prints the diff to the terminal.
 // The returned ImportDiff provides methods for diff viewing, skip selection, and writing.
-func ImportInto(args []string, into string) (*ImportDiff, error) {
+// runner runs every gh call.
+func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, error) {
 	printer := ui.NewStandardPrinter()
 
-	runner := gh.NewRunner(false)
 	sourceResolver := manifest.NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
 		return runner.Run(ctx, args...)
 	})
