@@ -190,6 +190,7 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		})
 	}
 	tracker := ui.RunRefresh(allTasks)
+	defer showRateLimitWaits(runner, tracker)()
 
 	// Create a cancellable context; cancel when the spinner is interrupted via Ctrl+C.
 	ctx, cancel := withTrackerCancelContext(tracker)

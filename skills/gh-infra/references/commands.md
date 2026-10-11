@@ -5,6 +5,7 @@
 - `-V`, `--verbose`: shorthand for debug logging
 - `--log-level <trace|debug|info|warn|error>`: explicit log level
 - `--concurrency <n>` (or env `GH_INFRA_CONCURRENCY`): max `gh` processes at once across the whole command, default 8; lower it (even 1) on secondary rate limits or network timeouts
+- rate limits are waited for, not failed on: secondary 1, 2, 4, 8 min; primary until the reset from `gh api rate_limit`; shared across all calls; at most 15 min per call, else `GitHub API rate limit exceeded; resets at ...`. Network errors retry 5 times (1-8s backoff)
 
 ## import
 

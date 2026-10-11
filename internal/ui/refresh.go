@@ -49,6 +49,7 @@ type refreshModel struct {
 	remaining int
 	canceled  chan struct{} // closed on Ctrl+C to signal callers
 	width     int           // terminal width for error truncation
+	notice    string        // dim line under the tasks, e.g. a rate limit wait
 }
 
 type taskDoneMsg struct{ name string }
@@ -65,6 +66,7 @@ type taskStatusMsg struct {
 	name   string
 	status string
 }
+type noticeMsg struct{ text string }
 
 func newRefreshModel(tasks []RefreshTask) refreshModel {
 	width := 80 // default
@@ -116,6 +118,10 @@ func (m refreshModel) Init() tea.Cmd {
 
 func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case noticeMsg:
+		m.notice = msg.text
+		return m, nil
+
 	case taskStatusMsg:
 		for i := range m.items {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
@@ -271,6 +277,9 @@ func (m refreshModel) View() tea.View {
 			}
 		}
 	}
+	if m.notice != "" {
+		fmt.Fprintf(&b, "\n  %s\n", Dim.Render(m.notice))
+	}
 	return tea.NewView(b.String())
 }
 
@@ -333,6 +342,19 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 	}()
 
 	return tracker
+}
+
+// SetNotice shows a dim line under the tasks, or removes it when text is "".
+// Without the spinner (fallback mode) it does nothing; callers log instead.
+func (t *RefreshTracker) SetNotice(text string) {
+	if t == nil || t.fallback {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.program != nil {
+		t.program.Send(noticeMsg{text: text})
+	}
 }
 
 // UpdateStatus updates the right-side live status text for a running task.
