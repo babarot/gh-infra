@@ -18,6 +18,8 @@ type ImportDiff struct {
 	Matched bool // false when no targets matched any manifest resource
 	Skipped int  // number of targets skipped due to fetch/validation errors
 	printer ui.Printer
+
+	shownFiles int // file changes listed in the plan, before any selection
 }
 
 const (
@@ -142,8 +144,47 @@ func (d *ImportDiff) MarkSkips(entries []ui.DiffEntry) {
 }
 
 // Write writes the planned changes to local files.
-func (d *ImportDiff) Write() error {
-	return importer.Write(d.Plan)
+// ImportWriteResult is what Write wrote, and how many of the file changes in
+// the plan it left alone (skipped by default, by choice, or not writable).
+type ImportWriteResult struct {
+	importer.WriteResult
+	Skipped int
+}
+
+func (d *ImportDiff) Write() (ImportWriteResult, error) {
+	written, err := importer.Write(d.Plan)
+	if err != nil {
+		return ImportWriteResult{}, err
+	}
+	// Count against the plan as shown: applying a skip turns a change into
+	// a no-op, which would no longer look like a listed file.
+	return ImportWriteResult{WriteResult: written, Skipped: max(d.shownFiles-written.FileChanges, 0)}, nil
+}
+
+// Summary is the closing line for the write.
+func (r ImportWriteResult) Summary() string {
+	if !r.Wrote() {
+		return fmt.Sprintf("Nothing to write: %s skipped (see above).", plural(r.Skipped, "file"))
+	}
+	var parts []string
+	if r.Manifests > 0 {
+		parts = append(parts, plural(r.Manifests, "manifest"))
+	}
+	if r.Sources > 0 {
+		parts = append(parts, plural(r.Sources, "source file"))
+	}
+	msg := "Import complete! Updated " + strings.Join(parts, " and ") + "."
+	if r.Skipped > 0 {
+		msg += fmt.Sprintf(" %s skipped.", plural(r.Skipped, "file"))
+	}
+	return msg
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // ImportInto parses manifests, matches targets, fetches GitHub state,
@@ -230,6 +271,11 @@ func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, erro
 		Skipped: len(tracker.Errors()),
 		printer: printer,
 	}
+	for _, c := range plan.FileChanges {
+		if isListedChange(c) {
+			result.shownFiles++
+		}
+	}
 
 	if result.HasChanges() || result.HasWarnings() {
 		printer.Separator()
@@ -258,7 +304,7 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 		}
 	}
 	for _, c := range plan.FileChanges {
-		if c.Type == fileset.ChangeNoOp && !isSkipOnlyChange(c) {
+		if !isListedChange(c) {
 			continue
 		}
 		if !seen[c.Target] {
@@ -277,7 +323,7 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 	}
 	fileChangesByTarget := make(map[string][]importer.Change)
 	for _, c := range plan.FileChanges {
-		if c.Type == fileset.ChangeNoOp && !isSkipOnlyChange(c) {
+		if !isListedChange(c) {
 			continue
 		}
 		fileChangesByTarget[c.Target] = append(fileChangesByTarget[c.Target], c)
@@ -365,6 +411,12 @@ func localPath(c importer.Change) string { return c.DisplayPathForMode(c.Effecti
 
 func displayPathForPlan(c importer.Change) string {
 	return c.DisplayPathForMode(defaultModeForChange(c))
+}
+
+// isListedChange reports whether the import plan lists c: a change, or a
+// file that cannot be written back (shown with its skip reason).
+func isListedChange(c importer.Change) bool {
+	return c.Type != fileset.ChangeNoOp || isSkipOnlyChange(c)
 }
 
 func isSkipOnlyChange(c importer.Change) bool {

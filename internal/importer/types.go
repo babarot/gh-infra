@@ -59,7 +59,6 @@ type RepoResult struct {
 	Diffs         []FieldDiff       // field-level diffs (for display)
 	Warnings      []RepoWarning     // what import could not write (for display)
 	ManifestEdits map[string][]byte // YAML patch results (path → updated bytes)
-	UpdatedDocs   int
 }
 
 // RepoWarning is something about a repository's GitHub state that import
@@ -82,7 +81,6 @@ type Result struct {
 	RepoWarnings  []RepoWarning     // all repo-level warnings
 	FileChanges   []Change          // file-level changes
 	ManifestEdits map[string][]byte // YAML patch results (path → final bytes)
-	UpdatedDocs   int
 }
 
 // AddRepoResult merges a RepoPlan into this IntoPlan.
@@ -90,7 +88,6 @@ func (p *Result) AddRepoResult(rp RepoResult) {
 	p.RepoDiffs = append(p.RepoDiffs, rp.Diffs...)
 	p.RepoWarnings = append(p.RepoWarnings, rp.Warnings...)
 	maps.Copy(p.ManifestEdits, rp.ManifestEdits)
-	p.UpdatedDocs += rp.UpdatedDocs
 }
 
 // HasChanges reports whether any changes exist.

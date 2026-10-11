@@ -24,31 +24,48 @@ type editOp struct {
 	value    any
 }
 
+// WriteResult is what Write wrote: manifest files (including inline content
+// and patches written into them) and local source files.
+type WriteResult struct {
+	Manifests   int
+	Sources     int
+	FileChanges int // file changes written (source, inline or patch)
+}
+
+// Wrote reports whether anything was written.
+func (w WriteResult) Wrote() bool { return w.Manifests+w.Sources > 0 }
+
 // Write writes the planned changes to disk.
 // It applies manifest edits (repo spec patches) and file changes.
-func Write(plan *Result) error {
+func Write(plan *Result) (WriteResult, error) {
+	manifests := map[string]bool{}
+	var sources, fileChanges int
+
 	// Apply manifest edits (repo/reposet YAML patches).
 	for path, data := range plan.ManifestEdits {
 		if err := os.WriteFile(path, data, 0644); err != nil {
-			return fmt.Errorf("write manifest %s: %w", path, err)
+			return WriteResult{}, fmt.Errorf("write manifest %s: %w", path, err)
 		}
+		manifests[path] = true
 	}
 
 	// Apply file changes.
 	for _, c := range plan.FileChanges {
 		mode := c.EffectiveWriteMode()
 		if err := c.ValidateWriteMode(); err != nil {
-			return err
+			return WriteResult{}, err
 		}
 		if c.Type != fileset.ChangeUpdate || mode == WriteSkip {
 			continue
 		}
+		fileChanges++
 
 		switch mode {
 		case WriteSource:
 			if err := os.WriteFile(c.LocalTarget, []byte(c.Desired), 0644); err != nil {
-				return fmt.Errorf("write source %s: %w", c.LocalTarget, err)
+				return WriteResult{}, fmt.Errorf("write source %s: %w", c.LocalTarget, err)
 			}
+			sources++
 
 		case WriteInline:
 			// Read current manifest (may already be patched by repo edits).
@@ -57,7 +74,7 @@ func Write(plan *Result) error {
 				var err error
 				data, err = os.ReadFile(c.ManifestPath)
 				if err != nil {
-					return fmt.Errorf("read manifest for inline edit %s: %w", c.ManifestPath, err)
+					return WriteResult{}, fmt.Errorf("read manifest for inline edit %s: %w", c.ManifestPath, err)
 				}
 			}
 			updated, err := applyEditOps(data, []editOp{{
@@ -67,16 +84,17 @@ func Write(plan *Result) error {
 				value:    c.Desired,
 			}})
 			if err != nil {
-				return fmt.Errorf("inline edit %s in %s: %w", c.YAMLPath, c.ManifestPath, err)
+				return WriteResult{}, fmt.Errorf("inline edit %s in %s: %w", c.YAMLPath, c.ManifestPath, err)
 			}
 			plan.ManifestEdits[c.ManifestPath] = updated
 			if err := os.WriteFile(c.ManifestPath, updated, 0644); err != nil {
-				return fmt.Errorf("write manifest %s: %w", c.ManifestPath, err)
+				return WriteResult{}, fmt.Errorf("write manifest %s: %w", c.ManifestPath, err)
 			}
+			manifests[c.ManifestPath] = true
 
 		case WritePatch:
 			if c.PatchEntry == nil {
-				return fmt.Errorf("WritePatch for %s but PatchEntry is nil", c.Path)
+				return WriteResult{}, fmt.Errorf("WritePatch for %s but PatchEntry is nil", c.Path)
 			}
 			// Read current manifest (may already be patched by repo edits).
 			data, ok := plan.ManifestEdits[c.ManifestPath]
@@ -84,21 +102,22 @@ func Write(plan *Result) error {
 				var err error
 				data, err = os.ReadFile(c.ManifestPath)
 				if err != nil {
-					return fmt.Errorf("read manifest for patch edit %s: %w", c.ManifestPath, err)
+					return WriteResult{}, fmt.Errorf("read manifest for patch edit %s: %w", c.ManifestPath, err)
 				}
 			}
 			updated, err := applyPatchChange(data, c)
 			if err != nil {
-				return fmt.Errorf("patch edit %s in %s: %w", c.PatchYAMLPath, c.ManifestPath, err)
+				return WriteResult{}, fmt.Errorf("patch edit %s in %s: %w", c.PatchYAMLPath, c.ManifestPath, err)
 			}
 			plan.ManifestEdits[c.ManifestPath] = updated
 			if err := os.WriteFile(c.ManifestPath, updated, 0644); err != nil {
-				return fmt.Errorf("write manifest %s: %w", c.ManifestPath, err)
+				return WriteResult{}, fmt.Errorf("write manifest %s: %w", c.ManifestPath, err)
 			}
+			manifests[c.ManifestPath] = true
 		}
 	}
 
-	return nil
+	return WriteResult{Manifests: len(manifests), Sources: sources, FileChanges: fileChanges}, nil
 }
 
 func applyPatchChange(data []byte, c Change) ([]byte, error) {

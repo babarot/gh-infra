@@ -671,3 +671,61 @@ func TestApplySelections_DefaultsWithoutViewer(t *testing.T) {
 		}
 	}
 }
+
+func TestImportWriteResult_Summary(t *testing.T) {
+	for _, tt := range []struct {
+		r    ImportWriteResult
+		want string
+	}{
+		{ImportWriteResult{Skipped: 5}, "Nothing to write: 5 files skipped (see above)."},
+		{ImportWriteResult{Skipped: 1}, "Nothing to write: 1 file skipped (see above)."},
+		{ImportWriteResult{WriteResult: importer.WriteResult{Manifests: 1}}, "Import complete! Updated 1 manifest."},
+		{ImportWriteResult{WriteResult: importer.WriteResult{Manifests: 2, Sources: 1}, Skipped: 3}, "Import complete! Updated 2 manifests and 1 source file. 3 files skipped."},
+	} {
+		if got := tt.r.Summary(); got != tt.want {
+			t.Errorf("Summary() = %q, want %q", got, tt.want)
+		}
+	}
+}
+
+// A create_only file skipped by default turns into a no-op when the default
+// actions are applied, but it was listed in the plan, so it counts as skipped.
+func TestImportDiff_WriteCountsSkippedFromThePlan(t *testing.T) {
+	dir := t.TempDir()
+	plan := &importer.Result{FileChanges: []importer.Change{
+		{
+			Target: "org/repo", Path: "own.txt", Type: fileset.ChangeUpdate,
+			Current: "old", Desired: "new", LocalTarget: dir + "/own.txt",
+			SuggestedWriteMode: importer.WriteSource,
+			AvailableModes:     []importer.WriteMode{importer.WriteSource},
+		},
+		{
+			Target: "org/repo", Path: "seed.txt", Type: fileset.ChangeUpdate,
+			Current: "old", Desired: "new", LocalTarget: dir + "/seed.txt",
+			CreateOnly: true, SuggestedWriteMode: importer.WriteSource,
+			AvailableModes: []importer.WriteMode{importer.WriteSource},
+		},
+	}}
+	d := &ImportDiff{Plan: plan, shownFiles: 2}
+	d.ApplySelections(d.DiffEntries())
+
+	got, err := d.Write()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Sources != 1 || got.Skipped != 1 {
+		t.Errorf("result = %+v, want 1 source written and 1 skipped", got)
+	}
+	if want := "Import complete! Updated 1 source file. 1 file skipped."; got.Summary() != want {
+		t.Errorf("Summary() = %q, want %q", got.Summary(), want)
+	}
+}
+
+func TestIsListedChange(t *testing.T) {
+	update := importer.Change{Type: fileset.ChangeUpdate, SuggestedWriteMode: importer.WriteSource, AvailableModes: []importer.WriteMode{importer.WriteSource}}
+	noop := importer.Change{Type: fileset.ChangeNoOp, SuggestedWriteMode: importer.WriteSource, AvailableModes: []importer.WriteMode{importer.WriteSource}}
+	hardSkip := importer.Change{Type: fileset.ChangeNoOp, WriteMode: importer.WriteSkip, SuggestedWriteMode: importer.WriteSkip, Reason: "cannot safely write back to template"}
+	if !isListedChange(update) || isListedChange(noop) || !isListedChange(hardSkip) {
+		t.Errorf("listed: update=%v noop=%v hardSkip=%v", isListedChange(update), isListedChange(noop), isListedChange(hardSkip))
+	}
+}
