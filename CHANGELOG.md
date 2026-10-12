@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.17.3](https://github.com/babarot/gh-infra/compare/v0.17.2...v0.17.3) - 2026-10-12
+### Bug fixes
+- Report files import --into cannot read by @babarot in https://github.com/babarot/gh-infra/pull/255
+- Finish a spinner row that fails more than once by @babarot in https://github.com/babarot/gh-infra/pull/258
+- Archive a repository after its other changes by @babarot in https://github.com/babarot/gh-infra/pull/257
+- Apply a new repository in one run, as planned by @babarot in https://github.com/babarot/gh-infra/pull/260
+
 ## [v0.17.2](https://github.com/babarot/gh-infra/compare/v0.17.1...v0.17.2) - 2026-10-12
 ### Bug fixes
 - Apply FileSets after the repository changes they depend on by @babarot in https://github.com/babarot/gh-infra/pull/246
