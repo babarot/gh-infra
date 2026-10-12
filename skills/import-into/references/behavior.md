@@ -17,6 +17,12 @@ gh infra import my-org/my-project my-org/my-cli --into=repos/
 - inline `File` / `FileSet` entries: update manifest `content: |`
 - local-source file entries: update the local source file
 
+## Repositories That Cannot Be Read
+
+- a file missing on GitHub (404): nothing to import
+- a repository or one of its files cannot be read otherwise (403 on contents, 5xx, rate limit that resets too late): the repository is reported and left out entirely (no settings, no files written); others are imported; `Some repositories were skipped due to errors above.`
+- invalid token (401), or a 403 when reading a repository's settings: the import stops before writing anything
+
 ## Interactive Viewer
 
 When file changes exist, the import flow uses a diff viewer.

@@ -148,6 +148,44 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 		}
 
 		fullName := f.tm.Target.FullName()
+		if ctx.Err() != nil {
+			completeRemaining()
+			return nil, context.Canceled
+		}
+
+		// Plan FileSet matches first: a target whose files cannot be read is
+		// skipped as a whole, before its repository edits reach the shared
+		// manifestBytes. DiffFiles does not touch manifestBytes.
+		var fileChanges []Change
+		if len(f.tm.Matches.FileSets) > 0 {
+			var err error
+			fileChanges, err = DiffFiles(ctx, opts.Runner, f.tm.Matches.FileSets, DiffFilesOptions{
+				FilterRepo:     fullName,
+				SourceRefCount: sourceRefCount,
+				OnStatus: func(status string) {
+					tracker.UpdateStatus(fullName, status)
+				},
+			})
+			switch {
+			case err == nil:
+			case errors.Is(err, context.Canceled) || ctx.Err() != nil:
+				// A gh process killed by the cancel fails with an error of
+				// its own, so ctx tells an interrupt.
+				completeRemaining()
+				return nil, context.Canceled
+			case errors.Is(err, gh.ErrUnauthorized):
+				// The token is not valid, so no other target would do better.
+				completeFail(fullName)
+				completeRemaining()
+				return nil, fmt.Errorf("plan files %s: %w", fullName, err)
+			default:
+				// Like a target that could not be fetched: report it and
+				// leave the whole target out. A 403 here is about this
+				// repository only, since its state was read in phase 1.
+				completeError(fullName, err)
+				continue
+			}
+		}
 
 		// Ensure manifest bytes are loaded for all relevant source paths.
 		if err := ensureManifestBytes(manifestBytes, f.tm.Matches); err != nil {
@@ -188,29 +226,7 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 			plan.AddRepoResult(rp)
 		}
 
-		// Plan FileSet matches.
-		if len(f.tm.Matches.FileSets) > 0 {
-			fileChanges, err := DiffFiles(ctx, opts.Runner, f.tm.Matches.FileSets, DiffFilesOptions{
-				FilterRepo:     fullName,
-				SourceRefCount: sourceRefCount,
-				OnStatus: func(status string) {
-					tracker.UpdateStatus(fullName, status)
-				},
-			})
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					completeError(fullName, context.Canceled)
-					completeRemaining()
-					return nil, context.Canceled
-				}
-				err := fmt.Errorf("plan files %s: %w", fullName, err)
-				completeError(fullName, err)
-				completeRemaining()
-				return nil, err
-			}
-			plan.FileChanges = append(plan.FileChanges, fileChanges...)
-		}
-
+		plan.FileChanges = append(plan.FileChanges, fileChanges...)
 		completeDone(fullName)
 	}
 
