@@ -26,7 +26,7 @@ func newPlanCmd() *cobra.Command {
 		Use:   "plan [path...]",
 		Short: "Show changes between desired state and current GitHub state",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPlan(args, planCommandOptions{
+			return runPlan(cmd.Context(), args, planCommandOptions{
 				FilterRepo:       repo,
 				CI:               ci,
 				FailOnUnknown:    failOnUnknown,
@@ -61,7 +61,7 @@ type planCommandOptions struct {
 	DetailedExitCode bool
 }
 
-func runPlan(paths []string, opts planCommandOptions) error {
+func runPlan(ctx context.Context, paths []string, opts planCommandOptions) error {
 	if err := infra.ValidateOutput(opts.Output, infra.OutputJSON, infra.OutputMarkdown); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func runPlan(paths []string, opts planCommandOptions) error {
 	if err != nil {
 		return err
 	}
-	result, err := infra.Plan(infra.PlanOptions{
+	result, err := infra.Plan(ctx, infra.PlanOptions{
 		Runner:        runner,
 		Paths:         paths,
 		FilterRepo:    opts.FilterRepo,
@@ -83,7 +83,7 @@ func runPlan(paths []string, opts planCommandOptions) error {
 		Output:        opts.Output,
 		ChangedSince:  opts.ChangedSince,
 	})
-	return finishPlan(result, err, opts)
+	return finishPlan(ctx, result, err, opts)
 }
 
 // finishPlan prints the machine-readable document and turns the outcome into
@@ -91,17 +91,17 @@ func runPlan(paths []string, opts planCommandOptions) error {
 // (including an interrupted plan and no manifests found), 2 changes. With the
 // deprecated --ci: 1 for changes or errors. Otherwise 1 only for errors.
 // An error always wins over changes.
-func finishPlan(result *infra.PlanResult, err error, opts planCommandOptions) error {
+func finishPlan(ctx context.Context, result *infra.PlanResult, err error, opts planCommandOptions) error {
 	if err != nil {
 		switch {
-		case errors.Is(err, infra.ErrNoResources):
-			// Already reported; an empty path is not "no changes".
+		case interrupted(ctx, err):
+			printCancelled()
 			if opts.DetailedExitCode {
 				return &ExitError{Code: 1}
 			}
 			return nil
-		case errors.Is(err, context.Canceled):
-			printCancelled()
+		case errors.Is(err, infra.ErrNoResources):
+			// Already reported; an empty path is not "no changes".
 			if opts.DetailedExitCode {
 				return &ExitError{Code: 1}
 			}

@@ -71,6 +71,8 @@ Flags:
 
 Exit status: 1 if any change fails or any repository could not be fetched (those repos are skipped; the rest are still applied).
 
+Interrupt (Ctrl+C, SIGINT, SIGTERM; also without a terminal, e.g. a canceled CI job): while applying, no new changes start, prints `Interrupted.`, exit 1 (some changes may be applied); before applying (planning, prompt), exit 0. A second Ctrl+C kills at once.
+
 Interactive diff viewer:
 
 - `d`: open diff viewer from confirm prompt

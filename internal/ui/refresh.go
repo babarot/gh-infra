@@ -52,7 +52,38 @@ type refreshModel struct {
 	notice    string        // dim line under the tasks, e.g. a rate limit wait
 }
 
+var (
+	interruptMu      sync.Mutex
+	interruptHandler func()
+)
+
+// SetInterruptHandler sets the function called when Ctrl+C is pressed while
+// the spinner runs. The spinner reads Ctrl+C as a key, so no signal reaches
+// the process; the command uses this to cancel its work as a signal would.
+// It returns a function that restores the previous handler.
+func SetInterruptHandler(fn func()) (restore func()) {
+	interruptMu.Lock()
+	defer interruptMu.Unlock()
+	prev := interruptHandler
+	interruptHandler = fn
+	return func() {
+		interruptMu.Lock()
+		defer interruptMu.Unlock()
+		interruptHandler = prev
+	}
+}
+
+func callInterruptHandler() {
+	interruptMu.Lock()
+	fn := interruptHandler
+	interruptMu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
 type taskDoneMsg struct{ name string }
+type interruptMsg struct{}
 type taskErrorMsg struct {
 	name string
 	err  error
@@ -114,6 +145,15 @@ func (m refreshModel) Init() tea.Cmd {
 		cmds[i] = m.items[i].spinner.Tick
 	}
 	return tea.Batch(cmds...)
+}
+
+// cancelRunning shows the tasks still running as canceled.
+func (m refreshModel) cancelRunning() {
+	for i := range m.items {
+		if m.items[i].status == taskRunning {
+			m.items[i].status = taskCanceled
+		}
+	}
 }
 
 func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -208,15 +248,16 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
-			for i := range m.items {
-				if m.items[i].status == taskRunning {
-					m.items[i].status = taskCanceled
-				}
-			}
+			m.cancelRunning()
 			close(m.canceled)
+			callInterruptHandler()
 			return m, tea.Quit
 		}
 		return m, nil
+
+	case interruptMsg:
+		m.cancelRunning()
+		return m, tea.Quit
 
 	default:
 		var cmds []tea.Cmd
@@ -297,6 +338,9 @@ type RefreshTracker struct {
 	canceled chan struct{}
 	mu       sync.Mutex
 	errors   []TaskError // collected errors for post-spinner display
+	// interrupted is set by Interrupt; errors reported afterwards come from
+	// the interrupted work and are not shown.
+	interrupted bool
 }
 
 // RunRefresh starts a spinner display for the given tasks.
@@ -418,12 +462,34 @@ func (t *RefreshTracker) Fail(name string) {
 	}
 }
 
+// Interrupt stops the display as Ctrl+C does when the work was interrupted
+// another way (a signal): running tasks show as canceled, and errors
+// reported afterwards are ignored. It does not call the interrupt handler.
+func (t *RefreshTracker) Interrupt() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.interrupted {
+		return
+	}
+	t.interrupted = true
+	if t.program != nil {
+		t.program.Send(interruptMsg{})
+	}
+}
+
 // Error marks a task as failed with inline error detail.
 func (t *RefreshTracker) Error(name string, err error) {
 	if t == nil {
 		return
 	}
 	t.mu.Lock()
+	if t.interrupted {
+		t.mu.Unlock()
+		return
+	}
 	t.errors = append(t.errors, TaskError{Name: name, Err: err})
 	if t.fallback {
 		t.mu.Unlock()

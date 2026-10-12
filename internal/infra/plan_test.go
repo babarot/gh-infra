@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -124,7 +125,7 @@ spec:
 		t.Fatal(err)
 	}
 
-	_, err := Plan(PlanOptions{Paths: []string{path}, DryRun: true})
+	_, err := Plan(context.Background(), PlanOptions{Paths: []string{path}, DryRun: true})
 
 	if err == nil || !strings.Contains(err.Error(), `from branch "gh-infra/sync-org-repo"`) {
 		t.Fatalf("expected shared PR branch error, got %v", err)

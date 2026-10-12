@@ -27,8 +27,9 @@ type ApplyOutcome struct {
 
 // Apply executes planned changes against GitHub. The outcome is returned
 // even when some changes failed (with an error), so the caller can report
-// each result.
-func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
+// each result. Canceling ctx stops it with context.Canceled; what was
+// already applied stays applied.
+func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 	eng := result.engine
 	p := eng.printer
 	if eng.quiet {
@@ -39,8 +40,6 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 	if err := checkFileChangesMatched(result.Parsed.FileSets, result.FileChanges); err != nil {
 		return nil, err
 	}
-
-	ctx := context.Background()
 
 	p.Phase("Applying changes to GitHub API ...")
 	p.BlankLine()
@@ -63,6 +62,9 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 			totalSucceeded += s
 			totalFailed += f
 		}
+		if ctx.Err() != nil {
+			return nil, context.Canceled
+		}
 		if hasFile {
 			for _, fs := range result.Parsed.FileSets {
 				fsChanges, applyOpts := fileSetApplyArgs(fs, result.FileChanges)
@@ -75,6 +77,9 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 				s, f := countFileResults(results)
 				totalSucceeded += s
 				totalFailed += f
+				if ctx.Err() != nil {
+					return nil, context.Canceled
+				}
 			}
 		}
 	} else {
@@ -118,10 +123,8 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 				Pending:   taskMap[n],
 			})
 		}
-		tracker := ui.RunRefresh(allTasks)
-		defer showRateLimitWaits(eng.runner, tracker)()
-		ctx, cancel := withTrackerCancelContext(tracker)
-		defer cancel()
+		tracker, ctx, stop := startRefresh(ctx, eng.runner, allTasks)
+		defer stop()
 
 		// Repositories go first, as in stream mode: a FileSet may write to a
 		// repository this apply creates.

@@ -81,7 +81,7 @@ func TestApply_FileSetWaitsForRepositoryCreate(t *testing.T) {
 			engine:      newEngine(runner, nil, printer),
 		}
 
-		_, _ = Apply(result, ApplyOptions{Stream: stream})
+		_, _ = Apply(context.Background(), result, ApplyOptions{Stream: stream})
 
 		if len(runner.early) > 0 {
 			t.Errorf("stream=%v: commands ran before `gh repo create` finished: %q", stream, runner.early)

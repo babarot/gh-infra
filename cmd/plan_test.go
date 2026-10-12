@@ -49,7 +49,7 @@ func TestFinishPlan_ExitCodes(t *testing.T) {
 		{"none: error", nil, other, none, 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			err := finishPlan(tt.result, tt.err, tt.opts)
+			err := finishPlan(context.Background(), tt.result, tt.err, tt.opts)
 			got := 0
 			if err != nil {
 				got = 1
@@ -61,6 +61,70 @@ func TestFinishPlan_ExitCodes(t *testing.T) {
 				t.Errorf("exit = %d (err %v), want %d", got, err, tt.want)
 			}
 		})
+	}
+}
+
+func TestInterrupted(t *testing.T) {
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	killed := errors.New("parse files.yaml: signal: killed")
+
+	for _, tt := range []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want bool
+	}{
+		{"canceled context, gh error", canceled, killed, true},
+		{"canceled context, no error", canceled, nil, true},
+		{"context.Canceled", context.Background(), fmt.Errorf("wrap: %w", context.Canceled), true},
+		{"other error", context.Background(), killed, false},
+		{"no error", context.Background(), nil, false},
+	} {
+		if got := interrupted(tt.ctx, tt.err); got != tt.want {
+			t.Errorf("%s: interrupted = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+// An interrupt is told by the context, not by the error: a gh process killed
+// by the cancel fails with an error of its own.
+func TestFinishPlan_InterruptedByContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	killed := errors.New("parse files.yaml: signal: killed")
+
+	for _, tt := range []struct {
+		opts planCommandOptions
+		want int
+	}{
+		{planCommandOptions{}, 0},
+		{planCommandOptions{DetailedExitCode: true}, 1},
+	} {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		orig := os.Stderr
+		os.Stderr = w
+		ferr := finishPlan(ctx, nil, killed, tt.opts)
+		os.Stderr = orig
+		w.Close()
+		out, _ := io.ReadAll(r)
+
+		got := 0
+		if ferr != nil {
+			got = 1
+			if code, ok := ExitCode(ferr); ok {
+				got = code
+			}
+		}
+		if got != tt.want {
+			t.Errorf("detailed=%v: exit = %d (err %v), want %d", tt.opts.DetailedExitCode, got, ferr, tt.want)
+		}
+		if !strings.Contains(string(out), "Interrupted") {
+			t.Errorf("detailed=%v: want Interrupted, got %q", tt.opts.DetailedExitCode, out)
+		}
 	}
 }
 
@@ -78,7 +142,7 @@ func TestFinishPlan_NoResourcesIsNotInterrupted(t *testing.T) {
 	}
 	orig := os.Stderr
 	os.Stderr = w
-	_ = finishPlan(nil, infra.ErrNoResources, planCommandOptions{})
+	_ = finishPlan(context.Background(), nil, infra.ErrNoResources, planCommandOptions{})
 	os.Stderr = orig
 	w.Close()
 	out, _ := io.ReadAll(r)

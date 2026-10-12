@@ -17,7 +17,8 @@ import (
 
 // Import fetches current state of the given repositories and outputs them as YAML to stdout.
 // All display is handled internally. runner runs every gh call.
-func Import(runner gh.Runner, args []string) error {
+// Canceling ctx stops it with context.Canceled.
+func Import(ctx context.Context, runner gh.Runner, args []string) error {
 	targets, err := parseArgs(args)
 	if err != nil {
 		return err
@@ -45,11 +46,8 @@ func Import(runner gh.Runner, args []string) error {
 			FailLabel: names[i],
 		}
 	}
-	tracker := ui.RunRefresh(tasks)
-	defer showRateLimitWaits(runner, tracker)()
-
-	ctx, cancel := withTrackerCancelContext(tracker)
-	defer cancel()
+	tracker, ctx, stop := startRefresh(ctx, runner, tasks)
+	defer stop()
 
 	type fetchResult struct {
 		data []byte
@@ -79,11 +77,11 @@ func Import(runner gh.Runner, args []string) error {
 		return fetchResult{data: data, err: err}
 	})
 	tracker.Wait()
-	tracker.PrintErrors()
-
+	// Errors of interrupted work are not reported.
 	if ctx.Err() != nil {
 		return context.Canceled
 	}
+	tracker.PrintErrors()
 
 	// Collect YAML docs for successful targets; failures are already reported
 	// by tracker.PrintErrors above.

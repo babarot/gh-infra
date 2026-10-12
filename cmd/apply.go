@@ -26,7 +26,7 @@ func newApplyCmd() *cobra.Command {
 		Use:   "apply [path...]",
 		Short: "Apply desired state to GitHub",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runApply(args, applyCommandOptions{
+			return runApply(cmd.Context(), args, applyCommandOptions{
 				FilterRepo:    repo,
 				AutoApprove:   autoApprove,
 				ForceSecrets:  forceSecrets,
@@ -56,7 +56,7 @@ type applyCommandOptions struct {
 	ChangedSince  string
 }
 
-func runApply(paths []string, opts applyCommandOptions) error {
+func runApply(ctx context.Context, paths []string, opts applyCommandOptions) error {
 	if err := infra.ValidateOutput(opts.Output, infra.OutputJSON); err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func runApply(paths []string, opts applyCommandOptions) error {
 	if err != nil {
 		return err
 	}
-	result, err := infra.Plan(infra.PlanOptions{
+	result, err := infra.Plan(ctx, infra.PlanOptions{
 		Runner:        runner,
 		Paths:         paths,
 		FilterRepo:    opts.FilterRepo,
@@ -80,11 +80,11 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		ChangedSince:  opts.ChangedSince,
 	})
 	if err != nil {
-		if errors.Is(err, infra.ErrNoResources) {
+		if interrupted(ctx, err) {
+			printCancelled()
 			return nil
 		}
-		if errors.Is(err, context.Canceled) {
-			printCancelled()
+		if errors.Is(err, infra.ErrNoResources) {
 			return nil
 		}
 		return err
@@ -108,6 +108,10 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		diffEntries := buildDiffEntries(result.FileChanges)
 		confirmed, err := p.ConfirmWithDiff("Do you want to apply these changes?", diffEntries)
 		if err != nil {
+			if interrupted(ctx, err) {
+				printCancelled()
+				return nil
+			}
 			return err
 		}
 		if !confirmed {
@@ -117,11 +121,13 @@ func runApply(paths []string, opts applyCommandOptions) error {
 		applySkipSelections(result.FileChanges, diffEntries)
 	}
 
-	outcome, err := infra.Apply(result, infra.ApplyOptions{
+	outcome, err := infra.Apply(ctx, result, infra.ApplyOptions{
 		Stream: ui.OutputMode() == "stream" && !jsonOutput,
 	})
-	if errors.Is(err, context.Canceled) {
-		return err
+	if err != nil && interrupted(ctx, err) {
+		// Some changes may be applied already, so this is not a success.
+		printCancelled()
+		return &ExitError{Code: 1}
 	}
 	if jsonOutput {
 		if werr := result.ApplyDocument(outcome).Write(os.Stdout); werr != nil {

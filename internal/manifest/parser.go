@@ -31,6 +31,15 @@ type ParseOptions struct {
 	// The result is only fit for validation and for selecting documents by
 	// their local dependencies, not for planning.
 	SkipRemoteSources bool
+	// Context cancels fetching github:// sources; nil means no cancellation.
+	Context context.Context
+}
+
+func (o ParseOptions) context() context.Context {
+	if o.Context == nil {
+		return context.Background()
+	}
+	return o.Context
 }
 
 // resolver returns the source resolver to use, honoring SkipRemoteSources.
@@ -202,7 +211,7 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if opt.Resolver == nil {
 			return nil, fmt.Errorf("%s: ParseOptions.Resolver is required for File kind", path)
 		}
-		fs, warnings, deps, err := parseFile(data, path, opt.resolver())
+		fs, warnings, deps, err := parseFile(opt.context(), data, path, opt.resolver())
 		if err != nil {
 			return nil, err
 		}
@@ -213,7 +222,7 @@ func parseDocument(data []byte, path string, docNum int, opt ParseOptions) (*Par
 		if opt.Resolver == nil {
 			return nil, fmt.Errorf("%s: ParseOptions.Resolver is required for FileSet kind", path)
 		}
-		fs, warnings, deps, err := parseFileSet(data, path, opt.resolver())
+		fs, warnings, deps, err := parseFileSet(opt.context(), data, path, opt.resolver())
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +309,7 @@ func parseRepositorySet(data []byte, path string, docIndex int) ([]*Repository, 
 	return repos, docs, warnings, nil
 }
 
-func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, []string, error) {
+func parseFile(ctx context.Context, data []byte, path string, resolver *SourceResolver) (*FileSet, []string, []string, error) {
 	var f File
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&f); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse File in %s: %w", path, err)
@@ -333,7 +342,7 @@ func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []
 	deps := localDeps(fs.Spec.Files, filepath.Dir(path))
 
 	// Resolve source references (local files, directories, GitHub URLs)
-	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
+	resolved, err := resolver.ResolveFiles(ctx, fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -347,7 +356,7 @@ func parseFile(data []byte, path string, resolver *SourceResolver) (*FileSet, []
 	return fs, warnings, deps, nil
 }
 
-func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet, []string, []string, error) {
+func parseFileSet(ctx context.Context, data []byte, path string, resolver *SourceResolver) (*FileSet, []string, []string, error) {
 	var fs FileSet
 	if err := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField()).Decode(&fs); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse FileSet in %s: %w", path, err)
@@ -363,7 +372,7 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 	}
 
 	// Resolve source references (local files, directories, GitHub URLs)
-	resolved, err := resolver.ResolveFiles(context.Background(), fs.Spec.Files, filepath.Dir(path))
+	resolved, err := resolver.ResolveFiles(ctx, fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -371,7 +380,7 @@ func parseFileSet(data []byte, path string, resolver *SourceResolver) (*FileSet,
 
 	for i, repo := range fs.Spec.Repositories {
 		if len(repo.Overrides) > 0 {
-			resolvedOverrides, err := resolver.ResolveFiles(context.Background(), repo.Overrides, filepath.Dir(path))
+			resolvedOverrides, err := resolver.ResolveFiles(ctx, repo.Overrides, filepath.Dir(path))
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("%s: resolve overrides for %s: %w", path, repo.Name, err)
 			}
