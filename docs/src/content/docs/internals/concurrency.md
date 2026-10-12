@@ -102,6 +102,8 @@ The diff runs immediately after each repo fetch completes (within the same gorou
 
 ## Apply Phase
 
+Repository changes are applied first, then FileSet changes, so a FileSet can write to a repository that the same apply creates. Within each step, repositories run in parallel.
+
 ### Repository Apply — `Executor.Apply`
 
 ```mermaid

@@ -123,16 +123,14 @@ func Apply(result *PlanResult, opts ApplyOptions) (*ApplyOutcome, error) {
 		ctx, cancel := withTrackerCancelContext(tracker)
 		defer cancel()
 
-		g := new(errgroup.Group)
-
+		// Repositories go first, as in stream mode: a FileSet may write to a
+		// repository this apply creates.
 		if hasRepo {
-			g.Go(func() error {
-				reporter := ui.NewSpinnerReporterWith(tracker, repoNames)
-				allRepoResults = eng.repo.Apply(ctx, result.RepoChanges, result.TargetRepos, reporter)
-				return nil
-			})
+			reporter := ui.NewSpinnerReporterWith(tracker, repoNames)
+			allRepoResults = eng.repo.Apply(ctx, result.RepoChanges, result.TargetRepos, reporter)
 		}
 
+		g := new(errgroup.Group)
 		if hasFile {
 			var mu sync.Mutex
 			for _, fs := range result.Parsed.FileSets {
