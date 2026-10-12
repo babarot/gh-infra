@@ -55,6 +55,12 @@ type fakeState struct {
 	Secrets    map[string]string // name -> value; GitHub returns names only
 	Variables  map[string]string
 	Milestones []fakeMilestone
+
+	Branches      []string
+	Protections   map[string]*fakeProtection
+	Rulesets      []*fakeRuleset
+	NextRulesetID int
+	Org           fakeOrg
 }
 
 // fakeRepo holds the repository fields under their REST names.
@@ -122,6 +128,12 @@ func newFakeGitHub(owner, name string, s fakeState) *fakeGitHub {
 	}
 	if s.Repo.DefaultBranch == "" {
 		s.Repo.DefaultBranch = "main"
+	}
+	if s.Protections == nil {
+		s.Protections = map[string]*fakeProtection{}
+	}
+	for _, rs := range s.Rulesets {
+		s.NextRulesetID = max(s.NextRulesetID, rs.ID)
 	}
 	return &fakeGitHub{owner: owner, name: name, s: s}
 }
@@ -328,6 +340,10 @@ func (f *fakeGitHub) api(body []byte, args []string) ([]byte, bool, error) {
 		return []byte("0 \n"), false, nil
 	}
 
+	if strings.HasPrefix(path, "apps/") || strings.HasPrefix(path, "orgs/") {
+		return f.apiOrg(path, method)
+	}
+
 	prefix := "repos/" + f.fullName()
 	if path != prefix && !strings.HasPrefix(path, prefix+"/") {
 		return nil, false, errUnknown
@@ -369,6 +385,10 @@ func (f *fakeGitHub) api(body []byte, args []string) ([]byte, bool, error) {
 		})
 	case strings.HasPrefix(sub, "actions/permissions"):
 		return f.apiActions(strings.TrimPrefix(sub, "actions/permissions"), method, body)
+	case strings.HasPrefix(sub, "branches"):
+		return f.apiBranches(sub, method, body, rest)
+	case sub == "rulesets" || strings.HasPrefix(sub, "rulesets/"):
+		return f.apiRulesets(sub, method, body)
 	case sub == "labels" || strings.HasPrefix(sub, "labels/"):
 		return f.apiLabel(strings.TrimPrefix(sub, "labels/"), method, body)
 	case sub == "milestones?state=all&per_page=100" && method == "GET" && slices.Contains(rest, "--paginate"):

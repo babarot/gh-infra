@@ -141,70 +141,77 @@ func TestApplyProperties(t *testing.T) {
 		}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
 			s := propState()
 			if tt.state != nil {
 				tt.state(&s)
 			}
-			fake := newFakeGitHub("o", "r", s)
-			p := NewProcessor(fake, manifest.NewResolver(fake))
-			repo := &manifest.Repository{
+			checkApplyProperties(t, s, &manifest.Repository{
 				Metadata:  manifest.RepositoryMetadata{Owner: "o", Name: "r"},
 				Reconcile: tt.recon,
 				Spec:      tt.spec,
-			}
-			before := fake.state()
-
-			changes, targets, err := p.Plan(ctx, []*manifest.Repository{repo}, PlanOptions{}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if tt.noPlan != (len(changes) == 0) {
-				t.Fatalf("plan has %d changes, want none: %v", len(changes), tt.noPlan)
-			}
-
-			// 3. Every planned change applies.
-			for _, r := range p.Apply(ctx, changes, targets, nil) {
-				if r.Err != nil {
-					t.Errorf("apply %s %s: %v", r.Change.Resource, r.Change.Field, r.Err)
-				}
-			}
-			after := fake.state()
-
-			// 2. Only what the plan showed changed.
-			allowed := allowedPaths(changes)
-			for _, path := range changedPaths(before, after) {
-				if !allowed.covers(path) {
-					t.Errorf("apply changed %s, which the plan does not show\nplan: %s\nwrites: %s",
-						path, formatChanges(changes), strings.Join(fake.writes, "\n  "))
-				}
-			}
-			// fetch reads secret names only, so property 1 cannot check
-			// their values: a changed secret must hold the manifest's value.
-			for _, sec := range tt.spec.Secrets {
-				if v, ok := after.Secrets[sec.Name]; ok && v != before.Secrets[sec.Name] && v != sec.Value {
-					t.Errorf("secret %s = %q, want %q", sec.Name, v, sec.Value)
-				}
-			}
-			for name, v := range after.Secrets {
-				if old, ok := before.Secrets[name]; ok && old != v && !specHasSecret(tt.spec, name) {
-					t.Errorf("secret %s changed though the manifest does not set it", name)
-				}
-			}
-
-			// 1. A second plan has no changes, and applies nothing.
-			writes := len(fake.writes)
-			again, _, err := p.Plan(ctx, []*manifest.Repository{repo}, PlanOptions{}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(again) > 0 {
-				t.Errorf("plan after apply still has changes: %s\nwrites: %s", formatChanges(again), strings.Join(fake.writes, "\n  "))
-			}
-			if len(fake.writes) != writes {
-				t.Errorf("plan wrote to GitHub: %v", fake.writes[writes:])
-			}
+			}, tt.noPlan)
 		})
+	}
+}
+
+// checkApplyProperties plans and applies repo against a fake GitHub in state
+// s, and checks the three properties.
+func checkApplyProperties(t *testing.T, s fakeState, repo *manifest.Repository, noPlan bool) {
+	t.Helper()
+	ctx := context.Background()
+	fake := newFakeGitHub(repo.Metadata.Owner, repo.Metadata.Name, s)
+	p := NewProcessor(fake, manifest.NewResolver(fake))
+	before := fake.state()
+
+	changes, targets, err := p.Plan(ctx, []*manifest.Repository{repo}, PlanOptions{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if noPlan != (len(changes) == 0) {
+		t.Fatalf("plan has %d changes, want none: %v", len(changes), noPlan)
+	}
+
+	// 3. Every planned change applies.
+	for _, r := range p.Apply(ctx, changes, targets, nil) {
+		if r.Err != nil {
+			t.Errorf("apply %s %s: %v", r.Change.Resource, r.Change.Field, r.Err)
+		}
+	}
+	after := fake.state()
+
+	// 2. Only what the plan showed changed.
+	allowed := allowedPaths(changes)
+	b, a := flattenState(before), flattenState(after)
+	for _, path := range changedPaths(before, after) {
+		if !allowed.covers(path) && !allowed.coversNewObject(path, b, a) {
+			t.Errorf("apply changed %s, which the plan does not show\nplan: %s\nwrites: %s",
+				path, formatChanges(changes), strings.Join(fake.writes, "\n  "))
+		}
+	}
+	// fetch reads secret names only, so property 1 cannot check their
+	// values: a changed secret must hold the manifest's value.
+	for _, sec := range repo.Spec.Secrets {
+		if v, ok := after.Secrets[sec.Name]; ok && v != before.Secrets[sec.Name] && v != sec.Value {
+			t.Errorf("secret %s = %q, want %q", sec.Name, v, sec.Value)
+		}
+	}
+	for name, v := range after.Secrets {
+		if old, ok := before.Secrets[name]; ok && old != v && !specHasSecret(repo.Spec, name) {
+			t.Errorf("secret %s changed though the manifest does not set it", name)
+		}
+	}
+
+	// 1. A second plan has no changes, and applies nothing.
+	writes := len(fake.writes)
+	again, _, err := p.Plan(ctx, []*manifest.Repository{repo}, PlanOptions{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) > 0 {
+		t.Errorf("plan after apply still has changes: %s\nwrites: %s", formatChanges(again), strings.Join(fake.writes, "\n  "))
+	}
+	if len(fake.writes) != writes {
+		t.Errorf("plan wrote to GitHub: %v", fake.writes[writes:])
 	}
 }
 
@@ -260,6 +267,8 @@ func flattenState(s fakeState) map[string]string {
 		out[key+"state"] = m.State
 		out[key+"due_on"] = derefStr(m.DueOn)
 	}
+	flattenProtections(out, s.Protections)
+	flattenRulesets(out, s.Rulesets)
 	return out
 }
 
@@ -365,6 +374,10 @@ func allowedPaths(changes []Change) pathSet {
 		}
 	}
 	for _, c := range changes {
+		if resource, key, ok := splitApplyResource(c.Resource); ok {
+			addKeyedPaths(set, resource, key, c)
+			continue
+		}
 		add(c.Resource, c)
 	}
 	return set
