@@ -170,6 +170,36 @@ func TestBuildRulesetUpdatePayload_NewPullRequestGetsDefaults(t *testing.T) {
 	}
 }
 
+func TestBuildRulesetPayload_NewStatusChecksGetDefaults(t *testing.T) {
+	// strict_required_status_checks_policy and required_status_checks are
+	// required by the API; a manifest may leave either out.
+	for _, sc := range []*manifest.RulesetStatusChecks{
+		{Contexts: []manifest.RulesetStatusCheck{{Context: "ci"}}},
+		{StrictRequiredStatusChecksPolicy: manifest.Ptr(true)},
+	} {
+		rs := manifest.Ruleset{Name: "main", Rules: manifest.RulesetRules{RequiredStatusChecks: sc}}
+		resolver := manifest.NewResolver(&gh.MockRunner{Strict: true}).For("o")
+		payload, err := buildRulesetPayload(context.Background(), &rs, resolver)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rules, _ := payload["rules"].([]map[string]any)
+		if len(rules) != 1 {
+			t.Fatalf("rules = %v", rules)
+		}
+		params, _ := rules[0]["parameters"].(map[string]any)
+		if _, ok := params["strict_required_status_checks_policy"]; !ok {
+			t.Errorf("parameters = %v, want strict_required_status_checks_policy", params)
+		}
+		if _, ok := params["required_status_checks"]; !ok {
+			t.Errorf("parameters = %v, want required_status_checks", params)
+		}
+		if sc.StrictRequiredStatusChecksPolicy != nil && params["strict_required_status_checks_policy"] != true {
+			t.Errorf("the manifest's strict was overridden: %v", params)
+		}
+	}
+}
+
 func TestBuildRulesetPayload_CreateSkipsDisabledRules(t *testing.T) {
 	rs := manifest.Ruleset{Name: "main", Rules: manifest.RulesetRules{
 		PullRequest:          &manifest.RulesetPullRequest{Disabled: true},
