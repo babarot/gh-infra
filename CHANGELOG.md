@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.17.1](https://github.com/babarot/gh-infra/compare/v0.17.0...v0.17.1) - 2026-10-12
+### Bug fixes
+- Resolve ruleset names against each repository's owner by @babarot in https://github.com/babarot/gh-infra/pull/233
+- Fix import writing values that plan rejects or always reports as changed by @babarot in https://github.com/babarot/gh-infra/pull/237
+- Import security, release immutability and milestones into manifests by @babarot in https://github.com/babarot/gh-infra/pull/238
+- Import into RepositorySet entries without defaults by @babarot in https://github.com/babarot/gh-infra/pull/239
+- Plan selected actions the manifest sets before they can be read by @babarot in https://github.com/babarot/gh-infra/pull/240
+- Send the required status check parameters a manifest leaves out by @babarot in https://github.com/babarot/gh-infra/pull/242
+### Improvements
+- Test that apply converges against a fake GitHub by @babarot in https://github.com/babarot/gh-infra/pull/241
+- Test branch protection and rulesets against the fake GitHub by @babarot in https://github.com/babarot/gh-infra/pull/243
+
 ## [v0.17.0](https://github.com/babarot/gh-infra/compare/v0.16.0...v0.17.0) - 2026-10-11
 ### New Features
 - Limit concurrent gh processes and add --concurrency by @babarot in https://github.com/babarot/gh-infra/pull/223
