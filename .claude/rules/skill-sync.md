@@ -27,6 +27,7 @@ When either side changes, check whether the other side needs updating.
 | `resources/fileset/index.md`, `resources/fileset/overrides.md` | `file-manifest` | `references/fileset.md` |
 | `commands/import.md`, `internals/import-into.md` | `import-into` | `references/behavior.md`, `references/write-modes.md`, `references/template-safety.md` |
 | `commands/plan.md`, `commands/apply.md`, `commands/validate.md`, `commands/import.md` | `gh-infra` | `references/commands.md` |
+| `introduction/principles.md` | `gh-infra` | `SKILL.md` (Key characteristics); also `AGENTS.md` (Design Principles) |
 | `patterns/ci-cd.md`, `patterns/central.mdx`, `patterns/self-managed.mdx` | `ci-cd` | `SKILL.md`, `references/workflows.md`, `references/self-managed.md`, `references/central.md` |
 
 ## Rules

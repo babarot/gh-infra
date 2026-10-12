@@ -15,7 +15,9 @@ Use this skill to choose the right resource kind, command flow, and operating pa
 Key characteristics:
 
 - No state file. GitHub is the source of truth.
+- `apply` does what `plan` shows and nothing else; what GitHub would reject fails at `validate`/`plan`, and unreadable settings fail the repository instead of being compared as absent.
 - Selective management. Omitted fields are left untouched.
+- One `apply` converges: the next `plan` is empty, except what the plan notes (for a new repository: branch protection, and deleting default labels under authoritative reconcile).
 - Four resource kinds: `Repository`, `RepositorySet`, `File`, `FileSet`.
 - Supports both bootstrap import and reverse import into existing manifests.
 
