@@ -217,7 +217,7 @@ For implementation details and exact safety rules, see [Import Into Manifests](.
 
 #### RepositorySet entries
 
-For a `RepositorySet` entry, import writes only what differs from `defaults.spec`. When the repository has none of a collection that the defaults have (`labels`, `rulesets`, `branch_protection`, `variables`, `topics`), import writes it as `[]` so the entry does not inherit the defaults:
+For a `RepositorySet` entry, import writes only what differs from `defaults.spec`. When the repository has none of a collection that the defaults have (`labels`, `rulesets`, `branch_protection`, `variables`, `topics`, `milestones`), import writes it as `[]` so the entry does not inherit the defaults:
 
 ```
   ~ my-org/my-cli
