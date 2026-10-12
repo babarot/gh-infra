@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 
@@ -165,6 +166,11 @@ func (r *PlanResult) PlanDocument(showDiff bool) Document {
 
 	for _, w := range r.Warnings {
 		doc.Warnings = append(doc.Warnings, Message{Message: w})
+	}
+	for _, name := range slices.Sorted(maps.Keys(r.CreateNotes)) {
+		for _, n := range r.CreateNotes[name] {
+			doc.Warnings = append(doc.Warnings, Message{Target: name, Message: n})
+		}
 	}
 	for _, e := range r.TargetErrors {
 		doc.Errors = append(doc.Errors, Message{Target: e.Name, Message: e.Err.Error()})

@@ -16,6 +16,15 @@ spec:
 - apply unarchives first and archives last (after the repo's other changes and its FileSets in the same run); if any of those fail, it does not archive and reports the archive as failed
 - `topics`: full list, not additive merge. Omitted leaves current topics unchanged; `[]` removes all
 
+## Creating a Repository
+
+A manifest for a repository that does not exist plans `+ repository` and, under it, the rulesets, secrets, variables, labels and milestones; one apply creates it and applies all of them (settings, features, merge strategy, topics, security and Actions go with the create; `archived: true` last).
+
+- GitHub's default labels (`bug`, `documentation`, ...; org-specific) exist in a new repository: a declared label with one of their names is updated, not created, and an omitted description stays as GitHub's
+- with `reconcile.labels: authoritative`, undeclared default labels are deleted by the next plan/apply, not the creating one
+- branch protection needs a branch, which a new repository lacks: the next plan after the branch exists adds it (rulesets don't need one)
+- these notes appear under the repository in the text plan and as `warnings` with a `target` in `-o json` / markdown
+
 ## Features
 
 ```yaml

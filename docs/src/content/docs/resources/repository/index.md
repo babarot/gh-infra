@@ -157,18 +157,31 @@ If you find yourself copying the same settings across many files, consider [Repo
 
 ## Creating Repositories
 
-If a YAML manifest references a repository that doesn't exist, `plan` shows it as a new resource:
+If a YAML manifest references a repository that doesn't exist, `plan` shows it as a new resource, with what the same `apply` adds to it:
 
 ```
 $ gh infra plan ./repos/
 
-Plan: 1 to create, 0 to update, 0 to destroy
-
-  + babarot/new-project (new)
-      + repository: babarot/new-project
+  # babarot/new-project will be created
+  + babarot/new-project
+      + repository      babarot/new-project
+      + ruleset "protect-main"
+          + name        protect-main
+      + TOKEN           (new)
+      + labels
+          + bug         #ff0000
+      a label named like one of GitHub's default labels is updated instead of created
+      branch protection for main is applied by a later plan, once the branch exists
 ```
 
-`apply` creates it with `gh repo create`, then applies all settings (features, topics, branch protection, etc.) in a single pass.
+`apply` creates it with `gh repo create`, applying the settings, features, merge strategy, topics, security and Actions settings, and then the rulesets, secrets, variables, labels and milestones the plan shows, in the same run. `archived: true` is applied last.
+
+A new repository is empty, so these are planned against nothing, with two exceptions:
+
+- **Default labels**: GitHub creates default labels in a new repository (`bug`, `documentation`, and others; an organization can change them). A label with the name of one of them is updated instead of created, so what the manifest leaves out of it, such as its description, stays as GitHub made it. With `reconcile.labels: authoritative`, the default labels the manifest does not declare are deleted by the next `plan` and `apply`.
+- **Branch protection**: a new repository has no branch to protect. The next `plan` after the branch exists shows the protection, and `apply` adds it. Rulesets do not need a branch and are applied at once.
+
+The `-o json` and `-o markdown` plans list these notes as warnings for the repository. FileSets for the new repository are applied after it is created.
 
 ## Deleting Repositories
 

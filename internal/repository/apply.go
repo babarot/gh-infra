@@ -44,6 +44,10 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 		start := time.Now()
 		var results []ApplyResult
 		var canceled error
+		// created: this run created the repository, so what follows the
+		// create runs against the repository GitHub just made.
+		// notCreated: the create failed, so nothing else can be applied.
+		var created, notCreated bool
 		for _, c := range g.changes {
 			// Once canceled, leave the rest unapplied rather than failing
 			// each of them.
@@ -51,9 +55,23 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 				canceled = err
 				break
 			}
+			if notCreated {
+				results = append(results, ApplyResult{Change: c, Err: errNotApplied})
+				continue
+			}
 			reporter.UpdateStatus(g.name, "applying "+applyStatusTarget(c)+"...")
-			result := p.applyChange(ctx, c, repoMap[c.Name])
+			cctx := ctx
+			if created {
+				cctx = withNewRepository(ctx)
+			}
+			result := p.applyChange(cctx, c, repoMap[c.Name])
 			results = append(results, result)
+			if isRepositoryCreate(c) {
+				// The repository exists unless gh repo create itself failed,
+				// even when a setting applied after it did.
+				notCreated = errors.Is(result.Err, errRepoNotCreated)
+				created = !notCreated
+			}
 		}
 		elapsed := time.Since(start)
 
@@ -168,7 +186,7 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 	var err error
 
 	switch {
-	case c.Resource == manifest.ResourceRepository && c.Type == ChangeCreate && c.Field == "repository":
+	case isRepositoryCreate(c):
 		err = p.createRepo(ctx, repo)
 	case c.Resource == manifest.ResourceRepository:
 		err = p.applyRepoSetting(ctx, c, repo)
@@ -191,6 +209,36 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 	}
 
 	return ApplyResult{Change: c, Err: err}
+}
+
+// errRepoNotCreated marks a failure of gh repo create itself, as opposed to
+// a setting applied after it.
+var errRepoNotCreated = errors.New("repository not created")
+
+// errNotApplied is the result of a change to a repository whose create failed.
+var errNotApplied = errors.New("not applied: the repository was not created")
+
+// notCreatedError is err marked with errRepoNotCreated.
+type notCreatedError struct{ err error }
+
+func (e notCreatedError) Error() string   { return e.err.Error() }
+func (e notCreatedError) Unwrap() []error { return []error{e.err, errRepoNotCreated} }
+
+func isRepositoryCreate(c Change) bool {
+	return c.Resource == manifest.ResourceRepository && c.Type == ChangeCreate && c.Field == "repository"
+}
+
+// newRepositoryKey marks a context for changes to a repository this run has
+// just created.
+type newRepositoryKey struct{}
+
+func withNewRepository(ctx context.Context) context.Context {
+	return context.WithValue(ctx, newRepositoryKey{}, true)
+}
+
+func isNewRepository(ctx context.Context) bool {
+	v, _ := ctx.Value(newRepositoryKey{}).(bool)
+	return v
 }
 
 func (p *Processor) createRepo(ctx context.Context, repo *manifest.Repository) error {
@@ -224,7 +272,7 @@ func (p *Processor) createRepo(ctx context.Context, repo *manifest.Repository) e
 
 	_, err := p.runner.Run(ctx, args...)
 	if err != nil {
-		return wrapError(err, fullName, "create")
+		return notCreatedError{wrapError(err, fullName, "create")}
 	}
 
 	// Apply remaining settings via gh repo edit
@@ -969,41 +1017,56 @@ func (p *Processor) applyLabel(ctx context.Context, c Change, repo *manifest.Rep
 			args = append(args, "--description", d)
 		}
 		_, err := p.runner.Run(ctx, args...)
+		// GitHub creates default labels in a new repository, and their
+		// contents are not known at plan time: one with this name is
+		// updated instead, as an existing label would be.
+		if err != nil && isNewRepository(ctx) && strings.Contains(err.Error(), "already exists") {
+			return p.updateLabel(ctx, fullName, label, c.Field, label.Name)
+		}
 		return wrapError(err, fullName, "label:"+c.Field)
 	case ChangeUpdate:
-		// Use the REST API: gh label edit never sends an empty description,
-		// so it cannot clear one. Send description only when the manifest
-		// sets it, so an omitted one is left as it is.
-		payload := map[string]any{"color": label.Color}
-		if label.Description != nil {
-			payload["description"] = *label.Description
-		}
 		// GitHub finds the label by its current name; a case-only rename
 		// is planned as a "name" child holding that name.
 		currentName := c.Field
+		newName := ""
 		for _, d := range c.Details {
 			if d.Field == "name" {
 				if old, ok := d.OldValue.(string); ok {
 					currentName = old
-					payload["new_name"] = label.Name
+					newName = label.Name
 				}
 			}
 		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		_, err = p.runner.RunWithStdin(ctx, body,
-			"api",
-			fmt.Sprintf("repos/%s/labels/%s", fullName, url.PathEscape(currentName)),
-			"--method", "PATCH",
-			"--header", "Content-Type: application/json",
-			"--input", "-",
-		)
-		return wrapError(err, fullName, "label:"+c.Field)
+		return p.updateLabel(ctx, fullName, label, currentName, newName)
 	}
 
 	return nil
+}
+
+// updateLabel sets label's color, and its description when the manifest sets
+// one, on the label GitHub knows as currentName; a non-empty newName renames
+// it. It uses the REST API: gh label edit never sends an empty description,
+// so it cannot clear one, and an omitted description is left as it is.
+func (p *Processor) updateLabel(ctx context.Context, fullName string, label *manifest.Label, currentName, newName string) error {
+	payload := map[string]any{"color": label.Color}
+	if label.Description != nil {
+		payload["description"] = *label.Description
+	}
+	if newName != "" {
+		payload["new_name"] = newName
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = p.runner.RunWithStdin(ctx, body,
+		"api",
+		fmt.Sprintf("repos/%s/labels/%s", fullName, url.PathEscape(currentName)),
+		"--method", "PATCH",
+		"--header", "Content-Type: application/json",
+		"--input", "-",
+	)
+	return wrapError(err, fullName, "label:"+label.Name)
 }
 
 func (p *Processor) applyMilestone(ctx context.Context, c Change, repo *manifest.Repository) error {

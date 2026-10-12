@@ -13,6 +13,12 @@ import (
 // printPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
 func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change, showDiff bool) {
+	printPlanWithNotes(p, repoChanges, fileChanges, nil, showDiff)
+}
+
+// printPlanWithNotes is printPlan with notes shown under each repository,
+// such as what its create leaves to the next plan.
+func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change, notes map[string][]string, showDiff bool) {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -85,6 +91,9 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 		diffGroups := repoChangesToDiffGroups(rChanges)
 		p.SetColumnWidth(ui.DiffGroupFieldWidth(diffGroups))
 		ui.RenderDiffGroups(p, diffGroups)
+		for _, n := range notes[name] {
+			p.Detail(n)
+		}
 
 		// Print fileset changes (aligned by file path width, independent of repo fields)
 		if len(fChanges) > 0 {
