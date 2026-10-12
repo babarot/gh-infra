@@ -2704,6 +2704,28 @@ func TestDiffActions_PatternsAllowedOnlyWhenSet(t *testing.T) {
 	}
 }
 
+func TestDiffActions_SelectedActionsUnknownUntilSelected(t *testing.T) {
+	// GitHub reports selected actions only while allowed_actions is
+	// "selected", so switching to it plans every field the manifest sets,
+	// even one equal to the zero value.
+	current := baseState()
+	current.Actions = CurrentActions{Enabled: true, AllowedActions: "all"}
+	desired := baseDesired()
+	desired.Spec.Actions = &manifest.Actions{
+		Enabled: manifest.Ptr(true), AllowedActions: manifest.Ptr("selected"),
+		SelectedActions: &manifest.SelectedActions{GithubOwnedAllowed: manifest.Ptr(false), PatternsAllowed: []string{}},
+	}
+	got := collectChildFields(diffActions("o/r", desired, current))
+	for _, f := range []string{"allowed_actions", "selected_actions.github_owned_allowed", "selected_actions.patterns_allowed"} {
+		if !got[f] {
+			t.Errorf("%s not planned, got %v", f, got)
+		}
+	}
+	if got["selected_actions.verified_allowed"] {
+		t.Error("verified_allowed is not in the manifest and should not be planned")
+	}
+}
+
 func TestDiffLabels_OmittedDescriptionIsLeftAsIs(t *testing.T) {
 	current := baseState()
 	current.Labels = map[string]*CurrentLabel{"bug": {Name: "bug", Color: "d73a4a", Description: "Something isn't working"}}

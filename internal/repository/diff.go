@@ -1089,12 +1089,19 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 
 		// Skipped while disabled too: the selected-actions endpoints require
 		// allowed_actions to be "selected".
-		if a.SelectedActions != nil && !a.Disabled() {
+		if a.SelectedActions != nil && !a.Disabled() && current.Actions.SelectedActions == nil {
+			// GitHub reports the selected actions only while allowed_actions
+			// is "selected", so when it is not yet, what GitHub has is
+			// unknown: plan everything the manifest sets.
 			sa := a.SelectedActions
-			var currentSA CurrentSelectedActions
-			if current.Actions.SelectedActions != nil {
-				currentSA = *current.Actions.SelectedActions
+			appendIfSet(cc, "selected_actions.github_owned_allowed", sa.GithubOwnedAllowed)
+			appendIfSet(cc, "selected_actions.verified_allowed", sa.VerifiedAllowed)
+			if sa.PatternsAllowed != nil {
+				*cc = append(*cc, Change{Type: ChangeCreate, Field: "selected_actions.patterns_allowed", NewValue: sa.PatternsAllowed})
 			}
+		} else if a.SelectedActions != nil && !a.Disabled() {
+			sa := a.SelectedActions
+			currentSA := *current.Actions.SelectedActions
 			appendChildChanged(cc, "selected_actions.github_owned_allowed", sa.GithubOwnedAllowed, currentSA.GithubOwnedAllowed)
 			appendChildChanged(cc, "selected_actions.verified_allowed", sa.VerifiedAllowed, currentSA.VerifiedAllowed)
 			// patterns_allowed left out keeps the current patterns; [] clears.
