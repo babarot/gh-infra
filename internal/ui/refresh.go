@@ -389,9 +389,16 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 }
 
 // SetNotice shows a dim line under the tasks, or removes it when text is "".
-// Without the spinner (fallback mode) it does nothing; callers log instead.
+// Without the spinner (fallback mode, e.g. in CI) it prints text as a line
+// of progress, and removing it does nothing.
 func (t *RefreshTracker) SetNotice(text string) {
-	if t == nil || t.fallback {
+	if t == nil {
+		return
+	}
+	if t.fallback {
+		if text != "" {
+			DefaultPrinter.Progress(text)
+		}
 		return
 	}
 	t.mu.Lock()

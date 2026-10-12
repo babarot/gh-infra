@@ -268,3 +268,40 @@ func TestApply_ModeChangeInEmptyRepoFails(t *testing.T) {
 		t.Errorf("expected no Contents API write, got %d", n)
 	}
 }
+
+// An empty repository has no branch for a pull request, so the files are
+// pushed; the result says so.
+func TestApply_EmptyRepoReportsPush(t *testing.T) {
+	mock := &gh.MockRunner{Responses: map[string][]byte{repoViewKey: []byte("")}}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	changes := []Change{{FileSetID: "test", Target: "owner/repo", Path: "README.md", Type: ChangeCreate, Desired: "hi"}}
+
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPullRequest}, ui.NoopReporter{})
+
+	if len(results) != 1 || results[0].Err != nil {
+		t.Fatalf("results = %+v", results)
+	}
+	if results[0].Via != manifest.ViaPush {
+		t.Errorf("Via = %q, want push", results[0].Via)
+	}
+}
+
+func TestApply_ResultsInTargetOrder(t *testing.T) {
+	mock := &gh.MockRunner{Errors: map[string]error{}}
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	var changes []Change
+	for _, repo := range []string{"owner/c", "owner/a", "owner/b"} {
+		changes = append(changes, Change{FileSetID: "test", Target: repo, Path: "x", Type: ChangeCreate, Desired: "x"})
+	}
+
+	for range 20 {
+		results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush}, ui.NoopReporter{})
+		var got []string
+		for _, r := range results {
+			got = append(got, r.Change.Target)
+		}
+		if strings.Join(got, ",") != "owner/a,owner/b,owner/c" {
+			t.Fatalf("targets = %v, want sorted", got)
+		}
+	}
+}

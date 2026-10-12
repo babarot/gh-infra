@@ -100,12 +100,10 @@ func TestFileSetApplyArgs_SameIdentity(t *testing.T) {
 		{FileSet: hookFS, FileSetID: hookFS.Identity(), Target: "org/repo2", Path: ".hooks/pre-commit", Type: fileset.ChangeUpdate},
 	}
 
+	// The ci FileSet's only change has nothing to apply, so it gets none.
 	ciChanges, ciOpts := fileSetApplyArgs(ciFS, allChanges)
-	if len(ciChanges) != 1 || ciChanges[0].Path != ".github/workflows/ci.yml" {
-		t.Errorf("ci FileSet got changes %+v, want only .github/workflows/ci.yml", ciChanges)
-	}
-	if fileset.HasChanges(ciChanges) {
-		t.Errorf("ci FileSet should have nothing to apply, got %+v", ciChanges)
+	if len(ciChanges) != 0 {
+		t.Errorf("ci FileSet got changes %+v, want none", ciChanges)
 	}
 	if ciOpts.CommitMessage != "ci: sync CI workflow" {
 		t.Errorf("ci CommitMessage = %q", ciOpts.CommitMessage)

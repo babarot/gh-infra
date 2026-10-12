@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -44,157 +43,172 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	p.Phase("Applying changes to GitHub API ...")
 	p.BlankLine()
 
-	totalSucceeded := 0
-	totalFailed := 0
+	repoNames := changedRepoNames(result.RepoChanges)
+	fileSets := fileSetWorkOf(result)
+	names := slices.Clone(repoNames)
+	for _, w := range fileSets {
+		names = append(names, w.targets...)
+	}
+	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, refreshTasks(names, "applied changes"))
+	defer stop()
 
-	var allRepoResults []repository.ApplyResult
-	var allFileResults []fileset.ApplyResult
+	// The steps run in this order in every mode; a mode only changes how
+	// progress is shown and whether the results are listed at the end.
 
-	hasRepo := repository.HasChanges(result.RepoChanges)
-	hasFile := fileset.HasChanges(result.FileChanges)
-
-	if opts.Stream {
-		// Stream mode: run sequentially with stream reporters (no spinner)
-		if hasRepo {
-			reporter := ui.NewStreamReporter(p, "Applying", "Applied")
-			allRepoResults = eng.repo.Apply(ctx, result.RepoChanges, result.TargetRepos, reporter)
-			s, f := repository.CountApplyResults(allRepoResults)
-			totalSucceeded += s
-			totalFailed += f
-		}
-		if ctx.Err() != nil {
-			return nil, context.Canceled
-		}
-		if hasFile {
-			for _, fs := range result.Parsed.FileSets {
-				fsChanges, applyOpts := fileSetApplyArgs(fs, result.FileChanges)
-				if !fileset.HasChanges(fsChanges) {
-					continue
-				}
-				reporter := ui.NewStreamReporter(p, "Applying", "Applied")
-				results := eng.file.Apply(ctx, fsChanges, applyOpts, reporter)
-				allFileResults = append(allFileResults, results...)
-				s, f := countFileResults(results)
-				totalSucceeded += s
-				totalFailed += f
-				if ctx.Err() != nil {
-					return nil, context.Canceled
-				}
-			}
-		}
-	} else {
-		// Spinner mode: unified tracker, parallel execution
-		// Collect repo names and build deduplicated tasks
-		var repoNames, fileNames []string
-		if hasRepo {
-			for _, c := range result.RepoChanges {
-				if c.Type != repository.ChangeNoOp {
-					repoNames = append(repoNames, c.Name)
-				}
-			}
-			repoNames = uniqueStrings(repoNames)
-		}
-		if hasFile {
-			for _, c := range result.FileChanges {
-				if c.Type != fileset.ChangeNoOp {
-					fileNames = append(fileNames, c.Target)
-				}
-			}
-			fileNames = uniqueStrings(fileNames)
-		}
-
-		taskMap := make(map[string]int)
-		for _, n := range repoNames {
-			taskMap[n]++
-		}
-		for _, n := range fileNames {
-			taskMap[n]++
-		}
-		var allTasks []ui.RefreshTask
-		seen := make(map[string]bool)
-		for _, n := range append(repoNames, fileNames...) {
-			if seen[n] {
-				continue
-			}
-			seen[n] = true
-			allTasks = append(allTasks, ui.RefreshTask{
-				Name:      n,
-				DoneLabel: "applied changes",
-				Pending:   taskMap[n],
-			})
-		}
-		tracker, ctx, stop := startRefresh(ctx, eng.runner, allTasks)
-		defer stop()
-
-		// Repositories go first, as in stream mode: a FileSet may write to a
-		// repository this apply creates.
-		if hasRepo {
-			reporter := ui.NewSpinnerReporterWith(tracker, repoNames)
-			allRepoResults = eng.repo.Apply(ctx, result.RepoChanges, result.TargetRepos, reporter)
-		}
-
-		g := new(errgroup.Group)
-		if hasFile {
-			var mu sync.Mutex
-			for _, fs := range result.Parsed.FileSets {
-				fsChanges, applyOpts := fileSetApplyArgs(fs, result.FileChanges)
-				if !fileset.HasChanges(fsChanges) {
-					continue
-				}
-				var targets []string
-				for _, c := range fsChanges {
-					targets = append(targets, c.Target)
-				}
-				reporter := ui.NewSpinnerReporterWith(tracker, uniqueStrings(targets))
-				g.Go(func() error {
-					results := eng.file.Apply(ctx, fsChanges, applyOpts, reporter)
-					mu.Lock()
-					allFileResults = append(allFileResults, results...)
-					mu.Unlock()
-					return nil
-				})
-			}
-		}
-
-		_ = g.Wait()
-		tracker.Wait()
-		// Apply-time errors are rendered in full detail by printApplyResults
-		// below (per field / per target). Calling tracker.PrintErrors here
-		// would repeat the same message in a separate block.
-
-		if ctx.Err() != nil {
-			return nil, context.Canceled
-		}
-
-		s, f := repository.CountApplyResults(allRepoResults)
-		totalSucceeded += s
-		totalFailed += f
-		cs, cf := countFileResults(allFileResults)
-		totalSucceeded += cs
-		totalFailed += cf
+	// Step 1: repositories. A FileSet may write to a repository this apply
+	// creates, so they go first.
+	var repoResults []repository.ApplyResult
+	if len(repoNames) > 0 {
+		repoResults = eng.repo.Apply(ctx, result.RepoChanges, result.TargetRepos, view.reporter(repoNames))
 	}
 
-	// Print unified apply results (skip in stream mode — stream output is the result)
-	if !opts.Stream {
+	// Step 2: FileSets, in parallel with each other.
+	var fileResults []fileset.ApplyResult
+	if ctx.Err() == nil {
+		fileResults = applyFileSets(ctx, eng, fileSets, view)
+	}
+
+	view.wait()
+	// Apply-time errors are rendered in full detail by printApplyResults
+	// below (per field / per target). Calling tracker.PrintErrors here
+	// would repeat the same message in a separate block.
+	if ctx.Err() != nil {
+		return nil, context.Canceled
+	}
+
+	if view.listsResults() {
 		p.Separator()
-		printApplyResults(p, allRepoResults, allFileResults)
+		printApplyResults(p, repoResults, fileResults)
 	}
 
-	// Unified summary
-	summaryMsg := fmt.Sprintf("Apply complete! %d changes applied", totalSucceeded)
-	if totalFailed > 0 {
-		summaryMsg += fmt.Sprintf(", %d failed", totalFailed)
+	succeeded, failed := repository.CountApplyResults(repoResults)
+	fs, ff := countFileResults(fileResults)
+	succeeded += fs
+	failed += ff
+
+	summaryMsg := fmt.Sprintf("Apply complete! %d changes applied", succeeded)
+	if failed > 0 {
+		summaryMsg += fmt.Sprintf(", %d failed", failed)
 	}
 	summaryMsg += "."
 	p.Summary(summaryMsg)
 	printAPIUsage(p, apiUsage(eng.runner))
 
-	outcome := &ApplyOutcome{RepoResults: allRepoResults, FileResults: allFileResults}
-	if totalFailed > 0 {
+	outcome := &ApplyOutcome{RepoResults: repoResults, FileResults: fileResults}
+	if failed > 0 {
 		return outcome, fmt.Errorf("apply had errors")
 	}
-
 	return outcome, nil
+}
+
+// applyView is how apply shows progress: the spinner, or with stream a line
+// per event.
+type applyView struct {
+	tracker *ui.RefreshTracker // nil with stream
+	stream  *ui.StreamReporter
+}
+
+// startApplyView starts showing progress for tasks. Like startRefresh, it
+// shows the runner's rate limit waits and returns a context that is
+// canceled with ctx (and with the spinner's Ctrl+C). Call stop when done.
+func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.RefreshTask) (applyView, context.Context, func()) {
+	if !stream {
+		tracker, ctx, stop := startRefresh(ctx, eng.runner, tasks)
+		return applyView{tracker: tracker}, ctx, stop
+	}
+	p := eng.printer
+	stopWaits := showRateLimitWaits(eng.runner, func(text string) {
+		if text != "" {
+			p.Progress(text)
+		}
+	})
+	return applyView{stream: ui.NewStreamReporter(p, "Applying", "Applied")}, ctx, stopWaits
+}
+
+// reporter reports the progress of the named targets.
+func (v applyView) reporter(names []string) ui.ProgressReporter {
+	if v.tracker == nil {
+		return v.stream
+	}
+	return ui.NewSpinnerReporterWith(v.tracker, names)
+}
+
+func (v applyView) wait() {
+	if v.tracker != nil {
+		v.tracker.Wait()
+	}
+}
+
+// listsResults reports whether the results are listed after the progress.
+// With stream, the progress lines are the result.
+func (v applyView) listsResults() bool { return v.tracker != nil }
+
+// changedRepoNames returns the repositories with changes to apply, in order.
+func changedRepoNames(changes []repository.Change) []string {
+	var names []string
+	for _, c := range changes {
+		if c.Type != repository.ChangeNoOp {
+			names = append(names, c.Name)
+		}
+	}
+	return uniqueStrings(names)
+}
+
+// fileSetWork is what one FileSet applies.
+type fileSetWork struct {
+	changes []fileset.Change
+	opts    fileset.ApplyOptions
+	targets []string // repositories with changes, each reported once
+}
+
+// fileSetWorkOf returns the work of each FileSet with changes to apply, in
+// manifest order.
+func fileSetWorkOf(result *PlanResult) []fileSetWork {
+	var work []fileSetWork
+	for _, fs := range result.Parsed.FileSets {
+		changes, opts := fileSetApplyArgs(fs, result.FileChanges)
+		if len(changes) == 0 {
+			continue
+		}
+		var targets []string
+		for _, c := range changes {
+			targets = append(targets, c.Target)
+		}
+		work = append(work, fileSetWork{changes: changes, opts: opts, targets: uniqueStrings(targets)})
+	}
+	return work
+}
+
+// applyFileSets applies the FileSets in parallel and returns their results
+// in the order of work.
+func applyFileSets(ctx context.Context, eng *engine, work []fileSetWork, view applyView) []fileset.ApplyResult {
+	results := make([][]fileset.ApplyResult, len(work))
+	var wg sync.WaitGroup
+	for i, w := range work {
+		wg.Go(func() {
+			results[i] = eng.file.Apply(ctx, w.changes, w.opts, view.reporter(w.targets))
+		})
+	}
+	wg.Wait()
+	return slices.Concat(results...)
+}
+
+// refreshTasks returns a spinner task per name, in order of first
+// appearance. A name given n times is done after n reports.
+func refreshTasks(names []string, doneLabel string) []ui.RefreshTask {
+	pending := make(map[string]int)
+	var order []string
+	for _, n := range names {
+		if pending[n] == 0 {
+			order = append(order, n)
+		}
+		pending[n]++
+	}
+	tasks := make([]ui.RefreshTask, 0, len(order))
+	for _, n := range order {
+		tasks = append(tasks, ui.RefreshTask{Name: n, DoneLabel: doneLabel, Pending: pending[n]})
+	}
+	return tasks
 }
 
 // checkFileChangesMatched returns an error if a change with work to do was not
@@ -217,7 +231,9 @@ func fileSetApplyArgs(fs *manifest.FileSet, allChanges []fileset.Change) ([]file
 	var fsChanges []fileset.Change
 	for _, c := range allChanges {
 		// Plan and Apply share the *FileSet pointers in parsed.FileSets.
-		if c.FileSet == fs {
+		// A target with nothing to apply is left out, so each target
+		// reports once per FileSet that changes it.
+		if c.FileSet == fs && c.Type != fileset.ChangeNoOp {
 			fsChanges = append(fsChanges, c)
 		}
 	}

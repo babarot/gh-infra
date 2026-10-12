@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -90,6 +91,9 @@ type StandardPrinter struct {
 	out      io.Writer
 	err      io.Writer
 	colWidth int // dynamic column width for Item/SubItem alignment
+	// mu keeps the lines that concurrent work prints (progress, stream lines,
+	// errors and warnings) whole when several goroutines print at once.
+	mu sync.Mutex
 }
 
 // NewStandardPrinter creates a StandardPrinter writing to stdout/stderr.
@@ -190,8 +194,15 @@ func (p *StandardPrinter) Phase(msg string) {
 	fmt.Fprintf(p.err, "%s\n", msg)
 }
 
+// line prints one line under mu.
+func (p *StandardPrinter) line(w io.Writer, format string, args ...any) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	fmt.Fprintf(w, format, args...)
+}
+
 func (p *StandardPrinter) Progress(msg string) {
-	fmt.Fprintf(p.err, "%s%s\n", Indent(IndentRoot), msg)
+	p.line(p.err, "%s%s\n", Indent(IndentRoot), msg)
 }
 
 func (p *StandardPrinter) BlankLine() {
@@ -415,7 +426,7 @@ func (p *StandardPrinter) Success(name, detail string) {
 
 func (p *StandardPrinter) Error(name, detail string) {
 	detail = strings.ReplaceAll(detail, "\n", "\n"+continuation(IndentRoot))
-	fmt.Fprintf(p.out, "%s%s %s  %s\n", Indent(IndentRoot), Red.Render(IconError), Bold.Render(name), detail)
+	p.line(p.out, "%s%s %s  %s\n", Indent(IndentRoot), Red.Render(IconError), Bold.Render(name), detail)
 }
 
 // errorReportWidthRatio is the fraction of the terminal width that
@@ -506,7 +517,7 @@ func wrapByWords(s string, width int) []string {
 }
 
 func (p *StandardPrinter) Warning(name, detail string) {
-	fmt.Fprintf(p.err, "%s%s %s  %s\n", Indent(IndentRoot), Yellow.Render(IconWarning), Bold.Render(name), detail)
+	p.line(p.err, "%s%s %s  %s\n", Indent(IndentRoot), Yellow.Render(IconWarning), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) Detail(msg string) {
@@ -514,15 +525,15 @@ func (p *StandardPrinter) Detail(msg string) {
 }
 
 func (p *StandardPrinter) StreamStart(name, detail string) {
-	fmt.Fprintf(p.err, "%s: %s\n", Bold.Render(name), detail)
+	p.line(p.err, "%s: %s\n", Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) StreamDone(name, detail string) {
-	fmt.Fprintf(p.err, "%s: %s\n", Bold.Render(name), Green.Render(detail))
+	p.line(p.err, "%s: %s\n", Bold.Render(name), Green.Render(detail))
 }
 
 func (p *StandardPrinter) StreamError(name, detail string) {
-	fmt.Fprintf(p.err, "%s: %s\n", Bold.Render(name), Red.Render(detail))
+	p.line(p.err, "%s: %s\n", Bold.Render(name), Red.Render(detail))
 }
 
 func (p *StandardPrinter) Summary(msg string) {

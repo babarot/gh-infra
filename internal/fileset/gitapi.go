@@ -32,25 +32,29 @@ type commitFunc func(ctx context.Context, repo, branch, headSHA, message string,
 // GraphQL createCommitOnBranch mutation unless a file mode has to change, in
 // which case the Git Data API is used and the commit is not signed. Falls back to
 // Contents API for empty repositories.
-// Returns (prURL, skipped, error); prURL is non-empty only for pull_request strategy,
+// Returns (prURL, via, skipped, error); prURL is non-empty only for pull_request strategy,
+// via is how the changes were delivered (push for an empty repository, otherwise
+// opts.Via),
 // and skipped is true when the changes would not alter the HEAD tree, in which case
 // no commit (and, for pull_request strategy, no branch or PR) is created.
 // Retries up to maxCommitRetries times on HEAD conflict errors caused by concurrent commits,
 // refetching the target branch's HEAD before each retry.
 // For pull_request mode, branch creation and PR opening happen outside the retry loop so
 // that only the commit itself is retried on conflict.
-func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, bool, error) {
+func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, string, bool, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
 		if strings.Contains(err.Error(), "repository is empty") {
-			return "", false, p.applyToEmptyRepo(ctx, repo, changes, opts)
+			// An empty repository has no branch to open a pull request from,
+			// so the files are pushed to it.
+			return "", manifest.ViaPush, false, p.applyToEmptyRepo(ctx, repo, changes, opts)
 		}
-		return "", false, fmt.Errorf("get HEAD: %w", err)
+		return "", opts.Via, false, fmt.Errorf("get HEAD: %w", err)
 	}
 
 	if p.isNoopCommit(ctx, repo, headSHA, changes) {
 		statusFn(noopCommitStatus)
-		return "", true, nil
+		return "", opts.Via, true, nil
 	}
 
 	commit := commitFunc(p.commitViaGraphQL)
@@ -59,7 +63,7 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 	}
 	message, err := resolveCommitMessage(opts, repo)
 	if err != nil {
-		return "", false, fmt.Errorf("render commit message: %w", err)
+		return "", opts.Via, false, fmt.Errorf("render commit message: %w", err)
 	}
 	targetBranch := defaultBranch
 
@@ -70,7 +74,7 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		}
 		statusFn("creating PR branch...")
 		if err := p.createBranchAt(ctx, repo, prBranch, headSHA); err != nil {
-			return "", false, fmt.Errorf("create PR branch: %w", err)
+			return "", opts.Via, false, fmt.Errorf("create PR branch: %w", err)
 		}
 		targetBranch = prBranch
 	}
@@ -90,14 +94,14 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 			break
 		}
 		if !isHeadConflict(err) {
-			return "", false, err
+			return "", opts.Via, false, err
 		}
 		if attempt == maxCommitRetries-1 {
-			return "", false, fmt.Errorf("commit retries exhausted for %s: %w", repo, err)
+			return "", opts.Via, false, fmt.Errorf("commit retries exhausted for %s: %w", repo, err)
 		}
 		headSHA, err = p.getRefSHA(ctx, repo, targetBranch)
 		if err != nil {
-			return "", false, fmt.Errorf("get HEAD for retry: %w", err)
+			return "", opts.Via, false, fmt.Errorf("get HEAD for retry: %w", err)
 		}
 	}
 
@@ -107,9 +111,9 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		// PR is still opened (or the existing one returned).
 		statusFn("creating pull request...")
 		prURL, err := p.openPR(ctx, repo, defaultBranch, targetBranch, opts)
-		return prURL, false, err
+		return prURL, opts.Via, false, err
 	}
-	return "", skipped, nil
+	return "", opts.Via, skipped, nil
 }
 
 const noopCommitStatus = "no content change on GitHub, skipping commit"

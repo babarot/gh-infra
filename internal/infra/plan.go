@@ -164,32 +164,11 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	p.Phase("Fetching current state from GitHub API ...")
 	p.BlankLine()
 
-	// Collect all target names and start a single spinner display.
-	// Deduplicate: one line per repo, with a pending count for how many
-	// sources (repository / fileset) will call Done().
+	// One spinner line per repository, done when each repository and FileSet
+	// unit planning it has reported.
 	repoNames := repository.PlanTargetRepoNames(parsed.Repositories, opts.FilterRepo)
 	fileNames := fileset.PlanTargetRepoNames(parsed.FileSets, opts.FilterRepo)
-	taskMap := make(map[string]int) // repo full name → pending count
-	for _, n := range repoNames {
-		taskMap[n]++
-	}
-	for _, n := range fileNames {
-		taskMap[n]++
-	}
-	// Build tasks preserving order (repos first, then fileset-only)
-	var allTasks []ui.RefreshTask
-	seen := make(map[string]bool)
-	for _, n := range append(repoNames, fileNames...) {
-		if seen[n] {
-			continue
-		}
-		seen[n] = true
-		allTasks = append(allTasks, ui.RefreshTask{
-			Name:      n,
-			DoneLabel: "planned desired changes",
-			Pending:   taskMap[n],
-		})
-	}
+	allTasks := refreshTasks(append(repoNames, fileNames...), "planned desired changes")
 	tracker, ctx, stop := startRefresh(ctx, runner, allTasks)
 	defer stop()
 
