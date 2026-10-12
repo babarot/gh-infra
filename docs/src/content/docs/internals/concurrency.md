@@ -33,7 +33,7 @@ Blue = parallelized (per repo), Gray = sequential.
 
 ## Fetch Phase (plan + apply)
 
-### Repository Fetch — `FetchAllChanges`
+### Repository Fetch — `Processor.Plan`
 
 Fetches the current state of all repositories from GitHub API in parallel.
 
@@ -60,7 +60,7 @@ flowchart TB
     pool --> results["Collect results by index"]
 ```
 
-**Implementation:** `internal/repository/orchestrate.go` via `parallel.Map`
+**Implementation:** `internal/repository/plan.go` `Plan()` via `parallel.Map`
 
 - `parallel.Map` spawns a fixed pool of 10 worker goroutines that pull jobs from a channel
 - Each worker calls `Fetcher.FetchRepository()`, which internally uses `errgroup` to parallelize sub-fetches (branch protection, rulesets, secrets, variables, actions, commit message settings, release immutability, security endpoints)
@@ -88,7 +88,7 @@ flowchart TB
     units --> collect["Collect in order"]
 ```
 
-**Implementation:** `internal/fileset/fileset.go` `Plan()`
+**Implementation:** `internal/fileset/plan.go` `Plan()`
 
 - One goroutine per (fileset × target repo) pair
 - Spinner display via `ui.RunRefresh` per target repo
@@ -102,9 +102,9 @@ The diff runs immediately after each repo fetch completes (within the same gorou
 
 ## Apply Phase
 
-Repository changes are applied first, then FileSet changes, so a FileSet can write to a repository that the same apply creates. Within each step, repositories run in parallel.
+Repository changes are applied first, then FileSet changes, so a FileSet can write to a repository that the same apply creates. Within each step, repositories run in parallel, and so do FileSets. The steps and their concurrency are the same with the spinner and with `GH_INFRA_OUTPUT=stream`; only how progress is shown differs. Results are listed in a fixed order: repositories as planned, then FileSets in manifest order, each by target repository name.
 
-### Repository Apply — `Executor.Apply`
+### Repository Apply — `Processor.Apply`
 
 ```mermaid
 flowchart TB
@@ -157,7 +157,7 @@ flowchart TB
     pool --> flat["Flatten results in order"]
 ```
 
-**Implementation:** `internal/fileset/fileset.go` `Apply()` via `parallel.Map`
+**Implementation:** `internal/fileset/apply.go` `Apply()` via `parallel.Map`
 
 - Changes are grouped by target repo using `groupChangesByTarget()`
 - **Repos run in parallel** — bounded by worker pool (max 10)
@@ -165,9 +165,10 @@ flowchart TB
   1. Get HEAD SHA (base commit)
   2. Send mutation with all file additions/deletions (direct push), or create branch first then send mutation and open PR (pull request)
 - A single verified commit bundles all file changes for one repo
+- An empty repository (no commits yet) has no branch for a pull request, so its files are pushed through the Contents API whatever `via` says, and the result reports `push`
 - Spinner display shows per-repo progress
 
-### Import — `importMultipleRepos`
+### Import — `infra.Import`
 
 ```mermaid
 flowchart TB
@@ -183,7 +184,7 @@ flowchart TB
     pool --> ordered["Output YAML to stdout in argument order"]
 ```
 
-**Implementation:** `cmd/import.go` via `parallel.Map`
+**Implementation:** `internal/infra/import.go` `Import()` via `parallel.Map`
 
 - Each repo is fetched and marshaled to YAML in parallel
 - Results stored in indexed slice, output in order after all goroutines complete
@@ -236,7 +237,7 @@ When a call hits a rate limit, gh-infra waits and tries again instead of failing
 - **Primary rate limit**: it reads when the exhausted limit (REST or GraphQL) resets from `gh api rate_limit`, which does not count against the limit, and waits until then.
 - The wait is shared: once one call hits a limit, every other call of the command waits too before starting another `gh` process, so concurrent calls do not keep hitting it.
 - A call waits at most 15 minutes in total. If the limit resets later than that, the call fails at once with `GitHub API rate limit exceeded; resets at 10:42 (in 38m)`.
-- While waiting, the spinner shows `Waiting for the GitHub API rate limit until 10:42:00 ...`. Ctrl+C stops the wait.
+- While waiting, the spinner shows `Waiting for the GitHub API rate limit until 10:42:00 ...`. Without the spinner (in CI, or with `GH_INFRA_OUTPUT=stream`), the same message is printed as a line when the wait starts. Ctrl+C stops the wait.
 
 Rate limits are recognized by the message, since GraphQL calls (`gh repo view`) report them with HTTP 200 and some `gh` commands do not show the status.
 

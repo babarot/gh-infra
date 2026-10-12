@@ -37,7 +37,7 @@ func withTrackerCancel(parent context.Context, c canceler) (context.Context, con
 // shown. Call stop when the work is done; it does not wait for the spinner.
 func startRefresh(parent context.Context, runner any, tasks []ui.RefreshTask) (tracker *ui.RefreshTracker, ctx context.Context, stop func()) {
 	tracker = ui.RunRefresh(tasks)
-	stopWaits := showRateLimitWaits(runner, tracker)
+	stopWaits := showRateLimitWaits(runner, tracker.SetNotice)
 	stopInterrupt := context.AfterFunc(parent, tracker.Interrupt)
 	ctx, cancel := withTrackerCancel(parent, tracker)
 	return tracker, ctx, func() {

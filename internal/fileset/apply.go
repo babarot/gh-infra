@@ -3,6 +3,8 @@ package fileset
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/babarot/gh-infra/internal/parallel"
@@ -36,6 +38,7 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptio
 	for repo, repoChanges := range grouped {
 		repoList = append(repoList, repoEntry{name: repo, changes: repoChanges})
 	}
+	slices.SortFunc(repoList, func(a, b repoEntry) int { return strings.Compare(a.name, b.name) })
 
 	if len(repoList) == 0 {
 		return nil
@@ -69,14 +72,14 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptio
 		statusFn := func(status string) {
 			reporter.UpdateStatus(entry.name, status)
 		}
-		prURL, skipped, err := p.applyToRepo(ctx, entry.name, filesToApply, opts, statusFn)
+		prURL, via, skipped, err := p.applyToRepo(ctx, entry.name, filesToApply, opts, statusFn)
 		elapsed := time.Since(start)
 
 		for _, c := range filesToApply {
 			results = append(results, ApplyResult{
 				Change:  c,
 				Err:     err,
-				Via:     opts.Via,
+				Via:     via,
 				PRURL:   prURL,
 				Skipped: skipped,
 			})

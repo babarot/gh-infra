@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/repository"
 	"github.com/babarot/gh-infra/internal/ui"
@@ -204,10 +205,15 @@ func TestApply_Canceled(t *testing.T) {
 				Type: repository.ChangeCreate, Resource: manifest.ResourceVariable, Name: "o/r", Field: v.Name, NewValue: v.Value,
 			})
 		}
+		fs := &manifest.FileSet{
+			Metadata: manifest.FileSetMetadata{Owner: "o", Name: "files"},
+			Spec:     manifest.FileSetSpec{Repositories: []manifest.FileSetRepository{{Name: "x"}}, Via: manifest.ViaPush},
+		}
 		result := &PlanResult{
 			RepoChanges: changes,
+			FileChanges: []fileset.Change{{FileSet: fs, FileSetID: fs.Identity(), Target: "o/x", Path: "f.txt", Type: fileset.ChangeCreate, Desired: "x", Via: manifest.ViaPush}},
 			TargetRepos: []*manifest.Repository{repo},
-			Parsed:      &manifest.ParseResult{Repositories: []*manifest.Repository{repo}},
+			Parsed:      &manifest.ParseResult{Repositories: []*manifest.Repository{repo}, FileSets: []*manifest.FileSet{fs}},
 			engine:      newEngine(runner, nil, discardPrinter()),
 		}
 
@@ -217,7 +223,7 @@ func TestApply_Canceled(t *testing.T) {
 			t.Errorf("stream=%v: err = %v, want context.Canceled", stream, err)
 		}
 		if len(runner.calls) != 1 {
-			t.Errorf("stream=%v: gh calls = %q, want none after the cancel", stream, runner.calls)
+			t.Errorf("stream=%v: gh calls = %q, want none after the cancel (no FileSet either)", stream, runner.calls)
 		}
 	}
 }

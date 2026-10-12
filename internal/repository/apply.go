@@ -57,16 +57,19 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 		}
 		elapsed := time.Since(start)
 
-		firstErr := canceled
+		// Report every failure of the repository, not only the first.
+		var errs []error
 		for _, r := range results {
 			if r.Err != nil {
-				firstErr = r.Err
-				break
+				errs = append(errs, r.Err)
 			}
 		}
+		if canceled != nil {
+			errs = append(errs, canceled)
+		}
 
-		if firstErr != nil {
-			reporter.Error(g.name, elapsed, firstErr)
+		if err := errors.Join(errs...); err != nil {
+			reporter.Error(g.name, elapsed, err)
 		} else {
 			reporter.Done(g.name, elapsed, len(results))
 		}

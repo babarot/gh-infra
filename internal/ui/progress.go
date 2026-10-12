@@ -99,7 +99,9 @@ func (r *StreamReporter) Done(name string, elapsed time.Duration, count int) {
 }
 
 func (r *StreamReporter) Error(name string, elapsed time.Duration, err error) {
-	r.printer.StreamError(name, fmt.Sprintf("Error after %s: %s", FormatDuration(elapsed), err))
+	// One line per event: several errors (errors.Join) are joined with "; ".
+	msg := strings.ReplaceAll(err.Error(), "\n", "; ")
+	r.printer.StreamError(name, fmt.Sprintf("Error after %s: %s", FormatDuration(elapsed), msg))
 }
 
 func (r *StreamReporter) Wait() {
