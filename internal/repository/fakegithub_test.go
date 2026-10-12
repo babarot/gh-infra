@@ -34,6 +34,11 @@ type fakeGitHub struct {
 	s     fakeState
 	// writes records each command that changed the state, for failure output.
 	writes []string
+	// missing: the repository does not exist until gh repo create.
+	missing bool
+	// defaultLabels are the labels GitHub creates in a new repository; an
+	// organization can change them.
+	defaultLabels []fakeLabel
 }
 
 type fakeState struct {
@@ -138,6 +143,31 @@ func newFakeGitHub(owner, name string, s fakeState) *fakeGitHub {
 	return &fakeGitHub{owner: owner, name: name, s: s}
 }
 
+// githubDefaultLabels are the labels GitHub creates in a new repository of a
+// user (seen on a new repository, 2026-10).
+var githubDefaultLabels = []fakeLabel{
+	{Name: "bug", Color: "d73a4a", Description: "Something isn't working"},
+	{Name: "accessibility", Color: "c5def5", Description: "Accessibility related issues"},
+	{Name: "documentation", Color: "0075ca", Description: "Improvements or additions to documentation"},
+	{Name: "duplicate", Color: "cfd3d7", Description: "This issue or pull request already exists"},
+	{Name: "enhancement", Color: "a2eeef", Description: "New feature or request"},
+	{Name: "good first issue", Color: "7057ff", Description: "Good for newcomers"},
+	{Name: "help wanted", Color: "008672", Description: "Extra attention is needed"},
+	{Name: "invalid", Color: "e4e669", Description: "This doesn't seem right"},
+	{Name: "question", Color: "d876e3", Description: "Further information is requested"},
+	{Name: "wontfix", Color: "ffffff", Description: "This will not be worked on"},
+}
+
+// newMissingFakeGitHub is a fake for a repository that does not exist yet.
+// gh repo create makes it as GitHub does: empty, with no branch, the
+// features and merge methods on, Actions allowed, and defaultLabels.
+func newMissingFakeGitHub(owner, name string, defaultLabels []fakeLabel) *fakeGitHub {
+	f := newFakeGitHub(owner, name, fakeState{})
+	f.missing = true
+	f.defaultLabels = defaultLabels
+	return f
+}
+
 func (f *fakeGitHub) Run(_ context.Context, args ...string) ([]byte, error) {
 	return f.handle(nil, args)
 }
@@ -166,6 +196,14 @@ func (f *fakeGitHub) handle(body []byte, args []string) ([]byte, error) {
 	readOnly := f.s.Repo.Archived && !strings.HasPrefix(cmd, "repo unarchive ")
 	if readOnly {
 		before, _ = json.Marshal(f.s)
+	}
+	if f.missing && f.aboutRepository(args) && !strings.HasPrefix(cmd, "repo create ") {
+		// gh repo view reports a missing repository through GraphQL, the
+		// REST endpoints with 404.
+		if strings.HasPrefix(cmd, "repo view ") {
+			return nil, fmt.Errorf("GraphQL: Could not resolve to a Repository with the name '%s'. (repository)", f.fullName())
+		}
+		return nil, fakeStatus(gh.ErrNotFound, "Not Found")
 	}
 	out, wrote, err := f.dispatch(body, args)
 	if readOnly && wrote {
@@ -197,6 +235,15 @@ func isStatusError(err error) bool {
 func fakeStatus(e error, msg string) error { return fmt.Errorf("%s: %w", msg, e) }
 
 func (f *fakeGitHub) fullName() string { return f.owner + "/" + f.name }
+
+// aboutRepository reports whether a command reads or writes the repository,
+// as opposed to its owner (teams, apps, roles).
+func (f *fakeGitHub) aboutRepository(args []string) bool {
+	if len(args) > 1 && args[0] == "api" {
+		return strings.HasPrefix(strings.TrimPrefix(args[1], "/"), "repos/")
+	}
+	return true
+}
 
 func (f *fakeGitHub) dispatch(body []byte, args []string) ([]byte, bool, error) {
 	if len(args) < 2 {
@@ -264,6 +311,41 @@ func (f *fakeGitHub) repoCmd(args []string) ([]byte, bool, error) {
 			"deleteBranchOnMerge":   r.DeleteBranchOnMerge,
 			"defaultBranchRef":      map[string]string{"name": r.DefaultBranch},
 		}), false, nil
+	case "create":
+		if !f.missing {
+			return nil, false, fakeStatus(gh.ErrValidation, "name already exists on this account")
+		}
+		visibility := ""
+		for _, v := range []string{"private", "public", "internal"} {
+			if slices.Contains(args, "--"+v) {
+				visibility = v
+			}
+		}
+		if visibility == "" {
+			return nil, false, errUnknown
+		}
+		desc, _ := fakeFlag(args, "--description")
+		f.s = fakeState{
+			Repo: fakeRepo{
+				Description: desc, Visibility: visibility,
+				HasIssues: !slices.Contains(args, "--disable-issues"), HasProjects: true,
+				HasWiki: !slices.Contains(args, "--disable-wiki"), HasPullRequests: true,
+				AllowMergeCommit: true, AllowSquashMerge: true, AllowRebaseMerge: true,
+				MergeCommitTitle: "MERGE_MESSAGE", MergeCommitMessage: "PR_TITLE",
+				SquashMergeCommitTitle: "COMMIT_OR_PR_TITLE", SquashMergeCommitMessage: "COMMIT_MESSAGES",
+				PullRequestCreationPolicy: "all",
+			},
+			VulnerabilityAlerts: false,
+			Actions:             fakeActions{Enabled: true, AllowedActions: "all"},
+			Workflow:            fakeWorkflow{DefaultWorkflowPermissions: "read"},
+			Labels:              slices.Clone(f.defaultLabels),
+			Org:                 f.s.Org, // the owner's, not the repository's
+		}
+		f.s = newFakeGitHub(f.owner, f.name, f.s).s
+		// A new repository has no commit, so no branch yet.
+		f.s.Repo.DefaultBranch = ""
+		f.missing = false
+		return nil, true, nil
 	case "archive", "unarchive":
 		if !slices.Contains(args, "--yes") {
 			return nil, false, errUnknown

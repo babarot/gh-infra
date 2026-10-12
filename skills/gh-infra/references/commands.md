@@ -51,6 +51,7 @@ Flags:
 Exit status:
 
 - exits 1 if any repository's current state could not be fetched (e.g. token lacks permissions), even with no changes; the failed repos are skipped, never planned as creates
+- a repository that does not exist is planned as `+ repository` plus its rulesets, secrets, variables, labels and milestones, applied in one run; branch protection and deleting undeclared default labels are left to the next plan (listed as notes / `warnings`)
 - with `--detailed-exitcode`, exits 2 when changes are detected; an error (1) wins over changes; an interrupted plan or paths with no manifests also exit 1
 - with the deprecated `--ci`, exits 1 when changes are detected
 

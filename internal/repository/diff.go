@@ -262,13 +262,7 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	name := desired.Metadata.FullName()
 
 	if current.IsNew {
-		return []Change{{
-			Type:     ChangeCreate,
-			Resource: manifest.ResourceRepository,
-			Name:     name,
-			Field:    "repository",
-			NewValue: name,
-		}}
+		return diffNew(ctx, desired, current, opt)
 	}
 
 	// An archived repository is read-only: unarchive before anything else,
@@ -298,6 +292,52 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	}
 
 	return changes
+}
+
+// diffNew plans a repository that does not exist yet: the create, which
+// also applies the settings, features, merge strategy, topics, security and
+// Actions, and then what can be planned exactly against the empty repository
+// GitHub makes, applied in the same run. What cannot is listed by
+// CreateNotes.
+func diffNew(ctx context.Context, desired *manifest.Repository, empty *CurrentState, opt DiffOptions) []Change {
+	name := desired.Metadata.FullName()
+	changes := []Change{{
+		Type:     ChangeCreate,
+		Resource: manifest.ResourceRepository,
+		Name:     name,
+		Field:    "repository",
+		NewValue: name,
+	}}
+	changes = append(changes, diffRulesets(ctx, name, desired, empty, opt.Resolver)...)
+	changes = append(changes, diffSecrets(name, desired, empty, opt.ForceSecrets)...)
+	changes = append(changes, diffVariables(name, desired, empty)...)
+	// GitHub's default labels are not known here: a label with the name of
+	// one of them is updated by apply instead of created (see CreateNotes).
+	changes = append(changes, diffLabels(name, desired, empty, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
+	changes = append(changes, diffMilestones(name, desired, empty)...)
+	// An archived repository is read-only, so the archive goes last.
+	appendChanged(diffContext{resource: manifest.ResourceRepository, name: name}, &changes, "archived", desired.Spec.Archived, false)
+	return changes
+}
+
+// CreateNotes explains how creating a repository that does not exist yet
+// differs from what its plan shows: GitHub creates default labels, so one
+// with the name of a declared label is updated instead of created; and what
+// the creating run cannot apply, so a later plan does: branch protection,
+// since a new repository has no branch, and the deletion of default labels
+// the manifest leaves out, since which ones GitHub creates is not known.
+func CreateNotes(desired *manifest.Repository) []string {
+	var notes []string
+	if len(desired.Spec.Labels) > 0 {
+		notes = append(notes, "a label named like one of GitHub's default labels is updated instead of created")
+	}
+	for _, bp := range desired.Spec.BranchProtection {
+		notes = append(notes, fmt.Sprintf("branch protection for %s is applied by a later plan, once the branch exists", bp.Pattern))
+	}
+	if desired.Spec.ManagesLabels() && manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync) == manifest.CollectionReconcileAuthoritative {
+		notes = append(notes, "GitHub's default labels not declared here are deleted by the next plan")
+	}
+	return notes
 }
 
 // IsArchive reports whether c archives a repository.

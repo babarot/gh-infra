@@ -58,6 +58,10 @@ type PlanResult struct {
 	Updates int
 	Deletes int
 
+	// CreateNotes explains, per repository this plan creates, how its create
+	// differs from what the plan shows, such as what a later plan applies.
+	CreateNotes map[string][]string
+
 	HasChanges bool
 
 	// FailedTargets lists repositories whose current state could not be
@@ -238,6 +242,7 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 		FailedTargets: failedTargets(tracker.Errors()),
 		TargetErrors:  tracker.Errors(),
 		Warnings:      parsed.Warnings,
+		CreateNotes:   createNotes(repoChanges, targetRepos),
 		engine:        eng,
 		runner:        runner,
 	}
@@ -264,7 +269,7 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	p.Separator()
 	p.Legend(result.Creates > 0, result.Updates > 0, result.Deletes > 0)
 
-	printPlan(p, repoChanges, fileChanges, opts.ShowDiff)
+	printPlanWithNotes(p, repoChanges, fileChanges, result.CreateNotes, opts.ShowDiff)
 
 	parts := []string{
 		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", result.Creates))),
@@ -309,4 +314,28 @@ func (r *PlanResult) PrintAPIUsage() {
 		return
 	}
 	printAPIUsage(r.Printer(), apiUsage(r.runner))
+}
+
+// createNotes returns the notes on the create of each new repository.
+func createNotes(changes []repository.Change, repos []*manifest.Repository) map[string][]string {
+	created := make(map[string]bool)
+	for _, c := range changes {
+		if c.Type == repository.ChangeCreate && c.Resource == manifest.ResourceRepository && c.Field == "repository" {
+			created[c.Name] = true
+		}
+	}
+	var out map[string][]string
+	for _, r := range repos {
+		name := r.Metadata.FullName()
+		if !created[name] {
+			continue
+		}
+		if notes := repository.CreateNotes(r); len(notes) > 0 {
+			if out == nil {
+				out = make(map[string][]string)
+			}
+			out[name] = notes
+		}
+	}
+	return out
 }
