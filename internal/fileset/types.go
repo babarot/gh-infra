@@ -27,7 +27,26 @@ type Change struct {
 	SHA         string // current SHA (for updates)
 	Mode        string // desired file mode from `executable`; empty leaves the mode as is
 	CurrentMode string // file mode on GitHub; set only when Mode is set and the file exists
-	Via         string // "push" or "pull_request" (from FileSet spec)
+	Via         string // "push" or "pull_request"; push for a pull_request FileSet when NoCommits
+	// NoCommits is set when the target repository has no commits, so a
+	// pull_request FileSet is pushed to it (see PushToEmpty).
+	NoCommits bool
+}
+
+// NoCommitsNote explains why a pull_request FileSet is pushed to a repository.
+const NoCommitsNote = "pushed to the default branch: the repository has no commits to open a pull request from"
+
+// PushToEmpty plans the changes of pull_request FileSets for target as a
+// push. A repository with no commits has no branch to open a pull request
+// from, so apply pushes the files to it, and the plan has to say so.
+func PushToEmpty(changes []Change, target string) {
+	for i := range changes {
+		c := &changes[i]
+		if c.Target == target && c.Via == manifest.ViaPullRequest {
+			c.Via = manifest.ViaPush
+			c.NoCommits = true
+		}
+	}
 }
 
 // Git file modes that a FileSet can set.

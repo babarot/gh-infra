@@ -33,7 +33,15 @@ Commits created this way are not signed, so they are not marked Verified, and br
 
 Repositories with **no commits** (e.g. freshly created) cannot use the GraphQL mutation because there is no existing HEAD. In this case, gh-infra automatically falls back to the **Contents API**.
 
-The Contents API can only operate on one file per request, so **each file becomes a separate commit**. The `via` setting is ignored — all files are pushed directly to the default branch.
+The Contents API can only operate on one file per request, so **each file becomes a separate commit**. An empty repository has no branch to open a pull request from, so files of a `via: pull_request` FileSet are pushed directly to the default branch. `plan` shows `via push` for such a repository, including one the same `apply` creates:
+
+```
+      ~ FileSet: 1 file, via push
+          + README.md  +1
+          pushed to the default branch: the repository has no commits to open a pull request from
+```
+
+`apply` delivers as the plan shows: a repository planned as `pull_request` that has no commits at `apply` fails with `run plan again` instead of being pushed to.
 
 ```
 # Normal repository (GraphQL createCommitOnBranch)

@@ -72,7 +72,13 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptio
 		statusFn := func(status string) {
 			reporter.UpdateStatus(entry.name, status)
 		}
-		prURL, via, skipped, err := p.applyToRepo(ctx, entry.name, filesToApply, opts, statusFn)
+		// Deliver as the plan showed for this repository, which can differ
+		// from the FileSet's via (PushToEmpty).
+		repoOpts := opts
+		if v := filesToApply[0].Via; v != "" {
+			repoOpts.Via = v
+		}
+		prURL, via, skipped, err := p.applyToRepo(ctx, entry.name, filesToApply, repoOpts, statusFn)
 		elapsed := time.Since(start)
 
 		for _, c := range filesToApply {

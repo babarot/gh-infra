@@ -117,6 +117,9 @@ func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChang
 				}
 				unsigned = unsigned || c.ModeChanged()
 			}
+			if fChanges[0].NoCommits {
+				p.Detail(fileset.NoCommitsNote)
+			}
 			if unsigned {
 				p.Detail("Changing file modes needs the Git Data API, so this commit will not be signed")
 			}

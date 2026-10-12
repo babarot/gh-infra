@@ -247,7 +247,7 @@ func (p *Processor) fetchRepoSettings(ctx context.Context, owner, name string) (
 	)
 	if err != nil {
 		// gh repo view returns GraphQL error for non-existent repos, not REST 404
-		if isRepoNotFound(err) {
+		if gh.IsRepoNotFound(err) {
 			return nil, gh.ErrNotFound
 		}
 		return nil, fmt.Errorf("fetch repo %s/%s: %w", owner, name, err)
@@ -1037,17 +1037,6 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 	}
 
 	return result, nil
-}
-
-// isRepoNotFound checks if an error indicates the repository doesn't exist.
-// gh repo view uses GraphQL which returns "Could not resolve to a Repository"
-// instead of a REST 404.
-func isRepoNotFound(err error) bool {
-	if errors.Is(err, gh.ErrNotFound) {
-		return true
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "Could not resolve to a Repository")
 }
 
 // forbiddenWhenManaged reports whether err is a 403 for a resource the

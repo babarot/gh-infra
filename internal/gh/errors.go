@@ -68,6 +68,16 @@ var (
 	ErrNotAuthed    = errors.New("gh: not authenticated, run 'gh auth login'")
 )
 
+// IsRepoNotFound reports whether err says the repository does not exist.
+// gh repo view uses GraphQL, which returns "Could not resolve to a
+// Repository" instead of a REST 404.
+func IsRepoNotFound(err error) bool {
+	if errors.Is(err, ErrNotFound) {
+		return true
+	}
+	return strings.Contains(err.Error(), "Could not resolve to a Repository")
+}
+
 // tryParseAPIError attempts to parse stderr as a GitHub API JSON error.
 // gh cli may output stderr as JSON followed by a human-readable line
 // (e.g., `{"message":"..."}gh: ... (Validation Failed)`), so we extract
