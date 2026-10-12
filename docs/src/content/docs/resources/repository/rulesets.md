@@ -215,7 +215,7 @@ rules:
 | `contexts[].context` | string | Name of the required status check |
 | `contexts[].app` | string | *(optional)* GitHub App slug that must provide this check. Omit to accept any provider |
 
-On an existing rule, leaving out `contexts` or `strict_required_status_checks_policy` keeps the current value. Set `required_status_checks: false` to remove the rule.
+GitHub requires both `contexts` and `strict_required_status_checks_policy`. When the rule is created, the ones you leave out are sent as no checks and `false`. On an existing rule, leaving out either keeps the current value. Set `required_status_checks: false` to remove the rule.
 
 ### Toggle Rules
 
