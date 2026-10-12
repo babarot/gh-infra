@@ -13,7 +13,7 @@ Every change `apply` makes is in the plan, and `apply` makes no other change.
 - What GitHub would reject is caught by `validate` or `plan`, not found at `apply`. For example, `automated_security_fixes: true` needs vulnerability alerts, and `actions.fork_pr_approval` is not supported for a private repository. Some settings GitHub accepts but silently does not save, such as `allow_auto_merge` on a private repository without branch protection; `plan` cannot know that, so `apply` compares what GitHub returns with what it sent and reports the setting as failed.
 - When a setting the manifest manages cannot be read (for example, the token lacks the permission), the repository is reported and left out of the plan. An unreadable setting is never compared as if it were absent or at its default, and a file that cannot be read is never planned as missing.
 - When the order of changes matters, `apply` keeps it, and the plan lists them in that order. For example, a repository is created before its FileSets write to it, and archiving comes after every other change to the repository.
-- A repository with no commits yet has no branch to open a pull request from, so a FileSet with `via: pull_request` pushes its files to it directly. The plan still shows `via pull_request`; the apply result shows `push`. See [Git API](../../internals/git-api/).
+- A repository with no commits yet has no branch to open a pull request from, so a FileSet with `via: pull_request` pushes its files to it directly. The plan still shows `via pull_request`; the apply result shows `push` ([#262](https://github.com/babarot/gh-infra/issues/262)). See [Git API](../../internals/git-api/).
 
 ## What a manifest leaves out is left alone
 
