@@ -191,7 +191,11 @@ func (f *fakeGitHub) handle(body []byte, args []string) ([]byte, error) {
 	defer f.mu.Unlock()
 	cmd := strings.Join(args, " ")
 	// GitHub makes an archived repository read-only, except unarchiving it.
-	// Writes change the state through pointers too, so restore a deep copy.
+	// Some of its APIs still accept writes (secrets, variables, topics,
+	// Actions permissions), but gh-infra does not change an archived
+	// repository, so the fake refuses every write: it holds gh-infra's rule,
+	// not every detail of GitHub's. Writes change the state through pointers
+	// too, so restore a deep copy.
 	var before []byte
 	readOnly := f.s.Repo.Archived && !strings.HasPrefix(cmd, "repo unarchive ")
 	if readOnly {

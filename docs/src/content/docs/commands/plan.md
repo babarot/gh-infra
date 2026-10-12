@@ -50,7 +50,7 @@ An error wins over changes: a plan with changes that also skipped a repository e
 
 `--ci` is deprecated and will be removed in a future release. It exits with `1` for changes as well as errors, so a job cannot tell them apart; switch to `--detailed-exitcode`. `--ci` also disabled colors; set `NO_COLOR=1` for that.
 
-`plan` reads only the settings each manifest sets, so the token needs only their permissions (see [Authentication](../../patterns/ci-cd/#authentication)). When fetching fails for a repository (for example, the token cannot read a setting the manifest manages), its error is shown and the repository is left out of the plan; an unreadable setting is never compared as if it were absent or at its default. A plan with skipped repositories is incomplete, so `plan` exits with `1` even if the other repositories have no changes. A file that cannot be fetched is never treated as missing, so no create is planned for it.
+`plan` reads only the settings each manifest sets, so the token needs only their permissions (see [Authentication](../../patterns/ci-cd/#authentication)). When fetching fails for a repository (for example, the token cannot read a setting the manifest manages), its error is shown and the repository is left out of the plan; an unreadable setting is never compared as if it were absent or at its default. A plan with skipped repositories is incomplete, so `plan` exits with `1` even if the other repositories have no changes. A file that cannot be fetched is never treated as missing, so no create is planned for it. A repository that is already archived is reported and left out the same way when the manifest changes it without `archived: false`, since gh-infra does not change an archived repository except to unarchive it.
 
 ## Examples
 
