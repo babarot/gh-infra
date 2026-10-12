@@ -1999,7 +1999,7 @@ func TestDiff_Rulesets_OnlySetFieldsAreCompared(t *testing.T) {
 // ─── Rulesets diff WITH resolver ───
 
 func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
@@ -2034,7 +2034,7 @@ func TestDiff_Rulesets_BypassActorsEqual(t *testing.T) {
 }
 
 func TestDiff_Rulesets_BypassActorsChanged(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
@@ -2071,6 +2071,7 @@ func TestDiff_Rulesets_BypassActorsChanged(t *testing.T) {
 
 func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},
@@ -2116,7 +2117,7 @@ func TestDiff_Rulesets_StatusChecksEqual(t *testing.T) {
 }
 
 func TestDiff_Rulesets_StatusChecksNoApp(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	resolver := manifest.NewResolver(mock).For("org")
 
 	desired := baseDesired()
@@ -2159,6 +2160,7 @@ func TestDiff_Rulesets_StatusChecksNoApp(t *testing.T) {
 
 func TestDiff_Rulesets_StatusChecksChanged(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},

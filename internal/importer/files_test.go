@@ -279,6 +279,7 @@ func TestPlanImportEntry_TemplateSyntaxImportsLiteralDiff(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 	runner := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api repos/org/repo/contents/go.mod": []byte(`{"content":"` + base64.StdEncoding.EncodeToString([]byte("module github.com/org/repo\n\ngo 1.27.0\n\nrequire example.com/foo v1.2.3\n")) + `","encoding":"base64"}`),
 		},
@@ -317,6 +318,7 @@ func TestPlanImportEntry_ChangedVarsPlaceholderSkips(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 	runner := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api repos/org/repo/contents/Makefile": []byte(`{"content":"` + base64.StdEncoding.EncodeToString([]byte("GO_VERSION=1.27.3\nTOOL=new\n")) + `","encoding":"base64"}`),
 		},
@@ -347,6 +349,7 @@ func TestPlanImportEntry_TemplateLineLiteralChangeAroundPlaceholder(t *testing.T
 		SourcePath: "/tmp/manifest.yaml",
 	}
 	runner := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api repos/org/repo/contents/.gitignore": []byte(`{"content":"` + base64.StdEncoding.EncodeToString([]byte("repo*\ndist\ncoverage.out\n")) + `","encoding":"base64"}`),
 		},

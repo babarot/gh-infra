@@ -13,7 +13,7 @@ import (
 // ─── Forward resolution: ResolveBypassActors ───
 
 func TestResolveBypassActors_RoleAdmin(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{Role: "admin", BypassMode: "always"}}
@@ -36,7 +36,7 @@ func TestResolveBypassActors_RoleAdmin(t *testing.T) {
 }
 
 func TestResolveBypassActors_RoleWrite(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{Role: "write", BypassMode: "pull_request"}}
@@ -50,7 +50,7 @@ func TestResolveBypassActors_RoleWrite(t *testing.T) {
 }
 
 func TestResolveBypassActors_RoleMaintain(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{Role: "maintain", BypassMode: "always"}}
@@ -64,7 +64,7 @@ func TestResolveBypassActors_RoleMaintain(t *testing.T) {
 }
 
 func TestResolveBypassActors_RoleInvalid(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{Role: "invalid", BypassMode: "always"}}
@@ -76,6 +76,7 @@ func TestResolveBypassActors_RoleInvalid(t *testing.T) {
 
 func TestResolveBypassActors_Team(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api orgs/myorg/teams/backend": []byte(`{"id":42}`),
 		},
@@ -97,6 +98,7 @@ func TestResolveBypassActors_Team(t *testing.T) {
 
 func TestResolveBypassActors_TeamNotFound(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Errors: map[string]error{
 			"api orgs/myorg/teams/ghost": fmt.Errorf("HTTP 404"),
 		},
@@ -112,6 +114,7 @@ func TestResolveBypassActors_TeamNotFound(t *testing.T) {
 
 func TestResolveBypassActors_App(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},
@@ -133,6 +136,7 @@ func TestResolveBypassActors_App(t *testing.T) {
 
 func TestResolveBypassActors_AppUnknown(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Errors: map[string]error{
 			"api apps/unknown-app": fmt.Errorf("HTTP 404"),
 		},
@@ -147,7 +151,7 @@ func TestResolveBypassActors_AppUnknown(t *testing.T) {
 }
 
 func TestResolveBypassActors_OrgAdmin(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{OrgAdmin: Ptr(true), BypassMode: "always"}}
@@ -165,6 +169,7 @@ func TestResolveBypassActors_OrgAdmin(t *testing.T) {
 
 func TestResolveBypassActors_CustomRole(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api orgs/myorg/custom-repository-roles": []byte(`{"custom_roles":[{"id":99,"name":"security-reviewer"}]}`),
 		},
@@ -186,6 +191,7 @@ func TestResolveBypassActors_CustomRole(t *testing.T) {
 
 func TestResolveBypassActors_CustomRoleNotFound(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api orgs/myorg/custom-repository-roles": []byte(`{"custom_roles":[{"id":99,"name":"other"}]}`),
 		},
@@ -200,7 +206,7 @@ func TestResolveBypassActors_CustomRoleNotFound(t *testing.T) {
 }
 
 func TestResolveBypassActors_NoTypeSpecified(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{BypassMode: "always"}}
@@ -212,7 +218,7 @@ func TestResolveBypassActors_NoTypeSpecified(t *testing.T) {
 
 func TestResolveBypassActors_MultipleTypesFirstWins(t *testing.T) {
 	// When both Role and Team are set, the switch hits Role first.
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{Role: "admin", Team: "backend", BypassMode: "always"}}
@@ -230,6 +236,7 @@ func TestResolveBypassActors_MultipleTypesFirstWins(t *testing.T) {
 
 func TestResolveStatusChecks_WithApp(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},
@@ -250,7 +257,7 @@ func TestResolveStatusChecks_WithApp(t *testing.T) {
 }
 
 func TestResolveStatusChecks_WithoutApp(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	checks := []RulesetStatusCheck{{Context: "ci/test"}}
@@ -265,6 +272,7 @@ func TestResolveStatusChecks_WithoutApp(t *testing.T) {
 
 func TestResolveStatusChecks_InvalidApp(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Errors: map[string]error{
 			"api apps/bad-app": fmt.Errorf("HTTP 404"),
 		},
@@ -282,6 +290,7 @@ func TestResolveStatusChecks_InvalidApp(t *testing.T) {
 
 func TestResolveAppID_Caching(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api apps/github-actions": []byte(`{"id":15368}`),
 		},
@@ -330,7 +339,7 @@ func TestRoleNameFromID(t *testing.T) {
 // ─── Reverse resolution: ReverseBypassActor ───
 
 func TestReverseBypassActor_RepositoryRoleKnown(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	got := r.ReverseBypassActor(context.Background(), 5, "RepositoryRole", "always", "myrepo")
@@ -343,7 +352,7 @@ func TestReverseBypassActor_RepositoryRoleKnown(t *testing.T) {
 }
 
 func TestReverseBypassActor_RepositoryRoleUnknown(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	got := r.ReverseBypassActor(context.Background(), 999, "RepositoryRole", "always", "myrepo")
@@ -354,6 +363,7 @@ func TestReverseBypassActor_RepositoryRoleUnknown(t *testing.T) {
 
 func TestReverseBypassActor_Team(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api orgs/myorg/teams --paginate": []byte(`[{"id":42,"slug":"backend"},{"id":99,"slug":"frontend"}]`),
 		},
@@ -368,6 +378,7 @@ func TestReverseBypassActor_Team(t *testing.T) {
 
 func TestReverseBypassActor_Integration(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api repos/myorg/myrepo/commits/HEAD/check-runs --jq .check_runs": []byte(`[{"app":{"id":15368,"slug":"github-actions"}}]`),
 		},
@@ -381,7 +392,7 @@ func TestReverseBypassActor_Integration(t *testing.T) {
 }
 
 func TestReverseBypassActor_OrganizationAdmin(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	got := r.ReverseBypassActor(context.Background(), 1, "OrganizationAdmin", "always", "myrepo")
@@ -391,7 +402,7 @@ func TestReverseBypassActor_OrganizationAdmin(t *testing.T) {
 }
 
 func TestReverseBypassActor_UnknownType(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	got := r.ReverseBypassActor(context.Background(), 1, "SomeNewType", "always", "myrepo")
@@ -403,7 +414,7 @@ func TestReverseBypassActor_UnknownType(t *testing.T) {
 // ─── Reverse resolution: ReverseStatusCheck ───
 
 func TestReverseStatusCheck_IntegrationIDZero(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	got := r.ReverseStatusCheck(context.Background(), "ci/test", 0, "myrepo")
@@ -417,6 +428,7 @@ func TestReverseStatusCheck_IntegrationIDZero(t *testing.T) {
 
 func TestReverseStatusCheck_IntegrationIDNonZero(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Responses: map[string][]byte{
 			"api repos/myorg/myrepo/commits/HEAD/check-runs --jq .check_runs": []byte(`[{"app":{"id":15368,"slug":"github-actions"}}]`),
 		},
@@ -431,6 +443,7 @@ func TestReverseStatusCheck_IntegrationIDNonZero(t *testing.T) {
 
 func TestReverseStatusCheck_CheckRunsFails(t *testing.T) {
 	mock := &gh.MockRunner{
+		Strict: true,
 		Errors: map[string]error{
 			"api repos/myorg/myrepo/commits/HEAD/check-runs --jq .check_runs": fmt.Errorf("API error"),
 		},
@@ -468,7 +481,7 @@ func TestParseIDPrefix(t *testing.T) {
 
 func TestResolveAppID_IDPrefix(t *testing.T) {
 	// No API call should be made — the mock has no responses
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	id, err := r.ResolveAppID(context.Background(), "id:12345")
@@ -485,7 +498,7 @@ func TestResolveAppID_IDPrefix(t *testing.T) {
 
 func TestResolveBypassActors_AppIDPrefix(t *testing.T) {
 	// Simulate private app: import exported "id:99999", plan should resolve without API
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{App: "id:99999", BypassMode: "always"}}
@@ -505,7 +518,7 @@ func TestResolveBypassActors_AppIDPrefix(t *testing.T) {
 }
 
 func TestResolveBypassActors_TeamIDPrefix(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{Team: "id:42", BypassMode: "always"}}
@@ -525,7 +538,7 @@ func TestResolveBypassActors_TeamIDPrefix(t *testing.T) {
 }
 
 func TestResolveBypassActors_CustomRoleIDPrefix(t *testing.T) {
-	mock := &gh.MockRunner{}
+	mock := &gh.MockRunner{Strict: true}
 	r := NewResolver(mock).For("myorg")
 
 	actors := []RulesetBypassActor{{CustomRole: "id:99", BypassMode: "always"}}
@@ -583,7 +596,7 @@ func TestResolver_ForBindsOwnerAndSharesAppCache(t *testing.T) {
 }
 
 func TestResolver_WithoutOwnerFails(t *testing.T) {
-	_, err := NewResolver(&gh.MockRunner{}).ResolveBypassActors(context.Background(), []RulesetBypassActor{{Team: "platform", BypassMode: "always"}})
+	_, err := NewResolver(&gh.MockRunner{Strict: true}).ResolveBypassActors(context.Background(), []RulesetBypassActor{{Team: "platform", BypassMode: "always"}})
 	if err == nil || !strings.Contains(err.Error(), "no owner") {
 		t.Errorf("err = %v, want a no-owner error rather than a lookup of orgs//teams", err)
 	}
