@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -21,6 +22,8 @@ type DiffFilesOptions struct {
 
 // DiffFiles computes file-level import changes for all matched FileSets.
 // It fetches current content from GitHub and compares against local content.
+// A file missing on GitHub has no change; any other failure to fetch a file
+// is returned, since the file's content on GitHub is unknown.
 func DiffFiles(ctx context.Context, runner gh.Runner, fileSets []*manifest.FileDocument, opts DiffFilesOptions) ([]Change, error) {
 	var changes []Change
 
@@ -48,7 +51,10 @@ func DiffFiles(ctx context.Context, runner gh.Runner, fileSets []*manifest.FileD
 					RepoCount: repoCount,
 					Shared:    file.OriginalSource != "" && opts.SourceRefCount[file.OriginalSource] > 1,
 				}
-				change := planImportEntry(ctx, runner, fullName, file, meta)
+				change, err := planImportEntry(ctx, runner, fullName, file, meta)
+				if err != nil {
+					return nil, err
+				}
 				changes = append(changes, change)
 			}
 		}
@@ -81,8 +87,9 @@ type importEntryContext struct {
 }
 
 // planImportEntry determines the suggested write mode, supported write modes, and
-// diff contents for a single file entry.
-func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, meta importEntryContext) Change {
+// diff contents for a single file entry. It returns an error only when the
+// file could not be fetched for a reason other than not existing.
+func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, meta importEntryContext) (Change, error) {
 	change := Change{
 		Target:             fullName,
 		Path:               file.Path,
@@ -118,7 +125,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		if !ok {
 			setWriteMetadata(&change, WriteSkip)
 			change.Reason = "cannot safely write back to template"
-			return change
+			return change, nil
 		}
 		templateTrace = trace
 	}
@@ -126,7 +133,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 	if file.Source != "" && strings.HasPrefix(file.Source, "github://") {
 		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "remote source (github://)"
-		return change
+		return change, nil
 	}
 
 	patchSupported := false
@@ -136,7 +143,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 	if len(file.Patches) > 0 && !patchSupported {
 		setWriteMetadata(&change, WriteSkip)
 		change.Reason = "expanded from directory source"
-		return change
+		return change, nil
 	}
 	patchPreferred := len(file.Patches) > 0 || meta.Shared
 	availableModes := []WriteMode{WriteInline}
@@ -158,10 +165,13 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 
 	// Fetch current content from GitHub
 	githubContent, err := fetchFileContent(ctx, runner, fullName, file.Path)
-	if err != nil {
+	if errors.Is(err, gh.ErrNotFound) {
 		// File doesn't exist on GitHub — nothing to import
 		change.Type = fileset.ChangeNoOp
-		return change
+		return change, nil
+	}
+	if err != nil {
+		return change, fmt.Errorf("fetch %s from %s: %w", file.Path, fullName, err)
 	}
 
 	desiredContent := githubContent
@@ -171,7 +181,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 			setWriteMetadata(&change, WriteSkip)
 			change.Type = fileset.ChangeNoOp
 			change.Reason = "cannot safely write back to template"
-			return change
+			return change, nil
 		}
 		desiredContent = reversed
 	}
@@ -186,7 +196,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 			setWriteMetadata(&change, WriteSkip)
 			change.Type = fileset.ChangeNoOp
 			change.Reason = fmt.Sprintf("cannot apply existing patches: %v", err)
-			return change
+			return change, nil
 		}
 		change.PatchCurrent = patchedContent
 	} else if patchSupported {
@@ -203,7 +213,7 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 				setWriteMetadata(&change, WriteSkip)
 				change.Type = fileset.ChangeNoOp
 				change.Reason = fmt.Sprintf("patch generation failed: %v", err)
-				return change
+				return change, nil
 			}
 			change.PatchContent = patch
 		}
@@ -211,10 +221,10 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 
 	change.UpdateTypeForMode(change.SuggestedWriteMode)
 	if change.Type == fileset.ChangeNoOp {
-		return change
+		return change, nil
 	}
 
-	return change
+	return change, nil
 }
 
 func configurePatchTarget(change *Change, file manifest.FileEntry, meta importEntryContext) bool {

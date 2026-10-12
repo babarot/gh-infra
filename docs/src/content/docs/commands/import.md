@@ -242,6 +242,10 @@ An entry cannot drop single default items. When the repository has only some of 
 
 Skipped files are shown in the plan output with a warning icon and the skip reason displayed dimmed.
 
+### Repositories That Cannot Be Read
+
+A file that does not exist on GitHub has nothing to import. When a repository, or a file of it, cannot be read for another reason (no permission for the repository or its contents, a server error, a rate limit that resets too late), the repository is reported as an error and left out: none of its settings or files are written, and the other repositories are still imported. The run ends with `Some repositories were skipped due to errors above.` when nothing else changed. An invalid token (401), or a 403 when reading a repository's settings, stops the import before anything is written.
+
 ### Shared Source Files
 
 When a source file is shared across multiple repositories in a FileSet, the default import action is `patch`, not `write`.

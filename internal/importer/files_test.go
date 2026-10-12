@@ -11,27 +11,37 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
+// notFoundRunner answers every command as if the file did not exist.
+type notFoundRunner struct{}
+
+func (notFoundRunner) Run(context.Context, ...string) ([]byte, error) { return nil, gh.ErrNotFound }
+func (notFoundRunner) RunWithStdin(context.Context, []byte, ...string) ([]byte, error) {
+	return nil, gh.ErrNotFound
+}
+
 // helper to call planImportEntry with default repo values for tests that don't need them.
-func callPlan(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoCount int) Change {
-	repo := manifest.FileSetRepository{Name: "repo"}
-	return planImportEntry(ctx, runner, fullName, file, importEntryContext{
-		Doc:       doc,
-		RepoIndex: 0,
-		Repo:      repo,
-		RepoCount: repoCount,
-	})
+// A nil runner finds no file on GitHub.
+func callPlan(t *testing.T, ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoCount int) Change {
+	t.Helper()
+	return callPlanWith(t, ctx, runner, fullName, file, importEntryContext{Doc: doc, Repo: manifest.FileSetRepository{Name: "repo"}, RepoCount: repoCount})
 }
 
 // callPlanShared is like callPlan but marks the source as shared.
-func callPlanShared(ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoCount int) Change {
-	repo := manifest.FileSetRepository{Name: "repo"}
-	return planImportEntry(ctx, runner, fullName, file, importEntryContext{
-		Doc:       doc,
-		RepoIndex: 0,
-		Repo:      repo,
-		RepoCount: repoCount,
-		Shared:    true,
-	})
+func callPlanShared(t *testing.T, ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, doc *manifest.FileDocument, repoCount int) Change {
+	t.Helper()
+	return callPlanWith(t, ctx, runner, fullName, file, importEntryContext{Doc: doc, Repo: manifest.FileSetRepository{Name: "repo"}, RepoCount: repoCount, Shared: true})
+}
+
+func callPlanWith(t *testing.T, ctx context.Context, runner gh.Runner, fullName string, file manifest.FileEntry, meta importEntryContext) Change {
+	t.Helper()
+	if runner == nil {
+		runner = notFoundRunner{}
+	}
+	change, err := planImportEntry(ctx, runner, fullName, file, meta)
+	if err != nil {
+		t.Fatalf("planImportEntry: %v", err)
+	}
+	return change
 }
 
 func TestPlanImportEntry_ExclusiveSourceUsesWriteSource(t *testing.T) {
@@ -47,7 +57,7 @@ func TestPlanImportEntry_ExclusiveSourceUsesWriteSource(t *testing.T) {
 		DocIndex:   0,
 	}
 
-	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSource {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSource)
@@ -75,7 +85,7 @@ func TestPlanImportEntry_WriteInline(t *testing.T) {
 		DocIndex:   2,
 	}
 
-	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteInline {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteInline)
@@ -101,7 +111,7 @@ func TestPlanImportEntry_SkipGitHubSource(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 
-	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSkip {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSkip)
@@ -122,7 +132,7 @@ func TestPlanImportEntry_UnsupportedTemplateSyntaxSkips(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 
-	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSkip {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WriteSkip)
@@ -150,7 +160,7 @@ func TestPlanImportEntry_PatchesUsesWritePatch(t *testing.T) {
 	}
 
 	// nil runner → fetch will fail → NoOp, but WriteMode should be WritePatch
-	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WritePatch {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WritePatch)
@@ -170,7 +180,7 @@ func TestPlanImportEntry_CreateOnly_NotSkipped(t *testing.T) {
 	}
 
 	// Non-shared source + create_only → WriteSource (direct update).
-	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode == WriteSkip {
 		t.Errorf("WriteMode should not be WriteSkip for create_only, got %q", change.WriteMode)
@@ -196,7 +206,7 @@ func TestPlanImportEntry_SharedSourceUsesWritePatch(t *testing.T) {
 	}
 
 	// shared=true → should use WritePatch instead of WriteSource
-	change := callPlanShared(context.TODO(), nil, "org/repo", file, doc, 1)
+	change := callPlanShared(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WritePatch {
 		t.Errorf("WriteMode = %q, want %q", change.WriteMode, WritePatch)
@@ -204,9 +214,7 @@ func TestPlanImportEntry_SharedSourceUsesWritePatch(t *testing.T) {
 }
 
 func TestPlanImportEntry_NoDiff(t *testing.T) {
-	// When GitHub content matches local, Type should be NoOp.
-	// We can't easily test with a real runner, but we can verify that
-	// when the GitHub fetch fails (nil runner), it's also NoOp.
+	// A file that does not exist on GitHub has nothing to import.
 	file := manifest.FileEntry{
 		Path:           "test.txt",
 		Content:        "local content",
@@ -217,8 +225,8 @@ func TestPlanImportEntry_NoDiff(t *testing.T) {
 		SourcePath: "/tmp/manifest.yaml",
 	}
 
-	// nil runner → fetch will fail → NoOp
-	change := callPlan(context.TODO(), nil, "org/repo", file, doc, 1)
+	// nil runner → not found → NoOp
+	change := callPlan(t, context.TODO(), nil, "org/repo", file, doc, 1)
 
 	if change.Type != fileset.ChangeNoOp {
 		t.Errorf("Type = %q, want %q", change.Type, fileset.ChangeNoOp)
@@ -240,7 +248,7 @@ func TestDiffFiles_ReportsPerFileStatus(t *testing.T) {
 	}
 
 	var statuses []string
-	_, err := DiffFiles(context.TODO(), nil, []*manifest.FileDocument{doc}, DiffFilesOptions{
+	_, err := DiffFiles(context.TODO(), notFoundRunner{}, []*manifest.FileDocument{doc}, DiffFilesOptions{
 		FilterRepo:     "org/repo",
 		SourceRefCount: map[string]int{},
 		OnStatus: func(status string) {
@@ -285,7 +293,7 @@ func TestPlanImportEntry_TemplateSyntaxImportsLiteralDiff(t *testing.T) {
 		},
 	}
 
-	change := callPlan(context.TODO(), runner, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), runner, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSource {
 		t.Fatalf("WriteMode = %q, want %q", change.WriteMode, WriteSource)
@@ -324,7 +332,7 @@ func TestPlanImportEntry_ChangedVarsPlaceholderSkips(t *testing.T) {
 		},
 	}
 
-	change := callPlan(context.TODO(), runner, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), runner, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSkip {
 		t.Fatalf("WriteMode = %q, want %q", change.WriteMode, WriteSkip)
@@ -355,7 +363,7 @@ func TestPlanImportEntry_TemplateLineLiteralChangeAroundPlaceholder(t *testing.T
 		},
 	}
 
-	change := callPlan(context.TODO(), runner, "org/repo", file, doc, 1)
+	change := callPlan(t, context.TODO(), runner, "org/repo", file, doc, 1)
 
 	if change.WriteMode != WriteSource {
 		t.Fatalf("WriteMode = %q, want %q", change.WriteMode, WriteSource)
