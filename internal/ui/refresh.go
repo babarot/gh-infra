@@ -211,7 +211,10 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case taskErrorMsg:
 		for i := range m.items {
-			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+			if m.items[i].name != msg.name {
+				continue
+			}
+			if m.items[i].status == taskRunning {
 				m.items[i].status = taskError
 				m.items[i].errMsg = msg.err.Error()
 				m.items[i].statusText = ""
@@ -220,8 +223,15 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.items[i].pending <= 0 {
 					m.remaining--
 				}
-				break
+			} else if m.items[i].pending > 0 {
+				// Already done, errored or failed, with other sources still
+				// pending: count this one and keep the first outcome shown.
+				m.items[i].pending--
+				if m.items[i].pending <= 0 {
+					m.remaining--
+				}
 			}
+			break
 		}
 		if m.remaining <= 0 {
 			return m, tea.Quit
@@ -230,7 +240,10 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case taskFailMsg:
 		for i := range m.items {
-			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+			if m.items[i].name != msg.name {
+				continue
+			}
+			if m.items[i].status == taskRunning {
 				m.items[i].status = taskFailed
 				m.items[i].statusText = ""
 				m.items[i].checkpoint = false
@@ -238,8 +251,15 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.items[i].pending <= 0 {
 					m.remaining--
 				}
-				break
+			} else if m.items[i].pending > 0 {
+				// Already done, errored or failed, with other sources still
+				// pending: count this one and keep the first outcome shown.
+				m.items[i].pending--
+				if m.items[i].pending <= 0 {
+					m.remaining--
+				}
 			}
+			break
 		}
 		if m.remaining <= 0 {
 			return m, tea.Quit

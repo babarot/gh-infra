@@ -36,6 +36,17 @@ func task(name string, pending int) struct {
 	}{name, pending}
 }
 
+// updateCmd is like update but also returns the command Update gave.
+func updateCmd(t *testing.T, m refreshModel, msg any) (refreshModel, tea.Cmd) {
+	t.Helper()
+	result, cmd := m.Update(msg)
+	rm, ok := result.(refreshModel)
+	if !ok {
+		t.Fatalf("Update returned %T, want refreshModel", result)
+	}
+	return rm, cmd
+}
+
 // update is a test helper that calls Update, asserts the result type, and returns it.
 func update(t *testing.T, m refreshModel, msg any) refreshModel {
 	t.Helper()
@@ -104,6 +115,36 @@ func TestRefreshModel_ErrorThenDone(t *testing.T) {
 	// Status stays as taskError (first error wins)
 	if m.items[0].status != taskError {
 		t.Errorf("after Done: status = %v, want taskError", m.items[0].status)
+	}
+}
+
+// A row that two sources report as failed finishes after both: the second
+// report must count, or the spinner never quits.
+func TestRefreshModel_SecondFailureCounts(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		second any
+	}{
+		{"error then error", taskErrorMsg{name: "a", err: fmt.Errorf("second")}},
+		{"error then fail", taskFailMsg{name: "a"}},
+	} {
+		m := makeModel(task("a", 2), task("b", 1))
+		m = update(t, m, taskDoneMsg{name: "b"})
+		m = update(t, m, taskErrorMsg{name: "a", err: fmt.Errorf("first")})
+		m, cmd := updateCmd(t, m, tt.second)
+		if m.remaining != 0 || cmd == nil {
+			t.Errorf("%s: remaining = %d, quit = %v; want 0 and quit", tt.name, m.remaining, cmd != nil)
+		}
+		if m.items[0].status != taskError || m.items[0].errMsg != "first" {
+			t.Errorf("%s: row = %v %q, want the first error kept", tt.name, m.items[0].status, m.items[0].errMsg)
+		}
+	}
+
+	m := makeModel(task("a", 2))
+	m = update(t, m, taskFailMsg{name: "a"})
+	m, cmd := updateCmd(t, m, taskErrorMsg{name: "a", err: fmt.Errorf("later")})
+	if m.remaining != 0 || cmd == nil || m.items[0].status != taskFailed {
+		t.Errorf("fail then error: remaining = %d, quit = %v, status = %v; want 0, quit, failed", m.remaining, cmd != nil, m.items[0].status)
 	}
 }
 
