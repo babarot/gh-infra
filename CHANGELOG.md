@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.17.2](https://github.com/babarot/gh-infra/compare/v0.17.1...v0.17.2) - 2026-10-12
+### Bug fixes
+- Apply FileSets after the repository changes they depend on by @babarot in https://github.com/babarot/gh-infra/pull/246
+- Cancel every command from one context by @babarot in https://github.com/babarot/gh-infra/pull/247
+- Apply in one flow in every output mode by @babarot in https://github.com/babarot/gh-infra/pull/249
+- Show a plan error once by @babarot in https://github.com/babarot/gh-infra/pull/254
+
 ## [v0.17.1](https://github.com/babarot/gh-infra/compare/v0.17.0...v0.17.1) - 2026-10-12
 ### Bug fixes
 - Resolve ruleset names against each repository's owner by @babarot in https://github.com/babarot/gh-infra/pull/233
