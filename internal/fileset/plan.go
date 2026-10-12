@@ -195,6 +195,16 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			out[i].FileSet = u.fileSet
 			out[i].Via = u.via
 		}
+		if u.via == manifest.ViaPullRequest && HasChanges(out) {
+			empty, err := p.hasNoCommits(ctx, fullName, modes)
+			if err != nil {
+				tracker.Error(fullName, err)
+				return unitResult{}
+			}
+			if empty {
+				PushToEmpty(out, fullName)
+			}
+		}
 
 		tracker.Done(fullName)
 		return unitResult{changes: out}
@@ -214,6 +224,24 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 		changes = append(changes, r.changes...)
 	}
 	return changes, nil
+}
+
+// hasNoCommits reports whether repo exists and has no commits, which is how
+// apply tells whether it can open a pull request (getHeadSHA). A repository
+// that does not exist yet is reported as false: the plan of the repository
+// that creates it decides (see infra). modes is reused when it was fetched.
+func (p *Processor) hasNoCommits(ctx context.Context, repo string, modes *modeLookup) (bool, error) {
+	if modes != nil {
+		return modes.empty(), nil
+	}
+	branch, err := p.defaultBranch(ctx, repo)
+	if err != nil {
+		if gh.IsRepoNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read default branch: %w", err)
+	}
+	return branch == "", nil
 }
 
 // fileMode returns the file mode that `executable` asks for, or "" when it is unset.

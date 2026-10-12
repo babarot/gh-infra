@@ -178,8 +178,13 @@ func (r *PlanResult) PlanDocument(showDiff bool) Document {
 
 	entries := r.planEntries(showDiff)
 	unsigned := make(map[string]bool)
+	noCommits := make(map[string]bool)
 	for _, e := range entries {
 		doc.Changes = append(doc.Changes, e.entry)
+		if e.file != nil && e.file.NoCommits && !noCommits[e.file.Target] {
+			noCommits[e.file.Target] = true
+			doc.Warnings = append(doc.Warnings, Message{Target: e.file.Target, Message: fileset.NoCommitsNote})
+		}
 		if e.file != nil && e.file.ModeChanged() && !unsigned[e.file.Target] {
 			unsigned[e.file.Target] = true
 			doc.Warnings = append(doc.Warnings, Message{Target: e.file.Target, Message: unsignedCommitNote})

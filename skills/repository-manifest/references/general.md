@@ -24,6 +24,7 @@ A manifest for a repository that does not exist plans `+ repository` and, under 
 - GitHub's default labels (`bug`, `documentation`, ...; org-specific) exist in a new repository: a declared label with one of their names is updated, not created, and an omitted description stays as GitHub's
 - with `reconcile.labels: authoritative`, undeclared default labels are deleted by the next plan/apply, not the creating one
 - branch protection needs a branch, which a new repository lacks: the next plan after the branch exists adds it (rulesets don't need one)
+- a new repository has no commits, so a `via: pull_request` FileSet for it is planned and applied as `push`
 - these notes appear under the repository in the text plan and as `warnings` with a `target` in `-o json` / markdown
 
 ## Features

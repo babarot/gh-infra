@@ -229,6 +229,12 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 		return nil, err
 	}
 
+	// A repository this apply creates has no commits when its FileSets
+	// write to it. The FileSet plan cannot know that it is created.
+	for name := range createdRepos(repoChanges) {
+		fileset.PushToEmpty(fileChanges, name)
+	}
+
 	hasRepo := repository.HasChanges(repoChanges)
 	hasFile := fileset.HasChanges(fileChanges)
 
@@ -316,14 +322,20 @@ func (r *PlanResult) PrintAPIUsage() {
 	printAPIUsage(r.Printer(), apiUsage(r.runner))
 }
 
-// createNotes returns the notes on the create of each new repository.
-func createNotes(changes []repository.Change, repos []*manifest.Repository) map[string][]string {
+// createdRepos returns the repositories that the changes create.
+func createdRepos(changes []repository.Change) map[string]bool {
 	created := make(map[string]bool)
 	for _, c := range changes {
 		if c.Type == repository.ChangeCreate && c.Resource == manifest.ResourceRepository && c.Field == "repository" {
 			created[c.Name] = true
 		}
 	}
+	return created
+}
+
+// createNotes returns the notes on the create of each new repository.
+func createNotes(changes []repository.Change, repos []*manifest.Repository) map[string][]string {
+	created := createdRepos(changes)
 	var out map[string][]string
 	for _, r := range repos {
 		name := r.Metadata.FullName()

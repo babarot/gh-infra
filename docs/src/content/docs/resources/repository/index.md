@@ -181,7 +181,7 @@ A new repository is empty, so these are planned against nothing, with two except
 - **Default labels**: GitHub creates default labels in a new repository (`bug`, `documentation`, and others; an organization can change them). A label with the name of one of them is updated instead of created, so what the manifest leaves out of it, such as its description, stays as GitHub made it. With `reconcile.labels: authoritative`, the default labels the manifest does not declare are deleted by the next `plan` and `apply`.
 - **Branch protection**: a new repository has no branch to protect. The next `plan` after the branch exists shows the protection, and `apply` adds it. Rulesets do not need a branch and are applied at once.
 
-The `-o json` and `-o markdown` plans list these notes as warnings for the repository. FileSets for the new repository are applied after it is created.
+The `-o json` and `-o markdown` plans list these notes as warnings for the repository. FileSets for the new repository are applied after it is created. The repository has no commits then, so a FileSet with `via: pull_request` is planned and applied as a push for it (see [Empty repositories](../file/delivery/#empty-repositories)).
 
 ## Deleting Repositories
 

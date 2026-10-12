@@ -101,4 +101,4 @@ spec:
 
 ## Empty repositories
 
-For repositories with no commits yet, gh-infra falls back to the Contents API regardless of the `via` setting. Each file becomes a separate commit. See [GraphQL Commit API vs Contents API](/internals/git-api/) for details.
+For repositories with no commits yet, gh-infra falls back to the Contents API. Each file becomes a separate commit. With `via: pull_request` there is no branch to open a pull request from, so the files are pushed to the default branch; `plan` shows `via push` for that repository, including one the same `apply` creates. See [GraphQL Commit API vs Contents API](/internals/git-api/) for details.

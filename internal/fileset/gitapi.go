@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -44,9 +45,13 @@ type commitFunc func(ctx context.Context, repo, branch, headSHA, message string,
 func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Change, opts ApplyOptions, statusFn func(string)) (string, string, bool, error) {
 	headSHA, defaultBranch, err := p.getHeadSHA(ctx, repo)
 	if err != nil {
-		if strings.Contains(err.Error(), "repository is empty") {
-			// An empty repository has no branch to open a pull request from,
-			// so the files are pushed to it.
+		if isEmptyRepoErr(err) {
+			// An empty repository has no branch to open a pull request from.
+			// The plan shows a push for it (PushToEmpty); a repository that
+			// had commits at plan has to be planned again.
+			if opts.Via == manifest.ViaPullRequest {
+				return "", opts.Via, false, errors.New("the repository has no commits to open a pull request from; run plan again")
+			}
 			return "", manifest.ViaPush, false, p.applyToEmptyRepo(ctx, repo, changes, opts)
 		}
 		return "", opts.Via, false, fmt.Errorf("get HEAD: %w", err)
@@ -475,11 +480,10 @@ func (p *Processor) putFileViaContentsAPI(ctx context.Context, repo, path, conte
 }
 
 func (p *Processor) getHeadSHA(ctx context.Context, repo string) (sha, branch string, err error) {
-	out, err := p.runner.Run(ctx, "repo", "view", repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name")
+	branch, err = p.defaultBranch(ctx, repo)
 	if err != nil {
 		return "", "", err
 	}
-	branch = strings.TrimSpace(string(out))
 	if branch == "" {
 		return "", "", fmt.Errorf("repository is empty (no default branch)")
 	}
@@ -489,6 +493,16 @@ func (p *Processor) getHeadSHA(ctx context.Context, repo string) (sha, branch st
 		return "", "", err
 	}
 	return sha, branch, nil
+}
+
+// defaultBranch returns the name of the default branch, or "" for a
+// repository with no commits.
+func (p *Processor) defaultBranch(ctx context.Context, repo string) (string, error) {
+	out, err := p.runner.Run(ctx, "repo", "view", repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // getRefSHA returns the commit SHA that the given branch currently points to.
