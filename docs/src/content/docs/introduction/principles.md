@@ -29,7 +29,7 @@ One `apply` reaches what the manifest declares, so the next `plan` is empty. Whe
 
 - A repository that does not exist is created with its rulesets, secrets, variables, labels and milestones in the same run. Its branch protection, which needs a branch, and with authoritative label reconcile the deletion of GitHub's default labels, are left to the next plan, and the plan notes them. See [Creating Repositories](../../resources/repository/#creating-repositories).
 - A FileSet with `via: pull_request` changes nothing until its pull request is merged, so the next plan shows the same file changes until then. This is by design: the pull request is the review.
-- A repository that is already archived is read-only, so changes to it cannot be applied. `plan` does not catch this yet ([#259](https://github.com/babarot/gh-infra/issues/259)).
+- gh-infra does not change a repository that is already archived, except to unarchive it. GitHub makes an archived repository read-only; a few of its APIs still accept writes, but gh-infra does not rely on them. Changes to an archived repository without `archived: false` make `plan` report the repository as an error and leave it out, so the other repositories are still planned and applied. FileSets for an archived repository are not caught at plan yet, and fail at `apply`.
 
 ## How the rules are checked
 

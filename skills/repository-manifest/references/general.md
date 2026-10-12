@@ -14,6 +14,7 @@ spec:
 - `visibility`: `public`, `private`, `internal`
 - `archived`: reversible; set `false` to unarchive
 - apply unarchives first and archives last (after the repo's other changes and its FileSets in the same run); if any of those fail, it does not archive and reports the archive as failed
+- gh-infra never changes an already archived repo except to unarchive it (even where GitHub would accept the write, e.g. secrets, topics): such changes fail that repo at plan (`repository is archived (read-only) ...`), like a fetch failure: left out, others proceed, exit 1. Set `archived: false` to change it. FileSets to it are not caught at plan
 - `topics`: full list, not additive merge. Omitted leaves current topics unchanged; `[]` removes all
 
 ## Creating a Repository

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/babarot/gh-infra/internal/logger"
 	"github.com/babarot/gh-infra/internal/manifest"
@@ -79,6 +80,13 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		}
 
 		changes := Diff(ctx, r, current, diffOpts)
+		// gh-infra does not change an archived repository except to unarchive
+		// it: report the repository instead of planning changes to it.
+		if err := archivedChangesError(current, changes); err != nil {
+			logger.Error("changes to an archived repository", "repo", fullName, "err", err)
+			tracker.Error(fullName, err)
+			return repoResult{index: idx, repo: r, err: err}
+		}
 		if hasLabelDeleteChanges(changes) {
 			tracker.UpdateStatus(fullName, "checking label usage...")
 			p.enrichLabelDeleteInfo(ctx, changes)
@@ -126,4 +134,31 @@ func hasLabelDeleteChanges(changes []Change) bool {
 		}
 	}
 	return false
+}
+
+// archivedChangesError returns an error when current is archived and changes
+// would write to it without unarchiving it first (Diff puts an unarchive
+// first). GitHub makes an archived repository read-only; some of its APIs
+// still accept writes (secrets, variables, topics, Actions permissions), but
+// gh-infra does not rely on that and leaves an archived repository alone.
+func archivedChangesError(current *CurrentState, changes []Change) error {
+	if !current.Archived || !HasChanges(changes) {
+		return nil
+	}
+	if c := changes[0]; c.Resource == manifest.ResourceRepository && c.Field == "archived" && !IsArchive(c) {
+		return nil
+	}
+	const shown = 3
+	var names []string
+	for _, c := range changes {
+		if c.Type == ChangeNoOp {
+			continue
+		}
+		names = append(names, applyStatusTarget(c))
+	}
+	list := strings.Join(names[:min(shown, len(names))], ", ")
+	if len(names) > shown {
+		list += fmt.Sprintf(" and %d more", len(names)-shown)
+	}
+	return fmt.Errorf("repository is archived (read-only): gh-infra does not change an archived repository except to unarchive it, so these changes are not applied: %s; set archived: false to change it, or remove the changes from the manifest", list)
 }

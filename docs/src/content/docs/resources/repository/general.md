@@ -42,6 +42,8 @@ This is reversible — set it back to `false` to unarchive.
 
 An archived repository refuses every other change, so `apply` unarchives before the repository's other changes and archives after all of them, including FileSets for the repository in the same run. If any of those fail, the repository is not archived and the archive is reported as failed, so the next `apply` can still fix them.
 
+To change a repository that is already archived, set `archived: false` in the same manifest; it is unarchived first. gh-infra does not change an archived repository otherwise: `plan` reports the repository as an error, leaves it out of the plan, and exits with `1`; the other repositories are still planned and applied. GitHub makes an archived repository read-only, and while a few of its APIs (such as secrets and topics) still accept writes, gh-infra does not rely on them.
+
 ## Features
 
 Toggle repository features on or off:
