@@ -36,6 +36,27 @@ func pullRequestDefaults() map[string]any {
 	}
 }
 
+// statusChecksDefaults are the parameters the rulesets API requires for a
+// required_status_checks rule: no checks, and not strict.
+func statusChecksDefaults() map[string]any {
+	return map[string]any{
+		"required_status_checks":               []map[string]any{},
+		"strict_required_status_checks_policy": false,
+	}
+}
+
+// requiredParamDefaults returns the defaults for the parameters a rule type
+// requires, or nil for a type that requires none.
+func requiredParamDefaults(ruleType string) map[string]any {
+	switch ruleType {
+	case "pull_request":
+		return pullRequestDefaults()
+	case "required_status_checks":
+		return statusChecksDefaults()
+	}
+	return nil
+}
+
 // ruleIntents returns what the manifest says for each rule type it sets.
 func ruleIntents(ctx context.Context, rs *manifest.Ruleset, resolver *manifest.Resolver) (map[string]ruleIntent, error) {
 	intents := make(map[string]ruleIntent)
@@ -118,13 +139,14 @@ func ruleIntents(ctx context.Context, rs *manifest.Ruleset, resolver *manifest.R
 	return intents, nil
 }
 
-// newRule builds a rule that does not exist yet. A new pull_request rule
-// gets the defaults for the parameters the manifest leaves out.
+// newRule builds a rule that does not exist yet. A new pull_request or
+// required_status_checks rule gets the defaults for the required parameters
+// the manifest leaves out.
 func newRule(ruleType string, intent ruleIntent) map[string]any {
 	rule := map[string]any{"type": ruleType}
 	params := intent.params
-	if ruleType == "pull_request" {
-		params = mergeParams(pullRequestDefaults(), params)
+	if d := requiredParamDefaults(ruleType); d != nil {
+		params = mergeParams(d, params)
 	}
 	if params != nil {
 		rule["parameters"] = params
@@ -294,9 +316,9 @@ func buildRulesetUpdatePayload(ctx context.Context, rs *manifest.Ruleset, curren
 			continue
 		}
 		params := mergeParams(rule.Parameters, intent.params)
-		if rule.Type == "pull_request" {
+		if d := requiredParamDefaults(rule.Type); d != nil {
 			// Keep the rule valid if the current one lacks a required parameter.
-			params = mergeParams(pullRequestDefaults(), params)
+			params = mergeParams(d, params)
 		}
 		merged := map[string]any{"type": rule.Type}
 		if params != nil {
