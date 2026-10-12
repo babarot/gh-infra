@@ -18,6 +18,7 @@ func TestFinishPlan_ExitCodes(t *testing.T) {
 	changes := &infra.PlanResult{HasChanges: true}
 	failed := &infra.PlanResult{HasChanges: true, FailedTargets: []string{"org/repo"}}
 	other := errors.New("boom")
+	reported := fmt.Errorf("plan: %w", infra.ErrAlreadyReported)
 
 	detailed := planCommandOptions{DetailedExitCode: true}
 	ci := planCommandOptions{CI: true}
@@ -38,6 +39,8 @@ func TestFinishPlan_ExitCodes(t *testing.T) {
 		{"detailed: failed targets win over changes", failed, nil, detailed, 1},
 		{"detailed: error", nil, other, detailed, 1},
 		{"detailed: interrupted", nil, context.Canceled, detailed, 1},
+		{"detailed: error already shown", nil, reported, detailed, 1},
+		{"none: error already shown", nil, reported, none, 1},
 		{"detailed: no resources", nil, fmt.Errorf("wrap: %w", infra.ErrNoResources), detailed, 1},
 		{"ci: changes", changes, nil, ci, 1},
 		{"ci: no changes", noChanges, nil, ci, 0},
@@ -173,5 +176,15 @@ func TestNewRunner_Concurrency(t *testing.T) {
 	t.Setenv(concurrencyEnvKey, "zero")
 	if _, err := newRunner(); err == nil {
 		t.Error("expected an error for a non-numeric value")
+	}
+}
+
+func TestExitCode_AlreadyReported(t *testing.T) {
+	code, ok := ExitCode(fmt.Errorf("plan: %w", infra.ErrAlreadyReported))
+	if !ok || code != 1 {
+		t.Errorf("ExitCode = %d, %v; want 1, true (exit without printing)", code, ok)
+	}
+	if _, ok := ExitCode(errors.New("boom")); ok {
+		t.Error("a plain error must be printed by main")
 	}
 }

@@ -19,6 +19,17 @@ import (
 // manifests. The message has already been printed.
 var ErrNoResources = errors.New("no resources found")
 
+// ErrAlreadyReported marks an error whose detail was already shown, per
+// target, by the progress display: the command fails without printing it
+// again.
+var ErrAlreadyReported = errors.New("already reported")
+
+// reportedError is err marked with ErrAlreadyReported.
+type reportedError struct{ err error }
+
+func (e reportedError) Error() string   { return e.err.Error() }
+func (e reportedError) Unwrap() []error { return []error{e.err, ErrAlreadyReported} }
+
 // PlanOptions configures the plan phase.
 type PlanOptions struct {
 	Paths         []string
@@ -205,6 +216,12 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	}
 	tracker.PrintErrors()
 	if err != nil {
+		// Planning stops on an error that the tracker has shown for its
+		// target. Machine output silences the tracker, so there it is left
+		// for the command to print.
+		if !isMachineOutput(opts.Output) {
+			err = reportedError{err}
+		}
 		return nil, err
 	}
 
