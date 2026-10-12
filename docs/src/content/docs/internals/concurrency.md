@@ -102,7 +102,7 @@ The diff runs immediately after each repo fetch completes (within the same gorou
 
 ## Apply Phase
 
-Repository changes are applied first, then FileSet changes, so a FileSet can write to a repository that the same apply creates. Within each step, repositories run in parallel, and so do FileSets. The steps and their concurrency are the same with the spinner and with `GH_INFRA_OUTPUT=stream`; only how progress is shown differs. Results are listed in a fixed order: repositories as planned, then FileSets in manifest order, each by target repository name.
+Repository changes are applied first, then FileSet changes, so a FileSet can write to a repository that the same apply creates. Archiving a repository comes last, after FileSets, since an archived repository is read-only; a repository with a failed change or FileSet is not archived. Within each step, repositories run in parallel, and so do FileSets. The steps and their concurrency are the same with the spinner and with `GH_INFRA_OUTPUT=stream`; only how progress is shown differs. Results are listed in a fixed order: repositories as planned, then FileSets in manifest order, each by target repository name.
 
 ### Repository Apply — `Processor.Apply`
 

@@ -73,6 +73,20 @@ func TestApplyProperties(t *testing.T) {
 		}},
 		{name: "visibility to private", spec: manifest.RepositorySpec{Visibility: ptr("private")}},
 		{name: "archive", spec: manifest.RepositorySpec{Archived: bptr(true)}},
+		// An archived repository is read-only, so the archive goes last and
+		// the unarchive first.
+		{name: "archive with other changes", spec: manifest.RepositorySpec{
+			Archived: bptr(true), Description: ptr("old project"), Topics: []string{"archived"},
+			Features: &manifest.Features{Wiki: bptr(false)},
+			Labels:   []manifest.Label{{Name: "bug", Color: "ff0000"}},
+			Secrets:  []manifest.Secret{{Name: "NEW", Value: "s3cret"}},
+		}},
+		{name: "unarchive with other changes", state: func(s *fakeState) {
+			s.Repo.Archived = true
+		}, spec: manifest.RepositorySpec{
+			Archived: bptr(false), Description: ptr("back"), Homepage: ptr("https://example.com"), Visibility: ptr("private"),
+			Labels: []manifest.Label{{Name: "new", Color: "00ff00"}},
+		}},
 		{name: "topics cleared", spec: manifest.RepositorySpec{Topics: []string{}, TopicsSet: true}},
 		{name: "features", spec: manifest.RepositorySpec{Features: &manifest.Features{
 			Issues: bptr(false), Projects: bptr(true), Discussions: bptr(false),

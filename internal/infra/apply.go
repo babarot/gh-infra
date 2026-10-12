@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -43,13 +44,10 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	p.Phase("Applying changes to GitHub API ...")
 	p.BlankLine()
 
-	repoNames := changedRepoNames(result.RepoChanges)
+	repoChanges, archives := splitArchives(result.RepoChanges)
+	repoNames := changedRepoNames(repoChanges)
 	fileSets := fileSetWorkOf(result)
-	names := slices.Clone(repoNames)
-	for _, w := range fileSets {
-		names = append(names, w.targets...)
-	}
-	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, refreshTasks(names, "applied changes"))
+	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, applyTasks(repoNames, fileSets, changedRepoNames(archives)))
 	defer stop()
 
 	// The steps run in this order in every mode; a mode only changes how
@@ -59,13 +57,19 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	// creates, so they go first.
 	var repoResults []repository.ApplyResult
 	if len(repoNames) > 0 {
-		repoResults = eng.repo.Apply(ctx, result.RepoChanges, result.TargetRepos, view.reporter(repoNames))
+		repoResults = eng.repo.Apply(ctx, repoChanges, result.TargetRepos, view.reporter(repoNames))
 	}
 
 	// Step 2: FileSets, in parallel with each other.
 	var fileResults []fileset.ApplyResult
 	if ctx.Err() == nil {
 		fileResults = applyFileSets(ctx, eng, fileSets, view)
+	}
+
+	// Step 3: archives. An archived repository is read-only, so archiving
+	// waits for everything else applied to the repository.
+	if ctx.Err() == nil && len(archives) > 0 {
+		repoResults = append(repoResults, applyArchives(ctx, eng, archives, result.TargetRepos, repoResults, fileResults, view)...)
 	}
 
 	view.wait()
@@ -143,6 +147,63 @@ func (v applyView) wait() {
 // With stream, the progress lines are the result.
 func (v applyView) listsResults() bool { return v.tracker != nil }
 
+// splitArchives separates the changes that archive a repository from the
+// others, keeping their order.
+func splitArchives(changes []repository.Change) (others, archives []repository.Change) {
+	for _, c := range changes {
+		if repository.IsArchive(c) {
+			archives = append(archives, c)
+		} else {
+			others = append(others, c)
+		}
+	}
+	return others, archives
+}
+
+// errNotArchived is the result of an archive left out because another change
+// to the repository failed: once archived, the repository would refuse the
+// next apply's fix.
+var errNotArchived = errors.New("not archived: earlier changes to this repository failed")
+
+// applyArchives archives the repositories that had no failure in the earlier
+// steps, and reports the others as failed without archiving them.
+func applyArchives(ctx context.Context, eng *engine, archives []repository.Change, repos []*manifest.Repository,
+	repoResults []repository.ApplyResult, fileResults []fileset.ApplyResult, view applyView) []repository.ApplyResult {
+	failed := make(map[string]bool)
+	for _, r := range repoResults {
+		if r.Err != nil {
+			failed[r.Change.Name] = true
+		}
+	}
+	for _, r := range fileResults {
+		if r.Err != nil {
+			failed[r.Change.Target] = true
+		}
+	}
+
+	var ready, held []repository.Change
+	for _, c := range archives {
+		if failed[c.Name] {
+			held = append(held, c)
+		} else {
+			ready = append(ready, c)
+		}
+	}
+
+	var results []repository.ApplyResult
+	if len(ready) > 0 {
+		results = eng.repo.Apply(ctx, ready, repos, view.reporter(changedRepoNames(ready)))
+	}
+	if len(held) > 0 {
+		reporter := view.reporter(changedRepoNames(held))
+		for _, c := range held {
+			reporter.Error(c.Name, 0, errNotArchived)
+			results = append(results, repository.ApplyResult{Change: c, Err: errNotArchived})
+		}
+	}
+	return results
+}
+
 // changedRepoNames returns the repositories with changes to apply, in order.
 func changedRepoNames(changes []repository.Change) []string {
 	var names []string
@@ -191,6 +252,17 @@ func applyFileSets(ctx context.Context, eng *engine, work []fileSetWork, view ap
 	}
 	wg.Wait()
 	return slices.Concat(results...)
+}
+
+// applyTasks returns the spinner tasks of an apply: a repository is done once
+// per step that reports it (its changes, each FileSet changing it, its archive).
+func applyTasks(repoNames []string, fileSets []fileSetWork, archiveNames []string) []ui.RefreshTask {
+	names := slices.Clone(repoNames)
+	for _, w := range fileSets {
+		names = append(names, w.targets...)
+	}
+	names = append(names, archiveNames...)
+	return refreshTasks(names, "applied changes")
 }
 
 // refreshTasks returns a spinner task per name, in order of first

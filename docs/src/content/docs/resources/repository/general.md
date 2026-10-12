@@ -40,6 +40,8 @@ spec:
 
 This is reversible — set it back to `false` to unarchive.
 
+An archived repository refuses every other change, so `apply` unarchives before the repository's other changes and archives after all of them, including FileSets for the repository in the same run. If any of those fail, the repository is not archived and the archive is reported as failed, so the next `apply` can still fix them.
+
 ## Features
 
 Toggle repository features on or off:
