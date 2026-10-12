@@ -30,12 +30,12 @@ func newImportCmd() *cobra.Command {
 				return errors.New("--auto-approve requires --into")
 			}
 			if intoPath != "" {
-				return runImportInto(args, intoPath, autoApprove)
+				return runImportInto(cmd.Context(), args, intoPath, autoApprove)
 			}
 			if len(args) == 0 {
 				return fmt.Errorf("requires at least 1 arg when --into is not used")
 			}
-			return runImport(args)
+			return runImport(cmd.Context(), args)
 		},
 	}
 
@@ -47,14 +47,14 @@ func newImportCmd() *cobra.Command {
 	return cmd
 }
 
-func runImport(args []string) error {
+func runImport(ctx context.Context, args []string) error {
 	runner, err := newRunner()
 	if err != nil {
 		return err
 	}
-	err = infra.Import(runner, args)
+	err = infra.Import(ctx, runner, args)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if interrupted(ctx, err) {
 			printCancelled()
 			return nil
 		}
@@ -63,13 +63,17 @@ func runImport(args []string) error {
 	return nil
 }
 
-func runImportInto(args []string, intoPath string, autoApprove bool) error {
+func runImportInto(ctx context.Context, args []string, intoPath string, autoApprove bool) error {
 	runner, err := newRunner()
 	if err != nil {
 		return err
 	}
-	diff, err := infra.ImportInto(runner, args, intoPath)
+	diff, err := infra.ImportInto(ctx, runner, args, intoPath)
 	if err != nil {
+		if interrupted(ctx, err) {
+			printCancelled()
+			return nil
+		}
 		return err
 	}
 
@@ -94,21 +98,31 @@ func runImportInto(args []string, intoPath string, autoApprove bool) error {
 
 	ok, err := confirmImport(p, diff, autoApprove)
 	if err != nil {
+		if interrupted(ctx, err) {
+			printCancelled()
+			return nil
+		}
 		return err
 	}
 	if !ok {
 		return nil
 	}
 
+	// Writing local files is not stopped midway: an interrupt during it is
+	// reported once everything is written.
 	written, err := diff.Write()
 	if err != nil {
 		return err
 	}
 	if !written.Wrote() {
 		p.Message("\n" + written.Summary())
-		return nil
+	} else {
+		p.Summary(written.Summary())
 	}
-	p.Summary(written.Summary())
+	if ctx.Err() != nil {
+		printCancelled()
+		return &ExitError{Code: 1}
+	}
 	return nil
 }
 

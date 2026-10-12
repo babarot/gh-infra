@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -101,13 +102,13 @@ func TestApplySkipSelections_DifferentTargets(t *testing.T) {
 }
 
 func TestRunApply_OutputValidation(t *testing.T) {
-	if err := runApply([]string{"."}, applyCommandOptions{Output: "json"}); err == nil || !strings.Contains(err.Error(), "--auto-approve") {
+	if err := runApply(context.Background(), []string{"."}, applyCommandOptions{Output: "json"}); err == nil || !strings.Contains(err.Error(), "--auto-approve") {
 		t.Errorf("json without --auto-approve: err = %v, want it to ask for --auto-approve", err)
 	}
-	if err := runApply([]string{"."}, applyCommandOptions{Output: "yaml", AutoApprove: true}); err == nil || !strings.Contains(err.Error(), "invalid output format") {
+	if err := runApply(context.Background(), []string{"."}, applyCommandOptions{Output: "yaml", AutoApprove: true}); err == nil || !strings.Contains(err.Error(), "invalid output format") {
 		t.Errorf("unknown format: err = %v, want invalid output format", err)
 	}
-	if err := runApply([]string{"."}, applyCommandOptions{Output: "markdown", AutoApprove: true}); err == nil || !strings.Contains(err.Error(), "invalid output format") {
+	if err := runApply(context.Background(), []string{"."}, applyCommandOptions{Output: "markdown", AutoApprove: true}); err == nil || !strings.Contains(err.Error(), "invalid output format") {
 		t.Errorf("markdown is for plan only: err = %v, want invalid output format", err)
 	}
 }

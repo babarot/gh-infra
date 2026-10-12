@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // ---------------------------------------------------------------------------
@@ -119,6 +121,73 @@ func TestRefreshModel_FailThenDone(t *testing.T) {
 	m = update(t, m, taskDoneMsg{name: "a"})
 	if m.remaining != 0 {
 		t.Errorf("after Done: remaining = %d, want 0", m.remaining)
+	}
+}
+
+func TestRefreshModel_CtrlCCallsInterruptHandler(t *testing.T) {
+	called := 0
+	restore := SetInterruptHandler(func() { called++ })
+	defer restore()
+
+	m := makeModel(task("a", 1))
+	m.canceled = make(chan struct{})
+	key := tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+	if key.String() != "ctrl+c" {
+		t.Fatalf("key = %q, want ctrl+c", key.String())
+	}
+	m = update(t, m, key)
+
+	select {
+	case <-m.canceled:
+	default:
+		t.Error("canceled was not closed")
+	}
+	if called != 1 {
+		t.Errorf("interrupt handler called %d times, want 1", called)
+	}
+	if m.items[0].status != taskCanceled {
+		t.Errorf("status = %v, want canceled", m.items[0].status)
+	}
+}
+
+func TestRefreshModel_InterruptCancelsRunning(t *testing.T) {
+	called := 0
+	restore := SetInterruptHandler(func() { called++ })
+	defer restore()
+
+	m := makeModel(task("a", 1))
+	m.canceled = make(chan struct{})
+	m = update(t, m, interruptMsg{})
+
+	if m.items[0].status != taskCanceled {
+		t.Errorf("status = %v, want canceled", m.items[0].status)
+	}
+	select {
+	case <-m.canceled:
+		t.Error("canceled is for Ctrl+C only")
+	default:
+	}
+	if called != 0 {
+		t.Error("Interrupt must not call the interrupt handler")
+	}
+}
+
+func TestRefreshTracker_InterruptIgnoresLaterErrors(t *testing.T) {
+	var out bytes.Buffer
+	restore := SetDefaultPrinter(NewStandardPrinterWith(&out, &out))
+	defer restore()
+
+	tracker := &RefreshTracker{fallback: true, done: closedChan()}
+	tracker.Error("before", fmt.Errorf("real error"))
+	tracker.Interrupt()
+	tracker.Error("after", fmt.Errorf("gh exited with code -1"))
+
+	errs := tracker.Errors()
+	if len(errs) != 1 || errs[0].Name != "before" {
+		t.Errorf("errors = %v, want only the one before Interrupt", errs)
+	}
+	if strings.Contains(out.String(), "code -1") {
+		t.Errorf("an error after Interrupt was printed: %q", out.String())
 	}
 }
 

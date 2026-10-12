@@ -76,7 +76,8 @@ func (r *PlanResult) Printer() ui.Printer {
 }
 
 // Plan parses manifests, fetches current state, computes diffs, and prints the plan.
-func Plan(opts PlanOptions) (*PlanResult, error) {
+// Canceling ctx stops it with context.Canceled.
+func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	var p ui.Printer = ui.NewStandardPrinter()
 	if isMachineOutput(opts.Output) {
 		// Print nothing but the document: silence this printer, and the
@@ -102,12 +103,13 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 	parseOpt := manifest.ParseOptions{
 		FailOnUnknown: opts.FailOnUnknown,
 		Resolver:      sourceResolver,
+		Context:       ctx,
 	}
 	parsed := &manifest.ParseResult{}
 	var total, selected int
 	var changedSince *ChangedSince
 	if opts.ChangedSince != "" {
-		parsed, total, selected, err = parseChanged(context.Background(), paths, opts.ChangedSince, parseOpt)
+		parsed, total, selected, err = parseChanged(ctx, paths, opts.ChangedSince, parseOpt)
 		if err != nil {
 			return nil, err
 		}
@@ -188,12 +190,8 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 			Pending:   taskMap[n],
 		})
 	}
-	tracker := ui.RunRefresh(allTasks)
-	defer showRateLimitWaits(runner, tracker)()
-
-	// Create a cancellable context; cancel when the spinner is interrupted via Ctrl+C.
-	ctx, cancel := withTrackerCancelContext(tracker)
-	defer cancel()
+	tracker, ctx, stop := startRefresh(ctx, runner, allTasks)
+	defer stop()
 
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
@@ -220,19 +218,15 @@ func Plan(opts PlanOptions) (*PlanResult, error) {
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		tracker.Wait()
-		tracker.PrintErrors()
-		if ctx.Err() != nil {
-			return nil, context.Canceled
-		}
-		return nil, err
-	}
+	err = g.Wait()
 	tracker.Wait()
-	tracker.PrintErrors()
-
+	// Errors of interrupted work are not reported.
 	if ctx.Err() != nil {
 		return nil, context.Canceled
+	}
+	tracker.PrintErrors()
+	if err != nil {
+		return nil, err
 	}
 
 	hasRepo := repository.HasChanges(repoChanges)

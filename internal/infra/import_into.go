@@ -191,7 +191,8 @@ func plural(n int, noun string) string {
 // compares it against local manifests, and prints the diff to the terminal.
 // The returned ImportDiff provides methods for diff viewing, skip selection, and writing.
 // runner runs every gh call.
-func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, error) {
+// Canceling ctx stops it with context.Canceled.
+func ImportInto(ctx context.Context, runner gh.Runner, args []string, into string) (*ImportDiff, error) {
 	printer := ui.NewStandardPrinter()
 
 	sourceResolver := manifest.NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
@@ -199,7 +200,7 @@ func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, erro
 	})
 
 	// Parse manifests and match targets.
-	parsed, err := manifest.ParseAll(into, manifest.ParseOptions{Resolver: sourceResolver})
+	parsed, err := manifest.ParseAll(into, manifest.ParseOptions{Resolver: sourceResolver, Context: ctx})
 	if err != nil {
 		return nil, err
 	}
@@ -243,10 +244,8 @@ func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, erro
 	printer.Phase("Fetching current state from GitHub API ...")
 	printer.BlankLine()
 
-	tracker := ui.RunRefresh(tasks)
-	defer showRateLimitWaits(runner, tracker)()
-	ctx, cancel := withTrackerCancelContext(tracker)
-	defer cancel()
+	tracker, ctx, stop := startRefresh(ctx, runner, tasks)
+	defer stop()
 
 	plan, err := importer.Diff(ctx, importer.DiffOptions{
 		Targets:     matched,
@@ -256,11 +255,11 @@ func ImportInto(runner gh.Runner, args []string, into string) (*ImportDiff, erro
 	})
 
 	tracker.Wait()
-	tracker.PrintErrors()
-
+	// Errors of interrupted work are not reported.
 	if ctx.Err() != nil {
 		return nil, context.Canceled
 	}
+	tracker.PrintErrors()
 	if err != nil {
 		return nil, err
 	}

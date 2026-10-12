@@ -643,7 +643,7 @@ spec:
 			t.Fatal(err)
 		}
 
-		fs, _, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
+		fs, _, _, err := parseFileSet(context.Background(), []byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -682,7 +682,7 @@ spec:
 			t.Fatal(err)
 		}
 
-		_, _, _, err := parseFileSet([]byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
+		_, _, _, err := parseFileSet(context.Background(), []byte(yamlContent), filepath.Join(dir, "fileset.yaml"), &SourceResolver{})
 		if err == nil {
 			t.Fatal("expected error for missing override source")
 		}
@@ -812,5 +812,50 @@ spec:
 	// Without SkipRemoteSources the github:// source is fetched.
 	if _, err := ParseAll(filepath.Join(dir, "fs.yaml"), ParseOptions{Resolver: resolver}); err == nil || calls == 0 {
 		t.Errorf("expected the github:// source to be fetched, err=%v calls=%d", err, calls)
+	}
+}
+
+func TestParseAll_RemoteSourceUsesContext(t *testing.T) {
+	for kind, manifest := range map[string]string{
+		"File": `apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: a
+spec:
+  files:
+    - path: remote.txt
+      source: github://org/src/remote.txt
+`,
+		"FileSet": `apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories: [a]
+  files:
+    - path: remote.txt
+      source: github://org/src/remote.txt
+`,
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "fs.yaml"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var got context.Context
+		resolver := NewSourceResolver(func(ctx context.Context, args ...string) ([]byte, error) {
+			got = ctx
+			return nil, ctx.Err()
+		})
+		_, err := ParseAll(filepath.Join(dir, "fs.yaml"), ParseOptions{Resolver: resolver, Context: ctx})
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("%s: err = %v, want context.Canceled", kind, err)
+		}
+		if got == nil || got.Err() == nil {
+			t.Errorf("%s: the github:// fetch did not get the parse context", kind)
+		}
 	}
 }

@@ -43,14 +43,21 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 
 		start := time.Now()
 		var results []ApplyResult
+		var canceled error
 		for _, c := range g.changes {
+			// Once canceled, leave the rest unapplied rather than failing
+			// each of them.
+			if err := ctx.Err(); err != nil {
+				canceled = err
+				break
+			}
 			reporter.UpdateStatus(g.name, "applying "+applyStatusTarget(c)+"...")
 			result := p.applyChange(ctx, c, repoMap[c.Name])
 			results = append(results, result)
 		}
 		elapsed := time.Since(start)
 
-		var firstErr error
+		firstErr := canceled
 		for _, r := range results {
 			if r.Err != nil {
 				firstErr = r.Err
