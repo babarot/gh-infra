@@ -1148,3 +1148,29 @@ func TestPlan_MessageTemplateErrorFailsPlan(t *testing.T) {
 		t.Errorf("expected no API calls before the error, got %v", mock.Called)
 	}
 }
+
+// The tracker shows the error that stops planning, so it names the file.
+func TestPlan_TemplateErrorNamesTheFile(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		entry manifest.FileEntry
+		want  string
+	}{
+		{"content", manifest.FileEntry{Path: "a.txt", Content: "<% if %>"}, "template a.txt for owner/repo"},
+		{"path", manifest.FileEntry{Path: "<% if %>.txt", Content: "x"}, "template path <% if %>.txt for owner/repo"},
+		{"patch", manifest.FileEntry{Path: "a.txt", Content: "x\n", Patches: []string{"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-nomatch\n+y\n"}}, "patch a.txt for owner/repo"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewProcessor(&gh.MockRunner{}, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+			tracker := &recordingTracker{}
+			_, err := p.Plan(context.Background(), makeFileSet("owner", "repo", []manifest.FileEntry{tt.entry}), "", tracker)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			errs := tracker.errors["owner/repo"]
+			if len(errs) != 1 || !strings.Contains(errs[0].Error(), tt.want) {
+				t.Errorf("tracker errors = %v, want one containing %q", errs, tt.want)
+			}
+		})
+	}
+}

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/ui"
+
+	"github.com/babarot/gh-infra/internal/gh"
 )
 
 func TestPlanResult_Printer_WithEngine(t *testing.T) {
@@ -129,5 +131,62 @@ spec:
 
 	if err == nil || !strings.Contains(err.Error(), `from branch "gh-infra/sync-org-repo"`) {
 		t.Fatalf("expected shared PR branch error, got %v", err)
+	}
+}
+
+func writeManifest(t *testing.T, doc string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "m.yaml")
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+const brokenTemplateFileSet = `apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories: [repo]
+  commit_message: "sync <% .Broken"
+  files:
+    - path: a.txt
+      content: a
+`
+
+// An error the progress display has shown for its target is marked, so the
+// command does not print it again; machine output shows no progress, so it
+// is left unmarked there.
+func TestPlan_MarksReportedErrors(t *testing.T) {
+	path := writeManifest(t, brokenTemplateFileSet)
+	for _, tt := range []struct {
+		output string
+		marked bool
+	}{
+		{OutputText, true},
+		{OutputJSON, false},
+		{OutputMarkdown, false},
+	} {
+		_, err := Plan(context.Background(), PlanOptions{Runner: &gh.MockRunner{}, Paths: []string{path}, DryRun: true, Output: tt.output})
+		if err == nil || !strings.Contains(err.Error(), "unclosed action") {
+			t.Fatalf("output=%s: err = %v, want the template error", tt.output, err)
+		}
+		if got := errors.Is(err, ErrAlreadyReported); got != tt.marked {
+			t.Errorf("output=%s: marked = %v, want %v", tt.output, got, tt.marked)
+		}
+	}
+}
+
+// Errors before planning (parsing, validation) are not shown by the
+// progress display, so they are not marked.
+func TestPlan_DoesNotMarkParseErrors(t *testing.T) {
+	path := writeManifest(t, "apiVersion: gh-infra/v1\nkind: Repository\nmetadata: [\n")
+	_, err := Plan(context.Background(), PlanOptions{Runner: &gh.MockRunner{}, Paths: []string{path}, DryRun: true})
+	if err == nil {
+		t.Fatal("expected a parse error")
+	}
+	if errors.Is(err, ErrAlreadyReported) {
+		t.Errorf("parse error was marked as reported: %v", err)
 	}
 }

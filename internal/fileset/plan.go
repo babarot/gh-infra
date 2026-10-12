@@ -109,16 +109,18 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 				if HasTemplate(file.Path, nil) {
 					renderedPath, err := RenderTemplate(file.Path, fullName, varsCopy)
 					if err != nil {
+						err = fmt.Errorf("template path %s for %s: %w", file.Path, fullName, err)
 						tracker.Error(fullName, err)
-						return unitResult{err: fmt.Errorf("template path %s for %s: %w", file.Path, fullName, err)}
+						return unitResult{err: err}
 					}
 					file.Path = renderedPath
 				}
 				// Render content
 				rendered, err := RenderTemplate(file.Content, fullName, varsCopy)
 				if err != nil {
+					err = fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)
 					tracker.Error(fullName, err)
-					return unitResult{err: fmt.Errorf("template %s for %s: %w", file.Path, fullName, err)}
+					return unitResult{err: err}
 				}
 				file.Content = rendered
 			}
@@ -126,8 +128,9 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			if len(file.Patches) > 0 {
 				patched, err := ApplyPatches(EnsureTrailingNewline(file.Content), file.Patches)
 				if err != nil {
+					err = fmt.Errorf("patch %s for %s: %w", file.Path, fullName, err)
 					tracker.Error(fullName, err)
-					return unitResult{err: fmt.Errorf("patch %s for %s: %w", file.Path, fullName, err)}
+					return unitResult{err: err}
 				}
 				file.Content = patched
 			}
