@@ -160,7 +160,19 @@ func (f *fakeGitHub) handle(body []byte, args []string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cmd := strings.Join(args, " ")
+	// GitHub makes an archived repository read-only, except unarchiving it.
+	// Writes change the state through pointers too, so restore a deep copy.
+	var before []byte
+	readOnly := f.s.Repo.Archived && !strings.HasPrefix(cmd, "repo unarchive ")
+	if readOnly {
+		before, _ = json.Marshal(f.s)
+	}
 	out, wrote, err := f.dispatch(body, args)
+	if readOnly && wrote {
+		f.s = fakeState{}
+		_ = json.Unmarshal(before, &f.s)
+		return nil, fakeStatus(gh.ErrForbidden, "Repository was archived so is read-only")
+	}
 	if err == nil && wrote {
 		f.writes = append(f.writes, cmd)
 	}

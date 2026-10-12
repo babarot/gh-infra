@@ -271,7 +271,17 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 		}}
 	}
 
+	// An archived repository is read-only: unarchive before anything else,
+	// and archive after everything else (apply also archives after the
+	// FileSets of the same run).
+	var archived []Change
+	appendChanged(diffContext{resource: manifest.ResourceRepository, name: name}, &archived, "archived", desired.Spec.Archived, current.Archived)
+	unarchive := len(archived) > 0 && !IsArchive(archived[0])
+
 	var changes []Change
+	if unarchive {
+		changes = append(changes, archived...)
+	}
 	changes = append(changes, diffRepoSettings(name, desired, current)...)
 	changes = append(changes, diffFeatures(name, desired, current)...)
 	changes = append(changes, diffMergeStrategy(name, desired, current)...)
@@ -283,8 +293,17 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
 	changes = append(changes, diffSecurity(name, desired, current)...)
+	if !unarchive {
+		changes = append(changes, archived...)
+	}
 
 	return changes
+}
+
+// IsArchive reports whether c archives a repository.
+func IsArchive(c Change) bool {
+	archived, _ := c.NewValue.(bool)
+	return c.Resource == manifest.ResourceRepository && c.Field == "archived" && archived
 }
 
 func diffSecurity(name string, desired *manifest.Repository, current *CurrentState) []Change {
@@ -307,7 +326,6 @@ func diffRepoSettings(name string, desired *manifest.Repository, current *Curren
 	appendChanged(dc, &changes, "description", desired.Spec.Description, current.Description)
 	appendChanged(dc, &changes, "homepage", desired.Spec.Homepage, current.Homepage)
 	appendChanged(dc, &changes, "visibility", desired.Spec.Visibility, current.Visibility)
-	appendChanged(dc, &changes, "archived", desired.Spec.Archived, current.Archived)
 	appendChanged(dc, &changes, "release_immutability", desired.Spec.ReleaseImmutability, current.ReleaseImmutability)
 
 	// An omitted topics leaves the current topics alone; topics: [] removes them.

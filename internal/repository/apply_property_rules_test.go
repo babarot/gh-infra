@@ -263,6 +263,7 @@ func TestApplyPropertiesBranchProtectionAndRulesets(t *testing.T) {
 	authoritative := manifest.Ptr(manifest.CollectionReconcileAuthoritative)
 	for _, tt := range []struct {
 		name   string
+		state  func(*fakeState)
 		spec   manifest.RepositorySpec
 		recon  *manifest.RepositoryReconcile
 		noPlan bool
@@ -332,9 +333,25 @@ func TestApplyPropertiesBranchProtectionAndRulesets(t *testing.T) {
 		}}}},
 		{name: "rulesets authoritative", recon: &manifest.RepositoryReconcile{Rulesets: authoritative},
 			spec: manifest.RepositorySpec{Rulesets: []manifest.Ruleset{{Name: "protect-main", Enforcement: ptr("active")}}}},
+		{name: "archive with a ruleset and a protection", spec: manifest.RepositorySpec{
+			Archived:         bptr(true),
+			BranchProtection: []manifest.BranchProtection{{Pattern: "main", RequiredReviews: iptr(2)}},
+			Rulesets:         []manifest.Ruleset{{Name: "protect-main", Enforcement: ptr("evaluate")}},
+		}},
+		{name: "unarchive with a ruleset and a protection", state: func(s *fakeState) {
+			s.Repo.Archived = true
+		}, spec: manifest.RepositorySpec{
+			Archived:         bptr(false),
+			BranchProtection: []manifest.BranchProtection{{Pattern: "main", RequiredReviews: iptr(2)}},
+			Rulesets:         []manifest.Ruleset{{Name: "protect-main", Enforcement: ptr("evaluate")}},
+		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			checkApplyProperties(t, propRulesState(), &manifest.Repository{
+			s := propRulesState()
+			if tt.state != nil {
+				tt.state(&s)
+			}
+			checkApplyProperties(t, s, &manifest.Repository{
 				Metadata:  manifest.RepositoryMetadata{Owner: "o", Name: "r"},
 				Reconcile: tt.recon,
 				Spec:      tt.spec,

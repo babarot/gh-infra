@@ -13,6 +13,7 @@ spec:
 
 - `visibility`: `public`, `private`, `internal`
 - `archived`: reversible; set `false` to unarchive
+- apply unarchives first and archives last (after the repo's other changes and its FileSets in the same run); if any of those fail, it does not archive and reports the archive as failed
 - `topics`: full list, not additive merge. Omitted leaves current topics unchanged; `[]` removes all
 
 ## Features

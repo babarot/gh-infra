@@ -2771,3 +2771,32 @@ func TestDiffLabels_CaseOnlyDifferenceIsARename(t *testing.T) {
 		t.Errorf("same name: expected no changes, got %v", changes)
 	}
 }
+
+// An archived repository is read-only: unarchive comes first, archive last.
+func TestDiff_ArchivedOrder(t *testing.T) {
+	desired := func(archived bool) *manifest.Repository {
+		return &manifest.Repository{
+			Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"},
+			Spec: manifest.RepositorySpec{
+				Description: manifest.Ptr("new"), Archived: manifest.Ptr(archived),
+				Labels: []manifest.Label{{Name: "bug", Color: "ff0000"}},
+			},
+		}
+	}
+	archive := Diff(context.Background(), desired(true), &CurrentState{Description: "old"})
+	if len(archive) < 3 || archive[len(archive)-1].Field != "archived" {
+		t.Errorf("archive: changes = %v, want archived last", fields(archive))
+	}
+	unarchive := Diff(context.Background(), desired(false), &CurrentState{Description: "old", Archived: true})
+	if len(unarchive) < 3 || unarchive[0].Field != "archived" {
+		t.Errorf("unarchive: changes = %v, want archived first", fields(unarchive))
+	}
+}
+
+func fields(changes []Change) []string {
+	var out []string
+	for _, c := range changes {
+		out = append(out, c.Field)
+	}
+	return out
+}
