@@ -10,7 +10,7 @@ paths:
 When adding, removing, or renaming fields fetched from the GitHub API (GraphQL via `gh repo view --json` or REST via `gh api`), you **must** update the following files to match:
 
 1. **`docs/tapes/mock-gh`** — the generic mock script. Update the default JSON fallbacks for both `view.json` (GraphQL fields) and `commit-settings.json` (REST API fields), plus any field-matching patterns.
-2. **`docs/tapes/setup*.sh`** — every setup script that generates `view.json` or `commit-settings.json`. Each heredoc must include the new/changed field.
+2. **`docs/tapes/setup*.sh`** — every setup script that generates `view.json` or `commit-settings.json`. Each heredoc must include the new/changed field. The same goes for `docs/tapes/playground.sh` (its `view_json` function).
 3. **`internal/repository/state_test.go`** — mock response map keys contain the full `--json` / `--jq` field list; these must match the production query exactly.
 
 ## Important: GraphQL vs REST API fields
@@ -24,6 +24,6 @@ Not all GitHub repository fields are available via GraphQL (`gh repo view --json
 ## Checklist
 
 - [ ] `mock-gh` default JSON fallbacks include the field in the correct response (GraphQL or REST)
-- [ ] Every `setup*.sh` heredoc for the relevant mock file includes the field
+- [ ] Every `setup*.sh` heredoc for the relevant mock file includes the field, and so does `playground.sh`'s `view_json`
 - [ ] `state_test.go` mock keys match the updated query strings
 - [ ] `state_test.go` mock JSON responses include the field with a sensible value
