@@ -70,7 +70,7 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 			tracker.Error(fullName, err)
 			return repoResult{index: idx, repo: r, err: err}
 		}
-		tracker.Checkpoint(fullName, "fetched repository state")
+		tracker.Checkpoint(fullName, "repository")
 
 		// Cross-field dependencies that need current state to evaluate.
 		if err := ValidateDependencies(r, current); err != nil {
@@ -92,7 +92,7 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 			p.enrichLabelDeleteInfo(ctx, changes)
 		}
 		logger.Debug("diff done", "repo", fullName, "changes", len(changes))
-		tracker.Done(fullName)
+		tracker.Done(fullName, SummarizePlan(changes))
 		return repoResult{index: idx, repo: r, changes: changes}
 	})
 

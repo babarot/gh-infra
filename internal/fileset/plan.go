@@ -206,7 +206,7 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			}
 		}
 
-		tracker.Done(fullName)
+		tracker.Done(fullName, SummarizePlan(out))
 		return unitResult{changes: out}
 	})
 

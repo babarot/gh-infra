@@ -16,62 +16,6 @@ type ProgressReporter interface {
 	Wait()
 }
 
-// SpinnerReporter reports progress using animated spinners (bubbletea).
-type SpinnerReporter struct {
-	tracker *RefreshTracker
-	tasks   map[string]RefreshTask // name → task (for key lookup)
-	shared  bool                   // true when tracker is shared (don't call Wait)
-}
-
-// NewSpinnerReporterWith creates a reporter that delegates to an existing tracker.
-// Each name is mapped directly as a task key.
-func NewSpinnerReporterWith(tracker *RefreshTracker, names []string) *SpinnerReporter {
-	taskMap := make(map[string]RefreshTask, len(names))
-	for _, name := range names {
-		taskMap[name] = RefreshTask{Name: name}
-	}
-	return &SpinnerReporter{
-		tracker: tracker,
-		tasks:   taskMap,
-		shared:  true,
-	}
-}
-
-func (r *SpinnerReporter) Start(name string, fields []string) {
-	if t, ok := r.tasks[name]; ok && len(fields) > 0 {
-		r.tracker.UpdateStatus(t.Name, "applying "+fields[0]+"...")
-	}
-}
-
-func (r *SpinnerReporter) UpdateStatus(name, status string) {
-	if t, ok := r.tasks[name]; ok {
-		r.tracker.UpdateStatus(t.Name, status)
-	}
-}
-
-func (r *SpinnerReporter) Done(name string, elapsed time.Duration, count int) {
-	if t, ok := r.tasks[name]; ok {
-		r.tracker.Done(t.Name)
-	}
-}
-
-func (r *SpinnerReporter) Error(name string, elapsed time.Duration, err error) {
-	if t, ok := r.tasks[name]; ok {
-		r.tracker.Error(t.Name, err)
-	}
-}
-
-func (r *SpinnerReporter) Canceled() <-chan struct{} {
-	return r.tracker.Canceled()
-}
-
-func (r *SpinnerReporter) Wait() {
-	if r.shared {
-		return // shared tracker is waited on by the caller
-	}
-	r.tracker.Wait()
-}
-
 // StreamReporter reports progress as line-by-line streaming output.
 type StreamReporter struct {
 	printer Printer

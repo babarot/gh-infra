@@ -14,8 +14,30 @@ type ProgressReporter interface {
 // RefreshTracker reports plan-time refresh progress.
 type RefreshTracker interface {
 	UpdateStatus(name, status string)
-	Done(name string)
+	Done(name string, s PlanSummary)
 	Error(name string, err error)
+}
+
+// PlanSummary is what one FileSet found for one repository, reported with
+// Done.
+type PlanSummary struct {
+	Files int    // files with a change
+	Via   string // how they are delivered; empty without changes
+}
+
+// SummarizePlan returns the PlanSummary of one repository's file changes.
+func SummarizePlan(changes []Change) PlanSummary {
+	var s PlanSummary
+	for _, c := range changes {
+		if c.Type == ChangeNoOp {
+			continue
+		}
+		s.Files++
+		if s.Via == "" {
+			s.Via = c.Via
+		}
+	}
+	return s
 }
 
 // ProgressWriter emits file apply fallback progress messages.
@@ -34,7 +56,7 @@ func (noopProgressReporter) Wait()                              {}
 type noopRefreshTracker struct{}
 
 func (noopRefreshTracker) UpdateStatus(string, string) {}
-func (noopRefreshTracker) Done(string)                 {}
+func (noopRefreshTracker) Done(string, PlanSummary)    {}
 func (noopRefreshTracker) Error(string, error)         {}
 
 type noopProgressWriter struct{}
