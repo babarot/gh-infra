@@ -10,6 +10,7 @@
 #     commit-settings.json       — squash/merge commit title/message (optional)
 #     contents/{path}            — raw file content (base64-encoded on the fly)
 #     pr-number                  — number of the pull request gh-infra opens (default 42)
+#     labels.json                — gh label list --json name,color,description response
 #
 # Files are optional. When missing, sensible defaults are returned.
 set -euo pipefail
@@ -210,6 +211,21 @@ fi
 if [[ "$args" == *"secret list"* ]]; then
   delay
   echo ''
+  exit 0
+fi
+
+# Labels
+if [[ "$args" == *"label list"* ]]; then
+  delay
+  read_data "$repo" "labels.json" '[]'
+  exit 0
+fi
+
+# Issues and pull requests with a label (plan shows it for a label to
+# delete): "<count> <last updated>"
+if [[ "$args" == *"/search/issues"* ]]; then
+  delay
+  echo "2 2026-08-21T09:00:00Z"
   exit 0
 fi
 

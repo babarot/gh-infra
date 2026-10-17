@@ -142,6 +142,7 @@ $MOCK_DIR/{owner}/{repo}/
   commit-settings.json            # squash/merge commit title/message (optional)
   contents/{path}                 # raw file content (base64-encoded on the fly)
   pr-number                       # number of the pull request gh-infra opens (optional; default 42)
+  labels.json                     # gh label list --json name,color,description response (optional; default [])
   absent                          # the repository does not exist; plan creates it (optional)
   fail                            # failure rules, "<read|write|any> <pattern> <message>" per line (optional)
 ```
@@ -158,11 +159,13 @@ $MOCK_DIR/{owner}/{repo}/
 | `/contents/{path}` (GET) | `contents/{path}` file | 404 (new file) |
 | REST `/vulnerability-alerts`, `/automated-security-fixes`, `/private-vulnerability-reporting` | hardcoded | alerts on, the other two off |
 | `pr create`, `pr view`, POST `/pulls` | `pr-number` | pull request #42 |
+| `label list` | `labels.json` | `[]` |
+| REST `/search/issues` (label usage) | hardcoded | 2 issues/PRs |
 | `secret list` | hardcoded | empty |
 | `variable list` | hardcoded | `[]` |
 | `repo edit`, write APIs | no-op | success with delay |
 
-All mock responses include a random 200-500ms delay to simulate network latency. Setting `MOCK_DELAY` to a number of seconds changes it to between half and one and a half times that (`make playground DELAY=2`, or `export MOCK_DELAY=2` in the playground shell). A setup script can export it to pace its tape: `setup.sh` sets 0.6 so the twelve repositories' fetch stays on screen long enough to read. Change it together with the tape's `Sleep`s, and keep a loop within 20-35 seconds.
+All mock responses include a random 200-500ms delay to simulate network latency. Setting `MOCK_DELAY` to a number of seconds changes it to between half and one and a half times that (`make playground DELAY=2`, or `export MOCK_DELAY=2` in the playground shell). A setup script can export it to pace its tape: `setup.sh` sets 0.6 so the sixteen repositories' fetch stays on screen long enough to read. Change it together with the tape's `Sleep`s, and keep a loop within 20-35 seconds.
 
 A call without a repository in its arguments (`gh pr view`) uses `$GH_REPO`, as gh does; `setup-file-pr.sh` exports it.
 
@@ -180,15 +183,9 @@ A call without a repository in its arguments (`gh pr view`) uses `$GH_REPO`, as 
    - Populate `$MOCK_DIR` with the GitHub state the demo needs
    - Create manifest YAML in `/tmp/demo/`
 
-4. **Update Makefile**: Add the new GIF to the `cp` line in the `demo` target:
-   ```makefile
-   @cp docs/tapes/demo-<name>.gif docs/public/ 2>/dev/null || true
-   ```
+4. **Makefile**: nothing to add; `make demo` copies the GIF of every tape it records to `docs/public/`.
 
-5. **Test locally**: Run `make demo` or test the single tape:
-   ```bash
-   docker run --rm -v docs/tapes:/data -w /data gh-infra-vhs demo-<name>.tape
-   ```
+5. **Test locally**: Record only this tape with `make demo TAPES=demo-<name>` (several: `TAPES="demo demo-light"`). `make demo` alone records every tape.
 
 6. **Verify output**: Check that both `.mp4` and `.gif` are non-zero size
 

@@ -1,4 +1,4 @@
-# gh-infra demo: edit a shared template, then apply to twelve repositories
+# gh-infra demo: bring sixteen repositories back to their manifests
 #
 # Run with: make demos
 # Requirements: Docker
@@ -32,39 +32,21 @@ Show
 
 # --- Demo starts ---
 
-# 1. A github-config style directory: one manifest per repository, plus
-#    the templates six of them sync by pull request
+# 1. A github-config style directory: one manifest per repository
 Sleep 700ms
 Type "ls"
 Sleep 350ms
 Enter
 Sleep 2s
 
-# 2. Edit a shared template
-Type "vim templates/common/.github/release.yml"
-Sleep 350ms
-Enter
-Sleep 1s
-Type "/Bug fixes"
-Enter
-Sleep 700ms
-Type "cgn"
-Sleep 200ms
-Type "Bug Fixes"
-Escape
-Sleep 1s
-Type ":wq"
-Enter
-Sleep 700ms
-
-# 3. Apply: fetch the twelve repositories, show the plan, confirm
+# 2. Apply: fetch the sixteen repositories, show what drifted on GitHub
+#    (labels, description, homepage, topics, wiki), confirm
 Type "gh infra apply ."
 Sleep 350ms
 Enter
-Sleep 7s
+Sleep 9s
 
-# 4. Confirm (single keypress, no Enter needed): a pull request per
-#    repository that syncs the template, and the wiki that drifted
+# 3. Confirm (single keypress, no Enter needed)
 Type "y"
 Sleep 7s
 

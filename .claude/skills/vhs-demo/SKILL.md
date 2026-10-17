@@ -21,6 +21,10 @@ Use this skill to run, debug, or regenerate gh-infra demo GIF recordings.
 - Docker must be running
 - Go toolchain (for cross-compiling the Linux binary)
 
+## Recording some tapes
+
+`make demo TAPES="demo demo-light"` records only the named tapes (`docs/tapes/<name>.tape`) and copies only their GIFs; `docs/tapes/vhs.sh` takes the names the same way. Use it after changing one scene instead of recording all of them.
+
 ## Pipeline
 
 ```text
@@ -32,7 +36,7 @@ make demo
         docker run --memory=1g --cpus=2 → produces .mp4
      c. For each .mp4 sequentially:
         docker run jrottenberg/ffmpeg:7-alpine → produces .gif
-  3. Copy GIFs to docs/public/
+  3. Copy the recorded GIFs to docs/public/
   4. Clean up .gh-infra binary
 ```
 

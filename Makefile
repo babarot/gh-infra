@@ -35,18 +35,20 @@ docs-build:
 docs-install:
 	mise exec -- npm install --prefix docs
 
+# Record the demo GIFs with VHS in Docker and copy them to docs/public:
+#   make demo [TAPES="demo demo-apply"]
+# TAPES names the tapes to record (docs/tapes/<name>.tape); all when not given.
 demo:
 	@if ! docker info > /dev/null 2>&1; then \
 		echo "Docker is not running — please start Docker and try again."; \
 		exit 1; \
 	fi
 	@echo "Building gh-infra for Linux..."
-	@GOOS=linux GOARCH=amd64 go build -ldflags $(LDFLAGS) -trimpath -o docs/tapes/.gh-infra ./cmd/gh-infra/
-	@docs/tapes/vhs.sh $(foreach v,$(DEMO_ENV),-e $(v))
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags $(LDFLAGS) -trimpath -o docs/tapes/.gh-infra ./cmd/gh-infra/
+	@docs/tapes/vhs.sh $(foreach v,$(DEMO_ENV),-e $(v)) $(TAPES)
 	@rm -f docs/tapes/.gh-infra
 	@echo "Copying assets to docs/public/..."
-	@cp docs/tapes/demo.gif docs/tapes/demo-light.gif docs/public/
-	@cp docs/tapes/demo-apply.gif docs/tapes/demo-diffviewer.gif docs/tapes/demo-import-into.gif docs/tapes/demo-import-into-files.gif docs/tapes/demo-repositoryset-plan.gif docs/tapes/demo-file-pr.gif docs/public/ 2>/dev/null || true
+	@for t in $(or $(TAPES),$(basename $(notdir $(wildcard docs/tapes/*.tape)))); do cp docs/tapes/$$t.gif docs/public/; done
 
 # Try the terminal output against mock-gh, without GitHub:
 #   make playground [SCENARIO=many] [DELAY=<seconds per gh call>]
