@@ -91,6 +91,20 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, opts ApplyOptio
 			})
 		}
 
+		outcome := StepApplied
+		switch {
+		case err != nil:
+			outcome = StepFailed
+		case skipped:
+			outcome = StepSkipped
+		}
+		for range filesToApply {
+			reporter.Step(entry.name, outcome)
+		}
+		if prURL != "" && err == nil {
+			reporter.PullRequest(entry.name, prURL)
+		}
+
 		switch {
 		case err != nil:
 			reporter.Error(entry.name, elapsed, err)

@@ -612,6 +612,63 @@ func TestRunRefresh_FallbackPrintsThePhase(t *testing.T) {
 	}
 }
 
+func TestView_StepsOfARow(t *testing.T) {
+	m := begun(t, frozen(newRefreshModel([]RefreshTask{{Name: "o/a", Total: 7, Pending: 2}, {Name: "o/b"}})), "o/a")
+	m = later(m, 1200*time.Millisecond)
+	spin := stripANSIForTest(m.items[0].spinner.View())
+	for _, r := range []StepResult{StepApplied, StepApplied, StepApplied, StepFailed} {
+		m = update(t, m, taskStepMsg{name: "o/a", result: r})
+	}
+	m = update(t, m, taskStatusMsg{name: "o/a", status: `applying label "kind/feature"...`})
+	want := "  " + spin + ` o/a   1.2s  ━━━━━───── 4/7  applying label "kind/feature"...  1 failed`
+	if got := viewLines(m)[0]; got != want {
+		t.Errorf("running:\ngot  %q\nwant %q", got, want)
+	}
+
+	m = update(t, m, taskDoneMsg{name: "o/a", labeled: true, mark: MarkFailed, label: "6 of 7 applied, 1 failed"})
+	m = update(t, m, taskDoneMsg{name: "o/a", labeled: true, mark: MarkFailed, label: "6 of 7 applied, 1 failed"})
+	if got := viewLines(m)[0]; got != "  ✗ o/a   1.2s  6 of 7 applied, 1 failed" {
+		t.Errorf("finished: got %q", got)
+	}
+}
+
+func TestView_HeadingCountsChanges(t *testing.T) {
+	newModel := func() refreshModel {
+		m := frozen(newRefreshModel([]RefreshTask{{Name: "o/a", Total: 3}, {Name: "o/b", Total: 2}}))
+		m.heading = RefreshHeading{Title: "Applying 5 changes to 2 repositories", Done: "Applied", Changes: 5}
+		return begun(t, m, "o/a", "o/b")
+	}
+	finish := func(m refreshModel, a, b []StepResult) refreshModel {
+		m = later(m, 2800*time.Millisecond)
+		for name, results := range map[string][]StepResult{"o/a": a, "o/b": b} {
+			for _, r := range results {
+				m = update(t, m, taskStepMsg{name: name, result: r})
+			}
+			m = update(t, m, taskDoneMsg{name: name})
+		}
+		return m
+	}
+	ok, f, sk := StepApplied, StepFailed, StepSkipped
+
+	m := update(t, update(t, newModel(), taskStepMsg{name: "o/a", result: ok}), taskStepMsg{name: "o/b", result: f})
+	if got := viewLines(m)[0]; !strings.Contains(got, "2/5") {
+		t.Errorf("running: want the steps counted, got %q", got)
+	}
+	for _, tt := range []struct {
+		name string
+		a, b []StepResult
+		want string
+	}{
+		{"all applied", []StepResult{ok, ok, ok}, []StepResult{ok, ok}, "✓ Applied 5 changes in 2.8s"},
+		{"mixed", []StepResult{ok, f, ok}, []StepResult{ok, sk}, "✗ Applied 3 of 5 changes in 2.8s, 1 failed, 1 skipped"},
+		{"all skipped", []StepResult{sk, sk, sk}, []StepResult{sk, sk}, "✓ Applied 0 of 5 changes in 2.8s, 5 skipped"},
+	} {
+		if got := viewLines(finish(newModel(), tt.a, tt.b))[0]; got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestView_CtrlCHint(t *testing.T) {
 	const hint = "ctrl+c to cancel"
 	m := frozen(makeModel(task("o/a", 1), task("o/b", 1)))

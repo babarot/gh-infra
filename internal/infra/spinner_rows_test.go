@@ -1,6 +1,9 @@
 package infra
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"maps"
 	"testing"
 
@@ -91,14 +94,79 @@ func TestApplyRowsLabel(t *testing.T) {
 		t.Fatalf("createOnlyRepos = %v, want %v (o/new2 also gets a file)", createOnly, want)
 	}
 
-	rows := newApplyRows(nil, createOnly)
-	if got := rows.add("o/a", 3); got != "3 applied" {
-		t.Errorf("settings step: got %q", got)
+	totals := map[string]int{"o/a": 7, "o/b": 5, "o/c": 2, "o/new": 1, "o/x": 3}
+	rows := newApplyRows(nil, totals, createOnly) // a nil tracker shows nothing
+	steps := func(name string, results ...ui.StepResult) {
+		for _, r := range results {
+			rows.step(name, r)
+		}
 	}
-	if got := rows.add("o/a", 2); got != "5 applied" {
-		t.Errorf("after the FileSet step: got %q, want the steps added up", got)
+	a, f, sk := ui.StepApplied, ui.StepFailed, ui.StepSkipped
+	steps("o/a", a, a, a, f, a, a, a)
+	steps("o/b", a, a, a, a, sk)
+	steps("o/c", sk, sk)
+	steps("o/new", a)
+	steps("o/x", a) // then canceled: an error with no failed step
+	rows.pullRequest("o/b", "https://github.com/acme/b/pull/42")
+	rows.Error("o/x", 0, errors.New("context canceled"))
+
+	for name, want := range map[string]struct {
+		mark  ui.Mark
+		label string
+	}{
+		"o/a":   {ui.MarkFailed, "6 of 7 applied, 1 failed"},
+		"o/b":   {ui.MarkDone, "4 applied, 1 skipped · opened pull request #42"},
+		"o/c":   {ui.MarkDone, "2 skipped"},
+		"o/new": {ui.MarkDone, "created"},
+		"o/x":   {ui.MarkFailed, "1 of 3 applied"},
+	} {
+		mark, label := rows.result(name, rows.rows[name])
+		if mark != want.mark || label != want.label {
+			t.Errorf("%s: got (%v, %q), want (%v, %q)", name, mark, label, want.mark, want.label)
+		}
 	}
-	if got := rows.add("o/new", 1); got != "created" {
-		t.Errorf("create only: got %q", got)
+}
+
+// A held archive is not applied: it counts as a failed change of its row,
+// so the row's n/m reaches its total and its label says it failed.
+func TestApplyArchives_HeldArchiveIsAFailedStep(t *testing.T) {
+	rows := newApplyRows(nil, map[string]int{"o/r": 2}, nil)
+	view := applyView{rows: rows}
+	archive := repository.Change{Type: repository.ChangeUpdate, Name: "o/r", Field: "archived", OldValue: false, NewValue: true}
+	failedBefore := []repository.ApplyResult{{Change: repository.Change{Name: "o/r", Field: "description"}, Err: errors.New("boom")}}
+	rows.step("o/r", ui.StepFailed) // the description, which failed
+
+	results := applyArchives(context.Background(), nil, []repository.Change{archive}, nil, failedBefore, nil, view)
+	if len(results) != 1 || !errors.Is(results[0].Err, errNotArchived) {
+		t.Fatalf("results = %+v, want the archive held", results)
+	}
+	if row := rows.rows["o/r"]; row.failed != 2 {
+		t.Errorf("failed steps = %d, want 2 (the description and the held archive)", row.failed)
+	}
+	if mark, label := rows.result("o/r", rows.rows["o/r"]); mark != ui.MarkFailed || label != "0 of 2 applied, 2 failed" {
+		t.Errorf("result = (%v, %q)", mark, label)
+	}
+}
+
+func TestPrintApplyFollowUps(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+	printApplyFollowUps(p, []repository.ApplyResult{
+		{Change: repository.Change{Name: "o/a", Field: "description"}},
+		{Change: repository.Change{Name: "o/a", Field: `ruleset "main"`}, Err: errors.New("HTTP 422: Validation Failed")},
+	}, []fileset.ApplyResult{
+		{Change: fileset.Change{Target: "o/b", Path: "CODEOWNERS"}, PRURL: "https://github.com/o/b/pull/42"},
+		{Change: fileset.Change{Target: "o/c", Path: "LICENSE"}},
+	})
+	// Fields are padded as in the full list (printApplyResults).
+	want := "  ✗ o/a\n      ✗ ruleset \"main\"      HTTP 422: Validation Failed\n\n  ↗ o/b  pull request #42  https://github.com/o/b/pull/42\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+
+	buf.Reset()
+	printApplyFollowUps(p, []repository.ApplyResult{{Change: repository.Change{Name: "o/a", Field: "description"}}}, nil)
+	if buf.Len() != 0 {
+		t.Errorf("all applied, no pull request: want nothing, got\n%s", buf.String())
 	}
 }

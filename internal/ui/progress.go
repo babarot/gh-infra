@@ -51,12 +51,3 @@ func (r *StreamReporter) Error(name string, elapsed time.Duration, err error) {
 func (r *StreamReporter) Wait() {
 	// Stream mode has no buffered state to flush.
 }
-
-// NoopReporter discards all progress events. Useful for tests.
-type NoopReporter struct{}
-
-func (NoopReporter) Start(string, []string)             {}
-func (NoopReporter) UpdateStatus(string, string)        {}
-func (NoopReporter) Done(string, time.Duration, int)    {}
-func (NoopReporter) Error(string, time.Duration, error) {}
-func (NoopReporter) Wait()                              {}

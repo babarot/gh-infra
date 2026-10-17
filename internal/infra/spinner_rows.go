@@ -119,16 +119,33 @@ func planTasks(names []string) []ui.RefreshTask {
 
 // applyRows shows what was applied to each repository on its spinner row. A
 // row is reported by each step that changes the repository (its settings,
-// each FileSet, its archive); its label adds up what they applied.
+// each FileSet, its archive), which report how each change ended (Step);
+// its label adds them up.
 type applyRows struct {
 	tracker    *ui.RefreshTracker
+	totals     map[string]int  // changes to apply per repository
 	createOnly map[string]bool // repositories whose only change is creating them
 	mu         sync.Mutex      // also keeps each row's reports in order
-	applied    map[string]int
+	rows       map[string]*applyRow
 }
 
-func newApplyRows(tracker *ui.RefreshTracker, createOnly map[string]bool) *applyRows {
-	return &applyRows{tracker: tracker, createOnly: createOnly, applied: make(map[string]int)}
+type applyRow struct {
+	applied, failed, skipped int
+	errored                  bool   // a step reported an error, as when canceled
+	pullRequest              string // URL of the pull request opened, if any
+}
+
+func newApplyRows(tracker *ui.RefreshTracker, totals map[string]int, createOnly map[string]bool) *applyRows {
+	return &applyRows{tracker: tracker, totals: totals, createOnly: createOnly, rows: make(map[string]*applyRow)}
+}
+
+func (r *applyRows) row(name string) *applyRow {
+	row := r.rows[name]
+	if row == nil {
+		row = &applyRow{}
+		r.rows[name] = row
+	}
+	return row
 }
 
 func (r *applyRows) Start(name string, fields []string) {
@@ -139,24 +156,157 @@ func (r *applyRows) Start(name string, fields []string) {
 
 func (r *applyRows) UpdateStatus(name, status string) { r.tracker.UpdateStatus(name, status) }
 
-func (r *applyRows) Done(name string, _ time.Duration, count int) {
+// step counts how one change of name ended.
+func (r *applyRows) step(name string, result ui.StepResult) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tracker.DoneWith(name, ui.MarkDone, r.add(name, count))
-}
-
-// add counts what one step applied to name and returns the row's label.
-func (r *applyRows) add(name string, count int) string {
-	r.applied[name] += count
-	if r.createOnly[name] {
-		return "created"
+	row := r.row(name)
+	switch result {
+	case ui.StepApplied:
+		row.applied++
+	case ui.StepFailed:
+		row.failed++
+	case ui.StepSkipped:
+		row.skipped++
 	}
-	return fmt.Sprintf("%d applied", r.applied[name])
+	r.tracker.Step(name, result)
 }
 
-func (r *applyRows) Error(name string, _ time.Duration, err error) { r.tracker.Error(name, err) }
+// pullRequest records the pull request opened for name.
+func (r *applyRows) pullRequest(name, url string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.row(name).pullRequest = url
+}
+
+// Done and Error end one step of name's row and send the row's result so
+// far. An error does not end the row: it keeps running until its other
+// steps end, and then shows how many changes failed. Without a terminal
+// the error is printed as it happens, as before the rows counted changes.
+func (r *applyRows) Done(name string, _ time.Duration, _ int) { r.end(name, false) }
+
+func (r *applyRows) Error(name string, _ time.Duration, err error) {
+	if !r.tracker.Interactive() {
+		r.tracker.Error(name, err)
+	}
+	r.end(name, true)
+}
+
+func (r *applyRows) end(name string, errored bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	row := r.row(name)
+	row.errored = row.errored || errored
+	mark, label := r.result(name, row)
+	r.tracker.DoneWith(name, mark, label)
+}
+
+// result is how name's row shows what was applied: "7 applied",
+// "4 applied, 1 skipped", "created", or "6 of 7 applied, 1 failed", and the
+// pull request it opened.
+func (r *applyRows) result(name string, row *applyRow) (ui.Mark, string) {
+	var label string
+	mark := ui.MarkDone
+	switch {
+	case row.failed > 0 || row.errored:
+		mark = ui.MarkFailed
+		label = fmt.Sprintf("%d of %d applied", row.applied, r.totals[name])
+		if row.failed > 0 {
+			label += fmt.Sprintf(", %d failed", row.failed)
+		}
+	case r.createOnly[name] && row.applied == 1:
+		label = "created"
+	case row.applied > 0:
+		label = fmt.Sprintf("%d applied", row.applied)
+	}
+	if row.skipped > 0 {
+		if label != "" {
+			label += ", "
+		}
+		label += fmt.Sprintf("%d skipped", row.skipped)
+	}
+	if n := pullRequestNumber(row.pullRequest); n != "" {
+		label += " · opened pull request #" + n
+	}
+	return mark, label
+}
 
 func (r *applyRows) Wait() {}
+
+// pullRequestNumber returns the number at the end of a pull request URL.
+func pullRequestNumber(url string) string {
+	_, n, ok := strings.Cut(url, "/pull/")
+	if !ok {
+		return ""
+	}
+	return strings.TrimRight(n, "/")
+}
+
+// repoApplyProgress is what the repository apply reports to: the spinner's
+// applyRows, or the stream's lines (rows is nil). It adds the repository's
+// Step to them.
+type repoApplyProgress struct {
+	ui.ProgressReporter
+	rows *applyRows
+}
+
+func (r repoApplyProgress) Step(name string, o repository.StepOutcome) {
+	if r.rows == nil {
+		return
+	}
+	switch o {
+	case repository.StepFailed:
+		r.rows.step(name, ui.StepFailed)
+	case repository.StepSkipped:
+		r.rows.step(name, ui.StepSkipped)
+	default:
+		r.rows.step(name, ui.StepApplied)
+	}
+}
+
+// fileApplyProgress is repoApplyProgress for a FileSet's apply, which also
+// reports the pull requests it opens.
+type fileApplyProgress struct {
+	ui.ProgressReporter
+	rows *applyRows
+}
+
+func (r fileApplyProgress) Step(name string, o fileset.StepOutcome) {
+	if r.rows == nil {
+		return
+	}
+	switch o {
+	case fileset.StepFailed:
+		r.rows.step(name, ui.StepFailed)
+	case fileset.StepSkipped:
+		r.rows.step(name, ui.StepSkipped)
+	default:
+		r.rows.step(name, ui.StepApplied)
+	}
+}
+
+func (r fileApplyProgress) PullRequest(name, url string) {
+	if r.rows != nil {
+		r.rows.pullRequest(name, url)
+	}
+}
+
+// applyTotals counts the changes to apply per repository: its settings,
+// archive and files, without those the user chose to skip (no-ops).
+func applyTotals(repoChanges []repository.Change, fileChanges []fileset.Change) map[string]int {
+	totals := make(map[string]int)
+	for _, c := range repoChanges {
+		if c.Type != repository.ChangeNoOp {
+			totals[c.Name]++
+		}
+	}
+	for _, c := range fileChanges {
+		if c.Type != fileset.ChangeNoOp {
+			totals[c.Target]++
+		}
+	}
+	return totals
+}
 
 // createOnlyRepos returns the repositories whose only change is creating
 // them: no settings after the create and no files.

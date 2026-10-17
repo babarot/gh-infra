@@ -325,6 +325,68 @@ func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 	p.SetColumnWidth(0)
 }
 
+// printApplyFollowUps prints, after the spinner, what of an apply needs a
+// hand: each failed change with its error, by repository, and the pull
+// requests opened. The spinner's rows already showed every repository's
+// result, so nothing is printed when nothing failed and no pull request
+// was opened.
+func printApplyFollowUps(p ui.Printer, repoResults []repository.ApplyResult, fileResults []fileset.ApplyResult) {
+	type failure struct{ field, err string }
+	var names []string // repositories to mention, in result order
+	seen := make(map[string]bool)
+	failures := make(map[string][]failure)
+	pullRequests := make(map[string]string)
+	note := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	for _, r := range repoResults {
+		if r.Err != nil {
+			note(r.Change.Name)
+			failures[r.Change.Name] = append(failures[r.Change.Name], failure{r.Change.Field, r.Err.Error()})
+		}
+	}
+	for _, r := range fileResults {
+		switch {
+		case r.Err != nil:
+			note(r.Change.Target)
+			failures[r.Change.Target] = append(failures[r.Change.Target], failure{r.Change.Path, r.Err.Error()})
+		case r.PRURL != "":
+			note(r.Change.Target)
+			pullRequests[r.Change.Target] = r.PRURL
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+
+	p.Separator()
+	for _, name := range names {
+		fs := failures[name]
+		if len(fs) == 0 {
+			continue
+		}
+		w := 0
+		for _, f := range fs {
+			w = max(w, len(f.field))
+		}
+		p.SetColumnWidth(w)
+		p.GroupHeader(ui.IconError, name)
+		for _, f := range fs {
+			p.PrintResult(ui.ResultItem{Icon: ui.IconError, Field: f.field, Detail: f.err})
+		}
+		p.GroupEnd()
+	}
+	p.SetColumnWidth(0)
+	for _, name := range names {
+		if url := pullRequests[name]; url != "" {
+			p.PullRequest(name, url)
+		}
+	}
+}
+
 // changeGroup represents either a single regular change (resource=="")
 // or a batch of same-resource Label/Milestone changes.
 type changeGroup struct {

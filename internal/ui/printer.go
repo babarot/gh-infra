@@ -64,6 +64,7 @@ type Printer interface {
 	PrintDiffBlock(diff string) // emit colored unified diff at IndentSub indent
 	PrintResult(item ResultItem)
 	Success(name, detail string)
+	PullRequest(name, url string) // e.g. "↗ babarot/repo  pull request #42  <url>"
 	Error(name, detail string)
 	ErrorReport(name, detail string) // multi-line per-target block (stderr)
 	Warning(name, detail string)     // stderr
@@ -459,6 +460,20 @@ func renderIcon(icon string) string {
 	default:
 		return Yellow.Render(icon)
 	}
+}
+
+// PullRequest prints a pull request a repository got: the repository, its
+// number, and its URL, linked like repository names (linkRepos).
+func (p *StandardPrinter) PullRequest(name, url string) {
+	number := ""
+	if _, n, ok := strings.Cut(url, "/pull/"); ok {
+		number = " #" + strings.TrimRight(n, "/")
+	}
+	shown := url
+	if p.linkRepos() {
+		shown = Bold.Hyperlink(url).Render(url)
+	}
+	p.line(p.out, "%s%s %s  pull request%s  %s\n", Indent(IndentRoot), Cyan.Render("↗"), repoStyle(name, p.linkRepos()).Render(name), number, shown)
 }
 
 func (p *StandardPrinter) Success(name, detail string) {

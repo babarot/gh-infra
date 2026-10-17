@@ -8,8 +8,22 @@ type ProgressReporter interface {
 	UpdateStatus(name, status string)
 	Done(name string, elapsed time.Duration, count int)
 	Error(name string, elapsed time.Duration, err error)
+	// Step reports how one file of a repository ended, before Done or
+	// Error reports the repository.
+	Step(name string, outcome StepOutcome)
+	// PullRequest reports the pull request opened for a repository.
+	PullRequest(name, url string)
 	Wait()
 }
+
+// StepOutcome is how one file ended, reported with Step.
+type StepOutcome int
+
+const (
+	StepApplied StepOutcome = iota
+	StepFailed
+	StepSkipped // nothing to do on GitHub
+)
 
 // RefreshTracker reports plan-time refresh progress.
 type RefreshTracker interface {
@@ -51,7 +65,9 @@ func (noopProgressReporter) Start(string, []string)             {}
 func (noopProgressReporter) UpdateStatus(string, string)        {}
 func (noopProgressReporter) Done(string, time.Duration, int)    {}
 func (noopProgressReporter) Error(string, time.Duration, error) {}
+func (noopProgressReporter) Step(string, StepOutcome)           {}
 func (noopProgressReporter) Wait()                              {}
+func (noopProgressReporter) PullRequest(string, string)         {}
 
 type noopRefreshTracker struct{}
 

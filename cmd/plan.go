@@ -93,15 +93,21 @@ func runPlan(ctx context.Context, paths []string, opts planCommandOptions) error
 // applyCommand returns the apply command for what this plan covered: the
 // same paths, --repo and --changed-since.
 func applyCommand(opts planCommandOptions) string {
-	args := []string{"gh", "infra", "apply"}
-	for _, p := range opts.Paths {
+	return infraCommand("apply", opts.Paths, opts.FilterRepo, opts.ChangedSince)
+}
+
+// infraCommand returns a gh infra command line for verb over the same
+// paths, --repo and --changed-since, quoted for a shell.
+func infraCommand(verb string, paths []string, repo, changedSince string) string {
+	args := []string{"gh", "infra", verb}
+	for _, p := range paths {
 		args = append(args, shellQuote(p))
 	}
-	if opts.FilterRepo != "" {
-		args = append(args, "--repo", shellQuote(opts.FilterRepo))
+	if repo != "" {
+		args = append(args, "--repo", shellQuote(repo))
 	}
-	if opts.ChangedSince != "" {
-		args = append(args, "--changed-since", shellQuote(opts.ChangedSince))
+	if changedSince != "" {
+		args = append(args, "--changed-since", shellQuote(changedSince))
 	}
 	return strings.Join(args, " ")
 }

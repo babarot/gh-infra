@@ -112,7 +112,11 @@ func TestApply_SameResultsInBothModes(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		var out bytes.Buffer
 		printer := ui.NewStandardPrinterWith(&out, &out)
+		// Without a terminal the spinner falls back to lines through the
+		// package printer.
+		restore := ui.SetDefaultPrinter(printer)
 		outcome, err := Apply(context.Background(), flowResult(&flowRunner{}, printer), ApplyOptions{Stream: stream})
+		restore()
 
 		if err == nil || err.Error() != "apply had errors" {
 			t.Errorf("stream=%v: err = %v, want apply had errors", stream, err)
@@ -136,6 +140,15 @@ func TestApply_SameResultsInBothModes(t *testing.T) {
 		// say the apply is complete.
 		// One blank line before the summary: the results list (fallback mode)
 		// ends with a pending blank line, which the summary's own replaces.
+		// Without a terminal (go test), the spinner's fallback shows no
+		// results, so every result is listed, the successful ones too.
+		if !stream && !strings.Contains(lineWith(out.String(), "✓ A"), "created") {
+			t.Errorf("stream=%v: want the full results list without a terminal:\n%s", stream, out.String())
+		}
+		// Without a terminal each error is also printed as it happens.
+		if !stream && !strings.Contains(out.String(), "o/r  update o/r variable:B") {
+			t.Errorf("stream=%v: want the error line printed during the apply:\n%s", stream, out.String())
+		}
 		if strings.Contains(out.String(), "\n\n\nApply finished") {
 			t.Errorf("stream=%v: two blank lines before the summary:\n%s", stream, out.String())
 		}

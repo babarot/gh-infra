@@ -259,7 +259,7 @@ func TestApply_ModeChangeInEmptyRepoFails(t *testing.T) {
 		{Target: "owner/repo", Path: "bin/tool", Type: ChangeCreate, Desired: "#!/bin/sh\n", Mode: ModeExecutable},
 	}
 
-	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush}, noopProgressReporter{})
 
 	if len(results) != 1 || results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "empty repository") {
 		t.Fatalf("expected an empty repository error, got %+v", results)
@@ -278,7 +278,7 @@ func TestApply_ResultsInTargetOrder(t *testing.T) {
 	}
 
 	for range 20 {
-		results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush}, ui.NoopReporter{})
+		results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test", Via: manifest.ViaPush}, noopProgressReporter{})
 		var got []string
 		for _, r := range results {
 			got = append(got, r.Change.Target)

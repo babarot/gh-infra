@@ -318,7 +318,7 @@ func TestApply_CreateFile(t *testing.T) {
 		},
 	}
 
-	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, noopProgressReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -349,7 +349,7 @@ func TestApply_UpdateFile(t *testing.T) {
 		},
 	}
 
-	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, noopProgressReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -379,7 +379,7 @@ func TestApply_NoOpNotApplied(t *testing.T) {
 		{Type: ChangeNoOp, Target: "owner/repo", Path: "b.txt"},
 	}
 
-	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, ApplyOptions{FileSetID: "test"}, noopProgressReporter{})
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for noop, got %d", len(results))
@@ -728,7 +728,7 @@ func applyOneChange(t *testing.T, runner gh.Runner, repo string, opts ApplyOptio
 		},
 	}
 
-	results := p.Apply(context.Background(), changes, opts, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, opts, noopProgressReporter{})
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -805,7 +805,7 @@ func newNoopGuardMock(newTree string) *gh.MockRunner {
 func applyChanges(t *testing.T, runner gh.Runner, changes []Change, opts ApplyOptions) []ApplyResult {
 	t.Helper()
 	p := NewProcessor(runner, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
-	results := p.Apply(context.Background(), changes, opts, ui.NoopReporter{})
+	results := p.Apply(context.Background(), changes, opts, noopProgressReporter{})
 	if len(results) != len(changes) {
 		t.Fatalf("expected %d results, got %d", len(changes), len(results))
 	}

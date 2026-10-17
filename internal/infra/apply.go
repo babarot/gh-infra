@@ -17,6 +17,10 @@ import (
 // ApplyOptions configures the apply phase.
 type ApplyOptions struct {
 	Stream bool // true = stream output mode instead of spinner
+	// PlanCommand is the plan command for what this apply covered, shown
+	// after a failed apply in a terminal ("Fix the error above, then run
+	// ...").
+	PlanCommand string
 }
 
 // ApplyOutcome holds the result of each applied change.
@@ -44,7 +48,9 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	repoChanges, archives := splitArchives(result.RepoChanges)
 	repoNames := changedRepoNames(repoChanges)
 	fileSets := fileSetWorkOf(result)
-	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, applyTasks(repoNames, fileSets, changedRepoNames(archives)), createOnlyRepos(result.RepoChanges, result.FileChanges))
+	totals := applyTotals(result.RepoChanges, result.FileChanges)
+	tasks := applyTasks(repoNames, fileSets, changedRepoNames(archives), totals)
+	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, tasks, totals, createOnlyRepos(result.RepoChanges, result.FileChanges))
 	defer stop()
 
 	// The steps run in this order in every mode; a mode only changes how
@@ -54,7 +60,7 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	// creates, so they go first.
 	var repoResults []repository.ApplyResult
 	if len(repoNames) > 0 {
-		repoResults = eng.repo.Apply(ctx, repoChanges, result.TargetRepos, view.reporter())
+		repoResults = eng.repo.Apply(ctx, repoChanges, result.TargetRepos, view.repoProgress())
 	}
 
 	// Step 2: FileSets, in parallel with each other.
@@ -77,7 +83,16 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 		return nil, context.Canceled
 	}
 
-	if view.listsResults() {
+	switch {
+	case view.tracker == nil:
+		// Stream: the progress lines are the result.
+	case view.tracker.Interactive():
+		// The spinner's rows are the result per repository; below them
+		// goes only what needs a hand: failures and pull requests.
+		printApplyFollowUps(p, repoResults, fileResults)
+	default:
+		// The spinner's fallback (no terminal) shows no results, so list
+		// every one, as CI logs need.
 		p.Separator()
 		printApplyResults(p, repoResults, fileResults)
 	}
@@ -93,6 +108,9 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	}
 	p.Summary(summaryMsg)
 	printAPIUsage(p, apiUsage(eng.runner))
+	if failed > 0 && opts.PlanCommand != "" && view.tracker != nil && view.tracker.Interactive() {
+		p.Message("\nFix the error above, then run " + ui.Bold.Render(opts.PlanCommand) + " to see what is left.")
+	}
 
 	outcome := &ApplyOutcome{RepoResults: repoResults, FileResults: fileResults}
 	if failed > 0 {
@@ -112,18 +130,24 @@ type applyView struct {
 // startApplyView starts showing progress for tasks. Like startRefresh, it
 // shows the runner's rate limit waits and returns a context that is
 // canceled with ctx (and with the spinner's Ctrl+C). Call stop when done.
-// createOnly names the repositories whose only change is creating them.
-func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.RefreshTask, createOnly map[string]bool) (applyView, context.Context, func()) {
+// totals counts the changes per repository; createOnly names the
+// repositories whose only change is creating them.
+func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.RefreshTask, totals map[string]int, createOnly map[string]bool) (applyView, context.Context, func()) {
 	const phase = "Applying changes to GitHub API ..."
 	if !stream {
+		changes := 0
+		for _, n := range totals {
+			changes += n
+		}
 		heading := ui.RefreshHeading{
-			Title:  "Applying changes to " + repositories(len(tasks)),
-			Phase:  phase,
-			Done:   "Applied changes to",
-			Failed: "failed",
+			Title:   fmt.Sprintf("Applying %s to %s", plural(changes, "change"), repositories(len(tasks))),
+			Phase:   phase,
+			Done:    "Applied",
+			Failed:  "failed",
+			Changes: changes,
 		}
 		tracker, ctx, stop := startRefresh(ctx, eng.runner, heading, tasks)
-		return applyView{tracker: tracker, rows: newApplyRows(tracker, createOnly)}, ctx, stop
+		return applyView{tracker: tracker, rows: newApplyRows(tracker, totals, createOnly)}, ctx, stop
 	}
 	p := eng.printer
 	p.Phase(phase)
@@ -136,9 +160,18 @@ func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.Re
 	return applyView{stream: ui.NewStreamReporter(p, "Applying", "Applied")}, ctx, stopWaits
 }
 
-// reporter reports the progress of the targets of one step. Every step of
-// the spinner shares one applyRows, which adds up what each applied.
-func (v applyView) reporter() ui.ProgressReporter {
+// repoProgress and fileProgress report the progress of the targets of one
+// step. Every step of the spinner shares one applyRows, which adds up what
+// each applied.
+func (v applyView) repoProgress() repository.ProgressReporter {
+	return repoApplyProgress{ProgressReporter: v.base(), rows: v.rows}
+}
+
+func (v applyView) fileProgress() fileset.ProgressReporter {
+	return fileApplyProgress{ProgressReporter: v.base(), rows: v.rows}
+}
+
+func (v applyView) base() ui.ProgressReporter {
 	if v.rows == nil {
 		return v.stream
 	}
@@ -150,10 +183,6 @@ func (v applyView) wait() {
 		v.tracker.Wait()
 	}
 }
-
-// listsResults reports whether the results are listed after the progress.
-// With stream, the progress lines are the result.
-func (v applyView) listsResults() bool { return v.tracker != nil }
 
 // splitArchives separates the changes that archive a repository from the
 // others, keeping their order.
@@ -200,11 +229,12 @@ func applyArchives(ctx context.Context, eng *engine, archives []repository.Chang
 
 	var results []repository.ApplyResult
 	if len(ready) > 0 {
-		results = eng.repo.Apply(ctx, ready, repos, view.reporter())
+		results = eng.repo.Apply(ctx, ready, repos, view.repoProgress())
 	}
 	if len(held) > 0 {
-		reporter := view.reporter()
+		reporter := view.repoProgress()
 		for _, c := range held {
+			reporter.Step(c.Name, repository.StepFailed)
 			reporter.Error(c.Name, 0, errNotArchived)
 			results = append(results, repository.ApplyResult{Change: c, Err: errNotArchived})
 		}
@@ -255,7 +285,7 @@ func applyFileSets(ctx context.Context, eng *engine, work []fileSetWork, view ap
 	var wg sync.WaitGroup
 	for i, w := range work {
 		wg.Go(func() {
-			results[i] = eng.file.Apply(ctx, w.changes, w.opts, view.reporter())
+			results[i] = eng.file.Apply(ctx, w.changes, w.opts, view.fileProgress())
 		})
 	}
 	wg.Wait()
@@ -263,8 +293,9 @@ func applyFileSets(ctx context.Context, eng *engine, work []fileSetWork, view ap
 }
 
 // applyTasks returns the spinner tasks of an apply: a repository is done once
-// per step that reports it (its changes, each FileSet changing it, its archive).
-func applyTasks(repoNames []string, fileSets []fileSetWork, archiveNames []string) []ui.RefreshTask {
+// per step that reports it (its changes, each FileSet changing it, its
+// archive), and counts totals[name] changes.
+func applyTasks(repoNames []string, fileSets []fileSetWork, archiveNames []string, totals map[string]int) []ui.RefreshTask {
 	names := slices.Clone(repoNames)
 	for _, w := range fileSets {
 		names = append(names, w.targets...)
@@ -273,6 +304,7 @@ func applyTasks(repoNames []string, fileSets []fileSetWork, archiveNames []strin
 	tasks := refreshTasks(names, "")
 	for i := range tasks {
 		tasks[i].WaitLabel = "waiting for the next step..."
+		tasks[i].Total = totals[tasks[i].Name]
 	}
 	return tasks
 }
