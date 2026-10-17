@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
@@ -40,9 +41,10 @@ type GHRunner struct {
 	DryRun     bool
 	MaxRetries uint
 
-	slots chan struct{} // one token per running gh process
-	gate  rateGate      // shared wait while a rate limit is in effect
-	usage usageCounter
+	slots   chan struct{} // one token per running gh process
+	waiting atomic.Int64  // calls waiting for a slot (Load)
+	gate    rateGate      // shared wait while a rate limit is in effect
+	usage   usageCounter
 
 	waitMu sync.Mutex
 	onWait func(until time.Time)
@@ -78,12 +80,24 @@ func NewRunnerWithConcurrency(dryRun bool, concurrency int) *GHRunner {
 // Concurrency returns how many gh processes the runner runs at once.
 func (r *GHRunner) Concurrency() int { return cap(r.slots) }
 
+// Load returns how many gh processes run now and how many calls wait for a
+// slot to start one. Waits for a rate limit and before a retry hold no slot
+// and are counted in neither.
+func (r *GHRunner) Load() (running, waiting int) {
+	if r.slots == nil {
+		return 0, 0
+	}
+	return len(r.slots), int(r.waiting.Load())
+}
+
 // acquire waits for a free slot, or for ctx to end. A slot is held only
 // while a gh process runs, never across retry delays.
 func (r *GHRunner) acquire(ctx context.Context) error {
 	if r.slots == nil {
 		return nil
 	}
+	r.waiting.Add(1)
+	defer r.waiting.Add(-1)
 	select {
 	case r.slots <- struct{}{}:
 		return nil

@@ -55,7 +55,7 @@ func TestWithTrackerCancel(t *testing.T) {
 
 func TestStartRefresh_ParentCancelInterruptsTracker(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
-	tracker, ctx, stop := startRefresh(parent, nil, []ui.RefreshTask{{Name: "o/r"}})
+	tracker, ctx, stop := startRefresh(parent, nil, ui.RefreshHeading{}, []ui.RefreshTask{{Name: "o/r"}})
 	defer stop()
 
 	cancel()
@@ -225,5 +225,26 @@ func TestApply_Canceled(t *testing.T) {
 		if len(runner.calls) != 1 {
 			t.Errorf("stream=%v: gh calls = %q, want none after the cancel (no FileSet either)", stream, runner.calls)
 		}
+	}
+}
+
+type loadRunner struct{ running, waiting, limit int }
+
+func (r loadRunner) Load() (int, int) { return r.running, r.waiting }
+func (r loadRunner) Concurrency() int { return r.limit }
+
+func TestWithLoad(t *testing.T) {
+	h := withLoad(ui.RefreshHeading{Title: "x"}, loadRunner{running: 3, waiting: 5, limit: 8})
+	if h.Load == nil {
+		t.Fatal("a runner that reports its load gives the heading a gauge")
+	}
+	if running, waiting, limit := h.Load(); running != 3 || waiting != 5 || limit != 8 {
+		t.Errorf("Load = (%d, %d, %d), want (3, 5, 8)", running, waiting, limit)
+	}
+	if withLoad(ui.RefreshHeading{}, loadRunner{limit: 0}).Load != nil {
+		t.Error("a runner without a limit gives no gauge")
+	}
+	if withLoad(ui.RefreshHeading{}, nil).Load != nil {
+		t.Error("a runner that cannot report its load gives no gauge")
 	}
 }

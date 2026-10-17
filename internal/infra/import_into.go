@@ -241,10 +241,8 @@ func ImportInto(ctx context.Context, runner gh.Runner, args []string, into strin
 	}
 
 	printer.Phase(fmt.Sprintf("Reading desired state from %s ...", tildePath(into)))
-	printer.Phase("Fetching current state from GitHub API ...")
-	printer.BlankLine()
 
-	tracker, ctx, stop := startRefresh(ctx, runner, tasks)
+	tracker, ctx, stop := startRefresh(ctx, runner, fetchHeading("skipped"), tasks)
 	defer stop()
 
 	plan, err := importer.Diff(ctx, importer.DiffOptions{

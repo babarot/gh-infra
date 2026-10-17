@@ -16,15 +16,14 @@ Every command follows this skeleton (adapt, don't rearrange):
 
 1. **Parse manifests / CLI args.**
 2. **`p.Phase("Reading desired state from <path> ...")`** — for commands that read YAML files (`plan`, `apply`, `import --into`). Display the path through `internal/infra.tildePath(...)` so `/Users/<user>/…` becomes `~/…`. Omit this phase for commands that do not read manifests (`import`).
-3. **`p.Phase("Fetching current state from GitHub API ...")`** — standard for all commands that call the GitHub API.
-4. **`p.BlankLine()`** — separates phases from the spinner region.
-5. **`ui.RunRefresh(tasks)`** — start the spinner and hold on to the `*ui.RefreshTracker`.
-6. **Per-target work (parallel).** Report per-target progress through the tracker (see below).
-7. **`tracker.Wait()`** — drain the spinner.
-8. **`tracker.PrintErrors()`** — renders per-target error blocks. See the table below for the one exception.
-9. **`p.Separator()`** — before body output.
-10. **Body output** — plan table, apply results, YAML dump, or import plan.
-11. **Summary / Message** — `p.Summary(...)` on success; `p.Message(...)` for no-op terminal states. Distinguish "no changes" from "no changes because some targets were skipped" (see below).
+3. **The spinner heading** — `startRefresh(ctx, runner, heading, tasks)` (which calls `ui.RunRefresh(heading, tasks)`) and hold on to the `*ui.RefreshTracker`. The heading (`ui.RefreshHeading`) is the line above the spinner rows: its `Title` with the progress while the tasks run (`Fetching current state from GitHub API  ━━━━──  3/5  1.4s  · gh 8/8 · 2 queued`), then `✓ <Done> N repositories in 2.1s` (or `✗ ..., N <Failed>`). Use `fetchHeading(...)` for commands that fetch the current state (`plan`, `import --into`); `import` and `apply` build theirs with the same fields. Do not print `p.Phase("Fetching current state from GitHub API ...")` and `p.BlankLine()` yourself: without a terminal, or without tasks, `RunRefresh` prints the heading's `Phase` and a blank line in their place, so non-TTY output is unchanged. The one exception is apply's stream mode (`GH_INFRA_OUTPUT=stream`), which has no spinner and prints its `Phase` line and blank line itself.
+4. **Rows.** A row is queued until the first message about it, shows its elapsed time and, when done, the result the caller sends with `DoneWith` (or its `DoneLabel`). "Started" means the work has begun, not that a gh process runs for it; the heading's gauge (`gh 8/8 · N calls waiting`) shows the gh processes.
+5. **Per-target work (parallel).** Report per-target progress through the tracker (see below).
+6. **`tracker.Wait()`** — drain the spinner.
+7. **`tracker.PrintErrors()`** — renders per-target error blocks. See the table below for the one exception.
+8. **`p.Separator()`** — before body output.
+9. **Body output** — plan table, apply results, YAML dump, or import plan.
+10. **Summary / Message** — `p.Summary(...)` on success; `p.Message(...)` for no-op terminal states. Distinguish "no changes" from "no changes because some targets were skipped" (see below).
 
 ## Error reporting discipline
 
@@ -93,8 +92,8 @@ it.
 
 | Method | Destination | Used for |
 |---|---|---|
-| `p.Phase(msg)` | stderr | Phase announcements ("Reading desired state from ...", "Fetching ...") |
-| `p.BlankLine()` | stderr | Spacing before the spinner |
+| `p.Phase(msg)` | stderr | Phase announcements ("Reading desired state from ..."). The fetching line is the spinner heading's (`ui.RefreshHeading.Phase`), not a `p.Phase` call |
+| `p.BlankLine()` | stderr | Spacing; before the spinner it comes from `RunRefresh` with the heading's `Phase` |
 | `p.Separator()` | stdout | Horizontal rule before body output |
 | `p.Message(msg)` | stdout | Terminal no-op messages ("No changes. ...") |
 | `p.Summary(msg)` | stderr | Final completion line ("Plan: ...", "Apply complete! ...") |

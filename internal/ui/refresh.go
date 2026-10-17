@@ -29,6 +29,25 @@ type RefreshTask struct {
 	WaitLabel string
 }
 
+// RefreshHeading is the line above the spinner rows.
+type RefreshHeading struct {
+	// Title is shown while the tasks run, followed by their progress, as in
+	// "Fetching current state from GitHub API  ━━━━━━──────  3/5  1.4s".
+	Title string
+	// Phase is printed instead without a terminal (the spinner's fallback)
+	// or without tasks: the static line the command has always printed.
+	Phase string
+	// Done starts the line that replaces the title once every task has
+	// finished, as "Fetched" in "✓ Fetched 5 repositories in 2.1s".
+	Done string
+	// Failed names the tasks that ended with an error in that line, as
+	// "skipped" in "✗ Fetched 5 repositories in 2.1s, 1 skipped".
+	Failed string
+	// Load returns how many gh processes run, how many calls wait for one,
+	// and the limit (--concurrency). Without it the heading has no gauge.
+	Load func() (running, waiting, limit int)
+}
+
 // Mark is how a finished row shows its result: its symbol and colors.
 type Mark int
 
@@ -62,11 +81,18 @@ type refreshItem struct {
 	statusText  string // right-side live status (e.g. "secrets...", ".github/ci.yml...")
 	checkpoint  string // what is already done while the task still runs, shown as "<checkpoint> ✓"
 	pending     int    // expected Done() calls before marking complete (default 1)
-	end         time.Time
-	spinner     spinner.Model
+	// started is set by the first message about the task. Until then the
+	// task is queued. "Started" means its work has begun, not that a gh
+	// process runs for it: a started task can be waiting for a slot of the
+	// runner, which only the heading's gauge shows.
+	started bool
+	begin   time.Time // when the first message came
+	end     time.Time
+	spinner spinner.Model
 }
 
 type refreshModel struct {
+	heading   RefreshHeading
 	items     []refreshItem
 	remaining int
 	canceled  chan struct{} // closed on Ctrl+C to signal callers
@@ -75,6 +101,9 @@ type refreshModel struct {
 	stopped   bool          // Ctrl+C or an interrupt ended the display
 	start     time.Time     // when the tasks started, for their elapsed time
 	now       func() time.Time
+	// lastReport is when the last report of the last row to finish came:
+	// the end of the work, even when a row errored at an earlier report.
+	lastReport time.Time
 }
 
 var (
@@ -193,6 +222,15 @@ func (m refreshModel) cancelRunning() {
 	}
 }
 
+// markStarted marks item i as started at the first message about it (see
+// refreshItem.started).
+func (m refreshModel) markStarted(i int) {
+	if !m.items[i].started {
+		m.items[i].started = true
+		m.items[i].begin = m.now()
+	}
+}
+
 func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case noticeMsg:
@@ -202,6 +240,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case taskStatusMsg:
 		for i := range m.items {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+				m.markStarted(i)
 				m.items[i].statusText = msg.status
 				break
 			}
@@ -213,6 +252,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// status, not as the ✓ of a finished row.
 		for i := range m.items {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
+				m.markStarted(i)
 				m.items[i].checkpoint = msg.status
 				m.items[i].statusText = ""
 				break
@@ -225,6 +265,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.items[i].name != msg.name {
 				continue
 			}
+			m.markStarted(i)
 			if msg.labeled {
 				m.items[i].mark = msg.mark
 				m.items[i].doneLabel = msg.label
@@ -237,6 +278,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.items[i].checkpoint = ""
 					m.items[i].end = m.now()
 					m.remaining--
+					m.lastReport = m.now()
 				} else if m.items[i].waitLabel != "" {
 					m.items[i].statusText = m.items[i].waitLabel
 				}
@@ -245,6 +287,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
+					m.lastReport = m.now()
 				}
 			}
 			break
@@ -259,6 +302,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.items[i].name != msg.name {
 				continue
 			}
+			m.markStarted(i)
 			if m.items[i].status == taskRunning {
 				m.items[i].status = taskError
 				m.items[i].errMsg = msg.err.Error()
@@ -268,6 +312,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
+					m.lastReport = m.now()
 				}
 			} else if m.items[i].pending > 0 {
 				// Already done, errored or failed, with other sources still
@@ -275,6 +320,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
+					m.lastReport = m.now()
 				}
 			}
 			break
@@ -289,6 +335,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.items[i].name != msg.name {
 				continue
 			}
+			m.markStarted(i)
 			if m.items[i].status == taskRunning {
 				m.items[i].status = taskFailed
 				m.items[i].statusText = ""
@@ -297,6 +344,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
+					m.lastReport = m.now()
 				}
 			} else if m.items[i].pending > 0 {
 				// Already done, errored or failed, with other sources still
@@ -304,6 +352,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
+					m.lastReport = m.now()
 				}
 			}
 			break
@@ -353,14 +402,21 @@ func (m refreshModel) View() tea.View {
 	}
 
 	var b strings.Builder
+	if m.heading.Title != "" {
+		fmt.Fprintf(&b, "%s\n\n", m.headingLine())
+	}
 	for _, item := range m.items {
 		padded := fmt.Sprintf("%-*s", maxName, item.name)
+		if item.status == taskRunning && !item.started {
+			fmt.Fprintf(&b, "  %s %s  %s  %s\n", Dim.Render("·"), Dim.Render(padded), strings.Repeat(" ", elapsedWidth), Dim.Render("queued"))
+			continue
+		}
 		// elapsed is the task's time so far, or what it took once finished.
 		end := m.now()
 		if item.status != taskRunning && !item.end.IsZero() {
 			end = item.end
 		}
-		elapsed := Dim.Render(formatElapsed(end.Sub(m.start)))
+		elapsed := Dim.Render(formatElapsed(end.Sub(item.begin)))
 		switch item.status {
 		case taskDone:
 			icon, name, label := doneParts(item.mark)
@@ -411,6 +467,89 @@ func (m refreshModel) View() tea.View {
 	return tea.NewView(b.String())
 }
 
+// headingLine is the heading: its title with the progress while tasks run,
+// then what they did once all have finished.
+func (m refreshModel) headingLine() string {
+	finished, failed, queued := 0, 0, 0
+	for _, item := range m.items {
+		// A row is finished once all its reports are in: one that errored
+		// at an early report still waits for the others.
+		if item.status != taskRunning && item.status != taskCanceled && item.pending <= 0 {
+			finished++
+		}
+		if item.status == taskError || item.status == taskFailed {
+			failed++
+		}
+		if item.status == taskRunning && !item.started {
+			queued++
+		}
+	}
+	total := len(m.items)
+
+	switch {
+	case m.stopped:
+		return Dim.Render(IconError+" "+m.heading.Title) + Dim.Render(" (canceled)")
+	case m.remaining <= 0:
+		line := fmt.Sprintf("%s %s in %s", m.heading.Done, repositories(total), formatSeconds(m.lastReport.Sub(m.start)))
+		if failed > 0 {
+			return Red.Render(IconError) + " " + line + ", " + Red.Render(fmt.Sprintf("%d %s", failed, m.heading.Failed))
+		}
+		return Green.Render(IconSuccess) + " " + line
+	}
+
+	line := fmt.Sprintf("%s  %s  %d/%d  %s", m.heading.Title, progressBar(finished, total, progressBarWidth), finished, total, Dim.Render(formatSeconds(m.now().Sub(m.start))))
+	var more []string
+	if m.heading.Load != nil {
+		running, waiting, limit := m.heading.Load()
+		gauge := fmt.Sprintf("gh %d/%d", running, limit)
+		if running >= limit {
+			gauge = Yellow.Render(gauge)
+		} else {
+			gauge = Dim.Render(gauge)
+		}
+		more = append(more, gauge)
+		if waiting > 0 {
+			more = append(more, Dim.Render(fmt.Sprintf("%d %s waiting", waiting, pluralWord(waiting, "call", "calls"))))
+		}
+	}
+	if queued > 0 {
+		more = append(more, Dim.Render(fmt.Sprintf("%d queued", queued)))
+	}
+	if len(more) > 0 {
+		line += Dim.Render("  · ") + strings.Join(more, Dim.Render(" · "))
+	}
+	return line
+}
+
+// progressBarWidth is the width of the heading's progress bar.
+const progressBarWidth = 24
+
+// progressBar draws done of total as a bar of width cells.
+func progressBar(done, total, width int) string {
+	filled := 0
+	if total > 0 {
+		filled = done * width / total
+	}
+	return Cyan.Render(strings.Repeat("━", filled)) + Dim.Render(strings.Repeat("─", width-filled))
+}
+
+// formatSeconds formats d as in "2.1s".
+func formatSeconds(d time.Duration) string {
+	return fmt.Sprintf("%.1fs", max(d, 0).Seconds())
+}
+
+// repositories returns n with "repository" or "repositories".
+func repositories(n int) string {
+	return fmt.Sprintf("%d %s", n, pluralWord(n, "repository", "repositories"))
+}
+
+func pluralWord(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // elapsedWidth is the width of the elapsed time column ("12.3s").
 const elapsedWidth = 5
 
@@ -458,8 +597,19 @@ type RefreshTracker struct {
 
 // RunRefresh starts a spinner display for the given tasks.
 // Returns a non-nil tracker in all cases.
-func RunRefresh(tasks []RefreshTask) *RefreshTracker {
+//
+// The heading is drawn above the rows. Without a terminal, or without tasks,
+// its Phase is printed instead, followed by a blank line, as the static line
+// it replaces.
+func RunRefresh(heading RefreshHeading, tasks []RefreshTask) *RefreshTracker {
+	printPhase := func() {
+		if heading.Phase != "" {
+			DefaultPrinter.Phase(heading.Phase)
+			DefaultPrinter.BlankLine()
+		}
+	}
 	if len(tasks) == 0 {
+		printPhase()
 		return &RefreshTracker{fallback: true, done: closedChan()}
 	}
 
@@ -467,6 +617,7 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 	// produce unreadable output. Fall back to plain-text progress instead.
 	f, ok := DefaultPrinter.ErrWriter().(*os.File)
 	if !ok || !term.IsTerminal(f.Fd()) || logger.Enabled() {
+		printPhase()
 		for _, task := range tasks {
 			DefaultPrinter.Progress(task.Name + "...")
 		}
@@ -475,6 +626,7 @@ func RunRefresh(tasks []RefreshTask) *RefreshTracker {
 
 	canceled := make(chan struct{})
 	model := newRefreshModel(tasks)
+	model.heading = heading
 	model.canceled = canceled
 	p := tea.NewProgram(
 		model,
