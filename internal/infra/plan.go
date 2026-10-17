@@ -185,9 +185,10 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	// unit planning it has reported.
 	repoNames := repository.PlanTargetRepoNames(parsed.Repositories, opts.FilterRepo)
 	fileNames := fileset.PlanTargetRepoNames(parsed.FileSets, opts.FilterRepo)
-	allTasks := refreshTasks(append(repoNames, fileNames...), "planned desired changes")
+	allTasks := planTasks(append(repoNames, fileNames...))
 	tracker, ctx, stop := startRefresh(ctx, runner, allTasks)
 	defer stop()
+	rows := newPlanRows(tracker)
 
 	var repoChanges []repository.Change
 	var targetRepos []*manifest.Repository
@@ -201,7 +202,7 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 			repoChanges, targetRepos, fetchErr = eng.repo.Plan(ctx, parsed.Repositories, repository.PlanOptions{
 				FilterRepo:   opts.FilterRepo,
 				ForceSecrets: opts.ForceSecrets,
-			}, tracker)
+			}, repoPlanRows{rows})
 			return fetchErr
 		})
 	}
@@ -209,7 +210,7 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	if len(parsed.FileSets) > 0 {
 		g.Go(func() error {
 			var planErr error
-			fileChanges, planErr = eng.file.Plan(ctx, parsed.FileSets, opts.FilterRepo, tracker)
+			fileChanges, planErr = eng.file.Plan(ctx, parsed.FileSets, opts.FilterRepo, filePlanRows{rows})
 			return planErr
 		})
 	}

@@ -1042,7 +1042,7 @@ type recordingTracker struct {
 }
 
 func (r *recordingTracker) UpdateStatus(string, string) {}
-func (r *recordingTracker) Done(string)                 {}
+func (r *recordingTracker) Done(string, PlanSummary)    {}
 func (r *recordingTracker) Error(name string, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

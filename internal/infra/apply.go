@@ -47,7 +47,7 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	repoChanges, archives := splitArchives(result.RepoChanges)
 	repoNames := changedRepoNames(repoChanges)
 	fileSets := fileSetWorkOf(result)
-	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, applyTasks(repoNames, fileSets, changedRepoNames(archives)))
+	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, applyTasks(repoNames, fileSets, changedRepoNames(archives)), createOnlyRepos(result.RepoChanges, result.FileChanges))
 	defer stop()
 
 	// The steps run in this order in every mode; a mode only changes how
@@ -57,7 +57,7 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	// creates, so they go first.
 	var repoResults []repository.ApplyResult
 	if len(repoNames) > 0 {
-		repoResults = eng.repo.Apply(ctx, repoChanges, result.TargetRepos, view.reporter(repoNames))
+		repoResults = eng.repo.Apply(ctx, repoChanges, result.TargetRepos, view.reporter())
 	}
 
 	// Step 2: FileSets, in parallel with each other.
@@ -108,16 +108,18 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 // per event.
 type applyView struct {
 	tracker *ui.RefreshTracker // nil with stream
+	rows    *applyRows         // nil with stream
 	stream  *ui.StreamReporter
 }
 
 // startApplyView starts showing progress for tasks. Like startRefresh, it
 // shows the runner's rate limit waits and returns a context that is
 // canceled with ctx (and with the spinner's Ctrl+C). Call stop when done.
-func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.RefreshTask) (applyView, context.Context, func()) {
+// createOnly names the repositories whose only change is creating them.
+func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.RefreshTask, createOnly map[string]bool) (applyView, context.Context, func()) {
 	if !stream {
 		tracker, ctx, stop := startRefresh(ctx, eng.runner, tasks)
-		return applyView{tracker: tracker}, ctx, stop
+		return applyView{tracker: tracker, rows: newApplyRows(tracker, createOnly)}, ctx, stop
 	}
 	p := eng.printer
 	stopWaits := showRateLimitWaits(eng.runner, func(text string) {
@@ -128,12 +130,13 @@ func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.Re
 	return applyView{stream: ui.NewStreamReporter(p, "Applying", "Applied")}, ctx, stopWaits
 }
 
-// reporter reports the progress of the named targets.
-func (v applyView) reporter(names []string) ui.ProgressReporter {
-	if v.tracker == nil {
+// reporter reports the progress of the targets of one step. Every step of
+// the spinner shares one applyRows, which adds up what each applied.
+func (v applyView) reporter() ui.ProgressReporter {
+	if v.rows == nil {
 		return v.stream
 	}
-	return ui.NewSpinnerReporterWith(v.tracker, names)
+	return v.rows
 }
 
 func (v applyView) wait() {
@@ -191,10 +194,10 @@ func applyArchives(ctx context.Context, eng *engine, archives []repository.Chang
 
 	var results []repository.ApplyResult
 	if len(ready) > 0 {
-		results = eng.repo.Apply(ctx, ready, repos, view.reporter(changedRepoNames(ready)))
+		results = eng.repo.Apply(ctx, ready, repos, view.reporter())
 	}
 	if len(held) > 0 {
-		reporter := view.reporter(changedRepoNames(held))
+		reporter := view.reporter()
 		for _, c := range held {
 			reporter.Error(c.Name, 0, errNotArchived)
 			results = append(results, repository.ApplyResult{Change: c, Err: errNotArchived})
@@ -246,7 +249,7 @@ func applyFileSets(ctx context.Context, eng *engine, work []fileSetWork, view ap
 	var wg sync.WaitGroup
 	for i, w := range work {
 		wg.Go(func() {
-			results[i] = eng.file.Apply(ctx, w.changes, w.opts, view.reporter(w.targets))
+			results[i] = eng.file.Apply(ctx, w.changes, w.opts, view.reporter())
 		})
 	}
 	wg.Wait()
@@ -261,7 +264,11 @@ func applyTasks(repoNames []string, fileSets []fileSetWork, archiveNames []strin
 		names = append(names, w.targets...)
 	}
 	names = append(names, archiveNames...)
-	return refreshTasks(names, "applied changes")
+	tasks := refreshTasks(names, "")
+	for i := range tasks {
+		tasks[i].WaitLabel = "waiting for the next step..."
+	}
+	return tasks
 }
 
 // refreshTasks returns a spinner task per name, in order of first

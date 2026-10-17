@@ -17,7 +17,7 @@ type errTracker struct {
 
 func (t *errTracker) UpdateStatus(string, string) {}
 func (t *errTracker) Checkpoint(string, string)   {}
-func (t *errTracker) Done(string)                 {}
+func (t *errTracker) Done(string, PlanSummary)    {}
 func (t *errTracker) Error(name string, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

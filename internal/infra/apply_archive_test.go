@@ -127,7 +127,7 @@ func TestApplyTasks_CountsTheArchiveStep(t *testing.T) {
 	result := archiveResult(&orderRunner{})
 	others, archives := splitArchives(result.RepoChanges)
 	tasks := applyTasks(changedRepoNames(others), fileSetWorkOf(result), changedRepoNames(archives))
-	want := []ui.RefreshTask{{Name: "o/r", DoneLabel: "applied changes", Pending: 3}}
+	want := []ui.RefreshTask{{Name: "o/r", Pending: 3, WaitLabel: "waiting for the next step..."}}
 	if !slices.Equal(tasks, want) {
 		t.Errorf("tasks = %+v, want %+v", tasks, want)
 	}

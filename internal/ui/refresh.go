@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
@@ -20,7 +21,24 @@ type RefreshTask struct {
 	DoneLabel string // shown when task completes successfully (defaults to Name if empty)
 	FailLabel string // shown when task fails via Fail() (defaults to Name if empty)
 	Pending   int    // expected Done() calls before completion (default 1)
+	// ErrorPrefix comes before the first line of an error, as in
+	// "skipped · HTTP 403: ..." (none if empty).
+	ErrorPrefix string
+	// WaitLabel replaces the status while the task waits for its next
+	// report after one has come in (the status is kept if empty).
+	WaitLabel string
 }
+
+// Mark is how a finished row shows its result: its symbol and colors.
+type Mark int
+
+const (
+	MarkDone   Mark = iota // ✓; the label in dim
+	MarkNone               // ✓; the name and label in dim, as for nothing to change
+	MarkChange             // ~ in yellow
+	MarkCreate             // + in green; the label in green
+	MarkDelete             // - in red; the label in red
+)
 
 type taskStatus int
 
@@ -33,15 +51,19 @@ const (
 )
 
 type refreshItem struct {
-	name       string
-	doneLabel  string
-	failLabel  string
-	status     taskStatus
-	errMsg     string
-	statusText string // right-side live status (e.g. "secrets...", ".github/ci.yml...")
-	checkpoint bool   // true when a sub-phase completed but the task is still running
-	pending    int    // expected Done() calls before marking complete (default 1)
-	spinner    spinner.Model
+	name        string
+	doneLabel   string
+	failLabel   string
+	errorPrefix string
+	waitLabel   string
+	mark        Mark
+	status      taskStatus
+	errMsg      string
+	statusText  string // right-side live status (e.g. "secrets...", ".github/ci.yml...")
+	checkpoint  string // what is already done while the task still runs, shown as "<checkpoint> ✓"
+	pending     int    // expected Done() calls before marking complete (default 1)
+	end         time.Time
+	spinner     spinner.Model
 }
 
 type refreshModel struct {
@@ -50,6 +72,9 @@ type refreshModel struct {
 	canceled  chan struct{} // closed on Ctrl+C to signal callers
 	width     int           // terminal width for error truncation
 	notice    string        // dim line under the tasks, e.g. a rate limit wait
+	stopped   bool          // Ctrl+C or an interrupt ended the display
+	start     time.Time     // when the tasks started, for their elapsed time
+	now       func() time.Time
 }
 
 var (
@@ -82,7 +107,15 @@ func callInterruptHandler() {
 	}
 }
 
-type taskDoneMsg struct{ name string }
+// taskDoneMsg reports one completion of a task. With labeled, mark and label
+// replace how the row shows its result; the last one sent before the task
+// completes is shown.
+type taskDoneMsg struct {
+	name    string
+	labeled bool
+	mark    Mark
+	label   string
+}
 type interruptMsg struct{}
 type taskErrorMsg struct {
 	name string
@@ -124,18 +157,22 @@ func newRefreshModel(tasks []RefreshTask) refreshModel {
 			pending = 1
 		}
 		items[i] = refreshItem{
-			name:      task.Name,
-			doneLabel: doneLabel,
-			failLabel: failLabel,
-			status:    taskRunning,
-			pending:   pending,
-			spinner:   s,
+			name:        task.Name,
+			doneLabel:   doneLabel,
+			failLabel:   failLabel,
+			errorPrefix: task.ErrorPrefix,
+			waitLabel:   task.WaitLabel,
+			status:      taskRunning,
+			pending:     pending,
+			spinner:     s,
 		}
 	}
 	return refreshModel{
 		items:     items,
 		remaining: len(tasks),
 		width:     width,
+		start:     time.Now(),
+		now:       time.Now,
 	}
 }
 
@@ -166,17 +203,18 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.items {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
 				m.items[i].statusText = msg.status
-				m.items[i].checkpoint = false
 				break
 			}
 		}
 		return m, nil
 
 	case taskCheckpointMsg:
+		// The spinner keeps running: a checkpoint is shown in front of the
+		// status, not as the ✓ of a finished row.
 		for i := range m.items {
 			if m.items[i].name == msg.name && m.items[i].status == taskRunning {
-				m.items[i].statusText = msg.status
-				m.items[i].checkpoint = true
+				m.items[i].checkpoint = msg.status
+				m.items[i].statusText = ""
 				break
 			}
 		}
@@ -187,13 +225,20 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.items[i].name != msg.name {
 				continue
 			}
+			if msg.labeled {
+				m.items[i].mark = msg.mark
+				m.items[i].doneLabel = msg.label
+			}
 			if m.items[i].status == taskRunning {
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.items[i].status = taskDone
 					m.items[i].statusText = ""
-					m.items[i].checkpoint = false
+					m.items[i].checkpoint = ""
+					m.items[i].end = m.now()
 					m.remaining--
+				} else if m.items[i].waitLabel != "" {
+					m.items[i].statusText = m.items[i].waitLabel
 				}
 			} else if m.items[i].pending > 0 {
 				// Already errored/failed but other sources still pending.
@@ -218,7 +263,8 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items[i].status = taskError
 				m.items[i].errMsg = msg.err.Error()
 				m.items[i].statusText = ""
-				m.items[i].checkpoint = false
+				m.items[i].checkpoint = ""
+				m.items[i].end = m.now()
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
@@ -246,7 +292,8 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.items[i].status == taskRunning {
 				m.items[i].status = taskFailed
 				m.items[i].statusText = ""
-				m.items[i].checkpoint = false
+				m.items[i].checkpoint = ""
+				m.items[i].end = m.now()
 				m.items[i].pending--
 				if m.items[i].pending <= 0 {
 					m.remaining--
@@ -269,6 +316,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			m.cancelRunning()
+			m.stopped = true
 			close(m.canceled)
 			callInterruptHandler()
 			return m, tea.Quit
@@ -277,6 +325,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case interruptMsg:
 		m.cancelRunning()
+		m.stopped = true
 		return m, tea.Quit
 
 	default:
@@ -306,42 +355,86 @@ func (m refreshModel) View() tea.View {
 	var b strings.Builder
 	for _, item := range m.items {
 		padded := fmt.Sprintf("%-*s", maxName, item.name)
+		// elapsed is the task's time so far, or what it took once finished.
+		end := m.now()
+		if item.status != taskRunning && !item.end.IsZero() {
+			end = item.end
+		}
+		elapsed := Dim.Render(formatElapsed(end.Sub(m.start)))
 		switch item.status {
 		case taskDone:
+			icon, name, label := doneParts(item.mark)
 			if item.doneLabel != "" && item.doneLabel != item.name {
-				fmt.Fprintf(&b, "  %s %s  %s\n", Green.Render(IconSuccess), padded, Dim.Render(item.doneLabel))
+				fmt.Fprintf(&b, "  %s %s  %s  %s\n", icon, name.Render(padded), elapsed, label.Render(item.doneLabel))
 			} else {
-				fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), padded)
+				fmt.Fprintf(&b, "  %s %s  %s\n", icon, name.Render(padded), elapsed)
 			}
 		case taskError:
 			// Show only a brief, single-line error; full details are printed after the spinner.
-			prefix := 2 + 1 + 1 + maxName + 2 // "  " + icon + " " + padded + "  "
+			prefix := 2 + 1 + 1 + maxName + 2 + elapsedWidth + 2 // "  " + icon + " " + padded + "  " + elapsed + "  "
+			lead := ""
+			if item.errorPrefix != "" {
+				lead = item.errorPrefix + " · "
+				prefix += len(lead)
+			}
 			available := m.width - prefix
 			available = max(available, 20)
 			errText := truncateError(item.errMsg, available)
-			fmt.Fprintf(&b, "  %s %s  %s\n", Red.Render(IconError), Bold.Render(padded), Dim.Render(errText))
+			fmt.Fprintf(&b, "  %s %s  %s  %s%s\n", Red.Render(IconError), Bold.Render(padded), elapsed, Red.Render(lead), Dim.Render(errText))
 		case taskFailed:
-			failLabel := item.failLabel
-			if failLabel == item.name {
-				failLabel = padded
+			if item.failLabel == item.name {
+				fmt.Fprintf(&b, "  %s %s  %s\n", Red.Render(IconError), padded, elapsed)
+			} else {
+				fmt.Fprintf(&b, "  %s %s\n", Red.Render(IconError), item.failLabel)
 			}
-			fmt.Fprintf(&b, "  %s %s\n", Red.Render(IconError), failLabel)
 		case taskCanceled:
 			fmt.Fprintf(&b, "  %s %s\n", Dim.Render(IconError), Dim.Render(padded+" (canceled)"))
 		case taskRunning:
-			if item.checkpoint {
-				fmt.Fprintf(&b, "  %s %s  %s\n", Green.Render(IconSuccess), padded, Dim.Render(item.statusText))
-			} else if item.statusText != "" {
-				fmt.Fprintf(&b, "  %s %s  %s\n", item.spinner.View(), padded, Dim.Render(item.statusText))
-			} else {
-				fmt.Fprintf(&b, "  %s %s\n", item.spinner.View(), padded)
+			status := Dim.Render(item.statusText)
+			if item.checkpoint != "" {
+				status = Dim.Render(item.checkpoint) + " " + Green.Render(IconSuccess)
+				if item.statusText != "" {
+					status += Dim.Render(" · " + item.statusText)
+				}
 			}
+			fmt.Fprintf(&b, "  %s %s  %s  %s\n", item.spinner.View(), padded, elapsed, status)
 		}
 	}
 	if m.notice != "" {
 		fmt.Fprintf(&b, "\n  %s\n", Dim.Render(m.notice))
 	}
+	// While tasks run, say how to stop them. The display's last frame (all
+	// finished, or stopped by Ctrl+C) leaves it out.
+	if m.remaining > 0 && !m.stopped {
+		fmt.Fprintf(&b, "\n  %s\n", Dim.Render("ctrl+c to cancel"))
+	}
 	return tea.NewView(b.String())
+}
+
+// elapsedWidth is the width of the elapsed time column ("12.3s").
+const elapsedWidth = 5
+
+// formatElapsed formats d for the elapsed column, right-aligned.
+func formatElapsed(d time.Duration) string {
+	return fmt.Sprintf("%*.1fs", elapsedWidth-1, max(d, 0).Seconds())
+}
+
+// doneParts returns how a finished row with mark shows: its icon, and the
+// styles of its name and label.
+func doneParts(mark Mark) (icon string, name, label lipgloss.Style) {
+	plain := lipgloss.NewStyle()
+	switch mark {
+	case MarkNone:
+		return Green.Render(IconSuccess), Dim, Dim
+	case MarkChange:
+		return Yellow.Render(IconChange), plain, plain
+	case MarkCreate:
+		return Green.Render(IconAdd), plain, Green
+	case MarkDelete:
+		return Red.Render(IconRemove), plain, Red
+	default:
+		return Green.Render(IconSuccess), plain, Dim
+	}
 }
 
 // TaskError records an error for post-spinner display.
@@ -470,6 +563,24 @@ func (t *RefreshTracker) Done(name string) {
 	defer t.mu.Unlock()
 	if t.program != nil {
 		t.program.Send(taskDoneMsg{name: name})
+	}
+}
+
+// DoneWith is Done that also sets how the row shows its result once the
+// task completes: mark and label replace the done label. A task reported by
+// several sources can send its result so far with each report; the last one
+// before it completes is shown.
+func (t *RefreshTracker) DoneWith(name string, mark Mark, label string) {
+	if t == nil {
+		return
+	}
+	if t.fallback {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.program != nil {
+		t.program.Send(taskDoneMsg{name: name, labeled: true, mark: mark, label: label})
 	}
 }
 

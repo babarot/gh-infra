@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -249,12 +250,12 @@ func TestRefreshModel_StatusUpdate(t *testing.T) {
 
 func TestRefreshModel_CheckpointRemainsRunning(t *testing.T) {
 	m := makeModel(task("a", 1))
-	m = update(t, m, taskCheckpointMsg{name: "a", status: "fetched repository state"})
+	m = update(t, m, taskCheckpointMsg{name: "a", status: "repository"})
 
 	if m.items[0].status != taskRunning {
 		t.Errorf("status = %v, want taskRunning", m.items[0].status)
 	}
-	if !m.items[0].checkpoint {
+	if m.items[0].checkpoint != "repository" {
 		t.Fatal("checkpoint should be set")
 	}
 	if m.remaining != 1 {
@@ -312,41 +313,6 @@ func TestRefreshModel_ErrorClearsStatusText(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// NewSpinnerReporterWith
-// ---------------------------------------------------------------------------
-
-func TestNewSpinnerReporterWith_TaskMapping(t *testing.T) {
-	// Use a nil-program tracker (fallback mode) to avoid starting bubbletea.
-	tracker := &RefreshTracker{fallback: true, done: closedChan()}
-	reporter := NewSpinnerReporterWith(tracker, []string{"org/repo1", "org/repo2"})
-
-	if !reporter.shared {
-		t.Error("expected shared=true")
-	}
-	if _, ok := reporter.tasks["org/repo1"]; !ok {
-		t.Error("missing task for org/repo1")
-	}
-	if _, ok := reporter.tasks["org/repo2"]; !ok {
-		t.Error("missing task for org/repo2")
-	}
-	if reporter.tasks["org/repo1"].Name != "org/repo1" {
-		t.Errorf("task name = %q, want org/repo1", reporter.tasks["org/repo1"].Name)
-	}
-}
-
-func TestSpinnerReporterWith_WaitIsNoop(t *testing.T) {
-	tracker := &RefreshTracker{fallback: true, done: closedChan()}
-	reporter := NewSpinnerReporterWith(tracker, []string{"a"})
-
-	// Should not block (shared=true means Wait is a no-op)
-	reporter.Wait()
-}
-
-// ---------------------------------------------------------------------------
-// PendingDefault
-// ---------------------------------------------------------------------------
-
 func TestNewRefreshModel_DefaultPending(t *testing.T) {
 	m := newRefreshModel([]RefreshTask{{Name: "a"}})
 	if m.items[0].pending != 1 {
@@ -391,13 +357,138 @@ func TestView_StatusTextRendered(t *testing.T) {
 	}
 }
 
-func TestView_CheckpointRenderedWithCheckmark(t *testing.T) {
-	m := makeModel(task("repo", 1))
-	m = update(t, m, taskCheckpointMsg{name: "repo", status: "fetched repository state"})
+// frozen makes m's clock stand still: every task has run for 1.5s.
+func frozen(m refreshModel) refreshModel {
+	t0 := time.Unix(1_000_000, 0)
+	m.start = t0
+	m.now = func() time.Time { return t0.Add(1500 * time.Millisecond) }
+	return m
+}
 
-	view := stripANSIForTest(m.View().Content)
-	if !strings.Contains(view, "repo  fetched repository state") {
-		t.Errorf("view missing checkpoint text, got:\n%s", view)
+// viewLines returns the view without styles, one line per element.
+func viewLines(m refreshModel) []string {
+	return strings.Split(strings.TrimSuffix(stripANSIForTest(m.View().Content), "\n"), "\n")
+}
+
+func TestView_CheckpointKeepsTheSpinner(t *testing.T) {
+	m := frozen(makeModel(task("repo", 1)))
+	spin := stripANSIForTest(m.items[0].spinner.View())
+	m = update(t, m, taskCheckpointMsg{name: "repo", status: "repository"})
+	if got, want := viewLines(m)[0], "  "+spin+" repo   1.5s  repository ✓"; got != want {
+		t.Errorf("after the checkpoint:\ngot  %q\nwant %q", got, want)
+	}
+	m = update(t, m, taskStatusMsg{name: "repo", status: "fetching file LICENSE..."})
+	if got, want := viewLines(m)[0], "  "+spin+" repo   1.5s  repository ✓ · fetching file LICENSE..."; got != want {
+		t.Errorf("after the next status:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestView_Rows(t *testing.T) {
+	tests := []struct {
+		name  string
+		tasks []RefreshTask
+		msgs  []any
+		want  string // the first row
+	}{
+		{name: "done with a change",
+			tasks: []RefreshTask{{Name: "o/a"}},
+			msgs:  []any{taskDoneMsg{name: "o/a", labeled: true, mark: MarkChange, label: "4 changes · 3 files"}},
+			want:  "  ~ o/a   1.5s  4 changes · 3 files"},
+		{name: "done, created",
+			tasks: []RefreshTask{{Name: "o/a"}},
+			msgs:  []any{taskDoneMsg{name: "o/a", labeled: true, mark: MarkCreate, label: "will be created"}},
+			want:  "  + o/a   1.5s  will be created"},
+		{name: "done, deleted",
+			tasks: []RefreshTask{{Name: "o/a"}},
+			msgs:  []any{taskDoneMsg{name: "o/a", labeled: true, mark: MarkDelete, label: "will be destroyed"}},
+			want:  "  - o/a   1.5s  will be destroyed"},
+		{name: "done, nothing to change",
+			tasks: []RefreshTask{{Name: "o/a"}},
+			msgs:  []any{taskDoneMsg{name: "o/a", labeled: true, mark: MarkNone, label: "up to date"}},
+			want:  "  ✓ o/a   1.5s  up to date"},
+		{name: "done with the task's label",
+			tasks: []RefreshTask{{Name: "o/a", DoneLabel: "fetched repository state"}},
+			msgs:  []any{taskDoneMsg{name: "o/a"}},
+			want:  "  ✓ o/a   1.5s  fetched repository state"},
+		{name: "the last result sent before completing is shown",
+			tasks: []RefreshTask{{Name: "o/a", Pending: 2}},
+			msgs: []any{
+				taskDoneMsg{name: "o/a", labeled: true, mark: MarkChange, label: "1 change"},
+				taskDoneMsg{name: "o/a", labeled: true, mark: MarkChange, label: "1 change · 2 files"},
+			},
+			want: "  ~ o/a   1.5s  1 change · 2 files"},
+		{name: "an error with the task's prefix",
+			tasks: []RefreshTask{{Name: "o/a", ErrorPrefix: "skipped"}},
+			msgs:  []any{taskErrorMsg{name: "o/a", err: fmt.Errorf("HTTP 403: Forbidden\nmore")}},
+			want:  "  ✗ o/a   1.5s  skipped · HTTP 403: Forbidden…"},
+		{name: "an error without a prefix",
+			tasks: []RefreshTask{{Name: "o/a"}},
+			msgs:  []any{taskErrorMsg{name: "o/a", err: fmt.Errorf("boom")}},
+			want:  "  ✗ o/a   1.5s  boom"},
+		{name: "waiting for the next report",
+			tasks: []RefreshTask{{Name: "o/a", Pending: 2, WaitLabel: "waiting for the next step..."}},
+			msgs: []any{
+				taskStatusMsg{name: "o/a", status: "applying topics..."},
+				taskDoneMsg{name: "o/a", labeled: true, label: "3 applied"},
+			},
+			want: "  SPIN o/a   1.5s  waiting for the next step..."},
+		{name: "without a wait label the status stays",
+			tasks: []RefreshTask{{Name: "o/a", Pending: 2}},
+			msgs: []any{
+				taskStatusMsg{name: "o/a", status: "fetching file LICENSE..."},
+				taskDoneMsg{name: "o/a", labeled: true, mark: MarkChange, label: "1 change"},
+			},
+			want: "  SPIN o/a   1.5s  fetching file LICENSE..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := frozen(newRefreshModel(append(tt.tasks, RefreshTask{Name: "o/b"})))
+			spin := stripANSIForTest(m.items[0].spinner.View())
+			for _, msg := range tt.msgs {
+				m = update(t, m, msg)
+			}
+			want := strings.Replace(tt.want, "SPIN", spin, 1)
+			if got := viewLines(m)[0]; got != want {
+				t.Errorf("got  %q\nwant %q", got, want)
+			}
+		})
+	}
+}
+
+func TestView_ElapsedStopsWhenTheTaskEnds(t *testing.T) {
+	m := frozen(makeModel(task("o/a", 1), task("o/b", 1)))
+	m = update(t, m, taskDoneMsg{name: "o/a"})
+	t0 := m.start
+	m.now = func() time.Time { return t0.Add(9 * time.Second) }
+	lines := viewLines(m)
+	if !strings.HasPrefix(lines[0], "  ✓ o/a   1.5s") {
+		t.Errorf("a finished task shows what it took: %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "o/b   9.0s") {
+		t.Errorf("a running task shows its time so far: %q", lines[1])
+	}
+}
+
+func TestView_CtrlCHint(t *testing.T) {
+	const hint = "ctrl+c to cancel"
+	m := frozen(makeModel(task("o/a", 1), task("o/b", 1)))
+	if !strings.HasSuffix(stripANSIForTest(m.View().Content), "\n\n  "+hint+"\n") {
+		t.Errorf("running: want the hint after a blank line, got:\n%s", m.View().Content)
+	}
+
+	m = update(t, m, noticeMsg{text: "waiting for the rate limit"})
+	if !strings.HasSuffix(stripANSIForTest(m.View().Content), "waiting for the rate limit\n\n  "+hint+"\n") {
+		t.Errorf("with a notice: want the hint last, got:\n%s", m.View().Content)
+	}
+
+	done := update(t, update(t, m, taskDoneMsg{name: "o/a"}), taskDoneMsg{name: "o/b"})
+	if strings.Contains(done.View().Content, hint) {
+		t.Errorf("finished: want no hint, got:\n%s", done.View().Content)
+	}
+
+	stopped := update(t, m, interruptMsg{})
+	if strings.Contains(stopped.View().Content, hint) {
+		t.Errorf("stopped: want no hint, got:\n%s", stopped.View().Content)
 	}
 }
 
@@ -413,15 +504,14 @@ func TestView_DoneHidesStatusText(t *testing.T) {
 }
 
 func TestView_DoneLabelRenderedAsStatus(t *testing.T) {
-	m := newRefreshModel([]RefreshTask{
+	m := frozen(newRefreshModel([]RefreshTask{
 		{Name: "short", DoneLabel: "fetched repository state"},
 		{Name: "much-longer-name"},
-	})
+	}))
 	m = update(t, m, taskDoneMsg{name: "short"})
 
-	view := stripANSIForTest(m.View().Content)
-	if !strings.Contains(view, "short             fetched repository state") {
-		t.Errorf("view missing aligned done label, got:\n%s", view)
+	if got, want := viewLines(m)[0], "  ✓ short              1.5s  fetched repository state"; got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
 	}
 }
 

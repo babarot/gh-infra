@@ -15,8 +15,33 @@ type ProgressReporter interface {
 type RefreshTracker interface {
 	UpdateStatus(name, status string)
 	Checkpoint(name, status string)
-	Done(name string)
+	Done(name string, s PlanSummary)
 	Error(name string, err error)
+}
+
+// PlanSummary is what the plan of one repository found, reported with Done.
+type PlanSummary struct {
+	Creates, Updates, Deletes int  // counted as CountChanges counts them
+	NewRepository             bool // the plan creates the repository
+	DeleteRepository          bool // the plan deletes the repository
+}
+
+// SummarizePlan returns the PlanSummary of one repository's changes.
+func SummarizePlan(changes []Change) PlanSummary {
+	var s PlanSummary
+	s.Creates, s.Updates, s.Deletes = CountChanges(changes)
+	for _, c := range changes {
+		if c.Field != "repository" {
+			continue
+		}
+		switch c.Type {
+		case ChangeCreate:
+			s.NewRepository = true
+		case ChangeDelete:
+			s.DeleteRepository = true
+		}
+	}
+	return s
 }
 
 type noopProgressReporter struct{}
@@ -31,5 +56,5 @@ type noopRefreshTracker struct{}
 
 func (noopRefreshTracker) UpdateStatus(string, string) {}
 func (noopRefreshTracker) Checkpoint(string, string)   {}
-func (noopRefreshTracker) Done(string)                 {}
+func (noopRefreshTracker) Done(string, PlanSummary)    {}
 func (noopRefreshTracker) Error(string, error)         {}
