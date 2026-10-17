@@ -92,8 +92,17 @@ type StandardPrinter struct {
 	err      io.Writer
 	colWidth int // dynamic column width for Item/SubItem alignment
 	// mu keeps the lines that concurrent work prints (progress, stream lines,
-	// errors and warnings) whole when several goroutines print at once.
+	// errors and warnings) whole when several goroutines print at once, and
+	// guards pendingBlank.
 	mu sync.Mutex
+	// pendingBlank is the blank line that ends a block (GroupEnd,
+	// PrintDiffBlock), not written yet: line writes it before the next line,
+	// and lineAfterBlank drops it before output that starts with its own blank
+	// line. One value covers stdout and stderr, which show as one stream in a
+	// terminal. It belongs to this printer only: lines printed through another
+	// StandardPrinter (DefaultPrinter for the spinner's fallback) neither write
+	// nor drop it, which is fine as long as they come before the body.
+	pendingBlank bool
 }
 
 // NewStandardPrinter creates a StandardPrinter writing to stdout/stderr.
@@ -191,14 +200,38 @@ func continuation(level IndentLevel) string {
 var columnWidthOffset = len(Indent(IndentSub)) - len(Indent(IndentItem))
 
 func (p *StandardPrinter) Phase(msg string) {
-	fmt.Fprintf(p.err, "%s\n", msg)
+	p.line(p.err, "%s\n", msg)
 }
 
-// line prints one line under mu.
+// line prints under mu, after the blank line a block left pending. Every
+// output of the printer goes through line or lineAfterBlank.
 func (p *StandardPrinter) line(w io.Writer, format string, args ...any) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.pendingBlank {
+		fmt.Fprintln(w)
+		p.pendingBlank = false
+	}
 	fmt.Fprintf(w, format, args...)
+}
+
+// lineAfterBlank prints output that starts with its own blank line (Summary,
+// Separator, BlankLine, a Message starting with "\n"). The blank line a block
+// left pending is dropped, so one blank line separates them.
+func (p *StandardPrinter) lineAfterBlank(w io.Writer, format string, args ...any) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pendingBlank = false
+	fmt.Fprintf(w, format, args...)
+}
+
+// endBlock leaves the blank line that ends a block pending (see
+// pendingBlank). Two in a row are one, and one that nothing follows is never
+// written, so the body does not end with a blank line.
+func (p *StandardPrinter) endBlock() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pendingBlank = true
 }
 
 func (p *StandardPrinter) Progress(msg string) {
@@ -206,16 +239,16 @@ func (p *StandardPrinter) Progress(msg string) {
 }
 
 func (p *StandardPrinter) BlankLine() {
-	fmt.Fprintln(p.err)
+	p.lineAfterBlank(p.err, "\n")
 }
 
 func (p *StandardPrinter) Separator() {
+	// Without a terminal nothing is written, so a pending blank stays for
+	// the next line rather than being dropped.
 	if !p.isOutTerminal() {
 		return
 	}
-	fmt.Fprintln(p.err)
-	fmt.Fprintln(p.err, Dim.Render(Separator_))
-	fmt.Fprintln(p.err)
+	p.lineAfterBlank(p.err, "\n%s\n\n", Dim.Render(Separator_))
 }
 
 // repoHeaderColumn is the column where RepoHeader starts its right-hand text.
@@ -235,16 +268,17 @@ func (p *StandardPrinter) RepoHeader(icon, name, detail, right string) {
 	if right != "" {
 		line += strings.Repeat(" ", max(2, repoHeaderColumn-width)) + Dim.Render(right)
 	}
-	fmt.Fprintln(p.out, line)
+	p.line(p.out, "%s\n", line)
 }
 
 func (p *StandardPrinter) GroupHeader(icon, name string) {
 	display := repoStyle(name, p.linkRepos()).Render(name)
-	fmt.Fprintf(p.out, "%s%s %s\n", Indent(IndentRoot), renderIcon(icon), display)
+	p.line(p.out, "%s%s %s\n", Indent(IndentRoot), renderIcon(icon), display)
 }
 
+// GroupEnd ends a group with a blank line, left pending (see endBlock).
 func (p *StandardPrinter) GroupEnd() {
-	fmt.Fprintln(p.out)
+	p.endBlock()
 }
 
 // SetColumnWidth sets the field column width for subsequent Item/SubItem/File calls.
@@ -281,7 +315,7 @@ func (p *StandardPrinter) widthForLevel(level IndentLevel) int {
 }
 
 func (p *StandardPrinter) SubGroupHeader(icon, name string) {
-	fmt.Fprintf(p.out, "%s%s %s\n", Indent(IndentItem), renderIcon(icon), Bold.Render(name))
+	p.line(p.out, "%s%s %s\n", Indent(IndentItem), renderIcon(icon), Bold.Render(name))
 }
 
 // PrintChange prints a single field-level change (create, update, or delete).
@@ -301,7 +335,7 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 			prefix := len(ind) + 2 + 1 + width + 2
 			_, val = truncateChangeValues("", val, tw, prefix)
 		}
-		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
+		p.line(p.out, "%s%s %-*s  %s\n",
 			ind, icon, width, item.Field, Green.Render(val))
 	case IconChange:
 		old, new := item.Old, item.New
@@ -309,7 +343,7 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 			prefix := len(ind) + 2 + 1 + width + 2 // indent + icon + space + field (padded) + 2 spaces
 			old, new = truncateChangeValues(old, new, tw, prefix)
 		}
-		fmt.Fprintf(p.out, "%s%s %-*s  %s %s %s\n",
+		p.line(p.out, "%s%s %-*s  %s %s %s\n",
 			ind, icon, width, item.Field, Dim.Render(old), Dim.Render(IconArrow), Bold.Render(new))
 	case IconRemove:
 		val := FormatValue(item.Value)
@@ -317,7 +351,7 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 			prefix := len(ind) + 2 + 1 + width + 2
 			_, val = truncateChangeValues("", val, tw, prefix)
 		}
-		fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
+		p.line(p.out, "%s%s %-*s  %s\n",
 			ind, icon, width, item.Field, Red.Render(val))
 	}
 }
@@ -328,7 +362,7 @@ func (p *StandardPrinter) PrintFileChange(item FileItem) {
 	ind := Indent(IndentSub)
 	icon := renderIcon(item.Icon)
 	if item.Reason != "" {
-		fmt.Fprintf(p.out, "%s%s %s  %s\n",
+		p.line(p.out, "%s%s %s  %s\n",
 			ind, icon, Dim.Render(fmt.Sprintf("%-*s", p.subItemWidth(), item.Path)), Dim.Render(item.Reason))
 		return
 	}
@@ -340,7 +374,7 @@ func (p *StandardPrinter) PrintFileChange(item FileItem) {
 		}
 		stat += " " + Yellow.Render(mode)
 	}
-	fmt.Fprintf(p.out, "%s%s %-*s %s\n",
+	p.line(p.out, "%s%s %-*s %s\n",
 		ind, icon, p.subItemWidth(), item.Path, stat)
 }
 
@@ -348,16 +382,19 @@ func (p *StandardPrinter) PrintFileChange(item FileItem) {
 // Each line is colored using the same scheme as the interactive diff viewer:
 // added lines ("+") in green, removed lines ("-") in red, hunk headers ("@@") in cyan,
 // file headers ("---"/"+++") in bold, context lines as-is.
-// A blank line is emitted after the block as a visual separator.
+// The block ends with a blank line as a visual separator, left pending (see
+// endBlock), so it merges with the one GroupEnd leaves after the last file.
 func (p *StandardPrinter) PrintDiffBlock(diff string) {
 	if diff == "" {
 		return
 	}
 	ind := Indent(IndentSub)
+	var b strings.Builder
 	for line := range strings.SplitSeq(strings.TrimSuffix(diff, "\n"), "\n") {
-		fmt.Fprintf(p.out, "%s%s\n", ind, colorDiffLine(line, 0))
+		fmt.Fprintf(&b, "%s%s\n", ind, colorDiffLine(line, 0))
 	}
-	fmt.Fprintln(p.out)
+	p.line(p.out, "%s", b.String())
+	p.endBlock()
 }
 
 // PrintResult prints an apply result line.
@@ -378,7 +415,7 @@ func (p *StandardPrinter) PrintResult(item ResultItem) {
 		segments := wrapDetail(detail, avail)
 		detail = strings.Join(segments, "\n"+contPrefix)
 	}
-	fmt.Fprintf(p.out, "%s%s %-*s  %s\n",
+	p.line(p.out, "%s%s %-*s  %s\n",
 		ind, icon, width, item.Field, detail)
 }
 
@@ -425,7 +462,7 @@ func renderIcon(icon string) string {
 }
 
 func (p *StandardPrinter) Success(name, detail string) {
-	fmt.Fprintf(p.out, "%s%s %s  %s\n", Indent(IndentRoot), Green.Render(IconSuccess), Bold.Render(name), detail)
+	p.line(p.out, "%s%s %s  %s\n", Indent(IndentRoot), Green.Render(IconSuccess), Bold.Render(name), detail)
 }
 
 func (p *StandardPrinter) Error(name, detail string) {
@@ -454,10 +491,12 @@ func (p *StandardPrinter) ErrorReport(name, detail string) {
 	indent := continuation(IndentRoot)
 	avail := p.errTermWidth()*errorReportWidthRatio/100 - len(indent)
 
-	fmt.Fprintf(p.err, "%s%s:\n", Indent(IndentRoot), Bold.Render(name))
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s%s:\n", Indent(IndentRoot), Bold.Render(name))
 	for _, seg := range wrapDetail(detail, avail) {
-		fmt.Fprintf(p.err, "%s%s\n", indent, Dim.Render(seg))
+		fmt.Fprintf(&b, "%s%s\n", indent, Dim.Render(seg))
 	}
+	p.line(p.err, "%s", b.String())
 }
 
 // wrapDetail splits detail into a sequence of display segments, soft-wrapping
@@ -525,7 +564,7 @@ func (p *StandardPrinter) Warning(name, detail string) {
 }
 
 func (p *StandardPrinter) Detail(msg string) {
-	fmt.Fprintf(p.out, "%s%s\n", Indent(IndentItem), Dim.Render(msg))
+	p.line(p.out, "%s%s\n", Indent(IndentItem), Dim.Render(msg))
 }
 
 func (p *StandardPrinter) StreamStart(name, detail string) {
@@ -541,21 +580,24 @@ func (p *StandardPrinter) StreamError(name, detail string) {
 }
 
 func (p *StandardPrinter) Summary(msg string) {
+	sep := ""
 	if p.isOutTerminal() {
-		fmt.Fprintln(p.err)
-		fmt.Fprintln(p.err, Dim.Render(Separator_))
+		sep = "\n" + Dim.Render(Separator_) + "\n"
 	}
-	fmt.Fprintln(p.err)
-	fmt.Fprintln(p.err, msg)
+	p.lineAfterBlank(p.err, "%s\n%s\n", sep, msg)
 }
 
 func (p *StandardPrinter) Message(msg string) {
-	fmt.Fprintln(p.out, msg)
+	if strings.HasPrefix(msg, "\n") {
+		p.lineAfterBlank(p.out, "%s\n", msg)
+		return
+	}
+	p.line(p.out, "%s\n", msg)
 }
 
 func (p *StandardPrinter) ErrorMessage(err error) {
 	msg := strings.ReplaceAll(err.Error(), "\n", "\n"+Indent(IndentRoot))
-	fmt.Fprintf(p.err, "%s %s\n", Red.Render("Error:"), msg)
+	p.line(p.err, "%s %s\n", Red.Render("Error:"), msg)
 }
 
 func (p *StandardPrinter) Confirm(title string) (bool, error) {

@@ -646,13 +646,90 @@ func TestPrintDiffBlock(t *testing.T) {
 	if !strings.Contains(out, "new content") {
 		t.Errorf("expected diff content, got:\n%s", out)
 	}
-	// Should end with a blank line
-	if !strings.HasSuffix(out, "\n\n") {
-		t.Errorf("expected trailing blank line, got:\n%q", out)
+	// The blank line that ends the block waits for the next line.
+	if strings.HasSuffix(out, "\n\n") {
+		t.Errorf("expected no trailing blank line yet, got:\n%q", out)
+	}
+	p.PrintFileChange(FileItem{Icon: IconAdd, Path: "next.yml", Added: 1})
+	if !strings.Contains(buf.String(), "+new content\n\n") {
+		t.Errorf("expected one blank line before the next line, got:\n%q", buf.String())
 	}
 	// Should be indented at IndentSub level (10 spaces)
 	if !strings.Contains(out, Indent(IndentSub)) {
 		t.Errorf("expected IndentSub indentation, got:\n%q", out)
+	}
+}
+
+// TestBlankLineBetweenBlocks covers the blank line a block leaves pending:
+// one between blocks and before what follows them, never two, and none at
+// the end. stdout and stderr share one buffer, as in a terminal.
+func TestBlankLineBetweenBlocks(t *testing.T) {
+	DisableStyles()
+	diff := "@@ -1 +1 @@\n-a\n+b\n"
+	tests := []struct {
+		name  string
+		print func(p *StandardPrinter)
+		want  string
+	}{
+		{name: "between groups and before the summary",
+			print: func(p *StandardPrinter) {
+				p.GroupHeader(IconChange, "o/a")
+				p.GroupEnd()
+				p.GroupHeader(IconChange, "o/b")
+				p.GroupEnd()
+				p.Summary("Plan: done")
+			},
+			want: "  ~ o/a\n\n  ~ o/b\n\nPlan: done\n"},
+		{name: "a diff at the end of a group is followed by one blank line",
+			print: func(p *StandardPrinter) {
+				p.GroupHeader(IconChange, "o/a")
+				p.PrintDiffBlock(diff)
+				p.GroupEnd()
+				p.GroupHeader(IconChange, "o/b")
+				p.PrintDiffBlock(diff)
+				p.GroupEnd()
+				p.Summary("Plan: done")
+			},
+			want: "  ~ o/a\n          @@ -1 +1 @@\n          -a\n          +b\n\n" +
+				"  ~ o/b\n          @@ -1 +1 @@\n          -a\n          +b\n\nPlan: done\n"},
+		{name: "a line without its own blank gets the pending one",
+			print: func(p *StandardPrinter) {
+				p.GroupHeader(IconChange, "o/a")
+				p.GroupEnd()
+				p.Phase("GitHub API: 1 call")
+			},
+			want: "  ~ o/a\n\nGitHub API: 1 call\n"},
+		{name: "a message starting with a newline drops it",
+			print: func(p *StandardPrinter) {
+				p.GroupHeader(IconChange, "o/a")
+				p.GroupEnd()
+				p.Message("\nNo changes")
+			},
+			want: "  ~ o/a\n\nNo changes\n"},
+		{name: "nothing after the body leaves no trailing blank line",
+			print: func(p *StandardPrinter) {
+				p.GroupHeader(IconChange, "o/a")
+				p.GroupEnd()
+			},
+			want: "  ~ o/a\n"},
+		{name: "a separator that writes nothing keeps it",
+			print: func(p *StandardPrinter) {
+				p.GroupHeader(IconChange, "o/a")
+				p.GroupEnd()
+				p.Separator() // not a terminal: writes nothing
+				p.GroupHeader(IconChange, "o/b")
+			},
+			want: "  ~ o/a\n\n  ~ o/b\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			p := NewStandardPrinterWith(&buf, &buf)
+			tt.print(p)
+			if got := buf.String(); got != tt.want {
+				t.Errorf("got\n%q\nwant\n%q", got, tt.want)
+			}
+		})
 	}
 }
 

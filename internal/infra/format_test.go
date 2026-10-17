@@ -78,6 +78,31 @@ func TestPrintPlan_HeaderCountsAddUpToSummary(t *testing.T) {
 	}
 }
 
+func TestPrintPlan_OneBlankLineBeforeSummary(t *testing.T) {
+	for _, showDiff := range []bool{false, true} {
+		var buf bytes.Buffer
+		p := ui.NewStandardPrinterWith(&buf, &buf)
+
+		fileChanges := []fileset.Change{
+			{Type: fileset.ChangeUpdate, Target: "org/a", Path: "a.txt", Current: "old\n", Desired: "new\n", Via: "push"},
+			{Type: fileset.ChangeUpdate, Target: "org/b", Path: "b.txt", Current: "old\n", Desired: "new\n", Via: "push"},
+		}
+		printPlan(p, nil, fileChanges, showDiff)
+		p.Summary("Plan: done")
+
+		out := buf.String()
+		if strings.Contains(out, "\n\n\n") {
+			t.Errorf("showDiff=%v: two blank lines in a row:\n%s", showDiff, out)
+		}
+		if strings.Count(out, "\n\n") != 2 { // between the repositories, and before the summary
+			t.Errorf("showDiff=%v: want 2 blank lines, got:\n%s", showDiff, out)
+		}
+		if !strings.HasSuffix(out, "\n\nPlan: done\n") {
+			t.Errorf("showDiff=%v: want one blank line before the summary:\n%s", showDiff, out)
+		}
+	}
+}
+
 func TestPlanSummary(t *testing.T) {
 	tests := []struct {
 		name                       string
