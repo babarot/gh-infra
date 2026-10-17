@@ -48,4 +48,8 @@ demo:
 	@cp docs/tapes/demo.gif docs/tapes/demo-light.gif docs/public/
 	@cp docs/tapes/demo-apply.gif docs/tapes/demo-diffviewer.gif docs/tapes/demo-import-into.gif docs/tapes/demo-import-into-files.gif docs/tapes/demo-repositoryset-plan.gif docs/tapes/demo-file-pr.gif docs/public/ 2>/dev/null || true
 
-.PHONY: all test lint build install clean docs docs-build docs-install demo
+# Try the terminal output against mock-gh, without GitHub: make playground [SCENARIO=many]
+playground:
+	@docs/tapes/playground.sh $(SCENARIO)
+
+.PHONY: all test lint build install clean docs docs-build docs-install demo playground

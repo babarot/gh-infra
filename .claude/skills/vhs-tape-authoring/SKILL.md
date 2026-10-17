@@ -141,7 +141,11 @@ $MOCK_DIR/{owner}/{repo}/
   view.json                       # gh repo view --json response
   commit-settings.json            # squash/merge commit title/message (optional)
   contents/{path}                 # raw file content (base64-encoded on the fly)
+  absent                          # the repository does not exist; plan creates it (optional)
+  fail                            # failure rules, "<read|write|any> <pattern> <message>" per line (optional)
 ```
+
+`absent` makes only the settings fetch fail as GitHub's does for a missing repository; other calls still succeed, so an apply that creates it goes on. A `fail` rule makes a call for the repository whose arguments contain `<pattern>` exit 1 with `gh: <message>`; put the HTTP status in the message (`HTTP 403: ...`) so gh-infra classifies it. The comment at the top of `mock-gh` has examples, and `docs/tapes/playground.sh` (`make playground`) uses both to try the output locally.
 
 ### Supported mock responses
 

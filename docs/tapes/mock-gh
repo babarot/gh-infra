@@ -27,7 +27,7 @@ delay() {
 # Extract "owner/repo" from various argument patterns.
 extract_repo() {
   # gh api repos/owner/repo/...
-  if [[ "$*" =~ repos/([^/]+/[^/]+) ]]; then
+  if [[ "$*" =~ repos/([^/[:space:]]+/[^/[:space:]]+) ]]; then
     echo "${BASH_REMATCH[1]}"
     return
   fi
@@ -74,6 +74,51 @@ read_data() {
 
 args="$*"
 repo="$(extract_repo "$@")"
+
+# ---------------------------------------------------------------------------
+# Missing repositories and failures (optional; for trying error output)
+#
+#   $MOCK_DIR/{owner}/{repo}/absent — the repository does not exist: fetching
+#       its settings fails as GitHub's does, so plan creates it. Other calls
+#       still succeed, so an apply that creates it can go on.
+#   $MOCK_DIR/{owner}/{repo}/fail — one rule per line, "<kind> <pattern> <message>":
+#       a call for the repository whose arguments contain <pattern> fails
+#       with <message>. <kind> is read (calls that change nothing), write
+#       (calls that change something) or any. For example:
+#         read  /rulesets      HTTP 403: Resource not accessible by integration
+#         write --description  HTTP 422: Validation Failed
+# ---------------------------------------------------------------------------
+
+is_write() {
+  [[ "$args" =~ (--method|-X)[[:space:]]+(POST|PUT|PATCH|DELETE) ]] && return 0
+  case "$args" in
+    *"repo edit"* | *"repo create"* | *"pr create"* | *"secret set"* | *"variable set"* | *"label create"* | *"label edit"*) return 0 ;;
+  esac
+  return 1
+}
+
+if [[ -n "$repo" ]]; then
+  if [[ -f "$(repo_dir "$repo")/absent" && "$args" == *"repo view"*"description,homepageUrl"* ]]; then
+    delay
+    echo "GraphQL: Could not resolve to a Repository with the name '${repo}'. (repository)" >&2
+    exit 1
+  fi
+  fail_rules="$(repo_dir "$repo")/fail"
+  if [[ -f "$fail_rules" ]]; then
+    while read -r kind pattern message; do
+      [[ -z "$kind" || "$kind" == \#* ]] && continue
+      case "$kind" in
+        read) is_write && continue ;;
+        write) is_write || continue ;;
+      esac
+      if [[ "$args" == *"$pattern"* ]]; then
+        delay
+        echo "gh: ${message} (https://api.github.com/repos/${repo})" >&2
+        exit 1
+      fi
+    done < "$fail_rules"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Repository view
