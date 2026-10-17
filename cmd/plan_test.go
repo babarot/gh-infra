@@ -188,3 +188,29 @@ func TestExitCode_AlreadyReported(t *testing.T) {
 		t.Error("a plain error must be printed by main")
 	}
 }
+
+func TestApplyCommand(t *testing.T) {
+	tests := []struct {
+		name string
+		opts planCommandOptions
+		want string
+	}{
+		{name: "no arguments", want: "gh infra apply"},
+		{name: "paths, repo and changed-since as given",
+			opts: planCommandOptions{Paths: []string{"./repos/", "files"}, FilterRepo: "babarot/gomi", ChangedSince: "origin/main"},
+			want: "gh infra apply ./repos/ files --repo babarot/gomi --changed-since origin/main"},
+		{name: "a path a shell would split is quoted",
+			opts: planCommandOptions{Paths: []string{"my repos/", "it's"}},
+			want: `gh infra apply 'my repos/' 'it'\''s'`},
+		{name: "flags that only affect plan are left out",
+			opts: planCommandOptions{Paths: []string{"."}, ShowDiff: true, DetailedExitCode: true, Output: "text"},
+			want: "gh infra apply ."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := applyCommand(tt.opts); got != tt.want {
+				t.Errorf("got  %s\nwant %s", got, tt.want)
+			}
+		})
+	}
+}

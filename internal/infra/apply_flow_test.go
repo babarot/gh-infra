@@ -132,7 +132,9 @@ func TestApply_SameResultsInBothModes(t *testing.T) {
 		if !slices.Equal(targets, []string{"o/x", "o/y"}) {
 			t.Errorf("stream=%v: file results = %v, want o/x then o/y (FileSet order)", stream, targets)
 		}
-		if !strings.Contains(out.String(), "Apply complete! 1 changes applied, 4 failed.") {
+		// Both modes print the same summary, and with failures it does not
+		// say the apply is complete.
+		if !strings.Contains(out.String(), "\nApply finished with errors: 1 applied, 4 failed\n") || strings.Contains(out.String(), "Apply complete!") {
 			t.Errorf("stream=%v: summary missing:\n%s", stream, out.String())
 		}
 		if stream {

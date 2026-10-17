@@ -106,7 +106,7 @@ func runApply(ctx context.Context, paths []string, opts applyCommandOptions) err
 	// Confirm
 	if !opts.AutoApprove {
 		diffEntries := buildDiffEntries(result.FileChanges)
-		confirmed, err := p.ConfirmWithDiff("Do you want to apply these changes?", diffEntries)
+		confirmed, err := p.ConfirmWithDiff(result.ConfirmTitle(), diffEntries)
 		if err != nil {
 			if interrupted(ctx, err) {
 				printCancelled()

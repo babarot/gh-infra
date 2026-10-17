@@ -90,11 +90,10 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 	succeeded += fs
 	failed += ff
 
-	summaryMsg := fmt.Sprintf("Apply complete! %d changes applied", succeeded)
+	summaryMsg := fmt.Sprintf("Apply complete! %d changes applied.", succeeded)
 	if failed > 0 {
-		summaryMsg += fmt.Sprintf(", %d failed", failed)
+		summaryMsg = fmt.Sprintf("%s %d applied, %d failed", ui.Red.Render("Apply finished with errors:"), succeeded, failed)
 	}
-	summaryMsg += "."
 	p.Summary(summaryMsg)
 	printAPIUsage(p, apiUsage(eng.runner))
 

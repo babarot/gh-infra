@@ -71,29 +71,27 @@
     { text: '$ gh infra plan ./', cls: 'ht-cmd', typing: true, pause: 400 },
     { text: '', pause: 200 },
     { parts: [
-      { text: '  # babarot/my-project will be updated', cls: 'ht-dim' },
-    ], pause: 60 },
-    { parts: [
       { text: '  ~ ', cls: 'ht-chg' },
       { text: 'babarot/my-project', cls: 'ht-w' },
+      { text: '  1 to create · 2 to update', cls: 'ht-dim' },
     ], pause: 60 },
     { parts: [
       { text: '      ~ ', cls: 'ht-chg' },
-      { text: 'description        ', cls: '' },
+      { text: 'description    ', cls: '' },
       { text: '"My project"', cls: 'ht-old' },
       { text: ' → ', cls: 'ht-dim' },
       { text: '"My awesome project"', cls: 'ht-new' },
     ], pause: 80 },
     { parts: [
       { text: '      ~ ', cls: 'ht-chg' },
-      { text: 'features.wiki      ', cls: '' },
+      { text: 'features.wiki  ', cls: '' },
       { text: 'true', cls: 'ht-old' },
       { text: ' → ', cls: 'ht-dim' },
       { text: 'false', cls: 'ht-new' },
     ], pause: 80 },
     { parts: [
       { text: '      + ', cls: 'ht-add' },
-      { text: 'topics             ', cls: '' },
+      { text: 'topics         ', cls: '' },
       { text: '[go, cli]', cls: 'ht-new' },
     ], pause: 80 },
     { text: '', pause: 40 },
@@ -103,12 +101,18 @@
     { text: '', pause: 40 },
     { parts: [
       { text: '  Plan: ', cls: '' },
-      { text: '0', cls: 'ht-w' },
-      { text: ' to create, ', cls: '' },
+      { text: '+ ', cls: 'ht-add' },
       { text: '1', cls: 'ht-w' },
-      { text: ' to update, ', cls: '' },
+      { text: ' to create   ', cls: '' },
+      { text: '~ ', cls: 'ht-chg' },
+      { text: '2', cls: 'ht-w' },
+      { text: ' to update   ', cls: '' },
+      { text: '- ', cls: '' },
       { text: '0', cls: 'ht-w' },
       { text: ' to destroy', cls: '' },
+    ], pause: 60 },
+    { parts: [
+      { text: '        in 1 repository', cls: 'ht-dim' },
     ], pause: 100 },
   ];
 

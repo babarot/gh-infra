@@ -92,10 +92,10 @@ gh infra import babarot/my-project babarot/my-cli --into=repos/
 
 ### Interactive Diff Viewer
 
-After the plan is displayed, the confirmation prompt offers three options:
+After the plan is displayed, the confirmation prompt offers three keys:
 
 ```
-> Apply import changes? (y)es / (n)o / (d)iff
+> Apply import changes?  y yes   n no   d diff
 ```
 
 Press `d` to open a full-screen diff viewer for file-level changes:
@@ -227,8 +227,7 @@ For a `RepositorySet` entry, import writes only what differs from `defaults.spec
 An entry cannot drop single default items. When the repository has only some of the defaults' labels, rulesets, branch protection rules or variables, import cannot write that, and shows a warning naming the missing items instead. `plan` will then create them. To keep the repository without them, change the defaults or manage the repository with its own `Repository` manifest.
 
 ```
-  # my-org/my-cli (repos/set.yaml) cannot be fully imported
-  ⚠ my-org/my-cli
+  ⚠ my-org/my-cli (repos/set.yaml)                          cannot be fully imported
       ⚠ labels      in defaults but not on GitHub: kind/docs (an entry cannot drop default items, so plan will create them)
 ```
 

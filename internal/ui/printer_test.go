@@ -395,19 +395,34 @@ func TestErrorMessage(t *testing.T) {
 	}
 }
 
-func TestLegend(t *testing.T) {
-	var buf bytes.Buffer
-	p := NewStandardPrinterWith(&buf, &buf)
-	p.Legend(true, true, false)
-	out := buf.String()
-	if !strings.Contains(out, "create") {
-		t.Errorf("expected 'create' in legend, got:\n%s", out)
+func TestRepoHeader(t *testing.T) {
+	DisableStyles()
+	tests := []struct {
+		name                string
+		repo, detail, right string
+		want                string
+	}{
+		{name: "right text starts at the header column",
+			repo: "org/repo", right: "2 to create · 5 to update",
+			want: "  ~ org/repo" + strings.Repeat(" ", repoHeaderColumn-len("  ~ org/repo")) + "2 to create · 5 to update\n"},
+		{name: "detail follows the name and counts toward the column",
+			repo: "org/a", detail: "(set.yaml)", right: "will be updated",
+			want: "  ~ org/a (set.yaml)" + strings.Repeat(" ", repoHeaderColumn-len("  ~ org/a (set.yaml)")) + "will be updated\n"},
+		{name: "a name past the column keeps two spaces",
+			repo: "org/" + strings.Repeat("x", 70), right: "will be created",
+			want: "  ~ org/" + strings.Repeat("x", 70) + "  will be created\n"},
+		{name: "no right text",
+			repo: "org/repo",
+			want: "  ~ org/repo\n"},
 	}
-	if !strings.Contains(out, "update") {
-		t.Errorf("expected 'update' in legend, got:\n%s", out)
-	}
-	if strings.Contains(out, "destroy") {
-		t.Errorf("expected no 'destroy' in legend, got:\n%s", out)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			NewStandardPrinterWith(&buf, &buf).RepoHeader(IconChange, tt.repo, tt.detail, tt.right)
+			if got := buf.String(); got != tt.want {
+				t.Errorf("got  %q\nwant %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -484,7 +499,7 @@ func TestRepoStyle(t *testing.T) {
 		var outBuf, errBuf bytes.Buffer
 		p := NewStandardPrinterWith(&outBuf, &errBuf)
 		p.GroupHeader(IconChange, "babarot/gh-test")
-		p.ActionHeader("babarot/gh-test", "will be updated")
+		p.RepoHeader(IconChange, "babarot/gh-test", "", "will be updated")
 		if strings.Contains(outBuf.String(), "\x1b]8;") {
 			t.Errorf("expected no OSC 8 hyperlink, got %q", outBuf.String())
 		}
