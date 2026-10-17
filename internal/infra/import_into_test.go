@@ -603,6 +603,27 @@ func TestPrintImportPlan_TemplateSkipReasonOverridesCreateOnly(t *testing.T) {
 	}
 }
 
+func TestPrintImportPlan_OneBlankLineBeforeAPIUsage(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	printImportPlan(p, &importer.Result{
+		RepoDiffs: []importer.FieldDiff{
+			{Target: "org/a", Field: "description", Old: "x", New: "y"},
+			{Target: "org/b", Field: "description", Old: "x", New: "y"},
+		},
+	})
+	printAPIUsage(p, &APIUsage{Calls: 2})
+
+	out := buf.String()
+	if !strings.Contains(out, "x → y\n\n  ~ org/b") {
+		t.Errorf("expected one blank line between repositories:\n%q", out)
+	}
+	if !strings.HasSuffix(out, "x → y\n\nGitHub API: 2 calls\n") {
+		t.Errorf("expected one blank line before the API usage line:\n%q", out)
+	}
+}
+
 func TestPrintImportPlan_RepoWarnings(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)

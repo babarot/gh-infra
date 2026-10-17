@@ -134,7 +134,12 @@ func TestApply_SameResultsInBothModes(t *testing.T) {
 		}
 		// Both modes print the same summary, and with failures it does not
 		// say the apply is complete.
-		if !strings.Contains(out.String(), "\nApply finished with errors: 1 applied, 4 failed\n") || strings.Contains(out.String(), "Apply complete!") {
+		// One blank line before the summary: the results list (fallback mode)
+		// ends with a pending blank line, which the summary's own replaces.
+		if strings.Contains(out.String(), "\n\n\nApply finished") {
+			t.Errorf("stream=%v: two blank lines before the summary:\n%s", stream, out.String())
+		}
+		if !strings.Contains(out.String(), "\n\nApply finished with errors: 1 applied, 4 failed\n") || strings.Contains(out.String(), "Apply complete!") {
 			t.Errorf("stream=%v: summary missing:\n%s", stream, out.String())
 		}
 		if stream {
