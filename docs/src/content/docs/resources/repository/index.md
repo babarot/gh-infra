@@ -162,14 +162,13 @@ If a YAML manifest references a repository that doesn't exist, `plan` shows it a
 ```
 $ gh infra plan ./repos/
 
-  # babarot/new-project will be created
-  + babarot/new-project
-      + repository      babarot/new-project
+  + babarot/new-project                                     will be created
+      + repository  babarot/new-project
       + ruleset "protect-main"
-          + name        protect-main
-      + TOKEN           (new)
+          + name  protect-main
+      + TOKEN  (new)
       + labels
-          + bug         #ff0000
+          + bug  #ff0000
       a label named like one of GitHub's default labels is updated instead of created
       branch protection for main is applied by a later plan, once the branch exists
 ```

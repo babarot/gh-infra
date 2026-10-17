@@ -49,13 +49,22 @@ func (m *confirmModel) View() tea.View {
 		)
 		return tea.NewView(b.String())
 	}
-	fmt.Fprintf(&b, "\n%s %s (%s / %s)\n",
+	fmt.Fprintf(&b, "\n%s %s  %s\n",
 		promptAccent.Render(">"),
 		promptAccent.Render(m.title),
-		Green.Render("(y)")+"es",
-		Red.Render("(n)")+"o",
+		promptChoices(false),
 	)
 	return tea.NewView(b.String())
+}
+
+// promptChoices renders the keys a confirm prompt takes, each followed by
+// what it does: "y yes   n no", and "   d diff" with withDiff.
+func promptChoices(withDiff bool) string {
+	s := Green.Render("y") + " " + Dim.Render("yes") + "   " + Red.Render("n") + " " + Dim.Render("no")
+	if withDiff {
+		s += "   " + Yellow.Render("d") + " " + Dim.Render("diff")
+	}
+	return s
 }
 
 // diffViewerExecCmd wraps the diff viewer as a tea.ExecCommand so bubbletea
@@ -158,12 +167,10 @@ func (m *confirmDiffModel) View() tea.View {
 		}
 	}
 
-	fmt.Fprintf(&b, "\n%s %s (%s / %s / %s)\n",
+	fmt.Fprintf(&b, "\n%s %s  %s\n",
 		promptAccent.Render(">"),
 		promptAccent.Render(m.title),
-		Green.Render("(y)")+"es",
-		Red.Render("(n)")+"o",
-		Yellow.Render("(d)")+"iff",
+		promptChoices(true),
 	)
 	return tea.NewView(b.String())
 }

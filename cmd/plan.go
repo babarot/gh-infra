@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -51,6 +53,7 @@ func newPlanCmd() *cobra.Command {
 }
 
 type planCommandOptions struct {
+	Paths         []string // as given on the command line, for the apply hint
 	FilterRepo    string
 	CI            bool
 	FailOnUnknown bool
@@ -83,7 +86,36 @@ func runPlan(ctx context.Context, paths []string, opts planCommandOptions) error
 		Output:        opts.Output,
 		ChangedSince:  opts.ChangedSince,
 	})
+	opts.Paths = paths
 	return finishPlan(ctx, result, err, opts)
+}
+
+// applyCommand returns the apply command for what this plan covered: the
+// same paths, --repo and --changed-since.
+func applyCommand(opts planCommandOptions) string {
+	args := []string{"gh", "infra", "apply"}
+	for _, p := range opts.Paths {
+		args = append(args, shellQuote(p))
+	}
+	if opts.FilterRepo != "" {
+		args = append(args, "--repo", shellQuote(opts.FilterRepo))
+	}
+	if opts.ChangedSince != "" {
+		args = append(args, "--changed-since", shellQuote(opts.ChangedSince))
+	}
+	return strings.Join(args, " ")
+}
+
+// shellQuote quotes s for a POSIX shell when it holds anything but letters,
+// digits and the punctuation common in paths and git refs.
+func shellQuote(s string) string {
+	safe := func(r rune) bool {
+		return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("-_./:@%+=,~^", r)
+	}
+	if s != "" && !strings.ContainsFunc(s, func(r rune) bool { return !safe(r) }) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // finishPlan prints the machine-readable document and turns the outcome into
@@ -131,7 +163,7 @@ func finishPlan(ctx context.Context, result *infra.PlanResult, err error, opts p
 		return nil
 	}
 	if opts.Output == infra.OutputText || opts.Output == "" {
-		result.Printer().Summary("To apply, run: " + ui.Bold.Render("gh infra apply"))
+		result.Printer().Summary("To apply, run: " + ui.Bold.Render(applyCommand(opts)))
 	}
 	switch {
 	case opts.DetailedExitCode:

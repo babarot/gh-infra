@@ -45,10 +45,10 @@ Ctrl+C, SIGINT or SIGTERM stops the run. While changes are being applied, `apply
 
 ## Interactive Diff Viewer
 
-After the plan is displayed, the confirmation prompt offers three options:
+After the plan is displayed, the confirmation prompt says how many changes it applies to how many repositories, and offers three keys:
 
 ```
-> Do you want to apply these changes? (y)es / (n)o / (d)iff
+> Apply 13 changes to 3 repositories?  y yes   n no   d diff
 ```
 
 Press `d` to open a full-screen diff viewer before deciding:
@@ -68,7 +68,7 @@ When you return to the confirmation prompt, any skipped files are shown as a sum
   Skipped files (this run only):
     go.mod
 
-> Do you want to apply these changes? (y)es / (n)o / (d)iff
+> Apply 13 changes to 3 repositories?  y yes   n no   d diff
 ```
 
 ## Examples

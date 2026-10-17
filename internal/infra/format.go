@@ -75,16 +75,13 @@ func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChang
 			}
 		}
 
-		// Print action header (Terraform-style)
-		if isNew {
-			p.ActionHeader(name, "will be created")
-			p.GroupHeader(ui.IconAdd, name)
-		} else if isDestroy {
-			p.ActionHeader(name, "will be destroyed")
-			p.GroupHeader(ui.IconRemove, name)
-		} else {
-			p.ActionHeader(name, "will be updated")
-			p.GroupHeader(ui.IconChange, name)
+		switch {
+		case isNew:
+			p.RepoHeader(ui.IconAdd, name, "", "will be created")
+		case isDestroy:
+			p.RepoHeader(ui.IconRemove, name, "", "will be destroyed")
+		default:
+			p.RepoHeader(ui.IconChange, name, "", changeCounts(rChanges, fChanges))
 		}
 
 		// Convert to unified display model and render.
@@ -128,6 +125,40 @@ func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChang
 		p.GroupEnd()
 		p.SetColumnWidth(0)
 	}
+}
+
+// changeCounts describes a repository's changes for its header, such as
+// "2 to create · 5 to update". It counts as the plan summary does, so the
+// headers add up to the summary.
+func changeCounts(repoChanges []repository.Change, fileChanges []fileset.Change) string {
+	rc, ru, rd := repository.CountChanges(repoChanges)
+	fc, fu, fd := fileset.CountChanges(fileChanges)
+	var parts []string
+	for _, n := range []struct {
+		count int
+		verb  string
+	}{{rc + fc, "create"}, {ru + fu, "update"}, {rd + fd, "destroy"}} {
+		if n.count > 0 {
+			parts = append(parts, fmt.Sprintf("%d to %s", n.count, n.verb))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// plannedRepos returns the repositories with changes, in plan order.
+func plannedRepos(repoChanges []repository.Change, fileChanges []fileset.Change) []string {
+	var names []string
+	for _, c := range repoChanges {
+		if c.Type != repository.ChangeNoOp {
+			names = append(names, c.Name)
+		}
+	}
+	for _, c := range fileChanges {
+		if c.Type != fileset.ChangeNoOp {
+			names = append(names, c.Target)
+		}
+	}
+	return uniqueStrings(names)
 }
 
 const maxDiffLines = 500

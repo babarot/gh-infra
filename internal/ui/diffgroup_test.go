@@ -78,6 +78,42 @@ func TestRenderDiffGroups_Mixed(t *testing.T) {
 	}
 }
 
+func TestRenderDiffGroups_WidthPerBlock(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewStandardPrinterWith(&buf, &buf)
+
+	// A long field in one group must not widen the others: the top-level
+	// fields would be pushed right and their values cut at the terminal width.
+	groups := []DiffGroup{
+		{Items: []DiffItem{{Icon: IconChange, Field: "description", Old: "old", New: "new"}}},
+		{Items: []DiffItem{{Icon: IconChange, Field: "topics", Old: "[a]", New: "[a, b]"}}},
+		{Header: `ruleset "main"`, Icon: IconChange, Items: []DiffItem{
+			{Icon: IconChange, Field: "required_approving_review_count", Old: "0", New: "1"},
+			{Icon: IconAdd, Field: "required_status_checks", Value: "[test]"},
+		}},
+		{Header: "labels", Icon: IconAdd, Items: []DiffItem{
+			{Icon: IconAdd, Field: "kind/bug.color", Value: "d73a4a"},
+		}},
+		{Items: []DiffItem{{Icon: IconChange, Field: "visibility", Old: "private", New: "public"}}},
+	}
+	p.SetColumnWidth(DiffGroupFieldWidth(groups)) // as callers do; the blocks must not use it
+	RenderDiffGroups(p, groups)
+
+	want := strings.Join([]string{
+		"      ~ description  old → new",
+		"      ~ topics       [a] → [a, b]",
+		`      ~ ruleset "main"`,
+		"          ~ required_approving_review_count  0 → 1",
+		"          + required_status_checks           [test]",
+		"      + labels",
+		"          + kind/bug.color  d73a4a",
+		"      ~ visibility  private → public",
+	}, "\n") + "\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestRenderDiffGroups_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	p := NewStandardPrinterWith(&buf, &buf)

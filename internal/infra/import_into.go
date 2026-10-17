@@ -333,19 +333,18 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 		rWarnings := repoWarningsByTarget[target]
 		fChanges := fileChangesByTarget[target]
 
-		// Build header: include source file path when available
-		header := target
+		// The header names the manifest the repository comes from, when known.
+		source := ""
 		if len(rDiffs) > 0 && rDiffs[0].SourcePath != "" {
-			header = fmt.Sprintf("%s (%s)", target, rDiffs[0].SourcePath)
+			source = fmt.Sprintf("(%s)", rDiffs[0].SourcePath)
 		} else if len(rWarnings) > 0 && rWarnings[0].SourcePath != "" {
-			header = fmt.Sprintf("%s (%s)", target, rWarnings[0].SourcePath)
+			source = fmt.Sprintf("(%s)", rWarnings[0].SourcePath)
 		}
 		action, icon := "will be updated", ui.IconChange
 		if len(rDiffs) == 0 && len(fChanges) == 0 {
 			action, icon = "cannot be fully imported", ui.IconWarning
 		}
-		p.ActionHeader(header, action)
-		p.GroupHeader(icon, target)
+		p.RepoHeader(icon, target, source, action)
 
 		width := 0
 		if len(rDiffs) > 0 {

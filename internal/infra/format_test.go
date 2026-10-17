@@ -38,8 +38,86 @@ func TestPrintPlan_RepoChanges(t *testing.T) {
 	if !strings.Contains(out, "description") {
 		t.Errorf("expected field name in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "will be updated") {
-		t.Errorf("expected 'will be updated' header, got:\n%s", out)
+	// One header line per repository, with its counts on the right.
+	if strings.Count(out, "org/repo") != 1 || lineWith(out, "~ org/repo") == "" || !strings.HasSuffix(lineWith(out, "~ org/repo"), "1 to create · 1 to update") {
+		t.Errorf("expected one header line with the counts, got:\n%s", out)
+	}
+}
+
+func TestPrintPlan_HeaderCountsAddUpToSummary(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	repoChanges := []repository.Change{
+		{Type: repository.ChangeCreate, Name: "org/new", Field: "repository", Resource: manifest.ResourceRepository, NewValue: "org/new"},
+		{Type: repository.ChangeUpdate, Name: "org/a", Field: "description", OldValue: "old", NewValue: "new"},
+		{Type: repository.ChangeDelete, Name: "org/a", Field: "homepage", OldValue: "https://example.com"},
+		{Type: repository.ChangeNoOp, Name: "org/b", Field: "description"},
+	}
+	fileChanges := []fileset.Change{
+		{Type: fileset.ChangeCreate, Target: "org/a", Path: "LICENSE", Desired: "x\n", Via: "push"},
+		{Type: fileset.ChangeUpdate, Target: "org/a", Path: "README.md", Current: "a\n", Desired: "b\n", Via: "push"},
+	}
+
+	printPlan(p, repoChanges, fileChanges, false)
+	out := buf.String()
+
+	for header, right := range map[string]string{
+		"+ org/new": "will be created",
+		"~ org/a":   "1 to create · 2 to update · 1 to destroy",
+	} {
+		if line := lineWith(out, header); !strings.HasSuffix(line, right) {
+			t.Errorf("header %q: got %q, want it to end with %q", header, line, right)
+		}
+	}
+	if strings.Contains(out, "org/b") {
+		t.Errorf("a repository without changes has no header:\n%s", out)
+	}
+	if got, want := (&PlanResult{RepoChanges: repoChanges, FileChanges: fileChanges}).ChangedRepoCount(), 2; got != want {
+		t.Errorf("ChangedRepoCount = %d, want %d", got, want)
+	}
+}
+
+func TestPlanSummary(t *testing.T) {
+	tests := []struct {
+		name                       string
+		c, u, d, changed, upToDate int
+		skipped                    int
+		want                       string
+	}{
+		{name: "counts and repositories", c: 4, u: 9, changed: 3, upToDate: 1, skipped: 1,
+			want: "Plan: + 4 to create   ~ 9 to update   - 0 to destroy\n      in 3 repositories · 1 up to date · 1 skipped"},
+		{name: "zero up to date and skipped are left out", u: 1, changed: 1,
+			want: "Plan: + 0 to create   ~ 1 to update   - 0 to destroy\n      in 1 repository"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := planSummary(tt.c, tt.u, tt.d, tt.changed, tt.upToDate, tt.skipped); got != tt.want {
+				t.Errorf("got\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCountUpToDate(t *testing.T) {
+	// o/a is both a repository and a FileSet target; o/b has changes; o/c
+	// was skipped.
+	planned := []string{"o/a", "o/b", "o/c", "o/d", "o/a"}
+	if got := countUpToDate(planned, []string{"o/b"}, []string{"o/c"}); got != 2 {
+		t.Errorf("got %d, want 2 (o/a once, o/d)", got)
+	}
+}
+
+func TestConfirmTitle(t *testing.T) {
+	one := &PlanResult{Updates: 1, RepoChanges: []repository.Change{{Type: repository.ChangeUpdate, Name: "o/a"}}}
+	if got, want := one.ConfirmTitle(), "Apply 1 change to 1 repository?"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	many := &PlanResult{Creates: 4, Updates: 9, RepoChanges: []repository.Change{
+		{Type: repository.ChangeUpdate, Name: "o/a"}, {Type: repository.ChangeCreate, Name: "o/b"},
+	}, FileChanges: []fileset.Change{{Type: fileset.ChangeCreate, Target: "o/c"}, {Type: fileset.ChangeNoOp, Target: "o/d"}}}
+	if got, want := many.ConfirmTitle(), "Apply 13 changes to 3 repositories?"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

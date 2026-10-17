@@ -20,17 +20,29 @@ type DiffItem struct {
 
 // RenderDiffGroups renders a sequence of DiffGroups through the printer.
 // Groups with a Header get a SubGroupHeader; bare groups render items directly.
+//
+// Field columns are aligned within a block: a run of consecutive bare groups,
+// or one group with a Header. A long field name then widens only its own
+// block, instead of pushing every value in the repository to the right where
+// it would be cut at the terminal width.
 func RenderDiffGroups(p Printer, groups []DiffGroup) {
-	for _, g := range groups {
-		if g.Header != "" {
+	for i := 0; i < len(groups); {
+		if g := groups[i]; g.Header != "" {
 			p.SubGroupHeader(g.Icon, g.Header)
+			w := itemFieldWidth(g.Items)
 			for _, item := range g.Items {
-				p.PrintChange(itemToChangeItem(item, IndentSub))
+				p.PrintChange(itemToChangeItem(item, IndentSub, w))
 			}
-		} else {
-			for _, item := range g.Items {
-				p.PrintChange(itemToChangeItem(item, IndentItem))
-			}
+			i++
+			continue
+		}
+		var bare []DiffItem
+		for ; i < len(groups) && groups[i].Header == ""; i++ {
+			bare = append(bare, groups[i].Items...)
+		}
+		w := itemFieldWidth(bare)
+		for _, item := range bare {
+			p.PrintChange(itemToChangeItem(item, IndentItem, w))
 		}
 	}
 }
@@ -39,16 +51,21 @@ func RenderDiffGroups(p Printer, groups []DiffGroup) {
 func DiffGroupFieldWidth(groups []DiffGroup) int {
 	w := 0
 	for _, g := range groups {
-		for _, item := range g.Items {
-			if len(item.Field) > w {
-				w = len(item.Field)
-			}
-		}
+		w = max(w, itemFieldWidth(g.Items))
 	}
 	return w
 }
 
-func itemToChangeItem(item DiffItem, level IndentLevel) ChangeItem {
+// itemFieldWidth returns the maximum field name width of items.
+func itemFieldWidth(items []DiffItem) int {
+	w := 0
+	for _, item := range items {
+		w = max(w, len(item.Field))
+	}
+	return w
+}
+
+func itemToChangeItem(item DiffItem, level IndentLevel, width int) ChangeItem {
 	return ChangeItem{
 		Icon:  item.Icon,
 		Field: item.Field,
@@ -56,5 +73,6 @@ func itemToChangeItem(item DiffItem, level IndentLevel) ChangeItem {
 		Old:   item.Old,
 		New:   item.New,
 		Level: level,
+		Width: width,
 	}
 }

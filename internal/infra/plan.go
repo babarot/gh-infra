@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -273,21 +275,74 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	result.Deletes = repoDeletes + fileDeletes
 
 	p.Separator()
-	p.Legend(result.Creates > 0, result.Updates > 0, result.Deletes > 0)
 
 	printPlanWithNotes(p, repoChanges, fileChanges, result.CreateNotes, opts.ShowDiff)
 
-	parts := []string{
-		fmt.Sprintf("%s to create", ui.Bold.Render(fmt.Sprintf("%d", result.Creates))),
-		fmt.Sprintf("%s to update", ui.Bold.Render(fmt.Sprintf("%d", result.Updates))),
-		fmt.Sprintf("%s to destroy", ui.Bold.Render(fmt.Sprintf("%d", result.Deletes))),
-	}
-	p.Summary(fmt.Sprintf("Plan: %s", strings.Join(parts, ", ")))
+	changed := plannedRepos(repoChanges, fileChanges)
+	upToDate := countUpToDate(slices.Concat(repoNames, fileNames), changed, result.FailedTargets)
+	p.Summary(planSummary(result.Creates, result.Updates, result.Deletes, len(changed), upToDate, len(result.FailedTargets)))
 
 	if opts.DryRun {
 		printAPIUsage(p, apiUsage(runner))
 	}
 	return result, nil
+}
+
+// planSummary returns the plan's closing lines: the counts of each kind of
+// change, marked with the symbols the plan uses for them, and which of the
+// planned repositories have changes, are up to date, or were skipped.
+func planSummary(creates, updates, deletes, changed, upToDate, skipped int) string {
+	count := func(n int) string { return ui.Bold.Render(strconv.Itoa(n)) }
+	var b strings.Builder
+	fmt.Fprintf(&b, "Plan: %s %s to create   %s %s to update   %s %s to destroy\n",
+		ui.Green.Render(ui.IconAdd), count(creates),
+		ui.Yellow.Render(ui.IconChange), count(updates),
+		ui.Red.Render(ui.IconRemove), count(deletes))
+	b.WriteString("      " + ui.Dim.Render("in "+repositories(changed)))
+	if upToDate > 0 {
+		b.WriteString(ui.Dim.Render(fmt.Sprintf(" · %d up to date", upToDate)))
+	}
+	if skipped > 0 {
+		b.WriteString(ui.Dim.Render(" · ") + ui.Red.Render(fmt.Sprintf("%d skipped", skipped)))
+	}
+	return b.String()
+}
+
+// countUpToDate returns how many of the planned repositories (named once per
+// repository and FileSet target, so possibly more than once) neither have
+// changes nor were skipped.
+func countUpToDate(planned, changed, skipped []string) int {
+	n := 0
+	for _, name := range uniqueStrings(planned) {
+		if !slices.Contains(changed, name) && !slices.Contains(skipped, name) {
+			n++
+		}
+	}
+	return n
+}
+
+// repositories returns n with "repository" or "repositories".
+func repositories(n int) string {
+	if n == 1 {
+		return "1 repository"
+	}
+	return fmt.Sprintf("%d repositories", n)
+}
+
+// ChangeCount returns the number of changes the plan makes.
+func (r *PlanResult) ChangeCount() int {
+	return r.Creates + r.Updates + r.Deletes
+}
+
+// ChangedRepoCount returns the number of repositories the plan changes.
+func (r *PlanResult) ChangedRepoCount() int {
+	return len(plannedRepos(r.RepoChanges, r.FileChanges))
+}
+
+// ConfirmTitle is the question asked before applying the plan, such as
+// "Apply 13 changes to 3 repositories?".
+func (r *PlanResult) ConfirmTitle() string {
+	return fmt.Sprintf("Apply %s to %s?", plural(r.ChangeCount(), "change"), repositories(r.ChangedRepoCount()))
 }
 
 // failedTargets returns the unique task names that reported an error.

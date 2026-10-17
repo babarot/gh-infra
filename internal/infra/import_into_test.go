@@ -617,13 +617,21 @@ func TestPrintImportPlan_RepoWarnings(t *testing.T) {
 
 	out := buf.String()
 	for _, want := range []string{
-		"org/a (set.yaml) will be updated",
 		"in defaults but not on GitHub: main",
-		"org/b (set.yaml) cannot be fully imported",
 		"in defaults but not on GitHub: c",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in:\n%s", want, out)
+		}
+	}
+	// Each repository has one header line: the manifest it comes from after
+	// the name, the action on the right.
+	for header, action := range map[string]string{
+		"~ org/a (set.yaml)": "will be updated",
+		"⚠ org/b (set.yaml)": "cannot be fully imported",
+	} {
+		if line := lineWith(out, header); !strings.HasSuffix(line, action) {
+			t.Errorf("header %q: got %q, want it to end with %q", header, line, action)
 		}
 	}
 	if (&ImportDiff{Plan: &importer.Result{RepoWarnings: []importer.RepoWarning{{Target: "org/b"}}}}).HasChanges() {

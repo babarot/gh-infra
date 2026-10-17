@@ -79,16 +79,16 @@ export const planLeft = `<span class="hl-key">apiVersion:</span> gh-infra/v1
     - <span class="hl-changed">go</span>
     - <span class="hl-changed">cli</span>`;
 
-export const planRight = `<span class="hl-dim"># babarot/my-project will be updated</span>
-  <span class="hl-change">~</span> <span class="hl-repo">babarot/my-project</span>
+export const planRight = `  <span class="hl-change">~</span> <span class="hl-repo">babarot/my-project</span>  <span class="hl-dim">1 to create · 2 to update</span>
       <span class="hl-change">~</span> features.wiki         <span class="hl-old">true</span> <span class="hl-dim">→</span> <span class="hl-new">false</span>
       <span class="hl-change">~</span> features.discussions  <span class="hl-old">false</span> <span class="hl-dim">→</span> <span class="hl-new">true</span>
       <span class="hl-add">+</span> topics                <span class="hl-new">[go, cli]</span>
 
 <span class="hl-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 
-Plan: <span class="hl-repo">0</span> to create, <span class="hl-repo">1</span> to update, <span class="hl-repo">0</span> to destroy
-To apply, run: <span class="hl-repo">gh infra apply</span>`;
+Plan: <span class="hl-add">+</span> <span class="hl-repo">1</span> to create   <span class="hl-change">~</span> <span class="hl-repo">2</span> to update   - <span class="hl-repo">0</span> to destroy
+      <span class="hl-dim">in 1 repository</span>
+To apply, run: <span class="hl-repo">gh infra apply ./repos/</span>`;
 
 <FadeIn>
 <div class="landing-section">
@@ -106,17 +106,18 @@ To apply, run: <span class="hl-repo">gh infra apply</span>`;
 
 export const applyLeft = `<span class="hl-prompt">$</span> <span class="hl-cmd">gh infra apply</span> ./repos/
 
-<span class="hl-dim">&gt;</span> <span class="hl-dim">Do you want to apply these changes?</span> <span class="hl-new">Yes</span>`;
+<span class="hl-dim">&gt;</span> <span class="hl-dim">Apply 3 changes to 1 repository?</span> <span class="hl-new">Yes</span>`;
 
 export const applyRight = `<span class="hl-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 
   <span class="hl-new">✓</span> <span class="hl-repo">babarot/my-project</span>
-      <span class="hl-new">✓</span> features            updated
-      <span class="hl-new">✓</span> topics              updated
+      <span class="hl-new">✓</span> features.wiki             updated
+      <span class="hl-new">✓</span> features.discussions      updated
+      <span class="hl-new">✓</span> topics                    created
 
 <span class="hl-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 
-Apply complete! 2 changes applied.`;
+Apply complete! 3 changes applied.`;
 
 <FadeIn>
 <div class="landing-section">

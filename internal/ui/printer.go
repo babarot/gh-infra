@@ -23,6 +23,7 @@ type ChangeItem struct {
 	Old   string      // for update only
 	New   string      // for update only
 	Level IndentLevel // IndentItem (default) or IndentSub
+	Width int         // field column width; 0 uses the printer's column width
 }
 
 // FileItem represents a file-level change for PrintFileChange.
@@ -53,8 +54,7 @@ type Printer interface {
 
 	// stdout: structured output
 	Separator()
-	Legend(creates, updates, deletes bool)
-	ActionHeader(name, action string) // e.g. "# babarot/repo will be created"
+	RepoHeader(icon, name, detail, right string) // e.g. "~ babarot/repo        2 to create · 5 to update"
 	GroupHeader(icon, name string)
 	GroupEnd()
 	SetColumnWidth(w int) // set field/path column width for alignment
@@ -218,23 +218,24 @@ func (p *StandardPrinter) Separator() {
 	fmt.Fprintln(p.err)
 }
 
-func (p *StandardPrinter) Legend(creates, updates, deletes bool) {
-	fmt.Fprintln(p.out, "Resource actions are indicated with the following symbols:")
-	if creates {
-		fmt.Fprintf(p.out, "%s%s create\n", Indent(IndentRoot), Green.Render(IconAdd))
-	}
-	if updates {
-		fmt.Fprintf(p.out, "%s%s update\n", Indent(IndentRoot), Yellow.Render(IconChange))
-	}
-	if deletes {
-		fmt.Fprintf(p.out, "%s%s destroy\n", Indent(IndentRoot), Red.Render(IconRemove))
-	}
-	fmt.Fprintln(p.out)
-}
+// repoHeaderColumn is the column where RepoHeader starts its right-hand text.
+const repoHeaderColumn = 60
 
-func (p *StandardPrinter) ActionHeader(name, action string) {
-	display := repoStyle(name, p.linkRepos()).Render(name)
-	fmt.Fprintf(p.out, "%s%s %s %s\n", Indent(IndentRoot), Dim.Render("#"), display, Dim.Render(action))
+// RepoHeader prints the first line of a repository's block: the icon, the
+// name (linked to GitHub), detail in dim (such as the manifest the repository
+// comes from) and, from repoHeaderColumn on, right in dim (such as
+// "2 to create · 5 to update"). detail and right may be empty.
+func (p *StandardPrinter) RepoHeader(icon, name, detail, right string) {
+	line := Indent(IndentRoot) + renderIcon(icon) + " " + repoStyle(name, p.linkRepos()).Render(name)
+	width := len(Indent(IndentRoot)) + 2 + utf8.RuneCountInString(name)
+	if detail != "" {
+		line += " " + Dim.Render(detail)
+		width += 1 + utf8.RuneCountInString(detail)
+	}
+	if right != "" {
+		line += strings.Repeat(" ", max(2, repoHeaderColumn-width)) + Dim.Render(right)
+	}
+	fmt.Fprintln(p.out, line)
 }
 
 func (p *StandardPrinter) GroupHeader(icon, name string) {
@@ -289,6 +290,9 @@ func (p *StandardPrinter) PrintChange(item ChangeItem) {
 	level := max(item.Level, IndentItem)
 	ind := Indent(level)
 	width := p.widthForLevel(level)
+	if item.Width > 0 {
+		width = item.Width
+	}
 	icon := renderIcon(item.Icon)
 	switch item.Icon {
 	case IconAdd:
