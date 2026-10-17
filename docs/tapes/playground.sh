@@ -12,6 +12,12 @@
 #          request, one up to date, one that cannot be read (403), one that
 #          does not exist yet (created by apply), and a write that fails (422)
 #   many   40 repositories, mostly up to date, for the output of large sets
+#
+# MOCK_DELAY sets how long each gh call takes, in seconds (each call takes
+# from half to one and a half times it; unset, 0.2-0.5s). Set it to slow the
+# output down enough to watch, before starting or in the shell:
+#   MOCK_DELAY=2 playground.sh many      (make playground SCENARIO=many DELAY=2)
+#   export MOCK_DELAY=3                  (in the shell; applies to the next run)
 set -euo pipefail
 
 scenario="${1:-mixed}"
@@ -19,6 +25,16 @@ case "$scenario" in
   mixed | many) ;;
   *) echo "usage: $0 [mixed|many]" >&2; exit 2 ;;
 esac
+
+if [[ -n "${MOCK_DELAY:-}" && ! "$MOCK_DELAY" =~ ^([0-9]{1,4}(\.[0-9]+)?|\.[0-9]+)$ ]]; then
+  echo "MOCK_DELAY must be a number of seconds below 10000, got $MOCK_DELAY" >&2
+  exit 2
+fi
+export MOCK_DELAY="${MOCK_DELAY:-}"
+speed="each gh call takes 0.2-0.5s"
+if [[ -n "$MOCK_DELAY" ]]; then
+  speed="each gh call takes about ${MOCK_DELAY}s (MOCK_DELAY)"
+fi
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 mock_gh="$root/docs/tapes/mock-gh"
@@ -247,6 +263,9 @@ gh here is mock-gh: nothing reaches GitHub, and apply changes nothing.
   gh infra plan repos/
   gh infra apply repos/
   GH_INFRA_OUTPUT=stream gh infra apply repos/
+
+Now $speed. To change it:
+  export MOCK_DELAY=2   # seconds per gh call; unset MOCK_DELAY for the default
 
 Mock state is in mock/ (see the comments at the top of $mock_gh).
 Type exit to leave; the directory is then removed.
