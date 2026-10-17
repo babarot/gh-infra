@@ -159,7 +159,7 @@ $MOCK_DIR/{owner}/{repo}/
 | `variable list` | hardcoded | `[]` |
 | `repo edit`, write APIs | no-op | success with delay |
 
-All mock responses include a random 200-500ms delay to simulate network latency.
+All mock responses include a random 200-500ms delay to simulate network latency. Setting `MOCK_DELAY` to a number of seconds changes it to between half and one and a half times that (`make playground DELAY=2`, or `export MOCK_DELAY=2` in the playground shell); tapes leave it unset.
 
 ## Checklist: Adding a New Demo
 

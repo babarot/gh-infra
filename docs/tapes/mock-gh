@@ -19,7 +19,15 @@ MOCK_DIR="${MOCK_DIR:-/tmp/mock-data}"
 # Helpers
 # ---------------------------------------------------------------------------
 
+# delay waits as a call to GitHub would: 0.2-0.5s, or, with $MOCK_DELAY set
+# to a number of seconds, from half to one and a half times it, so the output
+# can be slowed down enough to watch. Anything but a non-negative number below
+# 10000 in $MOCK_DELAY is ignored.
 delay() {
+  if [[ "${MOCK_DELAY:-}" =~ ^([0-9]{1,4}(\.[0-9]+)?|\.[0-9]+)$ ]]; then
+    sleep "$(awk -v d="$MOCK_DELAY" -v r="$RANDOM" 'BEGIN { printf "%.3f", d * (0.5 + r / 32767) }')"
+    return
+  fi
   local ms=$(( RANDOM % 300 + 200 ))
   sleep "0.${ms}"
 }
