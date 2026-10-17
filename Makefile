@@ -50,7 +50,9 @@ demo:
 
 # Try the terminal output against mock-gh, without GitHub:
 #   make playground [SCENARIO=many] [DELAY=<seconds per gh call>]
+# MOCK_DELAY works too, on the command line or in the environment; DELAY
+# replaces it only when given.
 playground:
-	@MOCK_DELAY=$(DELAY) docs/tapes/playground.sh $(SCENARIO)
+	@$(if $(DELAY),MOCK_DELAY=$(DELAY) )docs/tapes/playground.sh $(SCENARIO)
 
 .PHONY: all test lint build install clean docs docs-build docs-install demo playground
