@@ -33,8 +33,8 @@ func Import(ctx context.Context, runner gh.Runner, args []string) error {
 	if len(targets) != 1 {
 		label = "repositories"
 	}
-	p.Phase(fmt.Sprintf("Fetching current state of %d %s from GitHub API ...", len(targets), label))
-	p.BlankLine()
+	title := fmt.Sprintf("Fetching current state of %d %s from GitHub API", len(targets), label)
+	heading := ui.RefreshHeading{Title: title, Phase: title + " ...", Done: "Fetched", Failed: "failed"}
 
 	// Start spinner display
 	names := make([]string, len(targets))
@@ -46,7 +46,7 @@ func Import(ctx context.Context, runner gh.Runner, args []string) error {
 			FailLabel: names[i],
 		}
 	}
-	tracker, ctx, stop := startRefresh(ctx, runner, tasks)
+	tracker, ctx, stop := startRefresh(ctx, runner, heading, tasks)
 	defer stop()
 
 	type fetchResult struct {

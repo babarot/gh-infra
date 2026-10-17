@@ -6,6 +6,24 @@ import (
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
+// loader is implemented by gh.GHRunner.
+type loader interface {
+	Load() (running, waiting int)
+	Concurrency() int
+}
+
+// withLoad returns heading with a gauge of the runner's gh processes, when
+// the runner can report them and has a limit.
+func withLoad(heading ui.RefreshHeading, runner any) ui.RefreshHeading {
+	if l, ok := runner.(loader); ok && l.Concurrency() > 0 {
+		heading.Load = func() (running, waiting, limit int) {
+			running, waiting = l.Load()
+			return running, waiting, l.Concurrency()
+		}
+	}
+	return heading
+}
+
 // canceler is implemented by ui.RefreshTracker.
 type canceler interface {
 	Canceled() <-chan struct{}
@@ -35,8 +53,11 @@ func withTrackerCancel(parent context.Context, c canceler) (context.Context, con
 // when the spinner is interrupted. When parent is canceled (a signal), the
 // spinner stops as for Ctrl+C, and errors of the interrupted work are not
 // shown. Call stop when the work is done; it does not wait for the spinner.
-func startRefresh(parent context.Context, runner any, tasks []ui.RefreshTask) (tracker *ui.RefreshTracker, ctx context.Context, stop func()) {
-	tracker = ui.RunRefresh(tasks)
+//
+// The heading shows how busy the runner's gh processes are when the runner
+// can say (gh.GHRunner).
+func startRefresh(parent context.Context, runner any, heading ui.RefreshHeading, tasks []ui.RefreshTask) (tracker *ui.RefreshTracker, ctx context.Context, stop func()) {
+	tracker = ui.RunRefresh(withLoad(heading, runner), tasks)
 	stopWaits := showRateLimitWaits(runner, tracker.SetNotice)
 	stopInterrupt := context.AfterFunc(parent, tracker.Interrupt)
 	ctx, cancel := withTrackerCancel(parent, tracker)

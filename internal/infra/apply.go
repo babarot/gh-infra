@@ -41,9 +41,6 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 		return nil, err
 	}
 
-	p.Phase("Applying changes to GitHub API ...")
-	p.BlankLine()
-
 	repoChanges, archives := splitArchives(result.RepoChanges)
 	repoNames := changedRepoNames(repoChanges)
 	fileSets := fileSetWorkOf(result)
@@ -117,11 +114,20 @@ type applyView struct {
 // canceled with ctx (and with the spinner's Ctrl+C). Call stop when done.
 // createOnly names the repositories whose only change is creating them.
 func startApplyView(ctx context.Context, stream bool, eng *engine, tasks []ui.RefreshTask, createOnly map[string]bool) (applyView, context.Context, func()) {
+	const phase = "Applying changes to GitHub API ..."
 	if !stream {
-		tracker, ctx, stop := startRefresh(ctx, eng.runner, tasks)
+		heading := ui.RefreshHeading{
+			Title:  "Applying changes to " + repositories(len(tasks)),
+			Phase:  phase,
+			Done:   "Applied changes to",
+			Failed: "failed",
+		}
+		tracker, ctx, stop := startRefresh(ctx, eng.runner, heading, tasks)
 		return applyView{tracker: tracker, rows: newApplyRows(tracker, createOnly)}, ctx, stop
 	}
 	p := eng.printer
+	p.Phase(phase)
+	p.BlankLine()
 	stopWaits := showRateLimitWaits(eng.runner, func(text string) {
 		if text != "" {
 			p.Progress(text)

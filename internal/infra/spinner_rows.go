@@ -12,6 +12,18 @@ import (
 	"github.com/babarot/gh-infra/internal/ui"
 )
 
+// fetchHeading is the spinner heading of plan and import --into, which
+// fetch the current state of the repositories they read. failed names a
+// repository whose state could not be fetched.
+func fetchHeading(failed string) ui.RefreshHeading {
+	return ui.RefreshHeading{
+		Title:  "Fetching current state from GitHub API",
+		Phase:  "Fetching current state from GitHub API ...",
+		Done:   "Fetched",
+		Failed: failed,
+	}
+}
+
 // planRows shows what the plan of each repository found on its spinner row.
 // A row is reported by the repository plan and by each FileSet planning the
 // repository; its result adds up what they found, and the spinner shows the

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // ---------------------------------------------------------------------------
@@ -357,11 +358,28 @@ func TestView_StatusTextRendered(t *testing.T) {
 	}
 }
 
-// frozen makes m's clock stand still: every task has run for 1.5s.
+// frozen makes m's clock stand still at the time the tasks start.
 func frozen(m refreshModel) refreshModel {
 	t0 := time.Unix(1_000_000, 0)
 	m.start = t0
-	m.now = func() time.Time { return t0.Add(1500 * time.Millisecond) }
+	m.now = func() time.Time { return t0 }
+	return m
+}
+
+// later moves m's frozen clock to d after the tasks started.
+func later(m refreshModel, d time.Duration) refreshModel {
+	t0 := m.start
+	m.now = func() time.Time { return t0.Add(d) }
+	return m
+}
+
+// begun starts the named tasks at the current time with a first status, so
+// they are no longer queued.
+func begun(t *testing.T, m refreshModel, names ...string) refreshModel {
+	t.Helper()
+	for _, n := range names {
+		m = update(t, m, taskStatusMsg{name: n, status: "starting..."})
+	}
 	return m
 }
 
@@ -371,7 +389,8 @@ func viewLines(m refreshModel) []string {
 }
 
 func TestView_CheckpointKeepsTheSpinner(t *testing.T) {
-	m := frozen(makeModel(task("repo", 1)))
+	m := begun(t, frozen(makeModel(task("repo", 1))), "repo")
+	m = later(m, 1500*time.Millisecond)
 	spin := stripANSIForTest(m.items[0].spinner.View())
 	m = update(t, m, taskCheckpointMsg{name: "repo", status: "repository"})
 	if got, want := viewLines(m)[0], "  "+spin+" repo   1.5s  repository ✓"; got != want {
@@ -442,7 +461,8 @@ func TestView_Rows(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := frozen(newRefreshModel(append(tt.tasks, RefreshTask{Name: "o/b"})))
+			m := begun(t, frozen(newRefreshModel(append(tt.tasks, RefreshTask{Name: "o/b"}))), "o/a")
+			m = later(m, 1500*time.Millisecond)
 			spin := stripANSIForTest(m.items[0].spinner.View())
 			for _, msg := range tt.msgs {
 				m = update(t, m, msg)
@@ -456,16 +476,139 @@ func TestView_Rows(t *testing.T) {
 }
 
 func TestView_ElapsedStopsWhenTheTaskEnds(t *testing.T) {
-	m := frozen(makeModel(task("o/a", 1), task("o/b", 1)))
-	m = update(t, m, taskDoneMsg{name: "o/a"})
-	t0 := m.start
-	m.now = func() time.Time { return t0.Add(9 * time.Second) }
+	m := begun(t, frozen(makeModel(task("o/a", 1), task("o/b", 1))), "o/a", "o/b")
+	m = update(t, later(m, 1500*time.Millisecond), taskDoneMsg{name: "o/a"})
+	m = later(m, 9*time.Second)
 	lines := viewLines(m)
 	if !strings.HasPrefix(lines[0], "  ✓ o/a   1.5s") {
 		t.Errorf("a finished task shows what it took: %q", lines[0])
 	}
 	if !strings.Contains(lines[1], "o/b   9.0s") {
 		t.Errorf("a running task shows its time so far: %q", lines[1])
+	}
+}
+
+func TestView_Heading(t *testing.T) {
+	heading := RefreshHeading{
+		Title:  "Fetching current state from GitHub API",
+		Done:   "Fetched",
+		Failed: "skipped",
+	}
+	newModel := func(h RefreshHeading) refreshModel {
+		m := frozen(newRefreshModel([]RefreshTask{{Name: "o/a"}, {Name: "o/b"}, {Name: "o/c"}, {Name: "o/d"}}))
+		m.heading = h
+		return m
+	}
+
+	t.Run("while running: progress, gauge and queued rows", func(t *testing.T) {
+		h := heading
+		h.Load = func() (int, int, int) { return 8, 23, 8 }
+		m := begun(t, newModel(h), "o/a", "o/b", "o/c")
+		m = update(t, later(m, 1400*time.Millisecond), taskDoneMsg{name: "o/a"})
+		lines := viewLines(m)
+		want := "Fetching current state from GitHub API  ━━━━━━──────────────────  1/4  1.4s  · gh 8/8 · 23 calls waiting · 1 queued"
+		if lines[0] != want || lines[1] != "" {
+			t.Errorf("heading:\ngot  %q\nwant %q", lines[0], want)
+		}
+		if got := lines[5]; got != "  · o/d         queued" {
+			t.Errorf("queued row: got %q", got)
+		}
+	})
+
+	t.Run("the gauge is highlighted only at the limit", func(t *testing.T) {
+		// Styles are disabled in these tests; mark yellow text instead.
+		saved := Yellow
+		Yellow = lipgloss.NewStyle().Transform(func(s string) string { return "<y>" + s + "</y>" })
+		defer func() { Yellow = saved }()
+		at := func(running int) string {
+			h := heading
+			h.Load = func() (int, int, int) { return running, 0, 8 }
+			return newModel(h).View().Content
+		}
+		if !strings.Contains(at(8), Yellow.Render("gh 8/8")) || strings.Contains(at(3), Yellow.Render("gh 3/8")) {
+			t.Error("want the gauge in yellow at 8/8 and not at 3/8")
+		}
+		if got := stripANSIForTest(at(3)); !strings.Contains(got, "· gh 3/8 · 4 queued") {
+			t.Errorf("no calls waiting: got %q", got)
+		}
+	})
+
+	t.Run("without a gauge or queued rows", func(t *testing.T) {
+		m := begun(t, newModel(heading), "o/a", "o/b", "o/c", "o/d")
+		if got := viewLines(m)[0]; got != "Fetching current state from GitHub API  ────────────────────────  0/4  0.0s" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("finished", func(t *testing.T) {
+		m := begun(t, newModel(heading), "o/a", "o/b", "o/c", "o/d")
+		m = later(m, 2100*time.Millisecond)
+		for _, n := range []string{"o/a", "o/b", "o/c", "o/d"} {
+			m = update(t, m, taskDoneMsg{name: n})
+		}
+		if got := viewLines(m)[0]; got != "✓ Fetched 4 repositories in 2.1s" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("finished with errors", func(t *testing.T) {
+		m := begun(t, newModel(heading), "o/a", "o/b", "o/c", "o/d")
+		m = later(m, 2100*time.Millisecond)
+		m = update(t, m, taskErrorMsg{name: "o/b", err: fmt.Errorf("boom")})
+		for _, n := range []string{"o/a", "o/c", "o/d"} {
+			m = update(t, m, taskDoneMsg{name: n})
+		}
+		if got := viewLines(m)[0]; got != "✗ Fetched 4 repositories in 2.1s, 1 skipped" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("a row that errors at an early report finishes with its last", func(t *testing.T) {
+		m := frozen(newRefreshModel([]RefreshTask{{Name: "o/a", Pending: 2}}))
+		m.heading = heading
+		m = begun(t, m, "o/a")
+		m = update(t, later(m, time.Second), taskErrorMsg{name: "o/a", err: fmt.Errorf("boom")})
+		if got := viewLines(m)[0]; !strings.Contains(got, "0/1") {
+			t.Errorf("after the error, the other report is still to come: got %q", got)
+		}
+		m = update(t, later(m, 10*time.Second), taskDoneMsg{name: "o/a"})
+		if got := viewLines(m)[0]; got != "✗ Fetched 1 repository in 10.0s, 1 skipped" {
+			t.Errorf("the work ended with the last report: got %q", got)
+		}
+	})
+
+	t.Run("canceled", func(t *testing.T) {
+		m := update(t, newModel(heading), interruptMsg{})
+		if got := viewLines(m)[0]; got != "✗ Fetching current state from GitHub API (canceled)" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("no title, no heading", func(t *testing.T) {
+		m := newModel(RefreshHeading{})
+		if got := viewLines(m)[0]; !strings.Contains(got, "o/a") {
+			t.Errorf("want the first row first, got %q", got)
+		}
+	})
+}
+
+// Without a terminal, RunRefresh prints the heading's Phase and a blank line
+// before the task names: the output the commands printed before the heading.
+func TestRunRefresh_FallbackPrintsThePhase(t *testing.T) {
+	var buf bytes.Buffer
+	restore := SetDefaultPrinter(NewStandardPrinterWith(&buf, &buf))
+	defer restore()
+
+	heading := RefreshHeading{Title: "Fetching current state from GitHub API", Phase: "Fetching current state from GitHub API ..."}
+	RunRefresh(heading, []RefreshTask{{Name: "o/a"}, {Name: "o/b"}}).Wait()
+	if got, want := buf.String(), "Fetching current state from GitHub API ...\n\n  o/a...\n  o/b...\n"; got != want {
+		t.Errorf("with tasks:\ngot  %q\nwant %q", got, want)
+	}
+
+	buf.Reset()
+	RunRefresh(heading, nil).Wait()
+	if got, want := buf.String(), "Fetching current state from GitHub API ...\n\n"; got != want {
+		t.Errorf("without tasks:\ngot  %q\nwant %q", got, want)
 	}
 }
 
@@ -504,11 +647,11 @@ func TestView_DoneHidesStatusText(t *testing.T) {
 }
 
 func TestView_DoneLabelRenderedAsStatus(t *testing.T) {
-	m := frozen(newRefreshModel([]RefreshTask{
+	m := begun(t, frozen(newRefreshModel([]RefreshTask{
 		{Name: "short", DoneLabel: "fetched repository state"},
 		{Name: "much-longer-name"},
-	}))
-	m = update(t, m, taskDoneMsg{name: "short"})
+	})), "short")
+	m = update(t, later(m, 1500*time.Millisecond), taskDoneMsg{name: "short"})
 
 	if got, want := viewLines(m)[0], "  ✓ short              1.5s  fetched repository state"; got != want {
 		t.Errorf("got  %q\nwant %q", got, want)

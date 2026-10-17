@@ -178,15 +178,13 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 	if opts.ChangedSince != "" {
 		p.Phase(fmt.Sprintf("Planning %d of %d resources changed since %s ...", selected, total, opts.ChangedSince))
 	}
-	p.Phase("Fetching current state from GitHub API ...")
-	p.BlankLine()
 
 	// One spinner line per repository, done when each repository and FileSet
 	// unit planning it has reported.
 	repoNames := repository.PlanTargetRepoNames(parsed.Repositories, opts.FilterRepo)
 	fileNames := fileset.PlanTargetRepoNames(parsed.FileSets, opts.FilterRepo)
 	allTasks := planTasks(append(repoNames, fileNames...))
-	tracker, ctx, stop := startRefresh(ctx, runner, allTasks)
+	tracker, ctx, stop := startRefresh(ctx, runner, fetchHeading("skipped"), allTasks)
 	defer stop()
 	rows := newPlanRows(tracker)
 

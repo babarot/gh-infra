@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeGH puts a gh script first on PATH. Each call appends "+" to log,
@@ -71,4 +72,53 @@ func TestRunner_AcquireHonorsContext(t *testing.T) {
 		t.Error("acquire should give up when the context ends")
 	}
 	r.release()
+}
+
+func TestRunner_Load(t *testing.T) {
+	r := NewRunnerWithConcurrency(false, 1)
+	if running, waiting := r.Load(); running != 0 || waiting != 0 {
+		t.Fatalf("idle: Load = (%d, %d), want (0, 0)", running, waiting)
+	}
+	if err := r.acquire(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two more calls wait for the one slot.
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() { _ = r.acquire(ctx) })
+	}
+	waitFor(t, func() bool { _, w := r.Load(); return w == 2 })
+	if running, waiting := r.Load(); running != 1 || waiting != 2 {
+		t.Errorf("busy: Load = (%d, %d), want (1, 2)", running, waiting)
+	}
+
+	// A call that gives up waiting is no longer counted.
+	cancel()
+	wg.Wait()
+	if running, waiting := r.Load(); running != 1 || waiting != 0 {
+		t.Errorf("after the waits ended: Load = (%d, %d), want (1, 0)", running, waiting)
+	}
+	r.release()
+	if running, _ := r.Load(); running != 0 {
+		t.Errorf("after release: running = %d, want 0", running)
+	}
+
+	var zero GHRunner // no slots: no limit to report
+	if running, waiting := zero.Load(); running != 0 || waiting != 0 {
+		t.Errorf("zero runner: Load = (%d, %d), want (0, 0)", running, waiting)
+	}
+}
+
+// waitFor polls cond for up to two seconds.
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	for range 200 {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("condition not met in time")
 }
