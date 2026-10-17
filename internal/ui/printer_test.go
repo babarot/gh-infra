@@ -437,6 +437,14 @@ func TestGroupHeaderAndEnd(t *testing.T) {
 	}
 }
 
+func TestPullRequest(t *testing.T) {
+	var buf bytes.Buffer
+	NewStandardPrinterWith(&buf, &buf).PullRequest("acme/web", "https://github.com/acme/web/pull/42")
+	if got, want := buf.String(), "  ↗ acme/web  pull request #42  https://github.com/acme/web/pull/42\n"; got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
 func TestSuccess(t *testing.T) {
 	var buf bytes.Buffer
 	p := NewStandardPrinterWith(&buf, &buf)

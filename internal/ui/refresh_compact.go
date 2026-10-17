@@ -237,7 +237,7 @@ func (m refreshModel) compactProgress() string {
 		}
 		return m.headingLine()
 	}
-	finished, total := m.finishedCount(), len(m.items)
+	finished, total := m.progress()
 	line := fmt.Sprintf("  %s  %d/%d  %s", progressBar(finished, total, progressBarWidth), finished, total, Dim.Render(formatSeconds(m.now().Sub(m.start))))
 	more := m.gauge()
 	more = append(more, Dim.Render("ctrl+c to cancel"))

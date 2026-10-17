@@ -3,14 +3,16 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 func newTestRepo(owner, name string) *manifest.Repository {
@@ -80,7 +82,7 @@ func TestApplyRepoDescription(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -112,7 +114,7 @@ func TestApplyHomepage(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -138,7 +140,7 @@ func TestApplyVisibility(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -169,7 +171,7 @@ func TestApplyTopics(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -217,7 +219,7 @@ func TestApplyFeatureToggle(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -263,7 +265,7 @@ func TestApplySecurityFields(t *testing.T) {
 					},
 				}
 
-				results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+				results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 				if results[0].Err != nil {
 					t.Fatalf("unexpected error: %v", results[0].Err)
 				}
@@ -309,7 +311,7 @@ func TestApplyRepoSetting_BoolTypeAssertionError(t *testing.T) {
 				},
 			}
 
-			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 			if len(results) != 1 {
 				t.Fatalf("expected 1 result, got %d", len(results))
 			}
@@ -347,7 +349,7 @@ func TestApplyWithErrNotFound(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -381,7 +383,7 @@ func TestApplyWithErrForbidden(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -415,7 +417,7 @@ func TestApplyWithErrValidation(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -444,7 +446,7 @@ func TestApplyVariableSet(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -474,7 +476,7 @@ func TestApplySecretSet(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -499,7 +501,7 @@ func TestApplySkipsNoOp(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results for noop, got %d", len(results))
 	}
@@ -538,7 +540,7 @@ func TestApplyBranchProtection(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -574,7 +576,7 @@ func TestApplyBranchProtection_Delete(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -619,7 +621,7 @@ func TestApplyBranchProtection_ChildrenAreDisplayOnly(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -789,7 +791,7 @@ func TestApplyRuleset_Create(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -844,7 +846,7 @@ func TestApplyRuleset_Update(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -892,7 +894,7 @@ func TestApplyRuleset_UpdateFailsWhenCurrentCannotBeRead(t *testing.T) {
 	repo := newTestRepo("o", "r")
 	repo.Spec.Rulesets = []manifest.Ruleset{{Name: "main", Enforcement: manifest.Ptr("active")}}
 	results := proc.Apply(context.Background(), []Change{{Type: ChangeUpdate, Resource: "Ruleset[main]", Name: "o/r", Field: "ruleset"}},
-		[]*manifest.Repository{repo}, ui.NoopReporter{})
+		[]*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 || results[0].Err == nil {
 		t.Fatalf("expected the update to fail, got %+v", results)
 	}
@@ -928,7 +930,7 @@ func TestApplyRuleset_Delete(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -1386,7 +1388,7 @@ func TestApplyMergeStrategyBatch(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -1563,7 +1565,7 @@ func TestApply_DisablingActionsSendsOnlyEnabled(t *testing.T) {
 
 	mock := &gh.MockRunner{}
 	proc := NewProcessor(mock, nil)
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	for _, r := range results {
 		if r.Err != nil {
 			t.Fatalf("unexpected error applying %s: %v", r.Change.Field, r.Err)
@@ -1803,7 +1805,7 @@ func TestApplyMilestone_Create(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -1863,7 +1865,7 @@ func TestApplyMilestone_Update(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -1898,7 +1900,7 @@ func TestApplyMilestone_NotFoundInDesired(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error for missing milestone in desired state")
 	}
@@ -1962,7 +1964,7 @@ func TestApplyLabel_UpdateWithChildren(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -2055,7 +2057,7 @@ func TestApplyMergeStrategyBatch_Verification(t *testing.T) {
 			}
 
 			repo := newTestRepo("myorg", "myrepo")
-			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 			if len(results) != 1 {
 				t.Fatalf("expected 1 result, got %d", len(results))
 			}
@@ -2104,7 +2106,7 @@ func TestApplyMergeStrategyBatch_PairedSquashFields(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -2162,7 +2164,7 @@ func TestApplyMergeStrategyBatch_PairedMergeFields(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -2207,7 +2209,7 @@ func TestApplyMergeStrategyBatch_BothFieldsPresent_NoExtraFetch(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -2254,7 +2256,7 @@ func TestApplyMilestone_UpdateWithChildren(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -2292,7 +2294,7 @@ func TestApplyMergeStrategyBatch_BothPairsIncomplete_SingleFetch(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -2344,7 +2346,7 @@ func TestApplyMergeStrategyBatch_NullCompanionSkipped(t *testing.T) {
 				},
 			}
 
-			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 			if results[0].Err != nil {
 				t.Fatalf("unexpected error: %v", results[0].Err)
 			}
@@ -2381,7 +2383,7 @@ func TestApplyMergeStrategyBatch_CompanionFetchError(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected error when companion fetch fails, got nil")
 	}
@@ -2416,7 +2418,7 @@ func TestApplyMergeStrategyBatch_CompanionVerified(t *testing.T) {
 		},
 	}
 
-	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, ui.NoopReporter{})
+	results := proc.Apply(context.Background(), changes, []*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatalf("unexpected error: %v", results[0].Err)
 	}
@@ -2445,7 +2447,7 @@ func TestApplyBranchProtection_UsesCurrentEvenWhenPlannedAsCreate(t *testing.T) 
 	repo := newTestRepo("o", "r")
 	repo.Spec.BranchProtection = []manifest.BranchProtection{{Pattern: "main", RequiredReviews: manifest.Ptr(1)}}
 	results := proc.Apply(context.Background(), []Change{{Type: ChangeCreate, Resource: "BranchProtection[main]", Name: "o/r", Field: "branch_protection"}},
-		[]*manifest.Repository{repo}, ui.NoopReporter{})
+		[]*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err != nil {
 		t.Fatal(results[0].Err)
 	}
@@ -2470,7 +2472,7 @@ func TestApplyBranchProtection_FailsWhenCurrentCannotBeRead(t *testing.T) {
 	repo := newTestRepo("o", "r")
 	repo.Spec.BranchProtection = []manifest.BranchProtection{{Pattern: "main", RequiredReviews: manifest.Ptr(1)}}
 	results := proc.Apply(context.Background(), []Change{{Type: ChangeUpdate, Resource: "BranchProtection[main]", Name: "o/r", Field: "branch_protection"}},
-		[]*manifest.Repository{repo}, ui.NoopReporter{})
+		[]*manifest.Repository{repo}, noopProgressReporter{})
 	if results[0].Err == nil {
 		t.Fatal("expected an error")
 	}
@@ -2568,5 +2570,35 @@ func TestApplyLabel_CaseOnlyRenamePatchesCurrentName(t *testing.T) {
 	want := map[string]any{"color": "d73a4a", "new_name": "Kind/Bug"}
 	if !reflect.DeepEqual(body, want) {
 		t.Errorf("body = %v, want %v", body, want)
+	}
+}
+
+// stepRecorder records what a ProgressReporter is told about each step.
+type stepRecorder struct {
+	noopProgressReporter
+	mu    sync.Mutex
+	steps []StepOutcome
+}
+
+func (r *stepRecorder) Step(_ string, o StepOutcome) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.steps = append(r.steps, o)
+}
+
+// Each change reports how it ended, so the spinner can count them.
+func TestApply_ReportsEachChange(t *testing.T) {
+	mock := &gh.MockRunner{Errors: map[string]error{
+		"repo edit myorg/myrepo --homepage https://example.com": errors.New("boom"),
+	}}
+	proc := NewProcessor(mock, nil)
+	changes := []Change{
+		{Type: ChangeUpdate, Resource: "Repository", Name: "myorg/myrepo", Field: "description", OldValue: "a", NewValue: "b"},
+		{Type: ChangeUpdate, Resource: "Repository", Name: "myorg/myrepo", Field: "homepage", OldValue: "", NewValue: "https://example.com"},
+	}
+	rec := &stepRecorder{}
+	proc.Apply(context.Background(), changes, []*manifest.Repository{newTestRepo("myorg", "myrepo")}, rec)
+	if want := []StepOutcome{StepApplied, StepFailed}; !slices.Equal(rec.steps, want) {
+		t.Errorf("steps = %v, want %v", rec.steps, want)
 	}
 }

@@ -122,7 +122,8 @@ func runApply(ctx context.Context, paths []string, opts applyCommandOptions) err
 	}
 
 	outcome, err := infra.Apply(ctx, result, infra.ApplyOptions{
-		Stream: ui.OutputMode() == "stream" && !jsonOutput,
+		Stream:      ui.OutputMode() == "stream" && !jsonOutput,
+		PlanCommand: infraCommand("plan", paths, opts.FilterRepo, opts.ChangedSince),
 	})
 	if err != nil && interrupted(ctx, err) {
 		// Some changes may be applied already, so this is not a success.

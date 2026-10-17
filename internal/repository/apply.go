@@ -57,6 +57,7 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 			}
 			if notCreated {
 				results = append(results, ApplyResult{Change: c, Err: errNotApplied})
+				reporter.Step(g.name, StepFailed)
 				continue
 			}
 			reporter.UpdateStatus(g.name, "applying "+applyStatusTarget(c)+"...")
@@ -66,6 +67,11 @@ func (p *Processor) Apply(ctx context.Context, changes []Change, repos []*manife
 			}
 			result := p.applyChange(cctx, c, repoMap[c.Name])
 			results = append(results, result)
+			if result.Err != nil {
+				reporter.Step(g.name, StepFailed)
+			} else {
+				reporter.Step(g.name, StepApplied)
+			}
 			if isRepositoryCreate(c) {
 				// The repository exists unless gh repo create itself failed,
 				// even when a setting applied after it did.

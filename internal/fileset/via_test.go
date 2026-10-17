@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -127,7 +129,7 @@ func TestApply_FollowsPlannedVia(t *testing.T) {
 		mock := &gh.MockRunner{Responses: map[string][]byte{repoViewKey: []byte("")}}
 		p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-		results := p.Apply(context.Background(), create(manifest.ViaPullRequest), prOpts, ui.NoopReporter{})
+		results := p.Apply(context.Background(), create(manifest.ViaPullRequest), prOpts, noopProgressReporter{})
 
 		if len(results) != 1 || results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "run plan again") {
 			t.Fatalf("results = %+v, want a run plan again error", results)
@@ -141,7 +143,7 @@ func TestApply_FollowsPlannedVia(t *testing.T) {
 		mock := &gh.MockRunner{Responses: map[string][]byte{repoViewKey: []byte("")}}
 		p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-		results := p.Apply(context.Background(), create(manifest.ViaPush), prOpts, ui.NoopReporter{})
+		results := p.Apply(context.Background(), create(manifest.ViaPush), prOpts, noopProgressReporter{})
 
 		if len(results) != 1 || results[0].Err != nil || results[0].Via != manifest.ViaPush {
 			t.Fatalf("results = %+v, want pushed", results)
@@ -155,7 +157,7 @@ func TestApply_FollowsPlannedVia(t *testing.T) {
 		mock := &gh.MockRunner{Responses: map[string][]byte{repoViewKey: []byte("main"), headRefKey: []byte("head123")}}
 		p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
 
-		results := p.Apply(context.Background(), create(manifest.ViaPush), prOpts, ui.NoopReporter{})
+		results := p.Apply(context.Background(), create(manifest.ViaPush), prOpts, noopProgressReporter{})
 
 		if len(results) != 1 || results[0].Err != nil || results[0].Via != manifest.ViaPush || results[0].PRURL != "" {
 			t.Fatalf("results = %+v, want pushed without a pull request", results)
@@ -167,4 +169,45 @@ func TestApply_FollowsPlannedVia(t *testing.T) {
 			t.Errorf("branch creations = %d, want none", n)
 		}
 	})
+}
+
+// stepRecorder records what a ProgressReporter is told about each step.
+type stepRecorder struct {
+	noopProgressReporter
+	mu    sync.Mutex
+	steps []StepOutcome
+}
+
+func (r *stepRecorder) Step(_ string, o StepOutcome) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.steps = append(r.steps, o)
+}
+
+// Each file reports how it ended once its repository's commit is done.
+func TestApply_ReportsEachFile(t *testing.T) {
+	files := []Change{
+		{FileSetID: "test", Target: "owner/repo", Path: "README.md", Type: ChangeCreate, Desired: "hi", Via: manifest.ViaPush},
+		{FileSetID: "test", Target: "owner/repo", Path: "LICENSE", Type: ChangeCreate, Desired: "MIT", Via: manifest.ViaPush},
+	}
+	opts := ApplyOptions{FileSetID: "test", Via: manifest.ViaPush}
+
+	mock := &gh.MockRunner{Responses: map[string][]byte{repoViewKey: []byte("")}}
+	rec := &stepRecorder{}
+	NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{})).Apply(context.Background(), files, opts, rec)
+	if want := []StepOutcome{StepApplied, StepApplied}; !slices.Equal(rec.steps, want) {
+		t.Errorf("pushed: steps = %v, want %v", rec.steps, want)
+	}
+
+	// Planned as a pull request, but the repository has no commits: the
+	// files fail together.
+	failing := slices.Clone(files)
+	for i := range failing {
+		failing[i].Via = manifest.ViaPullRequest
+	}
+	rec = &stepRecorder{}
+	NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{})).Apply(context.Background(), failing, ApplyOptions{FileSetID: "test", Via: manifest.ViaPullRequest}, rec)
+	if want := []StepOutcome{StepFailed, StepFailed}; !slices.Equal(rec.steps, want) {
+		t.Errorf("failed: steps = %v, want %v", rec.steps, want)
+	}
 }

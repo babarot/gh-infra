@@ -27,7 +27,19 @@ type RefreshTask struct {
 	// WaitLabel replaces the status while the task waits for its next
 	// report after one has come in (the status is kept if empty).
 	WaitLabel string
+	// Total is how many steps the task has (an apply's changes). With it,
+	// the row shows how many have ended (Step) and the heading counts steps.
+	Total int
 }
+
+// StepResult is how one step of a task ended, reported with Step.
+type StepResult int
+
+const (
+	StepApplied StepResult = iota
+	StepFailed
+	StepSkipped
+)
 
 // RefreshHeading is the line above the spinner rows.
 type RefreshHeading struct {
@@ -46,6 +58,10 @@ type RefreshHeading struct {
 	// Load returns how many gh processes run, how many calls wait for one,
 	// and the limit (--concurrency). Without it the heading has no gauge.
 	Load func() (running, waiting, limit int)
+	// Changes, when set, makes the heading count the tasks' steps instead
+	// of the tasks: "8/13" while running, then "✓ <Done> 13 changes in 2.8s"
+	// or "✗ <Done> 12 of 13 changes in 2.8s, 1 failed".
+	Changes int
 }
 
 // Mark is how a finished row shows its result: its symbol and colors.
@@ -57,6 +73,7 @@ const (
 	MarkChange             // ~ in yellow
 	MarkCreate             // + in green; the label in green
 	MarkDelete             // - in red; the label in red
+	MarkFailed             // ✗ in red; the name in bold, as for an error
 )
 
 type taskStatus int
@@ -89,7 +106,10 @@ type refreshItem struct {
 	begin   time.Time // when the first message came
 	end     time.Time
 	printed bool // printed above the compact view
-	spinner spinner.Model
+	// total is the number of steps (RefreshTask.Total); the others count
+	// the steps that ended, by how.
+	total, applied, failed, skipped int
+	spinner                         spinner.Model
 }
 
 type refreshModel struct {
@@ -168,6 +188,10 @@ type taskStatusMsg struct {
 	status string
 }
 type noticeMsg struct{ text string }
+type taskStepMsg struct {
+	name   string
+	result StepResult
+}
 
 func newRefreshModel(tasks []RefreshTask) refreshModel {
 	width, height := 80, 0 // defaults; 0 height is unknown
@@ -199,6 +223,7 @@ func newRefreshModel(tasks []RefreshTask) refreshModel {
 			failLabel:   failLabel,
 			errorPrefix: task.ErrorPrefix,
 			waitLabel:   task.WaitLabel,
+			total:       task.Total,
 			status:      taskRunning,
 			pending:     pending,
 			spinner:     s,
@@ -249,6 +274,24 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, m.settle()
+
+	case taskStepMsg:
+		for i := range m.items {
+			if m.items[i].name != msg.name {
+				continue
+			}
+			m.markStarted(i)
+			switch msg.result {
+			case StepApplied:
+				m.items[i].applied++
+			case StepFailed:
+				m.items[i].failed++
+			case StepSkipped:
+				m.items[i].skipped++
+			}
+			break
+		}
+		return m, nil
 
 	case printedMsg:
 		m.printing = false
@@ -499,6 +542,14 @@ func (m refreshModel) rowLine(item refreshItem, maxName int) string {
 				status += Dim.Render(" · " + item.statusText)
 			}
 		}
+		if item.total > 0 {
+			ended := item.applied + item.failed + item.skipped
+			steps := fmt.Sprintf("%s %s", progressBar(ended, item.total, rowBarWidth), Dim.Render(fmt.Sprintf("%d/%d", ended, item.total)))
+			status = steps + "  " + status
+			if item.failed > 0 {
+				status += "  " + Red.Render(fmt.Sprintf("%d failed", item.failed))
+			}
+		}
 		return fmt.Sprintf("  %s %s  %s  %s", item.spinner.View(), padded, elapsed, status)
 	}
 }
@@ -506,20 +557,22 @@ func (m refreshModel) rowLine(item refreshItem, maxName int) string {
 // headingLine is the heading: its title with the progress while tasks run,
 // then what they did once all have finished.
 func (m refreshModel) headingLine() string {
-	finished, failed, queued := m.finishedCount(), 0, 0
+	failed, queued := 0, 0
 	for _, item := range m.items {
-		if item.status == taskError || item.status == taskFailed {
+		if item.status == taskError || item.status == taskFailed || (item.status == taskDone && item.mark == MarkFailed) {
 			failed++
 		}
 		if item.status == taskRunning && !item.started {
 			queued++
 		}
 	}
-	total := len(m.items)
+	finished, total := m.progress()
 
 	switch {
 	case m.stopped:
 		return Dim.Render(IconError+" "+m.heading.Title) + Dim.Render(" (canceled)")
+	case m.remaining <= 0 && m.heading.Changes > 0:
+		return m.changesOutcome()
 	case m.remaining <= 0:
 		line := fmt.Sprintf("%s %s in %s", m.heading.Done, repositories(total), formatSeconds(m.lastReport.Sub(m.start)))
 		if failed > 0 {
@@ -537,6 +590,47 @@ func (m refreshModel) headingLine() string {
 		line += Dim.Render("  · ") + strings.Join(more, Dim.Render(" · "))
 	}
 	return line
+}
+
+// progress returns how much is done of how much: the steps of the tasks
+// when the heading counts changes, the finished rows otherwise.
+func (m refreshModel) progress() (done, total int) {
+	if m.heading.Changes > 0 {
+		for _, item := range m.items {
+			done += item.applied + item.failed + item.skipped
+		}
+		return done, m.heading.Changes
+	}
+	return m.finishedCount(), len(m.items)
+}
+
+// changesOutcome is the heading once every task has finished, counting
+// changes: "✓ Applied 13 changes in 2.8s", or with some not applied
+// "✗ Applied 12 of 13 changes in 2.8s, 1 failed" (✓ when only skipped).
+func (m refreshModel) changesOutcome() string {
+	applied, failed, skipped := 0, 0, 0
+	for _, item := range m.items {
+		applied += item.applied
+		failed += item.failed
+		skipped += item.skipped
+	}
+	total := m.heading.Changes
+	took := formatSeconds(m.lastReport.Sub(m.start))
+	if applied == total {
+		return Green.Render(IconSuccess) + " " + fmt.Sprintf("%s %d %s in %s", m.heading.Done, total, pluralWord(total, "change", "changes"), took)
+	}
+	line := fmt.Sprintf("%s %d of %d %s in %s", m.heading.Done, applied, total, pluralWord(total, "change", "changes"), took)
+	if failed > 0 {
+		line += ", " + Red.Render(fmt.Sprintf("%d failed", failed))
+	}
+	if skipped > 0 {
+		line += fmt.Sprintf(", %d skipped", skipped)
+	}
+	icon := Green.Render(IconSuccess)
+	if failed > 0 {
+		icon = Red.Render(IconError)
+	}
+	return icon + " " + line
 }
 
 // finishedCount counts the rows whose reports are all in: one that errored
@@ -571,8 +665,12 @@ func (m refreshModel) gauge() []string {
 	return parts
 }
 
-// progressBarWidth is the width of the heading's progress bar.
-const progressBarWidth = 24
+// progressBarWidth is the width of the heading's progress bar, and
+// rowBarWidth that of a row's steps.
+const (
+	progressBarWidth = 24
+	rowBarWidth      = 10
+)
 
 // progressBar draws done of total as a bar of width cells.
 func progressBar(done, total, width int) string {
@@ -621,6 +719,8 @@ func doneParts(mark Mark) (icon string, name, label lipgloss.Style) {
 		return Green.Render(IconAdd), plain, Green
 	case MarkDelete:
 		return Red.Render(IconRemove), plain, Red
+	case MarkFailed:
+		return Red.Render(IconError), Bold, plain
 	default:
 		return Green.Render(IconSuccess), plain, Dim
 	}
@@ -773,6 +873,25 @@ func (t *RefreshTracker) Done(name string) {
 	defer t.mu.Unlock()
 	if t.program != nil {
 		t.program.Send(taskDoneMsg{name: name})
+	}
+}
+
+// Interactive reports whether the spinner draws in a terminal, rather than
+// its fallback (no terminal, logging, or no tasks), which shows only the
+// task names as they start.
+func (t *RefreshTracker) Interactive() bool {
+	return t != nil && !t.fallback && t.program != nil
+}
+
+// Step reports how one step of a task ended (see RefreshTask.Total).
+func (t *RefreshTracker) Step(name string, result StepResult) {
+	if t == nil || t.fallback {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.program != nil {
+		t.program.Send(taskStepMsg{name: name, result: result})
 	}
 }
 
