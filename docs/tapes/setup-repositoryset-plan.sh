@@ -20,15 +20,34 @@ chmod +x /usr/local/bin/gh
 # After editing defaults: required_reviews changes to 2 → all 4 repos show a diff
 export MOCK_DIR=/tmp/mock-data
 
-for repo in my-cli my-api my-web my-bot; do
+# The repositories are babarot's; GitHub has the description and topics the
+# manifest sets.
+description() {
+  case "$1" in
+    gh-infra) echo "Declarative GitHub infrastructure management via YAML" ;;
+    httpstat) echo "It's like curl -v, with graphs and colors" ;;
+    enhancd) echo ":rocket: A next-generation cd command with your interactive filter" ;;
+    syno) echo "Find the Synology NAS on your network and check on it from the terminal" ;;
+  esac
+}
+topics() {
+  case "$1" in
+    gh-infra) echo '[{"name":"cli"},{"name":"go"},{"name":"github"}]' ;;
+    httpstat) echo '[{"name":"bash"},{"name":"httpstat"}]' ;;
+    enhancd) echo '[{"name":"zsh"},{"name":"fzf"},{"name":"cd"}]' ;;
+    syno) echo '[{"name":"cli"},{"name":"go"},{"name":"synology"}]' ;;
+  esac
+}
+
+for repo in gh-infra httpstat enhancd syno; do
   mkdir -p "$MOCK_DIR/babarot/${repo}"
   cat > "$MOCK_DIR/babarot/${repo}/view.json" << JSON
 {
-  "description": "$(echo "$repo" | sed 's/-/ /g' | sed 's/my //')",
+  "description": "$(description "$repo")",
   "homepageUrl": "",
   "visibility": "PUBLIC",
   "isArchived": false,
-  "repositoryTopics": [],
+  "repositoryTopics": $(topics "$repo"),
   "hasIssuesEnabled": true,
   "hasProjectsEnabled": false,
   "hasWikiEnabled": false,
@@ -64,22 +83,22 @@ defaults:
         required_reviews: 1
 
 repositories:
-  - name: my-cli
+  - name: gh-infra
     spec:
-      description: "CLI tool"
-      topics: [go, cli]
-  - name: my-api
+      description: "Declarative GitHub infrastructure management via YAML"
+      topics: [cli, go, github]
+  - name: httpstat
     spec:
-      description: "Backend API"
-      topics: [go, api]
-  - name: my-web
+      description: "It's like curl -v, with graphs and colors"
+      topics: [bash, httpstat]
+  - name: enhancd
     spec:
-      description: "Web frontend"
-      topics: [typescript, react]
-  - name: my-bot
+      description: ":rocket: A next-generation cd command with your interactive filter"
+      topics: [zsh, fzf, cd]
+  - name: syno
     spec:
-      description: "Slack bot"
-      topics: [go, slack]
+      description: "Find the Synology NAS on your network and check on it from the terminal"
+      topics: [cli, go, synology]
 YAML
 
 export PS1='$ '

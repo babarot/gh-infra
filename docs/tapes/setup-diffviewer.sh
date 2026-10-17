@@ -17,7 +17,7 @@ chmod +x /usr/local/bin/gh
 
 export MOCK_DIR=/tmp/mock-data
 
-for repo in app-api app-web; do
+for repo in afx gomi; do
   dir="$MOCK_DIR/babarot/${repo}"
   mkdir -p "$dir" "$dir/contents/.github/workflows"
 
@@ -41,11 +41,9 @@ for repo in app-api app-web; do
 }
 JSON
 
-  # Old CODEOWNERS (multiple owners → will be reorganized)
+  # Old CODEOWNERS (one owner for everything → gets per-path entries)
   cat > "$dir/contents/.github/CODEOWNERS" << 'OWNERS'
-# Team ownership
-* @old-owner
-/docs/ @old-owner
+* @babarot
 OWNERS
 
   # Old CI workflow (checkout v3, push only, no lint)
@@ -76,16 +74,15 @@ metadata:
 
 spec:
   repositories:
-    - app-api
-    - app-web
+    - afx
+    - gomi
 
   files:
     - path: .github/CODEOWNERS
       content: |
-        # Team ownership
-        * @babarot @team-platform
-        /docs/ @babarot @team-docs
-        /api/ @babarot @team-backend
+        * @babarot
+        /docs/ @babarot
+        /.github/ @babarot
 
     - path: .github/workflows/ci.yml
       content: |

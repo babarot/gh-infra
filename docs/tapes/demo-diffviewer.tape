@@ -67,19 +67,19 @@ Sleep 1.2s
 Tab
 Sleep 1.2s
 
-# 9. Move to app-web CODEOWNERS
+# 9. Move to gomi CODEOWNERS
 Type "j"
 Sleep 800ms
 
-# 10. Move to app-web ci.yml
+# 10. Move to gomi ci.yml
 Type "j"
 Sleep 800ms
 
-# 11. Skip app-web ci.yml
+# 11. Skip gomi ci.yml
 Tab
 Sleep 1.2s
 
-# 12. Move to app-web dependabot.yml — skip this too
+# 12. Move to gomi dependabot.yml — skip this too
 Type "j"
 Sleep 800ms
 Tab

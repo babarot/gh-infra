@@ -1,4 +1,4 @@
-# gh-infra demo: import → edit in vim → apply workflow
+# gh-infra demo: edit a shared template, then apply to twelve repositories
 #
 # Run with: make demos
 # Requirements: Docker
@@ -32,57 +32,41 @@ Show
 
 # --- Demo starts ---
 
-# 1. Import current repo settings as YAML
+# 1. A github-config style directory: one manifest per repository, plus
+#    the templates six of them sync by pull request
 Sleep 700ms
-Type "gh infra import babarot/my-project > /tmp/demo/my-project.yaml"
+Type "ls"
 Sleep 350ms
 Enter
-Sleep 3s
+Sleep 2s
 
-# 2. Open in vim
-Type "vim /tmp/demo/my-project.yaml"
+# 2. Edit a shared template
+Type "vim templates/common/.github/release.yml"
 Sleep 350ms
 Enter
 Sleep 1s
-
-# 3. Search for description
-Type "/My project"
+Type "/Bug fixes"
 Enter
 Sleep 700ms
-
-# 4. Replace "My project" with "My awesome project"
 Type "cgn"
 Sleep 200ms
-Type "My awesome project"
+Type "Bug Fixes"
 Escape
 Sleep 1s
-
-# 5. Search for allow_squash_merge: false
-Type "/false"
-Enter
-Sleep 700ms
-
-# 6. Replace false with true
-Type "cgn"
-Sleep 200ms
-Type "true"
-Escape
-Sleep 1s
-
-# 7. Save and quit
 Type ":wq"
 Enter
 Sleep 700ms
 
-# 8. Apply (shows plan → confirm → apply)
-Type "gh infra apply /tmp/demo/"
+# 3. Apply: fetch the twelve repositories, show the plan, confirm
+Type "gh infra apply ."
 Sleep 350ms
 Enter
-Sleep 6s
+Sleep 7s
 
-# 9. Confirm (single keypress, no Enter needed)
+# 4. Confirm (single keypress, no Enter needed): a pull request per
+#    repository that syncs the template, and the wiki that drifted
 Type "y"
-Sleep 6s
+Sleep 7s
 
 # End
 Sleep 2s

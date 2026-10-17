@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Setup for apply demo: RepositorySet with 3 repos showing parallel spinners.
+# The repositories are babarot's; their descriptions on GitHub match the
+# manifest, the rest is stale.
 set -euo pipefail
 
 cp /data/.gh-infra /usr/local/bin/gh-infra
@@ -20,14 +22,22 @@ chmod +x /usr/local/bin/gh
 # YAML wants:   squash=true,  delete_branch=true,  wiki=false, topics=[...]
 export MOCK_DIR=/tmp/mock-data
 
-for repo in app-api app-web app-cli; do
+description() {
+  case "$1" in
+    gomi) echo "🗑️ Your UNIX rm command with a safety net!" ;;
+    afx) echo "An alternative, fast package manager for plugins and executable commands" ;;
+    gist) echo ":octocat: A simple gist editor for CLI" ;;
+  esac
+}
+
+for repo in gomi afx gist; do
   mkdir -p "$MOCK_DIR/babarot/${repo}"
 done
 
-for repo in app-api app-web app-cli; do
+for repo in gomi afx gist; do
   cat > "$MOCK_DIR/babarot/${repo}/view.json" << JSON
 {
-  "description": "$(echo "$repo" | sed 's/-/ /g')",
+  "description": "$(description "$repo")",
   "homepageUrl": "",
   "visibility": "PUBLIC",
   "isArchived": false,
@@ -62,18 +72,18 @@ defaults:
       auto_delete_head_branches: true
 
 repositories:
-  - name: app-api
+  - name: gomi
     spec:
-      description: "Backend API service"
-      topics: [go, api, grpc]
-  - name: app-web
+      description: "🗑️ Your UNIX rm command with a safety net!"
+      topics: [trash, go, cli, rm]
+  - name: afx
     spec:
-      description: "Web frontend"
-      topics: [typescript, react]
-  - name: app-cli
+      description: "An alternative, fast package manager for plugins and executable commands"
+      topics: [cli, package-manager, go]
+  - name: gist
     spec:
-      description: "CLI tool"
-      topics: [go, cli]
+      description: ":octocat: A simple gist editor for CLI"
+      topics: [gist, go, cli]
 YAML
 
 export PS1='$ '

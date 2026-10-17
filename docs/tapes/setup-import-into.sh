@@ -17,19 +17,19 @@ chmod +x /usr/local/bin/gh
 
 # Prepare mock data: repo was changed via GitHub GUI.
 # Mock returns state that drifted from local YAML:
-#   topics: added "docker"
+#   topics: added "rm"
 #   discussions: false → true
 # Everything else matches the YAML so only these 2 diffs appear.
 export MOCK_DIR=/tmp/mock-data
-mkdir -p "$MOCK_DIR/babarot/my-project"
+mkdir -p "$MOCK_DIR/babarot/gomi"
 
-cat > "$MOCK_DIR/babarot/my-project/view.json" << 'JSON'
+cat > "$MOCK_DIR/babarot/gomi/view.json" << 'JSON'
 {
-  "description": "My project",
+  "description": "🗑️ Your UNIX rm command with a safety net!",
   "homepageUrl": "",
   "visibility": "PUBLIC",
   "isArchived": false,
-  "repositoryTopics": [{"name":"go"},{"name":"cli"},{"name":"docker"}],
+  "repositoryTopics": [{"name":"trash"},{"name":"go"},{"name":"cli"},{"name":"rm"}],
   "hasIssuesEnabled": true,
   "hasProjectsEnabled": false,
   "hasWikiEnabled": false,
@@ -45,17 +45,18 @@ JSON
 # Local YAML: stale state (before GUI changes)
 mkdir -p /tmp/demo
 
-cat > /tmp/demo/my-project.yaml << 'YAML'
+cat > /tmp/demo/gomi.yaml << 'YAML'
 apiVersion: gh-infra/v1
 kind: Repository
 metadata:
-  name: my-project
+  name: gomi
   owner: babarot
 
 spec:
-  description: "My project"
+  description: "🗑️ Your UNIX rm command with a safety net!"
   visibility: public
   topics:
+    - trash
     - go
     - cli
   features:
@@ -63,9 +64,23 @@ spec:
     projects: false
     wiki: false
     discussions: false
+    pull_requests: true
   merge_strategy:
+    allow_merge_commit: true
     allow_squash_merge: true
+    allow_rebase_merge: true
     auto_delete_head_branches: true
+    squash_merge_commit_title: COMMIT_OR_PR_TITLE
+    squash_merge_commit_message: COMMIT_MESSAGES
+    merge_commit_title: MERGE_MESSAGE
+    merge_commit_message: PR_TITLE
+  actions:
+    enabled: true
+    allowed_actions: all
+    workflow_permissions: write
+    can_approve_pull_requests: true
+  security:
+    vulnerability_alerts: true
 YAML
 
 export PS1='$ '

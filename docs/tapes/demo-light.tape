@@ -1,4 +1,4 @@
-# gh-infra demo (light theme variant)
+# gh-infra demo (light theme variant of demo.tape)
 #
 # Run with: make demos
 # Requirements: Docker
@@ -29,35 +29,41 @@ Show
 
 # --- Demo starts ---
 
-# 1. Import current repo settings as YAML (two projects)
-Sleep 1s
-Type "gh infra import babarot/my-project babarot/my-service > /tmp/demo/repos.yaml"
-Sleep 500ms
+# 1. A github-config style directory: one manifest per repository, plus
+#    the templates six of them sync by pull request
+Sleep 700ms
+Type "ls"
+Sleep 350ms
 Enter
-Sleep 4s
+Sleep 2s
 
-# 2. Show the imported YAML
-Type "cat /tmp/demo/repos.yaml"
-Sleep 500ms
-Enter
-Sleep 3s
-
-# 3. Edit the YAML with sed (change description & enable squash merge for my-project only)
-Type "sed -i 's/My project/My awesome project/' /tmp/demo/repos.yaml"
-Sleep 500ms
+# 2. Edit a shared template
+Type "vim templates/common/.github/release.yml"
+Sleep 350ms
 Enter
 Sleep 1s
-
-Type "sed -i 's/allow_squash_merge: false/allow_squash_merge: true/' /tmp/demo/repos.yaml"
-Sleep 500ms
+Type "/Bug fixes"
 Enter
+Sleep 700ms
+Type "cgn"
+Sleep 200ms
+Type "Bug Fixes"
+Escape
 Sleep 1s
-
-# 4. Plan the changes (only my-project shows a diff)
-Type "gh infra plan /tmp/demo/"
-Sleep 500ms
+Type ":wq"
 Enter
-Sleep 6s
+Sleep 700ms
+
+# 3. Apply: fetch the twelve repositories, show the plan, confirm
+Type "gh infra apply ."
+Sleep 350ms
+Enter
+Sleep 7s
+
+# 4. Confirm (single keypress, no Enter needed): a pull request per
+#    repository that syncs the template, and the wiki that drifted
+Type "y"
+Sleep 7s
 
 # End
-Sleep 3s
+Sleep 2s

@@ -33,13 +33,13 @@ Show
 
 # 1. Show current local YAML (stale state)
 Sleep 700ms
-Type "cat /tmp/demo/my-project.yaml"
+Type "cat /tmp/demo/gomi.yaml"
 Sleep 350ms
 Enter
 Sleep 3s
 
 # 2. Run import --into to pull GitHub state back
-Type "gh infra import babarot/my-project --into=/tmp/demo/"
+Type "gh infra import babarot/gomi --into=/tmp/demo/"
 Sleep 350ms
 Enter
 Sleep 6s
@@ -49,7 +49,7 @@ Type "y"
 Sleep 2s
 
 # 4. Show the updated YAML (fields have been patched in place)
-Type "cat /tmp/demo/my-project.yaml"
+Type "cat /tmp/demo/gomi.yaml"
 Sleep 350ms
 Enter
 Sleep 3.5s

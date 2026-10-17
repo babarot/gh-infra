@@ -141,6 +141,7 @@ $MOCK_DIR/{owner}/{repo}/
   view.json                       # gh repo view --json response
   commit-settings.json            # squash/merge commit title/message (optional)
   contents/{path}                 # raw file content (base64-encoded on the fly)
+  pr-number                       # number of the pull request gh-infra opens (optional; default 42)
   absent                          # the repository does not exist; plan creates it (optional)
   fail                            # failure rules, "<read|write|any> <pattern> <message>" per line (optional)
 ```
@@ -155,11 +156,15 @@ $MOCK_DIR/{owner}/{repo}/
 | `repo view --json defaultBranchRef` | hardcoded | `"main"` |
 | REST `/actions/permissions` | hardcoded | `enabled:true, allowed_actions:all` |
 | `/contents/{path}` (GET) | `contents/{path}` file | 404 (new file) |
+| REST `/vulnerability-alerts`, `/automated-security-fixes`, `/private-vulnerability-reporting` | hardcoded | alerts on, the other two off |
+| `pr create`, `pr view`, POST `/pulls` | `pr-number` | pull request #42 |
 | `secret list` | hardcoded | empty |
 | `variable list` | hardcoded | `[]` |
 | `repo edit`, write APIs | no-op | success with delay |
 
-All mock responses include a random 200-500ms delay to simulate network latency. Setting `MOCK_DELAY` to a number of seconds changes it to between half and one and a half times that (`make playground DELAY=2`, or `export MOCK_DELAY=2` in the playground shell); tapes leave it unset.
+All mock responses include a random 200-500ms delay to simulate network latency. Setting `MOCK_DELAY` to a number of seconds changes it to between half and one and a half times that (`make playground DELAY=2`, or `export MOCK_DELAY=2` in the playground shell). A setup script can export it to pace its tape: `setup.sh` sets 0.6 so the twelve repositories' fetch stays on screen long enough to read. Change it together with the tape's `Sleep`s, and keep a loop within 20-35 seconds.
+
+A call without a repository in its arguments (`gh pr view`) uses `$GH_REPO`, as gh does; `setup-file-pr.sh` exports it.
 
 ## Checklist: Adding a New Demo
 
@@ -191,5 +196,6 @@ All mock responses include a random 200-500ms delay to simulate network latency.
 
 - The `Hide`/`Show` block is critical. Viewers should never see the setup phase.
 - Keep demos focused on one feature. Aim for under 30 seconds of visible recording.
+- Use babarot's real repositories and their real descriptions and topics (see babarot/github-config), not placeholders like `my-project` or `app-api`. Make the mock's state match the manifest except for what the demo is about, so the plan shows only that.
 - If mock-gh doesn't support an API your feature needs, extend `mock-gh` with a new pattern-match block.
 - `Type` speed is global (`TypingSpeed 50ms`). For dramatic pauses, use `Sleep` between `Type` and `Enter`.
