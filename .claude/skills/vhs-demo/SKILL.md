@@ -23,7 +23,7 @@ Use this skill to run, debug, or regenerate gh-infra demo GIF recordings.
 
 ## Recording some tapes
 
-`make demo TAPES="demo demo-light"` records only the named tapes (`docs/tapes/<name>.tape`) and copies only their GIFs; `docs/tapes/vhs.sh` takes the names the same way. Use it after changing one scene instead of recording all of them.
+`make demo TAPES="demo demo-light"` records only the named tapes (`docs/tapes/<name>.tape`) and copies only their GIFs; `docs/tapes/vhs.sh` takes the names the same way. Use it after changing one scene instead of recording all of them. Only `demo*` tapes are copied to `docs/public/`; others, such as `showcase` (16:9, for use outside the docs), stay as `docs/tapes/<name>.gif` and `.mp4`. VHS needs an even width and height for the MP4.
 
 ## Pipeline
 
