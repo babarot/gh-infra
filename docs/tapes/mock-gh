@@ -200,6 +200,14 @@ if [[ "$args" == *"/branches"*"--jq"*"protected"* ]]; then
   exit 0
 fi
 
+# The protection of a branch: no branch is protected (apply reads it before
+# protecting one, and GitHub answers 404 for an unprotected branch)
+if [[ "$args" == *"/branches/"*"/protection"* && "$args" != *"--method"* && "$args" != *"-X"* ]]; then
+  delay
+  echo "gh: Branch not protected (HTTP 404)" >&2
+  exit 1
+fi
+
 # Rulesets
 if [[ "$args" == *"/rulesets"*"--paginate"* ]]; then
   delay

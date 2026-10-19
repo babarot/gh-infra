@@ -159,6 +159,7 @@ $MOCK_DIR/{owner}/{repo}/
 | `/contents/{path}` (GET) | `contents/{path}` file | 404 (new file) |
 | REST `/vulnerability-alerts`, `/automated-security-fixes`, `/private-vulnerability-reporting` | hardcoded | alerts on, the other two off |
 | `pr create`, `pr view`, POST `/pulls` | `pr-number` | pull request #42 |
+| REST GET `/branches/{branch}/protection` | hardcoded | 404 (not protected), as GitHub answers before apply protects it |
 | `label list` | `labels.json` | `[]` |
 | REST `/search/issues` (label usage) | hardcoded | 2 issues/PRs |
 | `secret list` | hardcoded | empty |

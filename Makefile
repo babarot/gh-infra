@@ -38,6 +38,7 @@ docs-install:
 # Record the demo GIFs with VHS in Docker and copy them to docs/public:
 #   make demo [TAPES="demo demo-apply"]
 # TAPES names the tapes to record (docs/tapes/<name>.tape); all when not given.
+# Only demo*.gif go to docs/public; the others (showcase) stay in docs/tapes.
 demo:
 	@if ! docker info > /dev/null 2>&1; then \
 		echo "Docker is not running — please start Docker and try again."; \
@@ -48,7 +49,9 @@ demo:
 	@docs/tapes/vhs.sh $(foreach v,$(DEMO_ENV),-e $(v)) $(TAPES)
 	@rm -f docs/tapes/.gh-infra
 	@echo "Copying assets to docs/public/..."
-	@for t in $(or $(TAPES),$(basename $(notdir $(wildcard docs/tapes/*.tape)))); do cp docs/tapes/$$t.gif docs/public/; done
+	@for t in $(or $(TAPES),$(basename $(notdir $(wildcard docs/tapes/*.tape)))); do \
+		case $$t in demo*) cp docs/tapes/$$t.gif docs/public/ ;; esac; \
+	done
 
 # Try the terminal output against mock-gh, without GitHub:
 #   make playground [SCENARIO=many] [DELAY=<seconds per gh call>]
