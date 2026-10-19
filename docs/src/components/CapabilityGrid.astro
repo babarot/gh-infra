@@ -43,17 +43,14 @@
           </div>
           <pre class="cap-body"><span class="c-cmd">$ gh infra apply ./repos/</span>
 
-  <span class="c-new">✓</span> <span class="c-w">babarot/my-cli</span>
-      <span class="c-new">✓</span> description          updated
-      <span class="c-new">✓</span> merge_strategy       updated
-  <span class="c-new">✓</span> <span class="c-w">babarot/my-api</span>
-      <span class="c-new">✓</span> branch_protection    updated
-  <span class="c-new">✓</span> <span class="c-w">babarot/my-web</span>
-      <span class="c-new">✓</span> features             updated
-      <span class="c-new">✓</span> topics               updated
+<span class="c-new">✓</span> Applied <span class="c-w">5</span> changes in 2.1s
 
-  <span class="c-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-  Apply complete! <span class="c-w">5</span> changes applied</pre>
+  <span class="c-new">✓</span> <span class="c-w">babarot/my-cli</span>   <span class="c-dim">1.8s  2 applied</span>
+  <span class="c-new">✓</span> <span class="c-w">babarot/my-api</span>   <span class="c-dim">1.2s  1 applied</span>
+  <span class="c-new">✓</span> <span class="c-w">babarot/my-web</span>   <span class="c-dim">2.1s  2 applied</span>
+
+<span class="c-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+Apply complete! <span class="c-w">5</span> changes applied.</pre>
         </div>
         <p class="cap-desc">Repos apply in parallel. Changes are atomic per repo.</p>
       </div>
@@ -72,14 +69,19 @@
           </div>
           <pre class="cap-body"><span class="c-cmd">$ gh infra apply ./files/</span>
 
-<span class="c-dim">  # babarot/my-project — FileSet: 3 files</span>
   <span class="c-chg">~</span> <span class="c-w">babarot/my-project</span>
-      <span class="c-chg">~</span> .github/workflows/ci.yml  <span class="c-new">+18</span> <span class="c-old">-5</span>
-      <span class="c-add">+</span> .github/dependabot.yml    <span class="c-new">+12</span>
-      <span class="c-chg">~</span> .github/CODEOWNERS        <span class="c-new">+2</span> <span class="c-old">-1</span>
+      <span class="c-chg">~</span> FileSet: 3 files, via <span class="c-cyan">pull_request</span>
+          <span class="c-chg">~</span> .github/workflows/ci.yml  <span class="c-new">+18</span> <span class="c-old">-5</span>
+          <span class="c-add">+</span> .github/dependabot.yml    <span class="c-new">+12</span>
+          <span class="c-chg">~</span> .github/CODEOWNERS        <span class="c-new">+2</span> <span class="c-old">-1</span>
 
-  via: <span class="c-cyan">pull_request</span>
-  <span class="c-new">✓</span> <span class="c-dim">→</span> github.com/babarot/my-project/pull/42</pre>
+<span class="c-new">✓</span> Applied <span class="c-w">3</span> changes in 1.4s
+
+  <span class="c-new">✓</span> <span class="c-w">babarot/my-project</span>  <span class="c-dim">1.4s  3 applied · opened pull request #42</span>
+
+<span class="c-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  <span class="c-cyan">↗</span> <span class="c-w">babarot/my-project</span>  pull request #42  https://github.com/babarot/my-project/pull/42</pre>
         </div>
         <p class="cap-desc">Distribute files across repos. Push or pull request.</p>
       </div>

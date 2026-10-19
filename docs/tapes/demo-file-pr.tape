@@ -68,7 +68,7 @@ Sleep 1.5s
 
 # 6. Confirm — apply creates PR (single keypress, no Enter needed)
 Type "y"
-Sleep 6s
+Sleep 8s
 
 # 7. View the created PR (human-readable)
 Type "gh pr view"

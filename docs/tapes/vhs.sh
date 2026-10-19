@@ -5,7 +5,8 @@
 # in parallel. GIF generation is done separately via ffmpeg because VHS's
 # built-in GIF output is unreliable under parallel Docker on macOS.
 #
-# Usage: vhs.sh [-e KEY=VAL ...]
+# Usage: vhs.sh [-e KEY=VAL ...] [NAME ...]
+#   NAME  a tape to record, without .tape (demo, demo-apply, ...); all when none
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -13,14 +14,26 @@ VHS_IMAGE="gh-infra-vhs"
 FFMPEG_IMAGE="jrottenberg/ffmpeg:7-alpine"
 
 docker_flags=()
-if [[ $# -gt 0 ]]; then
-  docker_flags=("$@")
-fi
+tapes=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -e)
+      docker_flags+=("$1" "$2")
+      shift 2
+      ;;
+    *)
+      if [[ ! -f "$SCRIPT_DIR/$1.tape" ]]; then
+        echo "No tape named $1 (looked for $SCRIPT_DIR/$1.tape)" >&2
+        exit 2
+      fi
+      tapes+=("$SCRIPT_DIR/$1.tape")
+      shift
+      ;;
+  esac
+done
 
-tapes=("$SCRIPT_DIR"/*.tape)
 if [[ ${#tapes[@]} -eq 0 ]]; then
-  echo "No .tape files found"
-  exit 0
+  tapes=("$SCRIPT_DIR"/*.tape)
 fi
 
 # Build custom image with vim pre-installed (cached after first build)
@@ -73,4 +86,4 @@ for name in "${names[@]}"; do
   fi
 done
 
-echo "All ${#tapes[@]} tapes recorded."
+echo "${#tapes[@]} tape(s) recorded."

@@ -34,7 +34,7 @@ Show
 
 # 1. Run import --into to detect file drift
 Sleep 700ms
-Type "gh infra import babarot/my-project --into=/tmp/demo/"
+Type "gh infra import babarot/gh-infra --into=/tmp/demo/"
 Sleep 350ms
 Enter
 Sleep 6s
@@ -83,7 +83,7 @@ Type "y"
 Sleep 3s
 
 # 10. Show the updated YAML
-Type "cat /tmp/demo/my-project.yaml"
+Type "cat /tmp/demo/gh-infra.yaml"
 Sleep 350ms
 Enter
 Sleep 4s

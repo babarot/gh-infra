@@ -9,6 +9,8 @@
 #     view.json                  — gh repo view --json response
 #     commit-settings.json       — squash/merge commit title/message (optional)
 #     contents/{path}            — raw file content (base64-encoded on the fly)
+#     pr-number                  — number of the pull request gh-infra opens (default 42)
+#     labels.json                — gh label list --json name,color,description response
 #
 # Files are optional. When missing, sensible defaults are returned.
 set -euo pipefail
@@ -61,7 +63,7 @@ extract_repo() {
   echo ""
 }
 
-# Return the data directory for a repo, e.g. /tmp/mock-data/babarot/app-api
+# Return the data directory for a repo, e.g. /tmp/mock-data/babarot/gomi
 repo_dir() {
   local owner="${1%%/*}"
   local name="${1##*/}"
@@ -69,7 +71,7 @@ repo_dir() {
 }
 
 # Read a file from the repo data dir, or print a default value.
-# Usage: read_data "babarot/app-api" "view.json" '{"fallback":true}'
+# Usage: read_data "babarot/gomi" "view.json" '{"fallback":true}'
 read_data() {
   local file
   file="$(repo_dir "$1")/$2"
@@ -81,7 +83,9 @@ read_data() {
 }
 
 args="$*"
+# Without a repository in the arguments (gh pr view), gh uses $GH_REPO.
 repo="$(extract_repo "$@")"
+repo="${repo:-${GH_REPO:-}}"
 
 # ---------------------------------------------------------------------------
 # Missing repositories and failures (optional; for trying error output)
@@ -210,6 +214,21 @@ if [[ "$args" == *"secret list"* ]]; then
   exit 0
 fi
 
+# Labels
+if [[ "$args" == *"label list"* ]]; then
+  delay
+  read_data "$repo" "labels.json" '[]'
+  exit 0
+fi
+
+# Issues and pull requests with a label (plan shows it for a label to
+# delete): "<count> <last updated>"
+if [[ "$args" == *"/search/issues"* ]]; then
+  delay
+  echo "2 2026-08-21T09:00:00Z"
+  exit 0
+fi
+
 # Variables
 if [[ "$args" == *"variable list"* ]]; then
   delay
@@ -247,6 +266,25 @@ fi
 
 # Immutable releases
 if [[ "$args" == *"/immutable-releases"* ]]; then
+  delay
+  echo '{"enabled":false}'
+  exit 0
+fi
+
+# Security settings: vulnerability alerts on (204 No Content), Dependabot
+# security updates and private vulnerability reporting off.
+if [[ "$args" == *"/vulnerability-alerts"* ]]; then
+  delay
+  exit 0
+fi
+
+if [[ "$args" == *"/automated-security-fixes"* ]]; then
+  delay
+  echo '{"enabled":false,"paused":false}'
+  exit 0
+fi
+
+if [[ "$args" == *"/private-vulnerability-reporting"* ]]; then
   delay
   echo '{"enabled":false}'
   exit 0
@@ -292,10 +330,22 @@ if [[ "$args" == *"/git/ref/heads/"* ]]; then
   exit 0
 fi
 
+# Tree of a commit: GET repos/owner/repo/git/commits/{sha} --jq .tree.sha.
+# It differs from the tree a FileSet creates, so the commit is not a no-op.
+if [[ "$args" == *"/git/commits/"* && "$args" != *"--method"* ]]; then
+  delay
+  echo "1111aaaa2222bbbb3333cccc4444dddd5555eeee"
+  exit 0
+fi
+
 # Create blob / tree / commit
 if [[ "$args" == *"/git/blobs"* || "$args" == *"/git/trees"* || "$args" == *"/git/commits"* ]]; then
   delay
-  echo '{"sha":"ffff6666aaaa7777bbbb8888cccc9999dddd0000"}'
+  if [[ "$args" == *"--jq"* ]]; then
+    echo "ffff6666aaaa7777bbbb8888cccc9999dddd0000"
+  else
+    echo '{"sha":"ffff6666aaaa7777bbbb8888cccc9999dddd0000"}'
+  fi
   exit 0
 fi
 
@@ -310,10 +360,12 @@ fi
 # Pull request
 # ---------------------------------------------------------------------------
 
+pr_number="$(read_data "$repo" "pr-number" 42)"
+
 # gh pr create --repo owner/repo ...
 if [[ "$args" == *"pr create"* ]]; then
   delay
-  echo "https://github.com/${repo}/pull/42"
+  echo "https://github.com/${repo}/pull/${pr_number}"
   exit 0
 fi
 
@@ -325,7 +377,7 @@ if [[ "$args" == *"pr view"* && "$args" != *"--json"* ]]; then
   dim='\033[2m'
   cyan='\033[36m'
   reset='\033[0m'
-  printf "${bold}chore: sync managed files${reset} ${green}babarot/my-project#42${reset}\n"
+  printf "${bold}chore: sync managed files${reset} ${green}${repo}#${pr_number}${reset}\n"
   printf "${green}Open${reset} • babarot wants to merge 1 commit into ${cyan}main${reset} from ${cyan}gh-infra/sync${reset} • about 1 minute ago\n"
   printf "${green}+128${reset} ${dim}-12${reset} • ${dim}7 changed files${reset}\n"
   printf "\n"
@@ -341,7 +393,7 @@ if [[ "$args" == *"pr view"* && "$args" != *"--json"* ]]; then
   printf "  • .golangci.yml ${dim}(new)${reset}\n"
   printf "  • LICENSE\n"
   printf "\n"
-  printf "${dim}View this pull request on GitHub: https://github.com/${repo}/pull/42${reset}\n"
+  printf "${dim}View this pull request on GitHub: https://github.com/${repo}/pull/${pr_number}${reset}\n"
   exit 0
 fi
 
@@ -349,9 +401,9 @@ fi
 if [[ "$args" == *"pr view"*"--json"* ]]; then
   delay
   if [[ "$args" == *"--jq"* ]]; then
-    echo "https://github.com/${repo}/pull/42"
+    echo "https://github.com/${repo}/pull/${pr_number}"
   else
-    echo "{\"number\":42,\"title\":\"chore: sync managed files\",\"url\":\"https://github.com/${repo}/pull/42\"}"
+    echo "{\"number\":${pr_number},\"title\":\"chore: sync managed files\",\"url\":\"https://github.com/${repo}/pull/${pr_number}\"}"
   fi
   exit 0
 fi
@@ -359,7 +411,7 @@ fi
 # Create PR: POST repos/owner/repo/pulls
 if [[ "$args" == *"/pulls"* && "$args" == *"--method"*"POST"* ]]; then
   delay
-  echo "{\"html_url\":\"https://github.com/${repo}/pull/42\",\"number\":42}"
+  echo "{\"html_url\":\"https://github.com/${repo}/pull/${pr_number}\",\"number\":${pr_number}}"
   exit 0
 fi
 

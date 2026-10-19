@@ -16,13 +16,16 @@ WRAPPER
 chmod +x /usr/local/bin/gh
 
 export MOCK_DIR=/tmp/mock-data
-dir="$MOCK_DIR/babarot/my-project"
+dir="$MOCK_DIR/babarot/syno"
 mkdir -p "$dir/contents/.github/workflows"
+echo 23 > "$dir/pr-number"
+# gh pr view in the demo has no --repo; gh then uses GH_REPO.
+export GH_REPO=babarot/syno
 
 # Repo view (no repo settings changes — just needed for plan)
 cat > "$dir/view.json" << 'JSON'
 {
-  "description": "My project",
+  "description": "Find the Synology NAS on your network and check on it from the terminal",
   "homepageUrl": "",
   "visibility": "PUBLIC",
   "isArchived": false,
@@ -40,7 +43,7 @@ cat > "$dir/view.json" << 'JSON'
 JSON
 
 # Existing files on GitHub (old versions — will show as updates)
-echo -n '* @old-owner' > "$dir/contents/.github/CODEOWNERS"
+echo -n '* @babarot' > "$dir/contents/.github/CODEOWNERS"
 
 cat > "$dir/contents/.github/workflows/ci.yml" << 'CI'
 name: CI
@@ -67,14 +70,15 @@ cat > /tmp/demo/files.yaml << 'YAML'
 apiVersion: gh-infra/v1
 kind: File
 metadata:
-  name: my-project
+  name: syno
   owner: babarot
 
 spec:
   files:
     - path: .github/CODEOWNERS
       content: |
-        * @babarot @team-platform
+        * @babarot
+        /docs/ @babarot
 
     - path: LICENSE
       content: |

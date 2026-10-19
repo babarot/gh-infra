@@ -16,13 +16,13 @@ WRAPPER
 chmod +x /usr/local/bin/gh
 
 export MOCK_DIR=/tmp/mock-data
-dir="$MOCK_DIR/babarot/my-project"
+dir="$MOCK_DIR/babarot/gh-infra"
 mkdir -p "$dir/contents/.github/workflows" "$dir/contents/.github"
 
 # Repo view (matches local YAML — no repo setting diffs, only file diffs)
 cat > "$dir/view.json" << 'JSON'
 {
-  "description": "My project",
+  "description": "Declarative GitHub infrastructure management via YAML",
   "homepageUrl": "",
   "visibility": "PUBLIC",
   "isArchived": false,
@@ -42,11 +42,12 @@ JSON
 # GitHub has DRIFTED versions of these files.
 # import --into will detect the diffs and offer write/patch/skip.
 
-# CODEOWNERS: someone added @team-temp on GitHub
+# CODEOWNERS: someone added /.github/ on GitHub
 cat > "$dir/contents/.github/CODEOWNERS" << 'OWNERS'
-* @babarot @team-platform @team-temp
+* @babarot
 /docs/ @babarot
-/api/ @babarot @team-backend
+/internal/ @babarot
+/.github/ @babarot
 OWNERS
 
 # ci.yml: someone added make bench step
@@ -104,20 +105,20 @@ TMPL
 mkdir -p /tmp/demo
 
 # Local manifest: the "intended" state. 5 files with inline content.
-cat > /tmp/demo/my-project.yaml << 'YAML'
+cat > /tmp/demo/gh-infra.yaml << 'YAML'
 apiVersion: gh-infra/v1
 kind: File
 metadata:
-  name: my-project
+  name: gh-infra
   owner: babarot
 
 spec:
   files:
     - path: .github/CODEOWNERS
       content: |
-        * @babarot @team-platform
+        * @babarot
         /docs/ @babarot
-        /api/ @babarot @team-backend
+        /internal/ @babarot
 
     - path: .github/workflows/ci.yml
       content: |

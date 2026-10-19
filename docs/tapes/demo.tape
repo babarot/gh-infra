@@ -1,4 +1,4 @@
-# gh-infra demo: import → edit in vim → apply workflow
+# gh-infra demo: bring sixteen repositories back to their manifests
 #
 # Run with: make demos
 # Requirements: Docker
@@ -32,57 +32,23 @@ Show
 
 # --- Demo starts ---
 
-# 1. Import current repo settings as YAML
+# 1. A github-config style directory: one manifest per repository
 Sleep 700ms
-Type "gh infra import babarot/my-project > /tmp/demo/my-project.yaml"
+Type "ls"
 Sleep 350ms
 Enter
-Sleep 3s
+Sleep 2s
 
-# 2. Open in vim
-Type "vim /tmp/demo/my-project.yaml"
+# 2. Apply: fetch the sixteen repositories, show what drifted on GitHub
+#    (labels, description, homepage, topics, wiki), confirm
+Type "gh infra apply ."
 Sleep 350ms
 Enter
-Sleep 1s
+Sleep 9s
 
-# 3. Search for description
-Type "/My project"
-Enter
-Sleep 700ms
-
-# 4. Replace "My project" with "My awesome project"
-Type "cgn"
-Sleep 200ms
-Type "My awesome project"
-Escape
-Sleep 1s
-
-# 5. Search for allow_squash_merge: false
-Type "/false"
-Enter
-Sleep 700ms
-
-# 6. Replace false with true
-Type "cgn"
-Sleep 200ms
-Type "true"
-Escape
-Sleep 1s
-
-# 7. Save and quit
-Type ":wq"
-Enter
-Sleep 700ms
-
-# 8. Apply (shows plan → confirm → apply)
-Type "gh infra apply /tmp/demo/"
-Sleep 350ms
-Enter
-Sleep 6s
-
-# 9. Confirm (single keypress, no Enter needed)
+# 3. Confirm (single keypress, no Enter needed)
 Type "y"
-Sleep 6s
+Sleep 7s
 
 # End
 Sleep 2s
