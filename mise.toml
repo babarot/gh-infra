@@ -19,10 +19,11 @@ description = "Remove ./gh-infra and coverage.out"
 run = "rm -f gh-infra coverage.out"
 
 [tasks.test]
-description = "Run the Go tests with the race detector, writing coverage.out"
+description = "Check formatting, and run the Go tests with the race detector, writing coverage.out"
 # cmd is left out of the coverage profile (and of octocov's code ratio), but
 # its tests still run.
 run = '''
+test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt: the files above are not formatted"; exit 1; }
 pkgs="$(go list ./...)"
 cmd='/cmd$|/cmd/gh-infra$'
 go test -race $(echo "$pkgs" | grep -Ev "$cmd") -coverprofile=coverage.out -covermode=atomic
