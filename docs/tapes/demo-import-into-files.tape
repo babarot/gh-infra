@@ -4,7 +4,7 @@
 #        diff viewer with write/patch/skip Tab cycling →
 #        confirm and write changes back to local YAML
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 
 Output demo-import-into-files.gif

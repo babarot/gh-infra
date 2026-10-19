@@ -11,7 +11,7 @@ Use this skill to run, debug, or regenerate gh-infra demo GIF recordings.
 
 ## When To Use
 
-- Running `make demo` or `docs/tapes/vhs.sh` directly
+- Running `mise run demo` or `docs/tapes/vhs.sh` directly
 - Diagnosing why a recording failed or produced a 0-byte GIF
 - Regenerating GIFs from existing MP4s without re-recording
 - Understanding the recording pipeline
@@ -23,12 +23,12 @@ Use this skill to run, debug, or regenerate gh-infra demo GIF recordings.
 
 ## Recording some tapes
 
-`make demo TAPES="demo demo-light"` records only the named tapes (`docs/tapes/<name>.tape`) and copies only their GIFs; `docs/tapes/vhs.sh` takes the names the same way. Use it after changing one scene instead of recording all of them. Only `demo*` tapes are copied to `docs/public/`; others, such as `showcase` (16:9, for use outside the docs), stay as `docs/tapes/<name>.gif` and `.mp4`. VHS needs an even width and height for the MP4.
+`mise run demo demo demo-light` records only the named tapes (`docs/tapes/<name>.tape`) and copies only their GIFs; `docs/tapes/vhs.sh` takes the names the same way. Use it after changing one scene instead of recording all of them. Only `demo*` tapes are copied to `docs/public/`; others, such as `showcase` (16:9, for use outside the docs), stay as `docs/tapes/<name>.gif` and `.mp4`. VHS needs an even width and height for the MP4.
 
 ## Pipeline
 
 ```text
-make demo
+mise run demo  (scripts/demo.sh)
   1. go build -o docs/tapes/.gh-infra  (GOOS=linux GOARCH=amd64)
   2. docs/tapes/vhs.sh
      a. docker build → gh-infra-vhs image (VHS + vim)
@@ -58,11 +58,11 @@ VHS's built-in GIF output is unreliable when multiple containers run in parallel
 ## Output Locations
 
 - Raw recordings: `docs/tapes/*.mp4` and `docs/tapes/*.gif`
-- Published assets: `docs/public/demo*.gif` (copied by Makefile)
+- Published assets: `docs/public/demo*.gif` (copied by `scripts/demo.sh`)
 
 ## Environment Variables
 
-`make demo` forwards `DEMO_ENV` variables into Docker via `-e` flags. Use this to pass environment overrides (e.g. `GH_INFRA_OUTPUT`) into the recording containers.
+`mise run demo -e KEY=VAL ...` forwards each `-e` to Docker. Use this to pass environment overrides (e.g. `GH_INFRA_OUTPUT`) into the recording containers.
 
 ## Resource Planning
 

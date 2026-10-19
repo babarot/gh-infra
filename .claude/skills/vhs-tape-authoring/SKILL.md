@@ -147,7 +147,7 @@ $MOCK_DIR/{owner}/{repo}/
   fail                            # failure rules, "<read|write|any> <pattern> <message>" per line (optional)
 ```
 
-`absent` makes only the settings fetch fail as GitHub's does for a missing repository; other calls still succeed, so an apply that creates it goes on. A `fail` rule makes a call for the repository whose arguments contain `<pattern>` exit 1 with `gh: <message>`; put the HTTP status in the message (`HTTP 403: ...`) so gh-infra classifies it. The comment at the top of `mock-gh` has examples, and `docs/tapes/playground.sh` (`make playground`) uses both to try the output locally.
+`absent` makes only the settings fetch fail as GitHub's does for a missing repository; other calls still succeed, so an apply that creates it goes on. A `fail` rule makes a call for the repository whose arguments contain `<pattern>` exit 1 with `gh: <message>`; put the HTTP status in the message (`HTTP 403: ...`) so gh-infra classifies it. The comment at the top of `mock-gh` has examples, and `docs/tapes/playground.sh` (`mise run playground`) uses both to try the output locally.
 
 ### Supported mock responses
 
@@ -166,7 +166,7 @@ $MOCK_DIR/{owner}/{repo}/
 | `variable list` | hardcoded | `[]` |
 | `repo edit`, write APIs | no-op | success with delay |
 
-All mock responses include a random 200-500ms delay to simulate network latency. Setting `MOCK_DELAY` to a number of seconds changes it to between half and one and a half times that (`make playground DELAY=2`, or `export MOCK_DELAY=2` in the playground shell). A setup script can export it to pace its tape: `setup.sh` sets 0.6 so the sixteen repositories' fetch stays on screen long enough to read. Change it together with the tape's `Sleep`s, and keep a loop within 20-35 seconds.
+All mock responses include a random 200-500ms delay to simulate network latency. Setting `MOCK_DELAY` to a number of seconds changes it to between half and one and a half times that (`MOCK_DELAY=2 mise run playground`, or `export MOCK_DELAY=2` in the playground shell). A setup script can export it to pace its tape: `setup.sh` sets 0.6 so the sixteen repositories' fetch stays on screen long enough to read. Change it together with the tape's `Sleep`s, and keep a loop within 20-35 seconds.
 
 A call without a repository in its arguments (`gh pr view`) uses `$GH_REPO`, as gh does; `setup-file-pr.sh` exports it.
 
@@ -184,9 +184,9 @@ A call without a repository in its arguments (`gh pr view`) uses `$GH_REPO`, as 
    - Populate `$MOCK_DIR` with the GitHub state the demo needs
    - Create manifest YAML in `/tmp/demo/`
 
-4. **Makefile**: nothing to add; `make demo` copies the GIF of every tape it records to `docs/public/`.
+4. **Demo task**: nothing to add; `mise run demo` copies the GIF of every `demo*` tape it records to `docs/public/`.
 
-5. **Test locally**: Record only this tape with `make demo TAPES=demo-<name>` (several: `TAPES="demo demo-light"`). `make demo` alone records every tape.
+5. **Test locally**: Record only this tape with `mise run demo demo-<name>` (several: `mise run demo demo demo-light`). `mise run demo` alone records every tape.
 
 6. **Verify output**: Check that both `.mp4` and `.gif` are non-zero size
 

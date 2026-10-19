@@ -1,6 +1,6 @@
 # gh-infra demo: bring sixteen repositories back to their manifests
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 #
 # This tape uses a mock gh CLI (mock-gh) to simulate GitHub API responses.

@@ -3,7 +3,7 @@
 # drifted description and a new repository. 16:9, about 16s, for use outside
 # the docs.
 #
-# Run with: make demo TAPES=showcase (not copied to docs/public)
+# Run with: mise run demo showcase (not copied to docs/public)
 
 Output showcase.gif
 Output showcase.mp4

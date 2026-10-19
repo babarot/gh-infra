@@ -3,7 +3,7 @@
 # Shows: File manifest with 7 files → plan fetches each file →
 #        apply creates PR → gh pr view shows the result
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 
 Output demo-file-pr.gif
