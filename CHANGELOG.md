@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.17.4](https://github.com/babarot/gh-infra/compare/v0.17.3...v0.17.4) - 2026-10-19
+### Bug fixes
+- Leave an already archived repository alone by @babarot in https://github.com/babarot/gh-infra/pull/264
+- Plan a pull request FileSet for a repository with no commits as a push by @babarot in https://github.com/babarot/gh-infra/pull/266
+- Print one blank line between the body and the summary by @babarot in https://github.com/babarot/gh-infra/pull/270
+### Improvements
+- Make the plan body, prompt and summary easier to read by @babarot in https://github.com/babarot/gh-infra/pull/268
+- Show each spinner row's result, elapsed time and how to cancel by @babarot in https://github.com/babarot/gh-infra/pull/271
+- Show the spinner's progress, queued rows and gh usage in its heading by @babarot in https://github.com/babarot/gh-infra/pull/272
+- Keep the spinner within the terminal when there are many repositories by @babarot in https://github.com/babarot/gh-infra/pull/274
+- Show how each change ended on apply rows and the heading by @babarot in https://github.com/babarot/gh-infra/pull/276
+- Line up the pull request links after an apply by @babarot in https://github.com/babarot/gh-infra/pull/278
+
 ## [v0.17.3](https://github.com/babarot/gh-infra/compare/v0.17.2...v0.17.3) - 2026-10-12
 ### Bug fixes
 - Report files import --into cannot read by @babarot in https://github.com/babarot/gh-infra/pull/255
