@@ -2,7 +2,7 @@
 #
 # Shows: current YAML with required_reviews: 1 → edit to 2 → plan shows all 4 repos affected
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 
 Output demo-repositoryset-plan.gif

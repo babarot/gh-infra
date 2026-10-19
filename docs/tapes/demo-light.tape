@@ -1,6 +1,6 @@
 # gh-infra demo (light theme variant of demo.tape)
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 
 Output demo-light.gif

@@ -1,2 +1,58 @@
+# Tasks for developing gh-infra: mise tasks lists them, mise run <task> runs one.
+# Go comes from wherever you have it (go.mod sets the minimum), the other
+# tools from [tools] below.
+
 [tools]
 node = "22"
+golangci-lint = "2.15.0"
+
+[tasks.build]
+description = "Build ./gh-infra"
+run = 'go build -ldflags "$(scripts/ldflags.sh)" -trimpath -o gh-infra ./cmd/gh-infra/'
+
+[tasks.install]
+description = "Install gh-infra into $GOBIN (or $GOPATH/bin)"
+run = 'go install -ldflags "$(scripts/ldflags.sh)" ./cmd/gh-infra/'
+
+[tasks.clean]
+description = "Remove ./gh-infra and coverage.out"
+run = "rm -f gh-infra coverage.out"
+
+[tasks.test]
+description = "Run the Go tests with the race detector, writing coverage.out"
+# cmd is left out of the coverage profile (and of octocov's code ratio), but
+# its tests still run.
+run = '''
+pkgs="$(go list ./...)"
+cmd='/cmd$|/cmd/gh-infra$'
+go test -race $(echo "$pkgs" | grep -Ev "$cmd") -coverprofile=coverage.out -covermode=atomic
+go test -race $(echo "$pkgs" | grep -E "$cmd")
+'''
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks."docs:install"]
+description = "Install the docs site's dependencies"
+dir = "docs"
+run = "npm ci"
+
+[tasks."docs:dev"]
+description = "Serve the docs site with hot reload"
+dir = "docs"
+run = "npm run dev"
+
+[tasks."docs:build"]
+description = "Build the docs site into docs/dist"
+dir = "docs"
+run = "npm run build"
+
+[tasks.demo]
+description = "Record the demo GIFs with VHS in Docker and copy them to docs/public: mise run demo [-e KEY=VAL ...] [TAPE ...]"
+file = "scripts/demo.sh"
+
+[tasks.playground]
+description = "Try the terminal output against mock-gh, without GitHub: [MOCK_DELAY=<seconds>] mise run playground [mixed|many]"
+file = "docs/tapes/playground.sh"
+raw = true

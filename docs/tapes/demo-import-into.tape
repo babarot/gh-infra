@@ -3,7 +3,7 @@
 # Shows: import --into detects diffs between local YAML and GitHub state →
 #        shows plan → confirms → YAML is updated in place
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 
 Output demo-import-into.gif

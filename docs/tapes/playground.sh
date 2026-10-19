@@ -16,7 +16,7 @@
 # MOCK_DELAY sets how long each gh call takes, in seconds (each call takes
 # from half to one and a half times it; unset, 0.2-0.5s). Set it to slow the
 # output down enough to watch, before starting or in the shell:
-#   MOCK_DELAY=2 playground.sh many      (make playground SCENARIO=many DELAY=2)
+#   MOCK_DELAY=2 playground.sh many      (MOCK_DELAY=2 mise run playground many)
 #   export MOCK_DELAY=3                  (in the shell; applies to the next run)
 set -euo pipefail
 

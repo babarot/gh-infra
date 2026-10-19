@@ -1,7 +1,7 @@
 # gh-infra demo: edit a shared template, then apply to twelve repositories;
 # each repository that syncs it gets a pull request
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 #
 # This tape uses a mock gh CLI (mock-gh) to simulate GitHub API responses.

@@ -3,7 +3,7 @@
 # Shows: FileSet apply with 3 files × 2 repos →
 #        diff viewer navigation, scrolling, Tab cycle (apply↔skip)
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 
 Output demo-diffviewer.gif

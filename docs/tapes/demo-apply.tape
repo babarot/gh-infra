@@ -2,7 +2,7 @@
 #
 # Shows: plan output → confirmation prompt → parallel apply with step-level progress
 #
-# Run with: make demos
+# Run with: mise run demo
 # Requirements: Docker
 
 Output demo-apply.gif
