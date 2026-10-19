@@ -45,6 +45,12 @@ type ResultItem struct {
 	Level  IndentLevel // IndentItem (default) or IndentSub
 }
 
+// PullRequestLink is a pull request a repository got, for PullRequests.
+type PullRequestLink struct {
+	Name string // owner/repo
+	URL  string
+}
+
 // Printer is the interface for all user-facing output.
 type Printer interface {
 	// stderr: progress/status
@@ -64,7 +70,7 @@ type Printer interface {
 	PrintDiffBlock(diff string) // emit colored unified diff at IndentSub indent
 	PrintResult(item ResultItem)
 	Success(name, detail string)
-	PullRequest(name, url string) // e.g. "↗ babarot/repo  pull request #42  <url>"
+	PullRequests(links []PullRequestLink) // e.g. "↗ babarot/repo  pull request #42  <url>", in columns
 	Error(name, detail string)
 	ErrorReport(name, detail string) // multi-line per-target block (stderr)
 	Warning(name, detail string)     // stderr
@@ -462,18 +468,27 @@ func renderIcon(icon string) string {
 	}
 }
 
-// PullRequest prints a pull request a repository got: the repository, its
-// number, and its URL, linked like repository names (linkRepos).
-func (p *StandardPrinter) PullRequest(name, url string) {
-	number := ""
-	if _, n, ok := strings.Cut(url, "/pull/"); ok {
-		number = " #" + strings.TrimRight(n, "/")
+// PullRequests prints the pull requests repositories got, one per line: the
+// repository, the number, and the URL, linked like repository names
+// (linkRepos). The repositories and numbers are padded so the URLs line up.
+func (p *StandardPrinter) PullRequests(links []PullRequestLink) {
+	numbers := make([]string, len(links))
+	nameWidth, numberWidth := 0, 0
+	for i, l := range links {
+		if _, n, ok := strings.Cut(l.URL, "/pull/"); ok {
+			numbers[i] = "#" + strings.TrimRight(n, "/")
+		}
+		nameWidth = max(nameWidth, len(l.Name))
+		numberWidth = max(numberWidth, len(numbers[i]))
 	}
-	shown := url
-	if p.linkRepos() {
-		shown = Bold.Hyperlink(url).Render(url)
+	for i, l := range links {
+		shown := l.URL
+		if p.linkRepos() {
+			shown = Bold.Hyperlink(l.URL).Render(l.URL)
+		}
+		name := repoStyle(l.Name, p.linkRepos()).Render(l.Name) + strings.Repeat(" ", nameWidth-len(l.Name))
+		p.line(p.out, "%s%s %s  pull request %-*s  %s\n", Indent(IndentRoot), Cyan.Render("↗"), name, numberWidth, numbers[i], shown)
 	}
-	p.line(p.out, "%s%s %s  pull request%s  %s\n", Indent(IndentRoot), Cyan.Render("↗"), repoStyle(name, p.linkRepos()).Render(name), number, shown)
 }
 
 func (p *StandardPrinter) Success(name, detail string) {

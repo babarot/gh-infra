@@ -380,11 +380,13 @@ func printApplyFollowUps(p ui.Printer, repoResults []repository.ApplyResult, fil
 		p.GroupEnd()
 	}
 	p.SetColumnWidth(0)
+	var links []ui.PullRequestLink
 	for _, name := range names {
 		if url := pullRequests[name]; url != "" {
-			p.PullRequest(name, url)
+			links = append(links, ui.PullRequestLink{Name: name, URL: url})
 		}
 	}
+	p.PullRequests(links)
 }
 
 // changeGroup represents either a single regular change (resource=="")
