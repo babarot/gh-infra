@@ -437,11 +437,19 @@ func TestGroupHeaderAndEnd(t *testing.T) {
 	}
 }
 
-func TestPullRequest(t *testing.T) {
+// The repositories and numbers are padded so the URLs line up.
+func TestPullRequests(t *testing.T) {
 	var buf bytes.Buffer
-	NewStandardPrinterWith(&buf, &buf).PullRequest("acme/web", "https://github.com/acme/web/pull/42")
-	if got, want := buf.String(), "  ↗ acme/web  pull request #42  https://github.com/acme/web/pull/42\n"; got != want {
-		t.Errorf("got  %q\nwant %q", got, want)
+	NewStandardPrinterWith(&buf, &buf).PullRequests([]PullRequestLink{
+		{Name: "acme/web", URL: "https://github.com/acme/web/pull/42"},
+		{Name: "acme/docs-site", URL: "https://github.com/acme/docs-site/pull/1234"},
+		{Name: "acme/api", URL: "https://github.com/acme/api/pull/7"},
+	})
+	want := "  ↗ acme/web        pull request #42    https://github.com/acme/web/pull/42\n" +
+		"  ↗ acme/docs-site  pull request #1234  https://github.com/acme/docs-site/pull/1234\n" +
+		"  ↗ acme/api        pull request #7     https://github.com/acme/api/pull/7\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}
 }
 
