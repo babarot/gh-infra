@@ -308,3 +308,27 @@ func lifecycleScene() planScene {
 	s.files = []fileset.Change{push, script}
 	return s
 }
+
+// TestFileDeliveriesTellFilesApart checks that two repositories getting the
+// same files through the same FileSets, split differently between them,
+// are delivered differently: each split opens other pull requests.
+func TestFileDeliveriesTellFilesApart(t *testing.T) {
+	x := &manifest.FileSet{Metadata: manifest.FileSetMetadata{Owner: "acme", Name: "sync"}, Spec: manifest.FileSetSpec{Via: manifest.ViaPullRequest, Branch: "x"}}
+	y := &manifest.FileSet{Metadata: manifest.FileSetMetadata{Owner: "acme", Name: "sync"}, Spec: manifest.FileSetSpec{Via: manifest.ViaPullRequest, Branch: "y"}}
+	files := func(target string, split map[string]*manifest.FileSet) []fileset.Change {
+		var out []fileset.Change
+		for _, path := range []string{"a.txt", "b.txt", "c.txt"} {
+			c := fileChange(target, path, fileset.ChangeCreate, "", path+"\n", manifest.ViaPullRequest)
+			c.FileSet = split[path]
+			out = append(out, c)
+		}
+		return out
+	}
+	api := files("acme/api", map[string]*manifest.FileSet{"a.txt": x, "b.txt": x, "c.txt": y})
+	web := files("acme/web", map[string]*manifest.FileSet{"a.txt": x, "b.txt": y, "c.txt": y})
+
+	unseen := unseenOf(nil)
+	if a, w := unseen("acme/api", nil, api), unseen("acme/web", nil, web); a.Delivery == w.Delivery {
+		t.Errorf("deliveries read the same though b.txt goes in other pull requests:\n%s", a.Delivery)
+	}
+}

@@ -66,21 +66,23 @@ func fileContents(changes []fileset.Change) any {
 	return out
 }
 
-// fileDeliveries is how apply delivers changes to the repository name, per
-// FileSet, built as apply builds it (fileSetApplyArgs, and the via planned
-// for the repository).
+// fileDeliveries is how apply delivers changes to the repository name: per
+// FileSet, the files it delivers and how, built as apply builds it
+// (fileSetApplyArgs, and the via planned for the repository).
 func fileDeliveries(name string, changes []fileset.Change) (any, error) {
 	type delivery struct {
 		fileset.Delivery
 		NoCommits bool
+		Paths     []string
 	}
 	var out []delivery
-	seen := make(map[*manifest.FileSet]bool)
+	index := make(map[*manifest.FileSet]int)
 	for _, c := range changes {
-		if seen[c.FileSet] {
+		if i, ok := index[c.FileSet]; ok {
+			out[i].Paths = append(out[i].Paths, c.Path)
 			continue
 		}
-		seen[c.FileSet] = true
+		index[c.FileSet] = len(out)
 		opts := fileset.ApplyOptions{}
 		if c.FileSet != nil {
 			_, opts = fileSetApplyArgs(c.FileSet, changes)
@@ -92,7 +94,7 @@ func fileDeliveries(name string, changes []fileset.Change) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, delivery{d, c.NoCommits})
+		out = append(out, delivery{d, c.NoCommits, []string{c.Path}})
 	}
 	return out, nil
 }
