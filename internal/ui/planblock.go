@@ -27,7 +27,17 @@ type FileBlock struct {
 type PlanPass func([]PlanBlock) []PlanBlock
 
 // planPasses are the passes the plan body goes through, in order.
-var planPasses []PlanPass
+var planPasses = []PlanPass{flattenBlocks}
+
+// flattenBlocks runs FlattenSingleChild on the settings of each block.
+func flattenBlocks(blocks []PlanBlock) []PlanBlock {
+	out := make([]PlanBlock, len(blocks))
+	for i, b := range blocks {
+		b.Groups = FlattenSingleChild(b.Groups)
+		out[i] = b
+	}
+	return out
+}
 
 // RewritePlanBlocks runs blocks through the plan body's passes.
 func RewritePlanBlocks(blocks []PlanBlock) []PlanBlock {

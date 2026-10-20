@@ -472,7 +472,10 @@ func repoChangesToDiffGroups(changes []repository.Change) []ui.DiffGroup {
 					icon = ui.IconChange
 				}
 				header := repoChangeGroupHeader(c)
-				dg := ui.DiffGroup{Header: header, Icon: icon}
+				// A header that is the change's own field (features,
+				// merge_strategy) is part of its children's path; a ruleset
+				// or branch protection header names the item instead.
+				dg := ui.DiffGroup{Header: header, Icon: icon, Path: header == c.Field}
 				for _, child := range c.Details {
 					dg.Items = append(dg.Items, changeToDiffItem(child))
 				}

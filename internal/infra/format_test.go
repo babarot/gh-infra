@@ -977,3 +977,27 @@ func TestPrintPlan_ShowDiff_NoANSI(t *testing.T) {
 		t.Errorf("expected no ANSI escape sequences in CI mode, got:\n%q", out)
 	}
 }
+
+func TestRepoChangesToDiffGroups_OnlyFieldGroupsArePaths(t *testing.T) {
+	changes := []repository.Change{
+		{Type: repository.ChangeUpdate, Resource: manifest.ResourceRepository, Name: "o/r", Field: "features",
+			Details: []repository.Change{{Type: repository.ChangeUpdate, Field: "wiki", OldValue: true, NewValue: false}}},
+		{Type: repository.ChangeUpdate, Resource: "Ruleset[main]", Name: "o/r", Field: "ruleset", NewValue: "main",
+			Details: []repository.Change{{Type: repository.ChangeUpdate, Field: "enforcement", OldValue: "evaluate", NewValue: "active"}}},
+		{Type: repository.ChangeUpdate, Resource: "BranchProtection[main]", Name: "o/r", Field: "branch_protection", NewValue: "main",
+			Details: []repository.Change{{Type: repository.ChangeUpdate, Field: "required_reviews", OldValue: 1, NewValue: 2}}},
+		{Type: repository.ChangeUpdate, Resource: manifest.ResourceLabel, Name: "o/r", Field: "bug",
+			Details: []repository.Change{{Type: repository.ChangeUpdate, Field: "color", OldValue: "ee0701", NewValue: "d73a4a"}}},
+	}
+	want := map[string]bool{"features": true, `ruleset "main"`: false, `branch protection "main"`: false, "labels": false}
+	for _, g := range repoChangesToDiffGroups(changes) {
+		path, ok := want[g.Header]
+		if !ok {
+			t.Errorf("unexpected group %q", g.Header)
+			continue
+		}
+		if g.Path != path {
+			t.Errorf("group %q: Path = %v, want %v", g.Header, g.Path, path)
+		}
+	}
+}
