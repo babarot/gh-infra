@@ -1,0 +1,85 @@
+  ~ acme/svc-auth                                           1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-billing                                        1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-catalog                                        1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-checkout                                       1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-gateway                                        1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-inventory                                      1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-mailer                                         1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-orders                                         1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-payments                                       1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-search                                         1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-shipping                                       1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+  ~ acme/svc-users                                          1 to create
+      + ruleset "main"
+          + enforcement         active
+          + bypass_actors       1 actors
+          + rules.pull_request  enabled
+          + conditions          ~DEFAULT_BRANCH
+
+Plan: end of body

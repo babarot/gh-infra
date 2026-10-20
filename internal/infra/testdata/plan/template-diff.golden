@@ -1,0 +1,277 @@
+  ~ acme/svc-auth                                           2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-auth
+          +# svc-auth [![CI](https://github.com/acme/svc-auth/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-billing                                        2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-billing
+          +# svc-billing [![CI](https://github.com/acme/svc-billing/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-catalog                                        2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-catalog
+          +# svc-catalog [![CI](https://github.com/acme/svc-catalog/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-checkout                                       2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-checkout
+          +# svc-checkout [![CI](https://github.com/acme/svc-checkout/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-gateway                                        2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-gateway
+          +# svc-gateway [![CI](https://github.com/acme/svc-gateway/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-inventory                                      2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-inventory
+          +# svc-inventory [![CI](https://github.com/acme/svc-inventory/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-mailer                                         2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-mailer
+          +# svc-mailer [![CI](https://github.com/acme/svc-mailer/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-orders                                         2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-orders
+          +# svc-orders [![CI](https://github.com/acme/svc-orders/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-payments                                       2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-payments
+          +# svc-payments [![CI](https://github.com/acme/svc-payments/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-search                                         2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-search
+          +# svc-search [![CI](https://github.com/acme/svc-search/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-shipping                                       2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-shipping
+          +# svc-shipping [![CI](https://github.com/acme/svc-shipping/actions/workflows/ci.yaml/badge.svg)]
+           
+
+  ~ acme/svc-users                                          2 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          --- .github/workflows/ci.yaml (current)
+          +++ .github/workflows/ci.yaml (desired)
+          @@ -5,6 +5,7 @@
+               steps:
+                 - uses: actions/setup-go@v5
+                   with:
+          -          go-version: "1.22"
+          +          go-version: "1.23"
+          +          cache: true
+                 - run: make lint
+           
+
+          ~ README.md                  +1 -1
+          --- README.md (current)
+          +++ README.md (desired)
+          @@ -1,2 +1,2 @@
+          -# svc-users
+          +# svc-users [![CI](https://github.com/acme/svc-users/actions/workflows/ci.yaml/badge.svg)]
+           
+
+Plan: end of body

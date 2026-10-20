@@ -1,0 +1,61 @@
+  ~ acme/svc-auth                                           1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-billing                                        1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-catalog                                        1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-checkout                                       1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +3 -2
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-gateway                                        1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-inventory                                      1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-mailer                                         1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-orders                                         1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-payments                                       1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +3 -2
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-search                                         1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-shipping                                       1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+  ~ acme/svc-users                                          1 to create · 1 to update
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          + .github/dependabot.yaml    +4
+
+Plan: end of body

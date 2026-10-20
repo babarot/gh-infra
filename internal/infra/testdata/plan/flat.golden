@@ -1,0 +1,17 @@
+  ~ babarot/gh-infra                                        7 to update
+      ~ description  gh infra → Declarative GitHub infrastructure
+      ~ features
+          ~ wiki  true → false
+      ~ merge_strategy
+          ~ allow_squash_merge         false → true
+          ~ auto_delete_head_branches  false → true
+      ~ security
+          ~ secret_scanning  disabled → enabled
+      ~ ruleset "main"
+          ~ enforcement  evaluate → active
+      ~ labels
+          ~ bug.color  ee0701 → d73a4a
+      ~ branch protection "main"
+          ~ required_reviews  1 → 2
+
+Plan: end of body
