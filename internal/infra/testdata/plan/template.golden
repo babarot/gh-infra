@@ -1,59 +1,8 @@
-  ~ acme/svc-auth                                           2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-billing                                        2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-catalog                                        2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-checkout                                       2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-gateway                                        2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-inventory                                      2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-mailer                                         2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-orders                                         2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-payments                                       2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-search                                         2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-shipping                                       2 to update
-      ~ FileSet: 2 files, via pull_request
-          ~ .github/workflows/ci.yaml  +2 -1
-          ~ README.md                  +1 -1
-
-  ~ acme/svc-users                                          2 to update
+  ~ 12 repositories                                         2 to update each
+    acme/svc-auth  acme/svc-billing  acme/svc-catalog  acme/svc-checkout  acme/svc-gateway
+    acme/svc-inventory  acme/svc-mailer  acme/svc-orders  acme/svc-payments  acme/svc-search
+    acme/svc-shipping  acme/svc-users
+    ! differs per repository: file contents
       ~ FileSet: 2 files, via pull_request
           ~ .github/workflows/ci.yaml  +2 -1
           ~ README.md                  +1 -1

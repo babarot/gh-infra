@@ -275,7 +275,7 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 
 	p.Separator()
 
-	printPlanWithNotes(p, repoChanges, fileChanges, result.CreateNotes, opts.ShowDiff)
+	printPlanWithNotes(p, repoChanges, fileChanges, result.CreateNotes, unseenOf(result.TargetRepos), opts.ShowDiff)
 
 	changed := plannedRepos(repoChanges, fileChanges)
 	upToDate := countUpToDate(slices.Concat(repoNames, fileNames), changed, result.FailedTargets)

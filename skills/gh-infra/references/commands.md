@@ -46,6 +46,7 @@ Flags:
 - `--fail-on-unknown`: fail on non-gh-infra YAML kinds instead of skipping
 - `--diff`: print a unified diff for each FileSet file change (up to 500 lines per file; none for deletes)
 - `-o`, `--output json`: print only a JSON document on stdout (summary, changes, warnings, errors); prefer it over parsing text. With `--changed-since` it adds `changed_since: {ref, selected, total}`; `selected: 0` means nothing was planned (not "no changes")
+- text output prints repositories whose changes read the same once, as `~ N repositories ... each` with every name below it; the counts are per repository. A `! differs per repository: ...` line means they differ in what text output does not show (file contents, ruleset actors/rules, secret values, FileSet branch/commit message), so do not read the block as "identical apply". `-o json` lists every repository separately
 - `-o`, `--output markdown`: print only a pull request comment (summary, a collapsed table per repository, warnings, errors). With `--changed-since`: `Plan: no manifests changed since <ref>` when nothing was selected, otherwise a `Planned N of M resources ...` line
 
 Exit status:

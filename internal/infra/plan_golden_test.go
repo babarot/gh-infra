@@ -21,6 +21,7 @@ type planScene struct {
 	repo     []repository.Change
 	files    []fileset.Change
 	notes    map[string][]string
+	specs    []*manifest.Repository // what apply reads beyond the changes
 	showDiff bool
 }
 
@@ -34,7 +35,7 @@ func TestPlanBodyGolden(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
 			p := ui.NewStandardPrinterWith(&buf, &buf)
-			printPlanWithNotes(p, scene.repo, scene.files, scene.notes, scene.showDiff)
+			printPlanWithNotes(p, scene.repo, scene.files, scene.notes, unseenOf(scene.specs), scene.showDiff)
 			p.Summary("Plan: end of body") // flushes the blank line a block leaves pending
 
 			path := filepath.Join("testdata", "plan", name+".golden")
@@ -188,11 +189,23 @@ func templateScene() planScene {
 }
 
 // rulesetScene creates the same-looking ruleset in every repository; the
-// plan shows its bypass actors only as a count.
+// plan shows its bypass actors only as a count, and two repositories let
+// another team bypass it.
 func rulesetScene() planScene {
 	var s planScene
 	for _, svc := range services {
 		name := "acme/svc-" + svc
+		team := "platform"
+		if svc == "billing" || svc == "payments" {
+			team = "security"
+		}
+		s.specs = append(s.specs, &manifest.Repository{
+			Metadata: manifest.RepositoryMetadata{Owner: "acme", Name: "svc-" + svc},
+			Spec: manifest.RepositorySpec{Rulesets: []manifest.Ruleset{{
+				Name:         "main",
+				BypassActors: []manifest.RulesetBypassActor{{Team: team, BypassMode: "always"}},
+			}}},
+		})
 		s.repo = append(s.repo, repository.Change{
 			Type: repository.ChangeCreate, Resource: "Ruleset[main]", Name: name, Field: "ruleset", NewValue: "main",
 			Details: []repository.Change{
@@ -206,13 +219,25 @@ func rulesetScene() planScene {
 	return s
 }
 
-// fileSetIDScene has two FileSets with the same ID delivering the same files.
+// fileSetIDScene has two FileSets with the same ID delivering the same
+// files from different pull request branches.
 func fileSetIDScene() planScene {
+	newFileSet := func(branch string) *manifest.FileSet {
+		return &manifest.FileSet{
+			Metadata: manifest.FileSetMetadata{Owner: "acme", Name: "template-sync"},
+			Spec:     manifest.FileSetSpec{Via: manifest.ViaPullRequest, Branch: branch},
+		}
+	}
+	first, second := newFileSet("gh-infra/template-sync"), newFileSet("chore/template")
 	s := fileSetScene()
 	for i := range s.files {
 		s.files[i].Desired = ciDesired
 		if s.files[i].Path == ".github/dependabot.yaml" {
 			s.files[i].Desired = dependabot
+		}
+		s.files[i].FileSet = first
+		if i >= len(s.files)/2 {
+			s.files[i].FileSet = second
 		}
 	}
 	return s

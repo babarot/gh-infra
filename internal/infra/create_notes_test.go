@@ -48,7 +48,7 @@ func TestCreateNotes_ShownInTextAndDocument(t *testing.T) {
 	notes := createNotes(changes, []*manifest.Repository{repo})
 
 	var buf bytes.Buffer
-	printPlanWithNotes(ui.NewStandardPrinterWith(&buf, &buf), changes, nil, notes, false)
+	printPlanWithNotes(ui.NewStandardPrinterWith(&buf, &buf), changes, nil, notes, nil, false)
 	if !strings.Contains(buf.String(), "branch protection for main is applied by a later plan") {
 		t.Errorf("text plan lacks the note:\n%s", buf.String())
 	}

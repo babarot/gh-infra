@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/babarot/gh-infra/internal/manifest"
 	"github.com/babarot/gh-infra/internal/parallel"
 )
 
@@ -139,6 +140,85 @@ func groupChangesByTarget(changes []Change) map[string][]Change {
 		grouped[c.Target] = append(grouped[c.Target], c)
 	}
 	return grouped
+}
+
+// Delivery is how apply delivers the files of a repository, besides the
+// files themselves: the method, the commit message and, for a pull
+// request, its branch, title and body.
+type Delivery struct {
+	Via           string
+	CommitMessage string
+	Branch        string
+	PRTitle       string
+	PRBody        string
+}
+
+// DeliveryFor returns how apply delivers files to repo with opts, rendering
+// templates as apply does, so a plan can tell whether two repositories get
+// their files the same way. The pull request fields are set only for
+// pull_request.
+func DeliveryFor(opts ApplyOptions, repo string) (Delivery, error) {
+	msg, err := resolveCommitMessage(opts, repo)
+	if err != nil {
+		return Delivery{}, fmt.Errorf("render commit message: %w", err)
+	}
+	d := Delivery{Via: opts.Via, CommitMessage: msg}
+	if opts.Via != manifest.ViaPullRequest {
+		return d, nil
+	}
+	d.Branch = pullRequestBranch(opts)
+	if d.PRTitle, err = resolvePRTitle(opts, repo); err != nil {
+		return Delivery{}, err
+	}
+	if d.PRBody, err = resolvePRBody(opts, repo); err != nil {
+		return Delivery{}, err
+	}
+	return d, nil
+}
+
+// pullRequestBranch returns the branch a pull request is opened from.
+func pullRequestBranch(opts ApplyOptions) string {
+	if opts.Branch != "" {
+		return opts.Branch
+	}
+	return manifest.DefaultPRBranch(opts.FileSetID)
+}
+
+// resolvePRTitle returns the pull request title from opts, or the first
+// line of the commit message, rendered against repo.
+func resolvePRTitle(opts ApplyOptions, repo string) (string, error) {
+	if opts.PRTitle == "" {
+		msg, err := resolveCommitMessage(opts, repo)
+		if err != nil {
+			return "", fmt.Errorf("render PR title: %w", err)
+		}
+		title, _ := splitCommitMessage(msg)
+		return title, nil
+	}
+	if !HasTemplate(opts.PRTitle, nil) {
+		return opts.PRTitle, nil
+	}
+	title, err := RenderCommitMessage(opts.PRTitle, repo, opts.SourceURL)
+	if err != nil {
+		return "", fmt.Errorf("render PR title: %w", err)
+	}
+	return title, nil
+}
+
+// resolvePRBody returns the pull request body from opts or a default,
+// rendered against repo.
+func resolvePRBody(opts ApplyOptions, repo string) (string, error) {
+	if opts.PRBody == "" {
+		return fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetID), nil
+	}
+	if !HasTemplate(opts.PRBody, nil) {
+		return opts.PRBody, nil
+	}
+	body, err := RenderCommitMessage(opts.PRBody, repo, opts.SourceURL)
+	if err != nil {
+		return "", fmt.Errorf("render PR body: %w", err)
+	}
+	return body, nil
 }
 
 // resolveCommitMessage returns the commit message from opts or a default,

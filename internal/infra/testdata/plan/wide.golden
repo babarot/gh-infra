@@ -1,91 +1,12 @@
-  ~ org/team-01-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-02-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-03-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-04-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-05-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-06-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-07-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-08-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-09-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-10-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-11-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-12-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-13-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-14-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-15-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-16-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-17-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-18-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-19-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-20-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-21-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-22-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-23-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-24-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-25-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-26-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-27-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-28-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-29-service                                     1 to update
-      ~ features.wiki  true → false
-
-  ~ org/team-30-service                                     1 to update
+  ~ 30 repositories                                         1 to update each
+    org/team-01-service  org/team-02-service  org/team-03-service  org/team-04-service
+    org/team-05-service  org/team-06-service  org/team-07-service  org/team-08-service
+    org/team-09-service  org/team-10-service  org/team-11-service  org/team-12-service
+    org/team-13-service  org/team-14-service  org/team-15-service  org/team-16-service
+    org/team-17-service  org/team-18-service  org/team-19-service  org/team-20-service
+    org/team-21-service  org/team-22-service  org/team-23-service  org/team-24-service
+    org/team-25-service  org/team-26-service  org/team-27-service  org/team-28-service
+    org/team-29-service  org/team-30-service
       ~ features.wiki  true → false
 
 Plan: end of body
