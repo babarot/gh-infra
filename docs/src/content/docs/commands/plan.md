@@ -38,6 +38,23 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 | `--diff` | Show a unified diff for each FileSet file change, capped at 500 lines per file. Deleted files show no diff |
 | `-o, --output <format>` | `text` (default), `json`, or `markdown`. See [JSON output](../json-output/) and [Markdown output](../markdown-output/) |
 
+## Repositories with the same changes
+
+Repositories whose changes read the same are printed once, with every name listed under the header and the counts of one repository:
+
+```
+  ~ 12 repositories                                         2 to update each
+    acme/svc-auth  acme/svc-billing  acme/svc-catalog  acme/svc-checkout  acme/svc-gateway
+    acme/svc-inventory  acme/svc-mailer  acme/svc-orders  acme/svc-payments  acme/svc-search
+    acme/svc-shipping  acme/svc-users
+    ! differs per repository: file contents
+      ~ FileSet: 2 files, via pull_request
+          ~ .github/workflows/ci.yaml  +2 -1
+          ~ README.md                  +1 -1
+```
+
+The block is exactly what each repository would show on its own. Some of what `apply` does is not in the plan, though: file contents (without `--diff`), the bypass actors and rules of a ruleset (shown as `1 actors` and `enabled`), secret values, and the pull request branch and commit message of a FileSet, which templates can render per repository. When any of these differ among the repositories, the `!` line says which. With `--diff`, files whose contents differ show different diffs, so their repositories are not merged. A repository that is created or destroyed is always printed on its own. JSON and Markdown output list every repository separately.
+
 ## Exit status
 
 | Code | Meaning |

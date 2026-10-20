@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -13,20 +14,95 @@ import (
 // printPlan prints repository and fileset changes grouped by repo name.
 // FileSet changes for a repo are displayed after its repository changes.
 func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change, showDiff bool) {
-	printPlanWithNotes(p, repoChanges, fileChanges, nil, showDiff)
+	printPlanWithNotes(p, repoChanges, fileChanges, nil, nil, showDiff)
 }
 
 // printPlanWithNotes is printPlan with notes shown under each repository,
-// such as what its create leaves to the next plan.
-func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change, notes map[string][]string, showDiff bool) {
-	blocks := planBlocks(repoChanges, fileChanges, notes, showDiff)
+// such as what its create leaves to the next plan. unseen tells what apply
+// does to a repository that the body does not show; nil leaves it out.
+func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change, notes map[string][]string, unseen unseenFunc, showDiff bool) {
+	blocks := planBlocks(repoChanges, fileChanges, notes, unseen, showDiff)
 	ui.RenderPlanBlocks(p, ui.RewritePlanBlocks(blocks))
+}
+
+// unseenFunc returns what apply does to the repository name with the given
+// changes that the plan body does not show.
+type unseenFunc func(name string, repoChanges []repository.Change, fileChanges []fileset.Change) ui.Unseen
+
+// unseenOf is the unseenFunc of a plan of repos: the spec values apply
+// sends that the body summarizes, the file contents, and how the files are
+// delivered, each as JSON. A part that cannot be read is the repository's
+// name instead, so it always differs.
+func unseenOf(repos []*manifest.Repository) unseenFunc {
+	specs := make(map[string]manifest.RepositorySpec, len(repos))
+	for _, r := range repos {
+		specs[r.Metadata.FullName()] = r.Spec
+	}
+	return func(name string, repoChanges []repository.Change, fileChanges []fileset.Change) ui.Unseen {
+		asJSON := func(v any, err error) string {
+			b, jerr := json.Marshal(v)
+			if err != nil || jerr != nil {
+				return name
+			}
+			return string(b)
+		}
+		return ui.Unseen{
+			Settings: asJSON(repository.ApplyInputs(specs[name], repoChanges), nil),
+			Files:    asJSON(fileContents(fileChanges), nil),
+			Delivery: asJSON(fileDeliveries(name, fileChanges)),
+		}
+	}
+}
+
+// fileContents is what changes write to a repository, without its name.
+func fileContents(changes []fileset.Change) any {
+	type content struct {
+		Path, Type, Current, Desired, Mode, CurrentMode string
+	}
+	out := make([]content, len(changes))
+	for i, c := range changes {
+		out[i] = content{c.Path, string(c.Type), c.Current, c.Desired, c.Mode, c.CurrentMode}
+	}
+	return out
+}
+
+// fileDeliveries is how apply delivers changes to the repository name: per
+// FileSet, the files it delivers and how, built as apply builds it
+// (fileSetApplyArgs, and the via planned for the repository).
+func fileDeliveries(name string, changes []fileset.Change) (any, error) {
+	type delivery struct {
+		fileset.Delivery
+		NoCommits bool
+		Paths     []string
+	}
+	var out []delivery
+	index := make(map[*manifest.FileSet]int)
+	for _, c := range changes {
+		if i, ok := index[c.FileSet]; ok {
+			out[i].Paths = append(out[i].Paths, c.Path)
+			continue
+		}
+		index[c.FileSet] = len(out)
+		opts := fileset.ApplyOptions{}
+		if c.FileSet != nil {
+			_, opts = fileSetApplyArgs(c.FileSet, changes)
+		}
+		if c.Via != "" {
+			opts.Via = c.Via
+		}
+		d, err := fileset.DeliveryFor(opts, name)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, delivery{d, c.NoCommits, []string{c.Path}})
+	}
+	return out, nil
 }
 
 // planBlocks builds a block of the plan body per repository with changes,
 // in plan order. FileSet changes for a repository come after its
 // repository changes.
-func planBlocks(repoChanges []repository.Change, fileChanges []fileset.Change, notes map[string][]string, showDiff bool) []ui.PlanBlock {
+func planBlocks(repoChanges []repository.Change, fileChanges []fileset.Change, notes map[string][]string, unseen unseenFunc, showDiff bool) []ui.PlanBlock {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -89,6 +165,9 @@ func planBlocks(repoChanges []repository.Change, fileChanges []fileset.Change, n
 		}
 		if len(fChanges) > 0 {
 			b.Files = fileBlock(fChanges, showDiff)
+		}
+		if unseen != nil {
+			b.Unseen = unseen(name, rChanges, fChanges)
 		}
 		blocks = append(blocks, b)
 	}

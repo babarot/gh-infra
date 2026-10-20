@@ -60,7 +60,8 @@ type Printer interface {
 
 	// stdout: structured output
 	Separator()
-	RepoHeader(icon, name, detail, right string) // e.g. "~ babarot/repo        2 to create · 5 to update"
+	RepoHeader(icon, name, detail, right string)                               // e.g. "~ babarot/repo        2 to create · 5 to update"
+	RepoGroupHeader(icon string, names []string, right string, notes []string) // "~ 3 repositories", then the names
 	GroupHeader(icon, name string)
 	GroupEnd()
 	SetColumnWidth(w int) // set field/path column width for alignment
@@ -276,6 +277,69 @@ func (p *StandardPrinter) RepoHeader(icon, name, detail, right string) {
 		line += strings.Repeat(" ", max(2, repoHeaderColumn-width)) + Dim.Render(right)
 	}
 	p.line(p.out, "%s\n", line)
+}
+
+// repoNamesWidth is the widest a line of RepoGroupHeader's names gets, even
+// in a wider terminal, so the list stays readable.
+const repoNamesWidth = 100
+
+// RepoGroupHeader prints the header of a block that several repositories
+// share: "~ N repositories" with right from repoHeaderColumn on, the names
+// (linked to GitHub) wrapped below it, and, when notes is not empty, a line
+// saying what differs among them that the block does not show. Every name
+// is printed, so CI logs can be reviewed too.
+func (p *StandardPrinter) RepoGroupHeader(icon string, names []string, right string, notes []string) {
+	title := fmt.Sprintf("%d repositories", len(names))
+	line := Indent(IndentRoot) + renderIcon(icon) + " " + Bold.Render(title)
+	if right != "" {
+		width := len(Indent(IndentRoot)) + 2 + len(title)
+		line += strings.Repeat(" ", max(2, repoHeaderColumn-width)) + Dim.Render(right)
+	}
+	p.line(p.out, "%s\n", line)
+
+	limit := repoNamesWidth
+	if tw := p.termWidth(); tw > 0 {
+		limit = min(limit, tw)
+	}
+	ind := continuation(IndentRoot)
+	link := p.linkRepos()
+	for _, row := range wrapNames(names, limit-len(ind)) {
+		parts := make([]string, len(row))
+		for i, name := range row {
+			parts[i] = name
+			if link {
+				parts[i] = lipgloss.NewStyle().Hyperlink("https://github.com/" + name).Render(name)
+			}
+		}
+		p.line(p.out, "%s%s\n", ind, strings.Join(parts, "  "))
+	}
+	if len(notes) > 0 {
+		p.line(p.out, "%s%s %s\n", ind, Yellow.Render("!"), Dim.Render("differs per repository: "+strings.Join(notes, "; ")))
+	}
+}
+
+// wrapNames splits names into rows of at most width columns, two spaces
+// apart. A name wider than width gets a row of its own.
+func wrapNames(names []string, width int) [][]string {
+	var rows [][]string
+	var row []string
+	used := 0
+	for _, name := range names {
+		n := utf8.RuneCountInString(name)
+		if len(row) > 0 && used+2+n > width {
+			rows = append(rows, row)
+			row, used = nil, 0
+		}
+		if len(row) > 0 {
+			used += 2
+		}
+		row = append(row, name)
+		used += n
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 func (p *StandardPrinter) GroupHeader(icon, name string) {

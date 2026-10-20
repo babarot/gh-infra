@@ -1,12 +1,5 @@
-  ~ acme/repo-07                                            2 to update
-      ~ features.wiki                      true → false
-      ~ merge_strategy.allow_squash_merge  false → true
-
-  ~ acme/repo-19                                            2 to update
-      ~ features.wiki                      true → false
-      ~ merge_strategy.allow_squash_merge  false → true
-
-  ~ acme/repo-33                                            2 to update
+  ~ 3 repositories                                          2 to update each
+    acme/repo-07  acme/repo-19  acme/repo-33
       ~ features.wiki                      true → false
       ~ merge_strategy.allow_squash_merge  false → true
 
