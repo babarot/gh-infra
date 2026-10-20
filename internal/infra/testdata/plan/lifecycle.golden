@@ -1,0 +1,18 @@
+  + acme/new-app                                            will be created
+      + repository   acme/new-app
+      + description  New app
+      branch protection for main is applied by a later plan, once the branch exists
+      ~ FileSet: 1 file, via push
+          + README.md  +1
+      pushed to the default branch: the repository has no commits to open a pull request from
+
+  - acme/old-app                                            will be destroyed
+      - repository  acme/old-app
+
+  ~ acme/tools                                              2 to update
+      ~ homepage  "" → https://acme.example.com/tools
+      ~ FileSet: 1 file, via push
+          ~ bin/setup  +1 mode 100644 → 100755
+      Changing file modes needs the Git Data API, so this commit will not be signed
+
+Plan: end of body

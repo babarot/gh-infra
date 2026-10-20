@@ -19,6 +19,14 @@ func printPlan(p ui.Printer, repoChanges []repository.Change, fileChanges []file
 // printPlanWithNotes is printPlan with notes shown under each repository,
 // such as what its create leaves to the next plan.
 func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChanges []fileset.Change, notes map[string][]string, showDiff bool) {
+	blocks := planBlocks(repoChanges, fileChanges, notes, showDiff)
+	ui.RenderPlanBlocks(p, ui.RewritePlanBlocks(blocks))
+}
+
+// planBlocks builds a block of the plan body per repository with changes,
+// in plan order. FileSet changes for a repository come after its
+// repository changes.
+func planBlocks(repoChanges []repository.Change, fileChanges []fileset.Change, notes map[string][]string, showDiff bool) []ui.PlanBlock {
 	// Build ordered list of unique repo names (preserving appearance order)
 	seen := make(map[string]bool)
 	var repoNames []string
@@ -57,74 +65,57 @@ func printPlanWithNotes(p ui.Printer, repoChanges []repository.Change, fileChang
 		repoByName[c.Name] = append(repoByName[c.Name], c)
 	}
 
+	var blocks []ui.PlanBlock
 	for _, name := range repoNames {
 		rChanges := repoByName[name]
 		fChanges := fileByTarget[name]
 
-		// Determine action type for this repo group
-		isNew := false
-		isDestroy := false
+		b := ui.PlanBlock{
+			Names:  []string{name},
+			Icon:   ui.IconChange,
+			Right:  changeCounts(rChanges, fChanges),
+			Groups: repoChangesToDiffGroups(rChanges),
+			Notes:  notes[name],
+		}
 		for _, c := range rChanges {
 			if c.Type == repository.ChangeCreate && c.Field == "repository" {
-				isNew = true
+				b.Icon, b.Right = ui.IconAdd, "will be created"
 				break
 			}
 			if c.Type == repository.ChangeDelete && c.Field == "repository" {
-				isDestroy = true
+				b.Icon, b.Right = ui.IconRemove, "will be destroyed"
 				break
 			}
 		}
-
-		switch {
-		case isNew:
-			p.RepoHeader(ui.IconAdd, name, "", "will be created")
-		case isDestroy:
-			p.RepoHeader(ui.IconRemove, name, "", "will be destroyed")
-		default:
-			p.RepoHeader(ui.IconChange, name, "", changeCounts(rChanges, fChanges))
-		}
-
-		// Convert to unified display model and render.
-		diffGroups := repoChangesToDiffGroups(rChanges)
-		p.SetColumnWidth(ui.DiffGroupFieldWidth(diffGroups))
-		ui.RenderDiffGroups(p, diffGroups)
-		for _, n := range notes[name] {
-			p.Detail(n)
-		}
-
-		// Print fileset changes (aligned by file path width, independent of repo fields)
 		if len(fChanges) > 0 {
-			p.SetColumnWidth(filePathWidth(fChanges))
-			label := fmt.Sprintf("%d file", len(fChanges))
-			if len(fChanges) != 1 {
-				label += "s"
-			}
-			// Show delivery method if available
-			via := fChanges[0].Via
-			if via != "" {
-				label += ", via " + ui.Cyan.Render(via)
-			}
-			p.SubGroupHeader(ui.IconChange, fmt.Sprintf("FileSet: %s", ui.Bold.Render(label)))
-			unsigned := false
-			for _, c := range fChanges {
-				added, removed := fileset.DiffStat(c.Current, c.Desired)
-				p.PrintFileChange(fileChangeToItem(c, added, removed))
-				if showDiff {
-					printFileDiff(p, c)
-				}
-				unsigned = unsigned || c.ModeChanged()
-			}
-			if fChanges[0].NoCommits {
-				p.Detail(fileset.NoCommitsNote)
-			}
-			if unsigned {
-				p.Detail("Changing file modes needs the Git Data API, so this commit will not be signed")
-			}
+			b.Files = fileBlock(fChanges, showDiff)
 		}
-
-		p.GroupEnd()
-		p.SetColumnWidth(0)
+		blocks = append(blocks, b)
 	}
+	return blocks
+}
+
+// fileBlock holds the FileSet changes of one repository.
+func fileBlock(changes []fileset.Change, showDiff bool) *ui.FileBlock {
+	f := &ui.FileBlock{Via: changes[0].Via}
+	unsigned := false
+	for _, c := range changes {
+		added, removed := fileset.DiffStat(c.Current, c.Desired)
+		f.Items = append(f.Items, fileChangeToItem(c, added, removed))
+		diff := ""
+		if showDiff {
+			diff = fileDiff(c)
+		}
+		f.Diffs = append(f.Diffs, diff)
+		unsigned = unsigned || c.ModeChanged()
+	}
+	if changes[0].NoCommits {
+		f.Notes = append(f.Notes, fileset.NoCommitsNote)
+	}
+	if unsigned {
+		f.Notes = append(f.Notes, "Changing file modes needs the Git Data API, so this commit will not be signed")
+	}
+	return f
 }
 
 // changeCounts describes a repository's changes for its header, such as

@@ -1,0 +1,72 @@
+  ~ babarot/gh-infra                                        1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/gomi                                            1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ff0000 → d73a4a
+
+  ~ babarot/afx                                             1 to create · 2 to update
+      ~ description  afx → Package manager for CLI
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/enhancd                                         1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/github-labeler                                  1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/pinentry-touchid                                1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/dotfiles                                        1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/mo                                              1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/gh-news                                         1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/herdr                                           1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/tellme                                          1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/ghq-fzf                                         1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/zsh-history                                     1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+  ~ babarot/go-ci                                           1 to create · 1 to update
+      ~ labels
+          + dependencies  #0366d6 "Pull requests that update a dependency"
+          ~ bug.color     ee0701 → d73a4a
+
+Plan: end of body
