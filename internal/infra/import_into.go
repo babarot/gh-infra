@@ -346,7 +346,7 @@ func printImportPlan(p ui.Printer, plan *importer.Result) {
 
 		width := 0
 		if len(rDiffs) > 0 {
-			groups := fieldDiffsToDiffGroups(rDiffs)
+			groups := ui.FlattenSingleChild(fieldDiffsToDiffGroups(rDiffs))
 			width = ui.DiffGroupFieldWidth(groups)
 			p.SetColumnWidth(width)
 			ui.RenderDiffGroups(p, groups)
@@ -498,7 +498,7 @@ func fieldDiffsToDiffGroups(diffs []importer.FieldDiff) []ui.DiffGroup {
 
 		if nestedObject[prefix] {
 			// Collect consecutive diffs with same prefix
-			dg := ui.DiffGroup{Header: prefix, Icon: ui.IconChange}
+			dg := ui.DiffGroup{Header: prefix, Icon: ui.IconChange, Path: true}
 			for i < len(diffs) {
 				p, r, ok := splitField(diffs[i].Field)
 				if !ok || p != prefix {

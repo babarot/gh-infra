@@ -758,3 +758,23 @@ func TestIsListedChange(t *testing.T) {
 		t.Errorf("listed: update=%v noop=%v hardSkip=%v", isListedChange(update), isListedChange(noop), isListedChange(hardSkip))
 	}
 }
+
+func TestFieldDiffsToDiffGroups_OnlyNestedObjectsArePaths(t *testing.T) {
+	diffs := []importer.FieldDiff{
+		{Field: "features.wiki", Old: true, New: false},
+		{Field: "branch_protection.main.required_reviews", Old: nil, New: 1},
+		{Field: "labels.bug", Old: nil, New: "d73a4a"},
+		{Field: "unknown.key", Old: nil, New: 1},
+	}
+	want := map[string]bool{"features": true, `branch protection "main"`: false, "labels": false, "unknown": false}
+	for _, g := range fieldDiffsToDiffGroups(diffs) {
+		path, ok := want[g.Header]
+		if !ok {
+			t.Errorf("unexpected group %q", g.Header)
+			continue
+		}
+		if g.Path != path {
+			t.Errorf("group %q: Path = %v, want %v", g.Header, g.Path, path)
+		}
+	}
+}

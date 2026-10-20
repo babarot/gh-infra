@@ -1,12 +1,10 @@
   ~ babarot/gh-infra                                        7 to update
       ~ description  gh infra → Declarative GitHub infrastructure
-      ~ features
-          ~ wiki  true → false
+      ~ features.wiki  true → false
       ~ merge_strategy
           ~ allow_squash_merge         false → true
           ~ auto_delete_head_branches  false → true
-      ~ security
-          ~ secret_scanning  disabled → enabled
+      ~ security.secret_scanning  disabled → enabled
       ~ ruleset "main"
           ~ enforcement  evaluate → active
       ~ labels

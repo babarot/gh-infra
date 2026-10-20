@@ -1,8 +1,7 @@
   ~ acme/api                                                1 to create · 5 to update
       ~ description  api server → API server for acme
       ~ topics       [] → [go, api, grpc]
-      ~ features
-          ~ wiki  true → false
+      ~ features.wiki  true → false
       ~ merge_strategy
           ~ allow_squash_merge         false → true
           ~ auto_delete_head_branches  false → true
@@ -13,8 +12,7 @@
   ~ acme/web                                                1 to create · 4 to update
       ~ description  web → Web frontend
       ~ topics       [] → [typescript, react]
-      ~ features
-          ~ wiki  true → false
+      ~ features.wiki  true → false
       ~ merge_strategy
           ~ allow_squash_merge         false → true
           ~ auto_delete_head_branches  false → true
