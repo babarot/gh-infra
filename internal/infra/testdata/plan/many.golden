@@ -1,6 +1,6 @@
   ~ 3 repositories                                          2 to update each
     acme/repo-07  acme/repo-19  acme/repo-33
-      ~ features.wiki                      true → false
+      ~ features.wiki                      true  → false
       ~ merge_strategy.allow_squash_merge  false → true
 
   + acme/repo-38                                            will be created

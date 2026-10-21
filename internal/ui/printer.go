@@ -404,7 +404,7 @@ func (p *StandardPrinter) SubGroupHeader(icon, name string) {
 func (p *StandardPrinter) PrintChangeLine(l ChangeLine) {
 	icon := renderIcon(l.Icon)
 	if l.Arrow {
-		p.line(p.out, "%s%s %s  %s %s %s\n", l.Indent, icon, l.Field, Dim.Render(l.Old), Dim.Render(IconArrow), Bold.Render(l.New))
+		p.line(p.out, "%s%s %s  %s%s %s %s\n", l.Indent, icon, l.Field, Dim.Render(l.Old), strings.Repeat(" ", l.OldPad), Dim.Render(IconArrow), Bold.Render(l.New))
 		return
 	}
 	value := Green
