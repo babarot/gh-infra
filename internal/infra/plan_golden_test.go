@@ -23,6 +23,7 @@ type planScene struct {
 	notes    map[string][]string
 	specs    []*manifest.Repository // what apply reads beyond the changes
 	showDiff bool
+	width    int // terminal width to lay the body out for; 0 is no terminal
 }
 
 // TestPlanBodyGolden compares the whole plan body of each scene with its
@@ -34,7 +35,7 @@ func TestPlanBodyGolden(t *testing.T) {
 	for name, scene := range planScenes() {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			p := ui.NewStandardPrinterWith(&buf, &buf)
+			p := ui.NewStandardPrinterWith(&buf, &buf, ui.WithWidth(scene.width))
 			printPlanWithNotes(p, scene.repo, scene.files, scene.notes, unseenOf(scene.specs), scene.showDiff)
 			p.Summary("Plan: end of body") // flushes the blank line a block leaves pending
 
@@ -78,7 +79,81 @@ func planScenes() map[string]planScene {
 	tmplDiff := templateScene()
 	tmplDiff.showDiff = true
 	scenes["template-diff"] = tmplDiff
+	// Scenes laid out for a terminal, where values are cut at its width and
+	// the columns of change lines are decided.
+	for name, scene := range map[string]func() planScene{
+		"mixed": mixedScene, "long": longValuesScene, "mixed-types": mixedTypesScene,
+		"groups": groupsScene, "pushed": pushedScene, "long-flat": longFlatScene,
+	} {
+		for _, width := range []int{80, 100} {
+			s := scene()
+			s.width = width
+			scenes[fmt.Sprintf("%s-w%d", name, width)] = s
+		}
+	}
 	return scenes
+}
+
+// longValuesScene rewrites a description whose old and new values are both
+// long next to short values in the same column block.
+func longValuesScene() planScene {
+	const name = "babarot/gh-infra"
+	return planScene{repo: []repository.Change{
+		update(name, "description", "Manage GitHub repository settings declaratively with YAML", "Declarative GitHub infrastructure: repositories, files and rulesets as code"),
+		update(name, "homepage", "", "https://babarot.github.io/gh-infra"),
+		update(name, "visibility", "private", "public"),
+		update(name, "topics", []string{"github", "cli"}, []string{"github", "cli", "iac", "gh-extension"}),
+	}}
+}
+
+// mixedTypesScene mixes updates with a create and a delete, whose values
+// have no arrow; the create's value is long enough to be cut at 80 columns.
+func mixedTypesScene() planScene {
+	const name = "acme/tools"
+	return planScene{repo: []repository.Change{
+		update(name, "description", "tools", "Internal tools"),
+		{Type: repository.ChangeCreate, Resource: manifest.ResourceRepository, Name: name, Field: "homepage", NewValue: "https://acme.example.com/tools/internal/handbook/getting-started/overview"},
+		update(name, "visibility", "private", "internal"),
+		{Type: repository.ChangeDelete, Resource: manifest.ResourceRepository, Name: name, Field: "topics", OldValue: []string{"legacy"}},
+	}}
+}
+
+// groupsScene has change lines inside headed groups.
+func groupsScene() planScene {
+	const name = "acme/api"
+	return planScene{repo: []repository.Change{
+		group(name, "merge_strategy", child("allow_squash_merge", false, true), child("squash_merge_commit_title", "COMMIT_OR_PR_TITLE", "PR_TITLE")),
+		{Type: repository.ChangeUpdate, Resource: "Ruleset[main]", Name: name, Field: "ruleset", NewValue: "main",
+			Details: []repository.Change{
+				child("enforcement", "evaluate", "active"),
+				child("conditions", "~DEFAULT_BRANCH", "~DEFAULT_BRANCH, refs/heads/release/*"),
+				child("bypass_actors", "0 actors", "1 actors"),
+			}},
+		{Type: repository.ChangeCreate, Resource: manifest.ResourceLabel, Name: name, Field: "dependencies", NewValue: `#0366d6 "Pull requests that update a dependency"`},
+		{Type: repository.ChangeUpdate, Resource: manifest.ResourceLabel, Name: name, Field: "bug",
+			Details: []repository.Change{child("color", "ee0701", "d73a4a"), child("description", `"Something is wrong"`, `"Something isn't working"`)}},
+	}}
+}
+
+// pushedScene has a short old value whose new value just fits at 80
+// columns, which aligning the old values would push past the edge.
+func pushedScene() planScene {
+	const name = "babarot/gh-infra"
+	return planScene{repo: []repository.Change{
+		update(name, "description", "gh infra", "Declarative GitHub infrastructure"),
+		update(name, "homepage", "", "https://babarot.github.io/gh-infra/introduction/start"),
+	}}
+}
+
+// longFlatScene puts a long flattened name next to plain fields.
+func longFlatScene() planScene {
+	const name = "babarot/gh-infra"
+	return planScene{repo: []repository.Change{
+		update(name, "description", "gh infra", "Declarative GitHub infrastructure: repositories, files and rulesets as code"),
+		update(name, "homepage", "", "https://babarot.github.io/gh-infra"),
+		group(name, "merge_strategy", child("allow_squash_merge", false, true)),
+		update(name, "visibility", "private", "public"),
+	}}
 }
 
 func update(name, field string, old, new any) repository.Change {

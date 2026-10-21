@@ -99,6 +99,7 @@ type StandardPrinter struct {
 	out      io.Writer
 	err      io.Writer
 	colWidth int // dynamic column width for Item/SubItem alignment
+	width    int // terminal width to use instead of the writers'; 0 asks the writers
 	// mu keeps the lines that concurrent work prints (progress, stream lines,
 	// errors and warnings) whole when several goroutines print at once, and
 	// guards pendingBlank.
@@ -119,8 +120,22 @@ func NewStandardPrinter() *StandardPrinter {
 }
 
 // NewStandardPrinterWith creates a StandardPrinter with custom writers (for testing).
-func NewStandardPrinterWith(out, err io.Writer) *StandardPrinter {
-	return &StandardPrinter{out: out, err: err}
+func NewStandardPrinterWith(out, err io.Writer, opts ...PrinterOption) *StandardPrinter {
+	p := &StandardPrinter{out: out, err: err}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
+}
+
+// PrinterOption configures a StandardPrinter.
+type PrinterOption func(*StandardPrinter)
+
+// WithWidth makes the printer lay out its output for a terminal n columns
+// wide, whatever it writes to, so tests can cover what depends on the
+// terminal width.
+func WithWidth(n int) PrinterOption {
+	return func(p *StandardPrinter) { p.width = n }
 }
 
 func (p *StandardPrinter) OutWriter() io.Writer { return p.out }
@@ -138,6 +153,9 @@ func (p *StandardPrinter) isOutTerminal() bool {
 
 // termWidth returns the terminal width, or 0 if unavailable.
 func (p *StandardPrinter) termWidth() int {
+	if p.width > 0 {
+		return p.width
+	}
 	f, ok := p.out.(*os.File)
 	if !ok {
 		return 0
@@ -153,6 +171,9 @@ func (p *StandardPrinter) termWidth() int {
 // unavailable. Used for wrapping error reports that are written to stderr;
 // stderr may still be a TTY even when stdout has been redirected.
 func (p *StandardPrinter) errTermWidth() int {
+	if p.width > 0 {
+		return p.width
+	}
 	f, ok := p.err.(*os.File)
 	if !ok {
 		return 0

@@ -1,0 +1,7 @@
+  ~ babarot/gh-infra                                        4 to update
+      ~ description  Manage GitHub repository… → Declarative GitHub infrastructure: repositories, …
+      ~ homepage     "" → https://babarot.github.io/gh-infra
+      ~ visibility   private → public
+      ~ topics       [github, cli] → [github, cli, iac, gh-extension]
+
+Plan: end of body

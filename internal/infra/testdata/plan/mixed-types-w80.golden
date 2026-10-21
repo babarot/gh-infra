@@ -1,0 +1,7 @@
+  ~ acme/tools                                              1 to create · 2 to update · 1 to destroy
+      ~ description  tools → Internal tools
+      + homepage     https://acme.example.com/tools/internal/handbook/getti…
+      ~ visibility   private → internal
+      - topics       [legacy]
+
+Plan: end of body
