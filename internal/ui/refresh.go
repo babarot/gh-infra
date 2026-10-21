@@ -581,7 +581,7 @@ func (m refreshModel) headingLine() string {
 		return Green.Render(IconSuccess) + " " + line
 	}
 
-	line := fmt.Sprintf("%s  %s  %d/%d  %s", m.heading.Title, progressBar(finished, total, progressBarWidth), finished, total, Dim.Render(formatSeconds(m.now().Sub(m.start))))
+	line := fmt.Sprintf("%s  %s  %s  %s", m.heading.Title, progressBar(finished, total, progressBarWidth), m.progressCount(finished, total), Dim.Render(formatSeconds(m.now().Sub(m.start))))
 	more := m.gauge()
 	if queued > 0 {
 		more = append(more, Dim.Render(fmt.Sprintf("%d queued", queued)))
@@ -590,6 +590,16 @@ func (m refreshModel) headingLine() string {
 		line += Dim.Render("  · ") + strings.Join(more, Dim.Render(" · "))
 	}
 	return line
+}
+
+// progressCount is how far the heading is, as "2/5". A heading that counts
+// repositories says so ("2/5 repositories"), since its title does not;
+// one that counts changes names them in its title ("Applying 6 changes").
+func (m refreshModel) progressCount(done, total int) string {
+	if m.heading.Changes > 0 {
+		return fmt.Sprintf("%d/%d", done, total)
+	}
+	return fmt.Sprintf("%d/%s", done, repositories(total))
 }
 
 // progress returns how much is done of how much: the steps of the tasks
