@@ -3,6 +3,7 @@ package infra
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -392,45 +393,28 @@ func TestFilePathWidth_Empty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// changeToItem
+// changeToDiffItem
 // ---------------------------------------------------------------------------
 
-func TestChangeToItem_Create(t *testing.T) {
-	c := repository.Change{Type: repository.ChangeCreate, Field: "homepage", NewValue: "https://example.com"}
-	item := changeToItem(c, ui.IndentItem)
-
-	if item.Icon != ui.IconAdd {
-		t.Errorf("icon = %q, want %q", item.Icon, ui.IconAdd)
+func TestChangeToDiffItem(t *testing.T) {
+	tests := []struct {
+		name string
+		c    repository.Change
+		want ui.DiffItem
+	}{
+		{"create", repository.Change{Type: repository.ChangeCreate, Field: "homepage", NewValue: "https://example.com"},
+			ui.DiffItem{Icon: ui.IconAdd, Field: "homepage", Value: "https://example.com"}},
+		{"update", repository.Change{Type: repository.ChangeUpdate, Field: "description", OldValue: "old", NewValue: "new"},
+			ui.DiffItem{Icon: ui.IconChange, Field: "description", Old: "old", New: "new"}},
+		{"delete", repository.Change{Type: repository.ChangeDelete, Field: "topics", OldValue: []string{"go"}},
+			ui.DiffItem{Icon: ui.IconRemove, Field: "topics", Value: []string{"go"}}},
 	}
-	if item.Field != "homepage" {
-		t.Errorf("field = %q, want homepage", item.Field)
-	}
-	if item.Level != ui.IndentItem {
-		t.Errorf("expected Level=IndentItem, got %d", item.Level)
-	}
-}
-
-func TestChangeToItem_Update(t *testing.T) {
-	c := repository.Change{Type: repository.ChangeUpdate, Field: "description", OldValue: "old", NewValue: "new"}
-	item := changeToItem(c, ui.IndentSub)
-
-	if item.Icon != ui.IconChange {
-		t.Errorf("icon = %q, want %q", item.Icon, ui.IconChange)
-	}
-	if item.Old != "old" || item.New != "new" {
-		t.Errorf("old/new = %q/%q, want old/new", item.Old, item.New)
-	}
-	if item.Level != ui.IndentSub {
-		t.Errorf("expected Level=IndentSub, got %d", item.Level)
-	}
-}
-
-func TestChangeToItem_Delete(t *testing.T) {
-	c := repository.Change{Type: repository.ChangeDelete, Field: "topics", OldValue: []string{"go"}}
-	item := changeToItem(c, ui.IndentItem)
-
-	if item.Icon != ui.IconRemove {
-		t.Errorf("icon = %q, want %q", item.Icon, ui.IconRemove)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := changeToDiffItem(tt.c); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 

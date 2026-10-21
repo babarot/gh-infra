@@ -15,17 +15,6 @@ import (
 	goyaml "github.com/goccy/go-yaml"
 )
 
-// ChangeItem represents a single field-level change for PrintChange.
-type ChangeItem struct {
-	Icon  string // IconAdd, IconChange, IconRemove
-	Field string
-	Value any         // for create/delete: the value; for update: ignored
-	Old   string      // for update only
-	New   string      // for update only
-	Level IndentLevel // IndentItem (default) or IndentSub
-	Width int         // field column width; 0 uses the printer's column width
-}
-
 // FileItem represents a file-level change for PrintFileChange.
 type FileItem struct {
 	Icon    string // IconAdd, IconChange, IconRemove, IconWarning
@@ -66,7 +55,8 @@ type Printer interface {
 	GroupEnd()
 	SetColumnWidth(w int) // set field/path column width for alignment
 	SubGroupHeader(icon, name string)
-	PrintChange(item ChangeItem)
+	PrintChangeLine(l ChangeLine) // a settings change line from layoutChanges
+	Width() int                   // the terminal width output is laid out for; 0 without a terminal
 	PrintFileChange(item FileItem)
 	PrintDiffBlock(diff string) // emit colored unified diff at IndentSub indent
 	PrintResult(item ResultItem)
@@ -410,42 +400,24 @@ func (p *StandardPrinter) SubGroupHeader(icon, name string) {
 	p.line(p.out, "%s%s %s\n", Indent(IndentItem), renderIcon(icon), Bold.Render(name))
 }
 
-// PrintChange prints a single field-level change (create, update, or delete).
-// The Sub field controls indentation: false = top-level, true = sub-level.
-func (p *StandardPrinter) PrintChange(item ChangeItem) {
-	level := max(item.Level, IndentItem)
-	ind := Indent(level)
-	width := p.widthForLevel(level)
-	if item.Width > 0 {
-		width = item.Width
+// PrintChangeLine prints a settings change line laid out by layoutChanges.
+func (p *StandardPrinter) PrintChangeLine(l ChangeLine) {
+	icon := renderIcon(l.Icon)
+	if l.Arrow {
+		p.line(p.out, "%s%s %s  %s %s %s\n", l.Indent, icon, l.Field, Dim.Render(l.Old), Dim.Render(IconArrow), Bold.Render(l.New))
+		return
 	}
-	icon := renderIcon(item.Icon)
-	switch item.Icon {
-	case IconAdd:
-		val := FormatValue(item.Value)
-		if tw := p.termWidth(); tw > 0 {
-			prefix := len(ind) + 2 + 1 + width + 2
-			_, val = truncateChangeValues("", val, tw, prefix)
-		}
-		p.line(p.out, "%s%s %-*s  %s\n",
-			ind, icon, width, item.Field, Green.Render(val))
-	case IconChange:
-		old, new := item.Old, item.New
-		if tw := p.termWidth(); tw > 0 {
-			prefix := len(ind) + 2 + 1 + width + 2 // indent + icon + space + field (padded) + 2 spaces
-			old, new = truncateChangeValues(old, new, tw, prefix)
-		}
-		p.line(p.out, "%s%s %-*s  %s %s %s\n",
-			ind, icon, width, item.Field, Dim.Render(old), Dim.Render(IconArrow), Bold.Render(new))
-	case IconRemove:
-		val := FormatValue(item.Value)
-		if tw := p.termWidth(); tw > 0 {
-			prefix := len(ind) + 2 + 1 + width + 2
-			_, val = truncateChangeValues("", val, tw, prefix)
-		}
-		p.line(p.out, "%s%s %-*s  %s\n",
-			ind, icon, width, item.Field, Red.Render(val))
+	value := Green
+	if l.Icon == IconRemove {
+		value = Red
 	}
+	p.line(p.out, "%s%s %s  %s\n", l.Indent, icon, l.Field, value.Render(l.New))
+}
+
+// Width returns the terminal width output is laid out for: WithWidth's, or
+// stdout's when it is a terminal, or 0.
+func (p *StandardPrinter) Width() int {
+	return p.termWidth()
 }
 
 // File change descriptions used in plan output.

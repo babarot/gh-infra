@@ -4,10 +4,10 @@
           ~ squash_merge_commit_title  COMMIT_OR_PR_TITLE → PR_TITLE
       ~ ruleset "main"
           ~ enforcement    evaluate → active
-          ~ conditions     ~DEFAULT_BRANCH → ~DEFAULT_BRANCH, refs/heads/relea…
+          ~ conditions     ~DEFAULT_BRANCH → ~DEFAULT_BRANCH, refs/heads/releas…
           ~ bypass_actors  0 actors → 1 actors
       ~ labels
-          + dependencies     #0366d6 "Pull requests that update a dependenc…
+          + dependencies     #0366d6 "Pull requests that update a dependency"
           ~ bug.color        ee0701 → d73a4a
           ~ bug.description  "Something is wrong" → "Something isn't working"
 
