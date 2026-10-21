@@ -113,68 +113,6 @@ func TestRenderIcon(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// PrintChange
-// ---------------------------------------------------------------------------
-
-func TestPrintChange_Create(t *testing.T) {
-	var buf bytes.Buffer
-	p := NewStandardPrinterWith(&buf, &buf)
-
-	p.PrintChange(ChangeItem{Icon: IconAdd, Field: "description", Value: "hello"})
-	out := buf.String()
-
-	if !strings.Contains(out, "+") {
-		t.Errorf("expected + icon, got:\n%s", out)
-	}
-	if !strings.Contains(out, "description") {
-		t.Errorf("expected field name, got:\n%s", out)
-	}
-	if !strings.Contains(out, "hello") {
-		t.Errorf("expected value, got:\n%s", out)
-	}
-}
-
-func TestPrintChange_Update(t *testing.T) {
-	var buf bytes.Buffer
-	p := NewStandardPrinterWith(&buf, &buf)
-
-	p.PrintChange(ChangeItem{Icon: IconChange, Field: "visibility", Old: "private", New: "public"})
-	out := buf.String()
-
-	if !strings.Contains(out, "~") {
-		t.Errorf("expected ~ icon, got:\n%s", out)
-	}
-	if !strings.Contains(out, "private") || !strings.Contains(out, "public") {
-		t.Errorf("expected old/new values, got:\n%s", out)
-	}
-}
-
-func TestPrintChange_Delete(t *testing.T) {
-	var buf bytes.Buffer
-	p := NewStandardPrinterWith(&buf, &buf)
-
-	p.PrintChange(ChangeItem{Icon: IconRemove, Field: "homepage", Value: "https://old.com"})
-	out := buf.String()
-
-	if !strings.Contains(out, "-") {
-		t.Errorf("expected - icon, got:\n%s", out)
-	}
-}
-
-func TestPrintChange_SubIndent(t *testing.T) {
-	var buf bytes.Buffer
-	p := NewStandardPrinterWith(&buf, &buf)
-
-	p.PrintChange(ChangeItem{Icon: IconAdd, Field: "issues", Value: true, Level: IndentSub})
-	out := buf.String()
-
-	// Sub-level should have more leading spaces than top-level
-	if !strings.HasPrefix(out, "          ") {
-		t.Errorf("expected 10-space indent for Sub, got:\n%q", out)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // truncateChangeValues
 // ---------------------------------------------------------------------------
 

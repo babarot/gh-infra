@@ -640,20 +640,6 @@ func filePathWidth(changes []fileset.Change) int {
 	return w
 }
 
-// changeToItem converts a repository.Change to a ui.ChangeItem.
-func changeToItem(c repository.Change, level ui.IndentLevel) ui.ChangeItem {
-	switch c.Type {
-	case repository.ChangeCreate:
-		return ui.ChangeItem{Icon: ui.IconAdd, Field: c.Field, Value: c.NewValue, Level: level}
-	case repository.ChangeUpdate:
-		return ui.ChangeItem{Icon: ui.IconChange, Field: c.Field, Old: ui.FormatValue(c.OldValue), New: ui.FormatValue(c.NewValue), Level: level}
-	case repository.ChangeDelete:
-		return ui.ChangeItem{Icon: ui.IconRemove, Field: c.Field, Value: c.OldValue, Level: level}
-	default:
-		return ui.ChangeItem{Field: c.Field, Level: level}
-	}
-}
-
 // fileChangeToItem converts a fileset.FileChange to a ui.FileItem.
 func fileChangeToItem(c fileset.Change, added, removed int) ui.FileItem {
 	item := changeTypeToItem(c, added, removed)

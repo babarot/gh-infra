@@ -37,9 +37,8 @@ func RenderDiffGroups(p Printer, groups []DiffGroup) {
 	for i := 0; i < len(groups); {
 		if g := groups[i]; g.Header != "" {
 			p.SubGroupHeader(g.Icon, g.Header)
-			w := itemFieldWidth(g.Items)
-			for _, item := range g.Items {
-				p.PrintChange(itemToChangeItem(item, IndentSub, w))
+			for _, l := range layoutChanges(g.Items, IndentSub, p.Width()) {
+				p.PrintChangeLine(l)
 			}
 			i++
 			continue
@@ -53,9 +52,8 @@ func RenderDiffGroups(p Printer, groups []DiffGroup) {
 			for n < len(bare) && bare[n].Flattened == bare[0].Flattened {
 				n++
 			}
-			w := itemFieldWidth(bare[:n])
-			for _, item := range bare[:n] {
-				p.PrintChange(itemToChangeItem(item, IndentItem, w))
+			for _, l := range layoutChanges(bare[:n], IndentItem, p.Width()) {
+				p.PrintChangeLine(l)
 			}
 			bare = bare[n:]
 		}
@@ -94,16 +92,4 @@ func itemFieldWidth(items []DiffItem) int {
 		w = max(w, len(item.Field))
 	}
 	return w
-}
-
-func itemToChangeItem(item DiffItem, level IndentLevel, width int) ChangeItem {
-	return ChangeItem{
-		Icon:  item.Icon,
-		Field: item.Field,
-		Value: item.Value,
-		Old:   item.Old,
-		New:   item.New,
-		Level: level,
-		Width: width,
-	}
 }
