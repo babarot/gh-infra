@@ -79,14 +79,15 @@ export const planLeft = `<span class="hl-key">apiVersion:</span> gh-infra/v1
     - <span class="hl-changed">go</span>
     - <span class="hl-changed">cli</span>`;
 
-export const planRight = `  <span class="hl-change">~</span> <span class="hl-repo">babarot/my-project</span>  <span class="hl-dim">1 to create · 2 to update</span>
-      <span class="hl-change">~</span> features.wiki         <span class="hl-old">true</span> <span class="hl-dim">→</span> <span class="hl-new">false</span>
-      <span class="hl-change">~</span> features.discussions  <span class="hl-old">false</span> <span class="hl-dim">→</span> <span class="hl-new">true</span>
-      <span class="hl-add">+</span> topics                <span class="hl-new">[go, cli]</span>
+export const planRight = `  <span class="hl-change">~</span> <span class="hl-repo">babarot/my-project</span>  <span class="hl-dim">2 to update</span>
+      <span class="hl-change">~</span> <span class="hl-repo">features</span>
+          <span class="hl-change">~</span> wiki         <span class="hl-old">true</span> <span class="hl-dim">→</span> <span class="hl-new">false</span>
+          <span class="hl-change">~</span> discussions  <span class="hl-old">false</span> <span class="hl-dim">→</span> <span class="hl-new">true</span>
+      <span class="hl-change">~</span> topics  <span class="hl-old">[]</span> <span class="hl-dim">→</span> <span class="hl-new">[go, cli]</span>
 
 <span class="hl-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 
-Plan: <span class="hl-add">+</span> <span class="hl-repo">1</span> to create   <span class="hl-change">~</span> <span class="hl-repo">2</span> to update   - <span class="hl-repo">0</span> to destroy
+Plan: <span class="hl-add">+</span> <span class="hl-repo">0</span> to create   <span class="hl-change">~</span> <span class="hl-repo">2</span> to update   - <span class="hl-repo">0</span> to destroy
       <span class="hl-dim">in 1 repository</span>
 To apply, run: <span class="hl-repo">gh infra apply ./repos/</span>`;
 
