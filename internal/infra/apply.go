@@ -45,36 +45,10 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 		return nil, err
 	}
 
-	repoChanges, archives := splitArchives(result.RepoChanges)
-	repoNames := changedRepoNames(repoChanges)
-	fileSets := fileSetWorkOf(result)
-	totals := applyTotals(result.RepoChanges, result.FileChanges)
-	tasks := applyTasks(repoNames, fileSets, changedRepoNames(archives), totals)
-	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, tasks, totals, createOnlyRepos(result.RepoChanges, result.FileChanges))
+	work := applyWorkOf(result)
+	view, ctx, stop := startApplyView(ctx, opts.Stream, eng, work.tasks, work.totals, work.createOnly)
 	defer stop()
-
-	// The steps run in this order in every mode; a mode only changes how
-	// progress is shown and whether the results are listed at the end.
-
-	// Step 1: repositories. A FileSet may write to a repository this apply
-	// creates, so they go first.
-	var repoResults []repository.ApplyResult
-	if len(repoNames) > 0 {
-		repoResults = eng.repo.Apply(ctx, repoChanges, result.TargetRepos, view.repoProgress())
-	}
-
-	// Step 2: FileSets, in parallel with each other.
-	var fileResults []fileset.ApplyResult
-	if ctx.Err() == nil {
-		fileResults = applyFileSets(ctx, eng, fileSets, view)
-	}
-
-	// Step 3: archives. An archived repository is read-only, so archiving
-	// waits for everything else applied to the repository.
-	if ctx.Err() == nil && len(archives) > 0 {
-		repoResults = append(repoResults, applyArchives(ctx, eng, archives, result.TargetRepos, repoResults, fileResults, view)...)
-	}
-
+	repoResults, fileResults := applySteps(ctx, eng, result, work, view)
 	view.wait()
 	// Apply-time errors are rendered in full detail by printApplyResults
 	// below (per field / per target). Calling tracker.PrintErrors here
@@ -117,6 +91,53 @@ func Apply(ctx context.Context, result *PlanResult, opts ApplyOptions) (*ApplyOu
 		return outcome, fmt.Errorf("apply had errors")
 	}
 	return outcome, nil
+}
+
+// applyWork is what an apply of a plan does, split into its steps, and
+// what its progress counts.
+type applyWork struct {
+	repoChanges []repository.Change // the repository changes but archives
+	archives    []repository.Change
+	repoNames   []string // repositories with repoChanges
+	fileSets    []fileSetWork
+	totals      map[string]int // changes to apply per repository
+	tasks       []ui.RefreshTask
+	createOnly  map[string]bool
+}
+
+func applyWorkOf(result *PlanResult) applyWork {
+	w := applyWork{fileSets: fileSetWorkOf(result)}
+	w.repoChanges, w.archives = splitArchives(result.RepoChanges)
+	w.repoNames = changedRepoNames(w.repoChanges)
+	w.totals = applyTotals(result.RepoChanges, result.FileChanges)
+	w.tasks = applyTasks(w.repoNames, w.fileSets, changedRepoNames(w.archives), w.totals)
+	w.createOnly = createOnlyRepos(result.RepoChanges, result.FileChanges)
+	return w
+}
+
+// applySteps applies work, reporting its progress to view, and returns the
+// results. The steps run in this order in every mode; a mode only changes
+// how progress is shown and whether the results are listed at the end.
+func applySteps(ctx context.Context, eng *engine, result *PlanResult, work applyWork, view applyView) ([]repository.ApplyResult, []fileset.ApplyResult) {
+	// Step 1: repositories. A FileSet may write to a repository this apply
+	// creates, so they go first.
+	var repoResults []repository.ApplyResult
+	if len(work.repoNames) > 0 {
+		repoResults = eng.repo.Apply(ctx, work.repoChanges, result.TargetRepos, view.repoProgress())
+	}
+
+	// Step 2: FileSets, in parallel with each other.
+	var fileResults []fileset.ApplyResult
+	if ctx.Err() == nil {
+		fileResults = applyFileSets(ctx, eng, work.fileSets, view)
+	}
+
+	// Step 3: archives. An archived repository is read-only, so archiving
+	// waits for everything else applied to the repository.
+	if ctx.Err() == nil && len(work.archives) > 0 {
+		repoResults = append(repoResults, applyArchives(ctx, eng, work.archives, result.TargetRepos, repoResults, fileResults, view)...)
+	}
+	return repoResults, fileResults
 }
 
 // applyView is how apply shows progress: the spinner, or with stream a line
