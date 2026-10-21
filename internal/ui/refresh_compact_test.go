@@ -208,7 +208,7 @@ func TestCompact_RunningRows(t *testing.T) {
 	if strings.Contains(view, "o/r06") || !strings.Contains(view, "+2 more · 13 queued") {
 		t.Errorf("want five running rows and the rest counted:\n%s", view)
 	}
-	if !strings.Contains(view, "0/20") || !strings.Contains(view, "ctrl+c to cancel") {
+	if !strings.Contains(view, "0/20 repositories") || !strings.Contains(view, "ctrl+c to cancel") {
 		t.Errorf("want the progress with the hint as the last line:\n%s", view)
 	}
 }

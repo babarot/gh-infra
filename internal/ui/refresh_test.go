@@ -506,7 +506,7 @@ func TestView_Heading(t *testing.T) {
 		m := begun(t, newModel(h), "o/a", "o/b", "o/c")
 		m = update(t, later(m, 1400*time.Millisecond), taskDoneMsg{name: "o/a"})
 		lines := viewLines(m)
-		want := "Fetching current state from GitHub API  ━━━━━━──────────────────  1/4  1.4s  · gh 8/8 · 23 calls waiting · 1 queued"
+		want := "Fetching current state from GitHub API  ━━━━━━──────────────────  1/4 repositories  1.4s  · gh 8/8 · 23 calls waiting · 1 queued"
 		if lines[0] != want || lines[1] != "" {
 			t.Errorf("heading:\ngot  %q\nwant %q", lines[0], want)
 		}
@@ -535,7 +535,16 @@ func TestView_Heading(t *testing.T) {
 
 	t.Run("without a gauge or queued rows", func(t *testing.T) {
 		m := begun(t, newModel(heading), "o/a", "o/b", "o/c", "o/d")
-		if got := viewLines(m)[0]; got != "Fetching current state from GitHub API  ────────────────────────  0/4  0.0s" {
+		if got := viewLines(m)[0]; got != "Fetching current state from GitHub API  ────────────────────────  0/4 repositories  0.0s" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("one repository", func(t *testing.T) {
+		m := frozen(newRefreshModel([]RefreshTask{{Name: "o/a"}}))
+		m.heading = heading
+		m = begun(t, m, "o/a")
+		if got := viewLines(m)[0]; !strings.Contains(got, "  0/1 repository  ") {
 			t.Errorf("got %q", got)
 		}
 	})
@@ -651,7 +660,8 @@ func TestView_HeadingCountsChanges(t *testing.T) {
 	ok, f, sk := StepApplied, StepFailed, StepSkipped
 
 	m := update(t, update(t, newModel(), taskStepMsg{name: "o/a", result: ok}), taskStepMsg{name: "o/b", result: f})
-	if got := viewLines(m)[0]; !strings.Contains(got, "2/5") {
+	// The title names the changes, so the count has no unit.
+	if got := viewLines(m)[0]; !strings.Contains(got, "  2/5  ") {
 		t.Errorf("running: want the steps counted, got %q", got)
 	}
 	for _, tt := range []struct {
