@@ -189,7 +189,7 @@ func TestRenderDiffGroups_FlattenedItemsAlignApart(t *testing.T) {
 
 	want := strings.Join([]string{
 		"      ~ description  old → new",
-		"      ~ features.wiki                      true → false",
+		"      ~ features.wiki                      true  → false",
 		"      ~ merge_strategy.allow_squash_merge  false → true",
 		"      ~ visibility  private → public",
 	}, "\n") + "\n"

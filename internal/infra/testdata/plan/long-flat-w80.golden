@@ -1,6 +1,6 @@
   ~ babarot/gh-infra                                        4 to update
       ~ description  gh infra → Declarative GitHub infrastructure: repositories…
-      ~ homepage     "" → https://babarot.github.io/gh-infra
+      ~ homepage     ""       → https://babarot.github.io/gh-infra
       ~ merge_strategy.allow_squash_merge  false → true
       ~ visibility  private → public
 
