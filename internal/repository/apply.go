@@ -544,8 +544,7 @@ func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manife
 			return fmt.Errorf("unexpected type for archived: %T", c.NewValue)
 		}
 		if archived {
-			_, err := p.runner.Run(ctx, "repo", "archive", fullName, "--yes")
-			return wrapError(err, fullName, c.Field)
+			return wrapError(p.archiveRepository(ctx, fullName), fullName, c.Field)
 		}
 		_, err := p.runner.Run(ctx, "repo", "unarchive", fullName, "--yes")
 		return wrapError(err, fullName, c.Field)
@@ -1384,4 +1383,32 @@ func verifyPatchResponse(fullName string, sent map[string]any, resp []byte) erro
 		}
 	}
 	return wrapError(errors.Join(errs...), fullName, "merge_strategy")
+}
+
+// archiveRepository retries only GitHub's transient archive mutation failure,
+// which can occur while a just-created repository is still being initialized.
+func (p *Processor) archiveRepository(ctx context.Context, fullName string) error {
+	const attempts = 3
+	for attempt := 1; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		_, err := p.runner.Run(ctx, "repo", "archive", fullName, "--yes")
+		if err == nil {
+			return nil
+		}
+		var exitErr *gh.ExitError
+		if attempt >= attempts || !errors.As(err, &exitErr) ||
+			!strings.HasPrefix(strings.TrimSpace(exitErr.Stderr), "GraphQL: An error occurred when trying to archive repository ") ||
+			!strings.HasSuffix(strings.TrimSpace(exitErr.Stderr), "(archiveRepository)") {
+			return err
+		}
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
