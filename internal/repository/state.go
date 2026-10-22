@@ -21,10 +21,13 @@ import (
 type Processor struct {
 	runner   gh.Runner
 	resolver *manifest.Resolver
+
+	// Replaceable in tests.
+	sleep func(ctx context.Context, d time.Duration) error
 }
 
 func NewProcessor(runner gh.Runner, resolver *manifest.Resolver) *Processor {
-	return &Processor{runner: runner, resolver: resolver}
+	return &Processor{runner: runner, resolver: resolver, sleep: sleepContext}
 }
 
 // FetchRepository fetches the current state of a single repository.

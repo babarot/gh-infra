@@ -1403,12 +1403,22 @@ func (p *Processor) archiveRepository(ctx context.Context, fullName string) erro
 			!strings.HasSuffix(strings.TrimSpace(exitErr.Stderr), "(archiveRepository)") {
 			return err
 		}
-		timer := time.NewTimer(time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
+		if err := p.sleep(ctx, archiveRetryDelay); err != nil {
+			return err
 		}
+	}
+}
+
+// archiveRetryDelay is the wait between archive attempts.
+const archiveRetryDelay = time.Second
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }

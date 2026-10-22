@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/babarot/gh-infra/internal/gh"
 )
@@ -53,12 +55,20 @@ func TestApplyArchiveTransientError(t *testing.T) {
 			t.Parallel()
 			runner := &archiveRetryRunner{failures: tt.failures, err: tt.err}
 			p := NewProcessor(runner, nil)
+			var sleeps []time.Duration
+			p.sleep = func(ctx context.Context, d time.Duration) error {
+				sleeps = append(sleeps, d)
+				return ctx.Err()
+			}
 			err := p.applyRepoSetting(context.Background(), Change{Field: "archived", NewValue: tt.archived}, newTestRepo("owner", "repo"))
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error = %v, want error %v", err, tt.wantErr)
 			}
 			if len(runner.calls) != tt.wantCalls {
 				t.Fatalf("calls = %d, want %d", len(runner.calls), tt.wantCalls)
+			}
+			if want := slices.Repeat([]time.Duration{archiveRetryDelay}, tt.wantCalls-1); !slices.Equal(sleeps, want) {
+				t.Fatalf("sleeps = %v, want %v", sleeps, want)
 			}
 			action := "archive"
 			if !tt.archived {
