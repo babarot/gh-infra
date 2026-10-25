@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.17.5](https://github.com/babarot/gh-infra/compare/v0.17.4...v0.17.5) - 2026-10-25
+### Improvements
+- Put a settings group with a single child on one line by @babarot in https://github.com/babarot/gh-infra/pull/283
+- Print repositories with the same changes once by @babarot in https://github.com/babarot/gh-infra/pull/284
+- Say what the spinner heading counts while it runs by @babarot in https://github.com/babarot/gh-infra/pull/286
+- Line up the arrows of settings change lines by @babarot in https://github.com/babarot/gh-infra/pull/291
+- Retry transient archive failures while a new repository initializes by @jihtsan in https://github.com/babarot/gh-infra/pull/287
+### Refactorings
+- Build the plan body as blocks before printing it by @babarot in https://github.com/babarot/gh-infra/pull/281
+- Check that an apply reports as many steps as the spinner counts by @babarot in https://github.com/babarot/gh-infra/pull/285
+- Lay out a settings change line in one function by @babarot in https://github.com/babarot/gh-infra/pull/290
+- Replace the archive retry wait in tests by @babarot in https://github.com/babarot/gh-infra/pull/292
+
 ## [v0.17.4](https://github.com/babarot/gh-infra/compare/v0.17.3...v0.17.4) - 2026-10-19
 ### Bug fixes
 - Leave an already archived repository alone by @babarot in https://github.com/babarot/gh-infra/pull/264
