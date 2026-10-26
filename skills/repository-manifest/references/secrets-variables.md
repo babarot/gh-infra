@@ -16,6 +16,8 @@ Rules:
 - `plan` cannot diff existing secret values
 - use `gh infra apply --force-secrets` after secret rotation
 
+Environment secrets and variables go under `spec.environments[].secrets` / `variables`: see [environments.md](./environments.md).
+
 ## Variables
 
 ```yaml

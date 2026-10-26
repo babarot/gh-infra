@@ -9,7 +9,8 @@ import (
 // ApplyInputs returns the values from spec that apply sends for changes but
 // the plan shows only in summary or not at all: the bypass actors and rules
 // of a ruleset it creates or updates (shown as "N actors" and "enabled"),
-// and the value of a secret it sets (shown as "(new)"). Two repositories
+// and the value of a secret it sets, of the repository or an environment
+// (shown as "(new)"). Two repositories
 // whose changes read the same can still differ here.
 //
 // Only the values of what changes are returned. Fields a change leaves as
@@ -40,6 +41,16 @@ func ApplyInputs(spec manifest.RepositorySpec, changes []Change) map[string]any 
 			for _, s := range spec.Secrets {
 				if s.Name == c.Field {
 					inputs[c.Resource+"."+c.Field] = s.Value
+				}
+			}
+		case strings.HasPrefix(c.Resource, manifest.ResourceEnvironment+"["):
+			_, envName, _ := splitApplyResource(c.Resource)
+			env := findEnvironment(spec.Environments, envName)
+			for _, child := range c.Children {
+				if key, ok := child.NewValue.(string); ok && child.Field == envFieldSecret {
+					if v, ok := environmentValue(env, envFieldSecret, key); ok {
+						inputs[c.Resource+".secrets."+key] = v
+					}
 				}
 			}
 		}

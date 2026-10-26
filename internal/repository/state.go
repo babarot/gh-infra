@@ -769,17 +769,27 @@ func (p *Processor) fetchRuleset(ctx context.Context, owner, name string, id int
 }
 
 func (p *Processor) fetchSecrets(ctx context.Context, owner, name string, strict bool) ([]string, error) {
-	out, err := p.runner.Run(ctx,
-		"secret", "list",
-		"--repo", owner+"/"+name,
-		"--json", "name",
-		"--jq", ".[].name",
-	)
+	return p.fetchSecretsOf(ctx, owner, name, "", strict)
+}
+
+// fetchSecretsOf reads the secret names of the repository, or of its
+// environment env when env is not "".
+func (p *Processor) fetchSecretsOf(ctx context.Context, owner, name, env string, strict bool) ([]string, error) {
+	args := []string{"secret", "list", "--repo", owner + "/" + name}
+	what := "secrets"
+	if env != "" {
+		args = append(args, "--env", env)
+		what = fmt.Sprintf("secrets of environment %q", env)
+	}
+	out, err := p.runner.Run(ctx, append(args, "--json", "name", "--jq", ".[].name")...)
 	if err != nil {
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
+		// An environment's secrets the manifest manages are read from an
+		// environment that exists, so any failure is an error: read as
+		// none, an existing secret would be planned as new.
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) && (env == "" || !strict) {
 			return nil, nil
 		}
-		return nil, fetchError(strict, "secrets", owner, name, err)
+		return nil, fetchError(strict, what, owner, name, err)
 	}
 
 	raw := strings.TrimSpace(string(out))
@@ -792,16 +802,25 @@ func (p *Processor) fetchSecrets(ctx context.Context, owner, name string, strict
 }
 
 func (p *Processor) fetchVariables(ctx context.Context, owner, name string, strict bool) (map[string]string, error) {
-	out, err := p.runner.Run(ctx,
-		"variable", "list",
-		"--repo", owner+"/"+name,
-		"--json", "name,value",
-	)
+	return p.fetchVariablesOf(ctx, owner, name, "", strict)
+}
+
+// fetchVariablesOf reads the variables of the repository, or of its
+// environment env when env is not "".
+func (p *Processor) fetchVariablesOf(ctx context.Context, owner, name, env string, strict bool) (map[string]string, error) {
+	args := []string{"variable", "list", "--repo", owner + "/" + name}
+	what := "variables"
+	if env != "" {
+		args = append(args, "--env", env)
+		what = fmt.Sprintf("variables of environment %q", env)
+	}
+	out, err := p.runner.Run(ctx, append(args, "--json", "name,value")...)
 	if err != nil {
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
+		// As for an environment's secrets.
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) && (env == "" || !strict) {
 			return nil, nil
 		}
-		return nil, fetchError(strict, "variables", owner, name, err)
+		return nil, fetchError(strict, what, owner, name, err)
 	}
 
 	var vars []struct {
@@ -809,6 +828,9 @@ func (p *Processor) fetchVariables(ctx context.Context, owner, name string, stri
 		Value string `json:"value"`
 	}
 	if err := json.Unmarshal(out, &vars); err != nil {
+		if env != "" && strict {
+			return nil, fetchError(strict, what, owner, name, fmt.Errorf("parse response: %w", err))
+		}
 		return nil, nil
 	}
 
@@ -907,27 +929,46 @@ func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, s
 		return nil, fetchError(strict, "environments", owner, name, fmt.Errorf("parse response: %w", err))
 	}
 
-	needRules := func(env string) bool {
+	declared := func(env string) *manifest.Environment {
+		for i := range spec.Environments {
+			if strings.EqualFold(spec.Environments[i].Name, env) {
+				return &spec.Environments[i]
+			}
+		}
+		return nil
+	}
+	needs := func(env string, manages func(manifest.Environment) bool) bool {
 		if spec == nil {
 			return true
 		}
-		for _, e := range spec.Environments {
-			if strings.EqualFold(e.Name, env) {
-				return e.DeploymentBranchPolicy != nil
-			}
-		}
-		return false
+		e := declared(env)
+		return e != nil && manages(*e)
 	}
 	envs := make(map[string]*CurrentEnvironment)
 	for _, page := range pages {
 		for _, e := range page.Environments {
 			env := e.current()
-			if env.BranchPolicy == manifest.DeploymentBranchesCustom && needRules(env.Name) {
+			if env.BranchPolicy == manifest.DeploymentBranchesCustom && needs(env.Name, func(e manifest.Environment) bool { return e.DeploymentBranchPolicy != nil }) {
 				rules, err := p.fetchBranchRules(ctx, owner, name, env.Name)
 				if err != nil && strict {
 					return nil, fetchError(strict, fmt.Sprintf("deployment branch policies of environment %q", env.Name), owner, name, err)
 				}
 				env.BranchRules = rules
+			}
+			// Import does not write secrets, so it does not read them.
+			if spec != nil && needs(env.Name, func(e manifest.Environment) bool { return len(e.Secrets) > 0 }) {
+				secrets, err := p.fetchSecretsOf(ctx, owner, name, env.Name, strict)
+				if err != nil {
+					return nil, err
+				}
+				env.Secrets = secrets
+			}
+			if needs(env.Name, func(e manifest.Environment) bool { return len(e.Variables) > 0 }) {
+				vars, err := p.fetchVariablesOf(ctx, owner, name, env.Name, strict)
+				if err != nil {
+					return nil, err
+				}
+				env.Variables = vars
 			}
 			envs[strings.ToLower(env.Name)] = env
 		}

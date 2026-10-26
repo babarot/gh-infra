@@ -32,6 +32,12 @@ func TestApplyInputs(t *testing.T) {
 	}
 	setSecret := []Change{{Type: ChangeCreate, Resource: manifest.ResourceSecret, Field: "TOKEN", NewValue: "(new)"}}
 	updateDescription := []Change{{Type: ChangeUpdate, Resource: manifest.ResourceRepository, Field: "description", OldValue: "a", NewValue: "b"}}
+	setEnvSecret := []Change{{Type: ChangeUpdate, Resource: "Environment[production]", Field: "environment",
+		Details:  []Change{{Type: ChangeCreate, Field: "secrets.TOKEN", NewValue: "(new)"}},
+		Children: []Change{{Type: ChangeUpdate, Field: envFieldSecret, NewValue: "TOKEN"}}}}
+	envSecretSpec := func(v string) manifest.RepositorySpec {
+		return manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: v}}}}}
+	}
 
 	tests := []struct {
 		name         string
@@ -46,6 +52,10 @@ func TestApplyInputs(t *testing.T) {
 			rulesetSpec("platform", "x"), rulesetSpec("platform", "y"), createRuleset, createRuleset, true},
 		{"a secret value the plan does not show differs",
 			rulesetSpec("platform", "x"), rulesetSpec("security", "x"), setSecret, setSecret, false},
+		{"an environment secret value the plan does not show differs",
+			envSecretSpec("a"), envSecretSpec("b"), setEnvSecret, setEnvSecret, false},
+		{"the same environment secret reads the same",
+			envSecretSpec("a"), envSecretSpec("a"), setEnvSecret, setEnvSecret, true},
 		{"fields no change touches are left out",
 			rulesetSpec("platform", "x"), rulesetSpec("security", "y"), updateDescription, updateDescription, true},
 		{"deleting the same ruleset under different IDs reads the same",

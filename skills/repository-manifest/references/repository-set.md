@@ -40,7 +40,7 @@ Examples:
 - `reconcile.labels`, `reconcile.rulesets`, `reconcile.branch_protection`: merged by collection
 - `topics`, `milestones`: list replace
 - `labels`, `branch_protection`, `rulesets`, `secrets`, `variables`: merged by key (label names ignoring case: an entry's `Bug` replaces the defaults' `bug`)
-- `environments`: merged by name ignoring case, field by field; `reviewers` and `deployment_branch_policy` are replaced as a whole
+- `environments`: merged by name ignoring case, field by field; `reviewers` and `deployment_branch_policy` are replaced as a whole; `variables` and `secrets` inside are merged by name
 - any collection written as `[]` in an entry means none (the defaults are not inherited); omitted inherits; under authoritative reconcile, `[]` deletes every label / ruleset / branch protection rule on the repo (plan warns)
 - an entry cannot drop a single default item (e.g. one of the defaults' labels); change the defaults or manage the repo as a standalone `Repository` (#215). `import --into` warns when a repo has only some of the defaults' items
 - `features`, `merge_strategy`, `actions`: map merge by key (individual fields like `enabled`, `allowed_actions` are independently overridable)

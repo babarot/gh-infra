@@ -159,6 +159,16 @@ func validateEnvironments(name string, envs []Environment) error {
 		if env.ReviewersSet && len(env.Reviewers) == 0 && env.PreventSelfReview != nil {
 			return fmt.Errorf("%s.prevent_self_review needs at least one reviewer (remove prevent_self_review or list reviewers)", path)
 		}
+		for j, v := range env.Variables {
+			if err := ValidateStruct(fmt.Sprintf("%s.variables[%d]", path, j), &v); err != nil {
+				return err
+			}
+		}
+		for j, sec := range env.Secrets {
+			if err := ValidateStruct(fmt.Sprintf("%s.secrets[%d]", path, j), &sec); err != nil {
+				return err
+			}
+		}
 		if p := env.DeploymentBranchPolicy; p != nil {
 			if p.ProtectedBranches != nil && p.HasCustom() {
 				return fmt.Errorf("%s.deployment_branch_policy cannot have both protected_branches and custom_branch_policies", path)

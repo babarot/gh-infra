@@ -24,6 +24,12 @@ spec:
           - name: main
           - name: "v*"
             type: tag
+      variables:
+        - name: REGION
+          value: eu-west-1
+      secrets:
+        - name: DEPLOY_TOKEN
+          value: "${ENV_DEPLOY_TOKEN}"
 ```
 
 | Field | Type | Description |
@@ -34,6 +40,8 @@ spec:
 | `prevent_self_review` | bool | Whether the user who started a deployment is kept from approving it. Needs at least one reviewer |
 | `can_admins_bypass` | bool | Whether administrators can bypass the protection rules. GitHub's default is `true` |
 | `deployment_branch_policy` | object | Which branches and tags can deploy (see below) |
+| `variables` | list | Environment variables (see [Variables and secrets](#variables-and-secrets)) |
+| `secrets` | list | Environment secrets, from `${ENV_*}` references (see [Variables and secrets](#variables-and-secrets)) |
 
 Fields the manifest leaves out are not compared and stay as they are on GitHub.
 
@@ -53,12 +61,21 @@ A pattern has a `name` and a `type`, `branch` (the default) or `tag`. Patterns f
 
 When the policy stops being `custom_branch_policies`, GitHub deletes its patterns. `plan` shows each of them as `(removed by GitHub)`, whatever the reconcile mode.
 
+## Variables and secrets
+
+`variables` and `secrets` work as those of the repository (see [Secrets & Variables](./secrets-variables/)): a secret's value comes from an `${ENV_*}` variable of the environment `apply` runs in, `plan` cannot compare the value of an existing secret, and `--force-secrets` sets every declared secret again. A job reads them only when it names the environment, and only from a branch or tag the policy allows.
+
+An environment's secret and a repository secret can have the same name; each gets its own value. When a job names the environment, its value takes precedence.
+
+A new environment allows every branch until its policy limits it, so when the manifest gives it secrets but no `deployment_branch_policy`, `plan` notes that its secrets are readable from any branch.
+
 ## What gh-infra deletes
 
 | What | Deleted when |
 |---|---|
 | An environment the manifest leaves out | Never. GitHub creates environments too (`github-pages`, or the first time a workflow names one) |
 | A pattern the manifest leaves out | Only with `reconcile.deployment_branch_policies: authoritative`, in an environment whose `custom_branch_policies` the manifest sets |
+| A variable or secret the manifest leaves out | Never, as for the repository's |
 
 `reconcile.deployment_branch_policies` has no `spec` collection of its name: it applies to the patterns of each declared environment.
 
