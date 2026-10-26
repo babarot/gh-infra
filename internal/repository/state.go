@@ -783,7 +783,10 @@ func (p *Processor) fetchSecretsOf(ctx context.Context, owner, name, env string,
 	}
 	out, err := p.runner.Run(ctx, append(args, "--json", "name", "--jq", ".[].name")...)
 	if err != nil {
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
+		// An environment's secrets the manifest manages are read from an
+		// environment that exists, so any failure is an error: read as
+		// none, an existing secret would be planned as new.
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) && (env == "" || !strict) {
 			return nil, nil
 		}
 		return nil, fetchError(strict, what, owner, name, err)
@@ -813,7 +816,8 @@ func (p *Processor) fetchVariablesOf(ctx context.Context, owner, name, env strin
 	}
 	out, err := p.runner.Run(ctx, append(args, "--json", "name,value")...)
 	if err != nil {
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
+		// As for an environment's secrets.
+		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) && (env == "" || !strict) {
 			return nil, nil
 		}
 		return nil, fetchError(strict, what, owner, name, err)
@@ -824,6 +828,9 @@ func (p *Processor) fetchVariablesOf(ctx context.Context, owner, name, env strin
 		Value string `json:"value"`
 	}
 	if err := json.Unmarshal(out, &vars); err != nil {
+		if env != "" && strict {
+			return nil, fetchError(strict, what, owner, name, fmt.Errorf("parse response: %w", err))
+		}
 		return nil, nil
 	}
 

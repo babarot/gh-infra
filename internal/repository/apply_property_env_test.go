@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
@@ -537,4 +538,51 @@ func TestApplyEnvironmentVariables(t *testing.T) {
 	if got["REGION"] != "eu" || got["NEW"] != "2" || got["KEEP"] != "1" {
 		t.Errorf("variables = %v", got)
 	}
+}
+
+// An environment's secrets or variables that cannot be read fail the
+// repository at plan rather than being read as none, which would plan an
+// existing secret as new.
+func TestPlanEnvironmentValuesUnreadable(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		env  manifest.Environment
+		cmd  string
+	}{
+		{name: "secrets", env: manifest.Environment{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "x"}}},
+			cmd: "secret list --repo o/r --env production --json name --jq .[].name"},
+		{name: "variables", env: manifest.Environment{Name: "production", Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}}},
+			cmd: "variable list --repo o/r --env production --json name,value"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newFakeGitHub("o", "r", propEnvState())
+			runner := &failingRunner{Runner: fake, cmd: tt.cmd, err: fakeStatus(gh.ErrNotFound, "Not Found")}
+			p := NewProcessor(runner, manifest.NewResolver(runner))
+			repo := &manifest.Repository{
+				Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"},
+				Spec:     manifest.RepositorySpec{Environments: []manifest.Environment{tt.env}},
+			}
+			changes, _, err := p.Plan(context.Background(), []*manifest.Repository{repo}, PlanOptions{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(changes) > 0 {
+				t.Errorf("planned %s from values that could not be read", formatChanges(changes))
+			}
+		})
+	}
+}
+
+// failingRunner fails one command and passes the rest to Runner.
+type failingRunner struct {
+	gh.Runner
+	cmd string
+	err error
+}
+
+func (r *failingRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
+	if strings.Join(args, " ") == r.cmd {
+		return nil, r.err
+	}
+	return r.Runner.Run(ctx, args...)
 }
