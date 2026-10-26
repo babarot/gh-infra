@@ -139,6 +139,11 @@ func addKeyedPaths(set pathSet, resource, key string, c Change) {
 		base = "branch_protection." + key
 	case manifest.ResourceRuleset:
 		base = "rulesets." + key
+	case manifest.ResourceEnvironment:
+		// An environment change may change anything of the environment;
+		// what it shows is checked by its own tests.
+		set["environments."+strings.ToLower(key)+"."] = true
+		return
 	default:
 		return
 	}

@@ -215,6 +215,13 @@ if [[ "$args" == *"/rulesets"*"--paginate"* ]]; then
   exit 0
 fi
 
+# Environments: none
+if [[ "$args" == *"/environments"*"--paginate"* && "$args" != *"--method"* ]]; then
+  delay
+  echo '[{"total_count":0,"environments":[]}]'
+  exit 0
+fi
+
 # Secrets
 if [[ "$args" == *"secret list"* ]]; then
   delay

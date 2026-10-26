@@ -22,6 +22,11 @@ func (s RepositorySpec) ManagesSecrets() bool { return len(s.Secrets) > 0 }
 // ManagesVariables reports whether any variable is declared.
 func (s RepositorySpec) ManagesVariables() bool { return len(s.Variables) > 0 }
 
+// ManagesEnvironments reports whether any environment is declared.
+// `environments: []` only opts out of the defaults' environments: gh-infra
+// never deletes an environment.
+func (s RepositorySpec) ManagesEnvironments() bool { return len(s.Environments) > 0 }
+
 // ManagesLabels reports whether labels are managed.
 func (s RepositorySpec) ManagesLabels() bool {
 	return s.LabelsSet || len(s.Labels) > 0 || s.LabelSync != nil

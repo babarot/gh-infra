@@ -3,7 +3,8 @@ name: repository-manifest
 description: >
   Complete YAML schema reference for Repository and RepositorySet resources.
   Use when writing or editing manifests for repo settings, labels, actions,
-  branch protection, rulesets, secrets, variables, or repository defaults.
+  branch protection, rulesets, secrets, variables, environments, or repository
+  defaults.
 ---
 
 # Repository Manifest Reference
@@ -40,6 +41,7 @@ Read these references as needed:
 - Actions settings and validation traps: [references/actions.md](./references/actions.md)
 - Rulesets and branch protection: [references/protection.md](./references/protection.md)
 - Secrets and variables: [references/secrets-variables.md](./references/secrets-variables.md)
+- Deployment environments: [references/environments.md](./references/environments.md)
 - Security (Dependabot, vulnerability alerts): [references/security.md](./references/security.md)
 
 ## RepositorySet
@@ -111,6 +113,7 @@ Read [references/repository-set.md](./references/repository-set.md) for the exac
 - fields left out of the manifest are left as they are on GitHub (rulesets, branch protection, milestones, label descriptions, selected actions): to manage part of a ruleset, write only that part
 - in a RepositorySet entry, `labels: []` (or `rulesets`, `branch_protection`, `secrets`, `variables`, `topics`, `milestones`) means none: the defaults are not inherited; under `reconcile.<collection>: authoritative` it deletes every item on that repo. An entry cannot drop a single default item; change the defaults or use a standalone `Repository` (#215)
 - label names are matched ignoring case, as on GitHub; changing only the case renames the label
+- environments are never deleted; undeclared deployment branch patterns are deleted only with `reconcile.deployment_branch_policies: authoritative`
 - for `gh infra import --into`, use the dedicated `import-into` skill
 - Repository deletion is not supported
 - plan reads only the settings the manifest sets; a managed setting the token cannot read (403) fails the repo with `cannot read ...` instead of being treated as empty (rulesets on GitHub Free private repos fail this way)

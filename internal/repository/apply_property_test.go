@@ -281,6 +281,7 @@ func flattenState(s fakeState) map[string]string {
 		out[key+"state"] = m.State
 		out[key+"due_on"] = derefStr(m.DueOn)
 	}
+	flattenEnvironments(out, s.Environments)
 	flattenProtections(out, s.Protections)
 	flattenRulesets(out, s.Rulesets)
 	return out

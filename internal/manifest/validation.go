@@ -87,6 +87,9 @@ func (r *Repository) Validate() error {
 			return err
 		}
 	}
+	if err := validateEnvironments(name, r.Spec.Environments); err != nil {
+		return err
+	}
 	// Milestones: element tag validation
 	for i, ms := range r.Spec.Milestones {
 		if err := ValidateStruct(fmt.Sprintf("%s: spec.milestones[%d]", name, i), &ms); err != nil {
@@ -111,6 +114,68 @@ func (r *Repository) Validate() error {
 		if a.SelectedActions != nil {
 			if a.AllowedActions == nil || *a.AllowedActions != "selected" {
 				return fmt.Errorf("%s: actions.selected_actions can only be used when allowed_actions is \"selected\" (add \"allowed_actions: selected\")", name)
+			}
+		}
+	}
+	return nil
+}
+
+// validateEnvironments checks the environments the manifest declares, as far
+// as that needs no current state.
+func validateEnvironments(name string, envs []Environment) error {
+	seen := make(map[string]string, len(envs))
+	for i, env := range envs {
+		path := fmt.Sprintf("%s: spec.environments[%d]", name, i)
+		if err := ValidateStruct(path, &env); err != nil {
+			return err
+		}
+		// GitHub matches environment names case-insensitively.
+		key := strings.ToLower(env.Name)
+		if prev, ok := seen[key]; ok {
+			return fmt.Errorf("%s: environments %q and %q are the same environment on GitHub (environment names are case-insensitive)", name, prev, env.Name)
+		}
+		seen[key] = env.Name
+
+		path = fmt.Sprintf("%s: environments[%s]", name, env.Name)
+		if w := env.WaitTimer; w != nil && (*w < 0 || *w > EnvironmentWaitTimerMax) {
+			return fmt.Errorf("%s.wait_timer must be between 0 and %d minutes", path, EnvironmentWaitTimerMax)
+		}
+		if len(env.Reviewers) > EnvironmentReviewersMax {
+			return fmt.Errorf("%s.reviewers can list at most %d users or teams", path, EnvironmentReviewersMax)
+		}
+		reviewers := make(map[EnvironmentReviewer]bool, len(env.Reviewers))
+		for j, rv := range env.Reviewers {
+			if (rv.User == "") == (rv.Team == "") {
+				return fmt.Errorf("%s.reviewers[%d] must specify exactly one of: user or team", path, j)
+			}
+			k := EnvironmentReviewer{User: strings.ToLower(rv.User), Team: strings.ToLower(rv.Team)}
+			if reviewers[k] {
+				return fmt.Errorf("%s.reviewers[%d] is listed twice", path, j)
+			}
+			reviewers[k] = true
+		}
+		// GitHub keeps prevent_self_review in the reviewers rule, which has
+		// no reviewers to hold it.
+		if env.ReviewersSet && len(env.Reviewers) == 0 && env.PreventSelfReview != nil {
+			return fmt.Errorf("%s.prevent_self_review needs at least one reviewer (remove prevent_self_review or list reviewers)", path)
+		}
+		if p := env.DeploymentBranchPolicy; p != nil {
+			if p.ProtectedBranches != nil && p.HasCustom() {
+				return fmt.Errorf("%s.deployment_branch_policy cannot have both protected_branches and custom_branch_policies", path)
+			}
+			if p.ProtectedBranches != nil && !*p.ProtectedBranches {
+				return fmt.Errorf("%s.deployment_branch_policy.protected_branches: false means nothing; use deployment_branch_policy: {} to allow all branches and tags", path)
+			}
+			rules := make(map[[2]string]bool, len(p.CustomBranchPolicies))
+			for j, rule := range p.CustomBranchPolicies {
+				if err := ValidateStruct(fmt.Sprintf("%s.deployment_branch_policy.custom_branch_policies[%d]", path, j), &rule); err != nil {
+					return err
+				}
+				k := [2]string{rule.Name, rule.RuleType()}
+				if rules[k] {
+					return fmt.Errorf("%s.deployment_branch_policy.custom_branch_policies: duplicate %s pattern %q", path, rule.RuleType(), rule.Name)
+				}
+				rules[k] = true
 			}
 		}
 	}
