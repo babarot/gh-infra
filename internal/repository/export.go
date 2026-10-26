@@ -149,6 +149,8 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		})
 	}
 
+	repo.Spec.Environments = exportEnvironments(r.Environments)
+
 	labelNames := make([]string, 0, len(r.Labels))
 	for name := range r.Labels {
 		labelNames = append(labelNames, name)
@@ -236,4 +238,59 @@ func nonEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// exportEnvironments writes every environment, including the ones GitHub
+// made (github-pages): gh-infra never deletes one, so writing them does no
+// harm, and leaving them out by name would not last. Secrets are not
+// written, as their values cannot be read; prevent_self_review is written
+// only with reviewers, whose rule holds it.
+func exportEnvironments(envs map[string]*CurrentEnvironment) []manifest.Environment {
+	keys := make([]string, 0, len(envs))
+	for k := range envs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []manifest.Environment
+	for _, k := range keys {
+		e := envs[k]
+		env := manifest.Environment{
+			Name:            e.Name,
+			WaitTimer:       manifest.Ptr(e.WaitTimer),
+			CanAdminsBypass: manifest.Ptr(e.CanAdminsBypass),
+			Reviewers:       currentReviewers(e.Reviewers),
+			ReviewersSet:    true,
+		}
+		// A rule GitHub left with no reviewers cannot take
+		// prevent_self_review.
+		if e.HasReviewersRule && len(e.Reviewers) > 0 {
+			env.PreventSelfReview = manifest.Ptr(e.PreventSelfReview)
+		}
+		policy := &manifest.DeploymentBranchPolicy{}
+		switch e.BranchPolicy {
+		case manifest.DeploymentBranchesProtected:
+			policy.ProtectedBranches = manifest.Ptr(true)
+		case manifest.DeploymentBranchesCustom:
+			policy.CustomBranchPoliciesSet = true
+			policy.CustomBranchPolicies = []manifest.DeploymentBranchRule{}
+			for _, r := range e.BranchRules {
+				rule := manifest.DeploymentBranchRule{Name: r.Name}
+				if r.Type == manifest.DeploymentBranchTypeTag {
+					rule.Type = r.Type
+				}
+				policy.CustomBranchPolicies = append(policy.CustomBranchPolicies, rule)
+			}
+		}
+		env.DeploymentBranchPolicy = policy
+		names := make([]string, 0, len(e.Variables))
+		for n := range e.Variables {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			env.Variables = append(env.Variables, manifest.Variable{Name: n, Value: e.Variables[n]})
+		}
+		out = append(out, env)
+	}
+	return out
 }

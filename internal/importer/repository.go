@@ -39,6 +39,8 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 		imported.LabelSync = local.LabelSync
 		// Preserve ruleset parameters GitHub accepts but may not return.
 		imported.Rulesets = preserveUnreturnedRulesetParams(local.Rulesets, imported.Rulesets)
+		// Preserve the environments' secrets, as the repository's.
+		imported.Environments = preserveEnvironmentSecrets(local.Environments, imported.Environments)
 
 		diffs := compareSpecs(local, imported)
 		if len(diffs) == 0 {
@@ -172,6 +174,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		imported.Secrets = doc.Resource.Spec.Secrets
 		imported.LabelSync = doc.Resource.Spec.LabelSync
 		imported.Rulesets = preserveUnreturnedRulesetParams(doc.Resource.Spec.Rulesets, imported.Rulesets)
+		imported.Environments = preserveEnvironmentSecrets(doc.Resource.Spec.Environments, imported.Environments)
 
 		newOverride := minimalOverride(defaults, imported)
 
@@ -668,6 +671,15 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		isSet: func(spec manifest.RepositorySpec) bool { return spec.VariablesSet },
 	},
 	{
+		prefix: "environments.",
+		key:    "environments",
+		kind:   fieldCollection,
+		valueVal: func(spec manifest.RepositorySpec) any {
+			return spec.Environments
+		},
+		isSet: func(spec manifest.RepositorySpec) bool { return spec.EnvironmentsSet },
+	},
+	{
 		prefix: "labels.",
 		key:    "labels",
 		kind:   fieldCollection,
@@ -977,6 +989,9 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 
 	// Variables (Phase 2d)
 	diffs = append(diffs, compareVariables(local.Variables, imported.Variables)...)
+
+	// Environments
+	diffs = append(diffs, compareEnvironments(local.Environments, imported.Environments)...)
 
 	// Labels
 	diffs = append(diffs, compareLabels(local.Labels, imported.Labels)...)
@@ -1726,6 +1741,9 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	// Labels: only include labels that differ from or are absent in defaults.
 	override.Labels = minimalLabels(defaults.Labels, imported.Labels)
 
+	// Environments: only the ones and the fields that differ from defaults.
+	override.Environments = minimalEnvironments(defaults.Environments, imported.Environments)
+
 	// Milestones: an entry's list replaces the defaults' list, so the whole
 	// list is written when it differs.
 	if len(compareMilestones(defaults.Milestones, imported.Milestones)) > 0 {
@@ -1764,6 +1782,9 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	if len(defaults.Milestones) > 0 && len(imported.Milestones) == 0 {
 		override.Milestones, override.MilestonesSet = []manifest.Milestone{}, true
 	}
+	if len(defaults.Environments) > 0 && len(imported.Environments) == 0 {
+		override.Environments, override.EnvironmentsSet = []manifest.Environment{}, true
+	}
 
 	return override
 }
@@ -1783,6 +1804,7 @@ func emptyOverrideDiffs(entry, override manifest.RepositorySpec) []FieldDiff {
 	add("variables", entry.VariablesSet, override.VariablesSet, len(override.Variables))
 	add("labels", entry.LabelsSet, override.LabelsSet, len(override.Labels))
 	add("milestones", entry.MilestonesSet, override.MilestonesSet, len(override.Milestones))
+	add("environments", entry.EnvironmentsSet, override.EnvironmentsSet, len(override.Environments))
 	return diffs
 }
 
@@ -1829,7 +1851,19 @@ func missingDefaultsWarnings(defaults, imported manifest.RepositorySpec) []RepoW
 	check("variables",
 		keys(len(defaults.Variables), func(i int) string { return defaults.Variables[i].Name }),
 		keys(len(imported.Variables), func(i int) string { return imported.Variables[i].Name }))
-	// Label names are matched ignoring case, as GitHub does.
+	// Environment and label names are matched ignoring case, as GitHub does.
+	check("environments",
+		keys(len(defaults.Environments), func(i int) string { return strings.ToLower(defaults.Environments[i].Name) }),
+		keys(len(imported.Environments), func(i int) string { return strings.ToLower(imported.Environments[i].Name) }))
+	for _, de := range defaults.Environments {
+		for _, ie := range imported.Environments {
+			if strings.EqualFold(de.Name, ie.Name) {
+				check(fmt.Sprintf("environments.%s.variables", ie.Name),
+					keys(len(de.Variables), func(i int) string { return de.Variables[i].Name }),
+					keys(len(ie.Variables), func(i int) string { return ie.Variables[i].Name }))
+			}
+		}
+	}
 	check("labels",
 		keys(len(defaults.Labels), func(i int) string { return strings.ToLower(defaults.Labels[i].Name) }),
 		keys(len(imported.Labels), func(i int) string { return strings.ToLower(imported.Labels[i].Name) }))

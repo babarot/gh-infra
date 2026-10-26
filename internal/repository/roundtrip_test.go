@@ -133,6 +133,20 @@ func TestRoundTrip_ExportThenPlan(t *testing.T) {
 		{"variables", func(s *CurrentState) {
 			s.Variables = map[string]string{"ENV": "prod", "EMPTY": ""}
 		}},
+		{"environments", func(s *CurrentState) {
+			s.Environments = map[string]*CurrentEnvironment{
+				"production": {Name: "production", CanAdminsBypass: false, WaitTimer: 10, HasReviewersRule: true, PreventSelfReview: true,
+					Reviewers:    []CurrentEnvironmentReviewer{{Type: "User", ID: 2, Name: "alice"}, {Type: "Team", ID: 11, Name: "platform"}},
+					BranchPolicy: manifest.DeploymentBranchesCustom,
+					BranchRules:  []CurrentBranchRule{{ID: 1, Name: "main", Type: "branch"}, {ID: 2, Name: "v*", Type: "tag"}},
+					Variables:    map[string]string{"REGION": "eu", "EMPTY": ""}},
+				"frozen":       {Name: "frozen", CanAdminsBypass: true, BranchPolicy: manifest.DeploymentBranchesCustom},
+				"qa":           {Name: "qa", CanAdminsBypass: true, BranchPolicy: manifest.DeploymentBranchesProtected},
+				"github-pages": {Name: "github-pages", CanAdminsBypass: true, BranchPolicy: manifest.DeploymentBranchesAll},
+				// A reviewers rule GitHub left with no reviewers.
+				"emptied": {Name: "emptied", CanAdminsBypass: true, HasReviewersRule: true, BranchPolicy: manifest.DeploymentBranchesAll},
+			}
+		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			current := roundTripState()

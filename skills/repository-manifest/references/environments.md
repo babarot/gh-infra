@@ -46,4 +46,5 @@ Rules and gotchas:
 - in a new repository only the owner is added as reviewer by the creating apply; other reviewers (and `prevent_self_review` when none is left) come in a later plan
 - plan notes changes that widen deployment: policy to `{}`, reviewers to `[]`, `can_admins_bypass` to true; and a new environment with secrets but no `deployment_branch_policy` (its secrets are readable from any branch)
 - environment secrets are separate from repository secrets of the same name; `--force-secrets` also sets environment secrets again
+- `import` writes every environment (GitHub-made ones too) with variables but no secrets; `import --into` keeps the manifest's environment secrets
 - in a RepositorySet, environments merge by name (ignoring case) field by field; `reviewers` and `deployment_branch_policy` replace as a whole; `variables` and `secrets` merge by name (`[]` inherits none)

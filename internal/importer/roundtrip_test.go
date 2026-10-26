@@ -93,6 +93,7 @@ func TestRoundTrip_ImportIntoRepository(t *testing.T) {
 			s.Milestones = map[string]*repository.CurrentMilestone{"v1": {Number: 1, Title: "v1", State: "closed", DueOn: "2025-12-31"}}
 			s.Variables = map[string]string{"ENV": "prod"}
 		}},
+		{"environments", withEnvironments},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			current := rtState()
@@ -182,6 +183,18 @@ func TestRoundTrip_ImportIntoRepositoryMilestones(t *testing.T) {
 	}
 }
 
+// withEnvironments gives the repository environments of every kind.
+func withEnvironments(s *repository.CurrentState) {
+	s.Environments = map[string]*repository.CurrentEnvironment{
+		"production": {Name: "production", WaitTimer: 10, HasReviewersRule: true, PreventSelfReview: true,
+			Reviewers:    []repository.CurrentEnvironmentReviewer{{Type: "Team", ID: 11, Name: "platform"}},
+			BranchPolicy: manifest.DeploymentBranchesCustom,
+			BranchRules:  []repository.CurrentBranchRule{{ID: 1, Name: "main", Type: "branch"}, {ID: 2, Name: "v*", Type: "tag"}},
+			Variables:    map[string]string{"REGION": "eu"}},
+		"github-pages": {Name: "github-pages", CanAdminsBypass: true, BranchPolicy: manifest.DeploymentBranchesProtected},
+	}
+}
+
 func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 	ctx := context.Background()
 	resolver := manifest.NewResolver(rtRunner{})
@@ -189,6 +202,9 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 		s.Milestones = map[string]*repository.CurrentMilestone{"v1": {Number: 1, Title: "v1", State: "closed", DueOn: "2025-12-31"}}
 	}
 	base := repository.ToManifest(ctx, rtState(), resolver) // the import without mutate
+	envState := rtState()
+	withEnvironments(envState)
+	envBase := repository.ToManifest(ctx, envState, resolver)
 
 	for _, tt := range []struct {
 		name     string
@@ -214,6 +230,23 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 			defaults: &manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v0"}}}},
 		{name: "defaults match GitHub milestones on the fields they set", mutate: withMilestones,
 			defaults: &manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1"}}}},
+		{name: "defaults match GitHub environments", mutate: withEnvironments, defaults: &manifest.RepositorySpec{
+			Description: base.Spec.Description, Features: base.Spec.Features, MergeStrategy: base.Spec.MergeStrategy, Labels: base.Spec.Labels,
+			Environments: envBase.Spec.Environments}},
+		{name: "defaults differ in an environment", mutate: withEnvironments, defaults: &manifest.RepositorySpec{Environments: []manifest.Environment{{
+			Name: "Production", WaitTimer: manifest.Ptr(5),
+			Reviewers:              []manifest.EnvironmentReviewer{{User: "alice"}},
+			DeploymentBranchPolicy: &manifest.DeploymentBranchPolicy{},
+			Variables:              []manifest.Variable{{Name: "REGION", Value: "us"}},
+		}}}},
+		{name: "defaults have an environment variable GitHub does not", mutate: withEnvironments, defaults: &manifest.RepositorySpec{Environments: []manifest.Environment{{
+			Name: "production", Variables: []manifest.Variable{{Name: "TIER", Value: "1"}},
+		}}}, wantPlan: []string{"environment"}, wantWarn: "environments.production.variables"},
+		{name: "defaults have an environment GitHub does not", mutate: withEnvironments,
+			defaults: &manifest.RepositorySpec{Environments: append([]manifest.Environment{{Name: "extra"}}, envBase.Spec.Environments...)},
+			wantPlan: []string{"environment"}, wantWarn: "environments"},
+		{name: "defaults have environments, GitHub none",
+			defaults: &manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "extra"}}}},
 		{name: "no defaults"},
 		{name: "no defaults, the entry differs from GitHub", entry: &manifest.RepositorySpec{
 			Description: manifest.Ptr("old"), Topics: []string{"go"}, Features: &manifest.Features{Wiki: manifest.Ptr(false)}}},
