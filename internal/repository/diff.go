@@ -287,7 +287,7 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffRulesets(ctx, name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
-	changes = append(changes, diffEnvironments(name, desired, current)...)
+	changes = append(changes, diffEnvironments(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffLabels(name, desired, current, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
@@ -316,7 +316,7 @@ func diffNew(ctx context.Context, desired *manifest.Repository, empty *CurrentSt
 	changes = append(changes, diffRulesets(ctx, name, desired, empty, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, empty, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, empty)...)
-	changes = append(changes, diffEnvironments(name, desired, empty)...)
+	changes = append(changes, diffEnvironments(name, desired, empty, opt.ForceSecrets)...)
 	// GitHub's default labels are not known here: a label with the name of
 	// one of them is updated by apply instead of created (see CreateNotes).
 	changes = append(changes, diffLabels(name, desired, empty, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
