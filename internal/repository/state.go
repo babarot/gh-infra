@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -21,13 +22,14 @@ import (
 type Processor struct {
 	runner   gh.Runner
 	resolver *manifest.Resolver
+	plans    *planCache
 
 	// Replaceable in tests.
 	sleep func(ctx context.Context, d time.Duration) error
 }
 
 func NewProcessor(runner gh.Runner, resolver *manifest.Resolver) *Processor {
-	return &Processor{runner: runner, resolver: resolver, sleep: sleepContext}
+	return &Processor{runner: runner, resolver: resolver, sleep: sleepContext, plans: &planCache{plans: map[string]string{}}}
 }
 
 // FetchRepository fetches the current state of a single repository.
@@ -120,6 +122,16 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spe
 			status("fetching milestones...")
 			var err error
 			milestones, err = p.fetchMilestones(ctx, owner, name, strict)
+			return err
+		})
+	}
+
+	var environments map[string]*CurrentEnvironment
+	if want(manifest.RepositorySpec.ManagesEnvironments) {
+		g.Go(func() error {
+			status("fetching environments...")
+			var err error
+			environments, err = p.fetchEnvironments(ctx, owner, name, spec, strict)
 			return err
 		})
 	}
@@ -225,6 +237,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spe
 	repo.Variables = vars
 	repo.Labels = labels
 	repo.Milestones = milestones
+	repo.Environments = environments
 	repo.Actions = actions
 	repo.ReleaseImmutability = releaseImmutability
 	repo.MergeStrategy.MergeCommitTitle = commitMsgSettings.MergeCommitTitle
@@ -804,6 +817,146 @@ func (p *Processor) fetchVariables(ctx context.Context, owner, name string, stri
 		result[v.Name] = v.Value
 	}
 	return result, nil
+}
+
+// apiEnvironment is an environment in the shape of the environments API.
+type apiEnvironment struct {
+	Name            string `json:"name"`
+	CanAdminsBypass *bool  `json:"can_admins_bypass"`
+	ProtectionRules []struct {
+		Type              string `json:"type"`
+		WaitTimer         int    `json:"wait_timer"`
+		PreventSelfReview bool   `json:"prevent_self_review"`
+		Reviewers         []struct {
+			Type     string `json:"type"`
+			Reviewer struct {
+				ID    int    `json:"id"`
+				Login string `json:"login"`
+				Slug  string `json:"slug"`
+			} `json:"reviewer"`
+		} `json:"reviewers"`
+	} `json:"protection_rules"`
+	DeploymentBranchPolicy *struct {
+		ProtectedBranches    bool `json:"protected_branches"`
+		CustomBranchPolicies bool `json:"custom_branch_policies"`
+	} `json:"deployment_branch_policy"`
+}
+
+func (e apiEnvironment) current() *CurrentEnvironment {
+	env := &CurrentEnvironment{
+		Name:            e.Name,
+		CanAdminsBypass: e.CanAdminsBypass == nil || *e.CanAdminsBypass, // GitHub's default
+		BranchPolicy:    manifest.DeploymentBranchesAll,
+	}
+	for _, r := range e.ProtectionRules {
+		switch r.Type {
+		case "wait_timer":
+			env.WaitTimer = r.WaitTimer
+		case "required_reviewers":
+			// The rule can be left with no reviewers when GitHub drops the
+			// ones it does not allow.
+			env.HasReviewersRule = true
+			env.PreventSelfReview = r.PreventSelfReview
+			for _, rv := range r.Reviewers {
+				name := rv.Reviewer.Login
+				if rv.Type == manifest.EnvironmentReviewerTeam {
+					name = rv.Reviewer.Slug
+				}
+				env.Reviewers = append(env.Reviewers, CurrentEnvironmentReviewer{Type: rv.Type, ID: rv.Reviewer.ID, Name: name})
+			}
+		}
+	}
+	if p := e.DeploymentBranchPolicy; p != nil {
+		switch {
+		case p.CustomBranchPolicies:
+			env.BranchPolicy = manifest.DeploymentBranchesCustom
+		case p.ProtectedBranches:
+			env.BranchPolicy = manifest.DeploymentBranchesProtected
+		}
+	}
+	return env
+}
+
+// environmentPath is the API path of an environment; its name is a path
+// segment, so a "/" in it is escaped.
+func environmentPath(owner, name, env string) string {
+	return fmt.Sprintf("repos/%s/%s/environments/%s", owner, name, url.PathEscape(env))
+}
+
+// fetchEnvironments reads every environment, and the name patterns of the
+// custom policies the spec's environments need: those whose
+// deployment_branch_policy it sets, since a change from custom removes them.
+// With a nil spec (import) it reads the patterns of every custom policy.
+func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, spec *manifest.RepositorySpec, strict bool) (map[string]*CurrentEnvironment, error) {
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/environments", owner, name), "--paginate", "--slurp")
+	if err != nil {
+		if !strict && isIgnorableSubresourceError(err) {
+			return nil, nil
+		}
+		return nil, fetchError(strict, "environments", owner, name, err)
+	}
+	var pages []struct {
+		Environments []apiEnvironment `json:"environments"`
+	}
+	if err := json.Unmarshal(out, &pages); err != nil {
+		// Import leaves what it cannot read empty, as for the other
+		// settings; plan reports it.
+		if !strict {
+			return nil, nil
+		}
+		return nil, fetchError(strict, "environments", owner, name, fmt.Errorf("parse response: %w", err))
+	}
+
+	needRules := func(env string) bool {
+		if spec == nil {
+			return true
+		}
+		for _, e := range spec.Environments {
+			if strings.EqualFold(e.Name, env) {
+				return e.DeploymentBranchPolicy != nil
+			}
+		}
+		return false
+	}
+	envs := make(map[string]*CurrentEnvironment)
+	for _, page := range pages {
+		for _, e := range page.Environments {
+			env := e.current()
+			if env.BranchPolicy == manifest.DeploymentBranchesCustom && needRules(env.Name) {
+				rules, err := p.fetchBranchRules(ctx, owner, name, env.Name)
+				if err != nil && strict {
+					return nil, fetchError(strict, fmt.Sprintf("deployment branch policies of environment %q", env.Name), owner, name, err)
+				}
+				env.BranchRules = rules
+			}
+			envs[strings.ToLower(env.Name)] = env
+		}
+	}
+	return envs, nil
+}
+
+func (p *Processor) fetchBranchRules(ctx context.Context, owner, name, env string) ([]CurrentBranchRule, error) {
+	out, err := p.runner.Run(ctx, "api", environmentPath(owner, name, env)+"/deployment-branch-policies", "--paginate", "--slurp")
+	if err != nil {
+		return nil, err
+	}
+	var pages []struct {
+		BranchPolicies []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+			Type string `json:"type"`
+		} `json:"branch_policies"`
+	}
+	if err := json.Unmarshal(out, &pages); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+	var rules []CurrentBranchRule
+	for _, page := range pages {
+		for _, r := range page.BranchPolicies {
+			rules = append(rules, CurrentBranchRule{ID: r.ID, Name: r.Name, Type: r.Type})
+		}
+	}
+	return rules, nil
 }
 
 func (p *Processor) fetchLabels(ctx context.Context, owner, name string, strict bool) (map[string]*CurrentLabel, error) {

@@ -66,6 +66,13 @@ type fakeState struct {
 	Rulesets      []*fakeRuleset
 	NextRulesetID int
 	Org           fakeOrg
+
+	Environments     []*fakeEnvironment
+	NextBranchRuleID int
+	// Collaborators and TeamRepos are the users and teams who can read the
+	// repository, besides its owner.
+	Collaborators []string
+	TeamRepos     []string
 }
 
 // fakeRepo holds the repository fields under their REST names.
@@ -438,6 +445,9 @@ func (f *fakeGitHub) api(body []byte, args []string) ([]byte, bool, error) {
 		return []byte("0 \n"), false, nil
 	}
 
+	if out, wrote, ok, err := f.apiAccount(path, method); ok {
+		return out, wrote, err
+	}
 	if strings.HasPrefix(path, "apps/") || strings.HasPrefix(path, "orgs/") {
 		return f.apiOrg(path, method)
 	}
@@ -485,6 +495,10 @@ func (f *fakeGitHub) api(body []byte, args []string) ([]byte, bool, error) {
 		return f.apiActions(strings.TrimPrefix(sub, "actions/permissions"), method, body)
 	case strings.HasPrefix(sub, "branches"):
 		return f.apiBranches(sub, method, body, rest)
+	case sub == "environments" || strings.HasPrefix(sub, "environments/"):
+		return f.apiEnvironments(sub, method, body, rest)
+	case strings.HasPrefix(sub, "collaborators/"):
+		return f.apiCollaborator(strings.TrimPrefix(sub, "collaborators/"), method)
 	case sub == "rulesets" || strings.HasPrefix(sub, "rulesets/"):
 		return f.apiRulesets(sub, method, body)
 	case sub == "labels" || strings.HasPrefix(sub, "labels/"):

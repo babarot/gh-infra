@@ -46,6 +46,19 @@ type ResolvedBypassActor struct {
 	BypassMode string
 }
 
+// ResolvedEnvironmentReviewer is an environment reviewer with the numeric ID
+// the GitHub API takes.
+type ResolvedEnvironmentReviewer struct {
+	Type string // User or Team
+	ID   int
+}
+
+// Environment reviewer types, as the GitHub API names them.
+const (
+	EnvironmentReviewerUser = "User"
+	EnvironmentReviewerTeam = "Team"
+)
+
 // ResolvedStatusCheck is a status check with optional numeric App ID.
 type ResolvedStatusCheck struct {
 	Context       string
@@ -171,6 +184,37 @@ func (r *Resolver) resolveBypassActor(ctx context.Context, a RulesetBypassActor)
 	default:
 		return ResolvedBypassActor{}, fmt.Errorf("bypass actor must specify one of: role, team, app, org-admin, or custom-role")
 	}
+}
+
+// ResolveEnvironmentReviewer converts a user login or team slug to the ID
+// form the environments API takes.
+func (r *Resolver) ResolveEnvironmentReviewer(ctx context.Context, rv EnvironmentReviewer) (ResolvedEnvironmentReviewer, error) {
+	if rv.Team != "" {
+		id, err := r.resolveTeamID(ctx, rv.Team)
+		if err != nil {
+			return ResolvedEnvironmentReviewer{}, fmt.Errorf("resolve team %q: %w", rv.Team, err)
+		}
+		return ResolvedEnvironmentReviewer{Type: EnvironmentReviewerTeam, ID: id}, nil
+	}
+	id, err := r.resolveUserID(ctx, rv.User)
+	if err != nil {
+		return ResolvedEnvironmentReviewer{}, fmt.Errorf("resolve user %q: %w", rv.User, err)
+	}
+	return ResolvedEnvironmentReviewer{Type: EnvironmentReviewerUser, ID: id}, nil
+}
+
+func (r *Resolver) resolveUserID(ctx context.Context, login string) (int, error) {
+	out, err := r.runner.Run(ctx, "api", "users/"+login)
+	if err != nil {
+		return 0, fmt.Errorf("fetch user %q: %w", login, err)
+	}
+	var user struct {
+		ID int `json:"id"`
+	}
+	if err := json.Unmarshal(out, &user); err != nil {
+		return 0, fmt.Errorf("parse user %q response: %w", login, err)
+	}
+	return user.ID, nil
 }
 
 // ResolveStatusChecks converts name-based status checks to numeric ID form.

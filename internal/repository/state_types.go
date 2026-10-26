@@ -29,7 +29,36 @@ type CurrentState struct {
 	Variables        map[string]string                   // name → value
 	Labels           map[string]*CurrentLabel            // name → label
 	Milestones       map[string]*CurrentMilestone        // title → milestone
+	Environments     map[string]*CurrentEnvironment      // lowercase name → environment
 	Actions          CurrentActions
+}
+
+// CurrentEnvironment is a deployment environment as GitHub reports it.
+type CurrentEnvironment struct {
+	Name            string // as GitHub spells it
+	CanAdminsBypass bool
+	WaitTimer       int // 0 when there is no wait timer rule
+	// HasReviewersRule: GitHub keeps prevent_self_review in the required
+	// reviewers rule, so without the rule it cannot be read.
+	HasReviewersRule  bool
+	PreventSelfReview bool
+	Reviewers         []CurrentEnvironmentReviewer
+	BranchPolicy      string // manifest.DeploymentBranches*
+	// BranchRules are the name patterns of a custom policy. They are read
+	// only when the manifest sets deployment_branch_policy (or on import).
+	BranchRules []CurrentBranchRule
+}
+
+type CurrentEnvironmentReviewer struct {
+	Type string // User or Team
+	ID   int
+	Name string // user login or team slug
+}
+
+type CurrentBranchRule struct {
+	ID   int
+	Name string
+	Type string // branch or tag
 }
 
 func (r *CurrentState) FullName() string {

@@ -77,6 +77,7 @@ Collections with a natural key field are merged. Entries with the same key are m
 | `rulesets` | `name` | Entry replaced |
 | `secrets` | `name` | Entry replaced |
 | `variables` | `name` | Entry replaced |
+| `environments` | `name` (ignoring case) | Fields merged; `reviewers` and `deployment_branch_policy` are each replaced as a whole |
 
 `milestones` is not merged: a non-empty list replaces the defaults' list, and `[]` means none.
 
@@ -86,6 +87,8 @@ repositories:
     spec:
       secrets: []        # none of the default secrets
 ```
+
+gh-infra never deletes an environment, so `environments: []` only means the repository inherits none of the defaults' environments.
 
 With `reconcile.labels`, `reconcile.rulesets` or `reconcile.branch_protection` set to `authoritative`, `[]` plans the deletion of every label, ruleset or branch protection rule on that repository, as it does in a single `Repository`. `plan` warns when an entry's `[]` drops the defaults this way.
 

@@ -1,7 +1,7 @@
 ---
 title: Security
 sidebar:
-  order: 8
+  order: 9
 ---
 
 Security settings correspond to the **Advanced Security** section of the GitHub repository settings UI. They are grouped under the `security` key on the repository spec:
