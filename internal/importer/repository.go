@@ -40,7 +40,7 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 		// Preserve ruleset parameters GitHub accepts but may not return.
 		imported.Rulesets = preserveUnreturnedRulesetParams(local.Rulesets, imported.Rulesets)
 		// Preserve the environments' secrets, as the repository's.
-		imported.Environments = preserveEnvironmentSecrets(local.Environments, imported.Environments)
+		imported.Environments, imported.EnvironmentsSet = importedEnvironments(local, imported)
 
 		diffs := compareSpecs(local, imported)
 		if len(diffs) == 0 {
@@ -174,7 +174,7 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		imported.Secrets = doc.Resource.Spec.Secrets
 		imported.LabelSync = doc.Resource.Spec.LabelSync
 		imported.Rulesets = preserveUnreturnedRulesetParams(doc.Resource.Spec.Rulesets, imported.Rulesets)
-		imported.Environments = preserveEnvironmentSecrets(doc.Resource.Spec.Environments, imported.Environments)
+		imported.Environments, imported.EnvironmentsSet = importedEnvironments(doc.Resource.Spec, imported)
 
 		newOverride := minimalOverride(defaults, imported)
 
@@ -1857,10 +1857,17 @@ func missingDefaultsWarnings(defaults, imported manifest.RepositorySpec) []RepoW
 		keys(len(imported.Environments), func(i int) string { return strings.ToLower(imported.Environments[i].Name) }))
 	for _, de := range defaults.Environments {
 		for _, ie := range imported.Environments {
-			if strings.EqualFold(de.Name, ie.Name) {
-				check(fmt.Sprintf("environments.%s.variables", ie.Name),
-					keys(len(de.Variables), func(i int) string { return de.Variables[i].Name }),
-					keys(len(ie.Variables), func(i int) string { return ie.Variables[i].Name }))
+			if !strings.EqualFold(de.Name, ie.Name) {
+				continue
+			}
+			check(fmt.Sprintf("environments.%s.variables", ie.Name),
+				keys(len(de.Variables), func(i int) string { return de.Variables[i].Name }),
+				keys(len(ie.Variables), func(i int) string { return ie.Variables[i].Name }))
+			if selfReviewWithoutReviewers(de, ie) {
+				warnings = append(warnings, RepoWarning{
+					Field:   fmt.Sprintf("environments.%s.reviewers", ie.Name),
+					Message: "none on GitHub, but the defaults set prevent_self_review, which needs reviewers and an entry cannot drop (plan will add the defaults' reviewers)",
+				})
 			}
 		}
 	}

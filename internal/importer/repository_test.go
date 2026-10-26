@@ -2336,3 +2336,20 @@ func TestCompareEnvironments_NewOnGitHub(t *testing.T) {
 		t.Errorf("diffs = %+v", diffs)
 	}
 }
+
+// When the environments could not be read, export leaves them unset and
+// import --into leaves the manifest's alone instead of reading them as none.
+func TestDiffRepository_EnvironmentsNotRead(t *testing.T) {
+	local := manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "${ENV_TOKEN}"}}}}}
+	if diffs := compareSpecs(local, manifest.RepositorySpec{}); len(diffs) == 0 {
+		t.Fatal("compareSpecs sees no difference; the test would pass for nothing")
+	}
+	envs, set := importedEnvironments(local, manifest.RepositorySpec{})
+	if len(envs) != 1 || envs[0].Secrets[0].Value != "${ENV_TOKEN}" || set != local.EnvironmentsSet {
+		t.Errorf("environments = %+v", envs)
+	}
+	envs, _ = importedEnvironments(local, manifest.RepositorySpec{EnvironmentsSet: true})
+	if len(envs) != 0 {
+		t.Errorf("environments read as none were kept: %+v", envs)
+	}
+}

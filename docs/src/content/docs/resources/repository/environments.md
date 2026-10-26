@@ -112,7 +112,7 @@ A new repository's environments are created by the same `apply`. GitHub drops a 
 
 ## Import
 
-`gh infra import` writes every environment of the repository, including the ones GitHub made, such as `github-pages`: gh-infra never deletes an environment, so declaring them does no harm. It writes their variables but not their secrets, whose values GitHub does not return; `import --into` keeps the secrets the manifest declares.
+`gh infra import` writes every environment of the repository, including the ones GitHub made, such as `github-pages`: gh-infra never deletes an environment, so declaring them does no harm. It writes their variables but not their secrets, whose values GitHub does not return; `import --into` keeps the secrets the manifest declares for the environments GitHub has. An environment the manifest declares but GitHub does not have is removed with its secrets, as any item import does not find on GitHub. When the environments cannot be read, `import --into` leaves the manifest's as they are.
 
 ## What is not managed
 

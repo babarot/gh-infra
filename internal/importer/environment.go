@@ -8,9 +8,19 @@ import (
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
-// preserveEnvironmentSecrets keeps the secrets the manifest declares for
-// each environment, as for the repository's: GitHub does not return secret
-// values, so the imported environments have none.
+// importedEnvironments returns the environments to import: the manifest's
+// when GitHub's could not be read (export leaves them unset), so they are
+// not read as none; otherwise GitHub's, with the secrets the manifest
+// declares for each of them, as for the repository's, since GitHub does not
+// return secret values. An environment that is not on GitHub goes with its
+// secrets, as any item import does not find there.
+func importedEnvironments(local, imported manifest.RepositorySpec) ([]manifest.Environment, bool) {
+	if !imported.EnvironmentsSet && len(imported.Environments) == 0 {
+		return local.Environments, local.EnvironmentsSet
+	}
+	return preserveEnvironmentSecrets(local.Environments, imported.Environments), imported.EnvironmentsSet
+}
+
 func preserveEnvironmentSecrets(local, imported []manifest.Environment) []manifest.Environment {
 	if len(imported) == 0 {
 		return imported
@@ -177,7 +187,10 @@ func minimalEnvironment(d, i manifest.Environment) (manifest.Environment, bool) 
 	if !ptrEqualValue(d.PreventSelfReview, i.PreventSelfReview) {
 		e.PreventSelfReview, changed = i.PreventSelfReview, true
 	}
-	if !ptrEqualValue(reviewersOf(d), reviewersOf(i)) {
+	// With the defaults' prevent_self_review, which an entry cannot drop,
+	// reviewers: [] is invalid: the reviewers are left to the defaults,
+	// and missingDefaultsWarnings says so.
+	if !ptrEqualValue(reviewersOf(d), reviewersOf(i)) && !selfReviewWithoutReviewers(d, i) {
 		e.Reviewers, e.ReviewersSet, changed = i.Reviewers, i.HasReviewers(), true
 	}
 	if !ptrEqualValue(policyOf(d), policyOf(i)) {
@@ -194,6 +207,12 @@ func minimalEnvironment(d, i manifest.Environment) (manifest.Environment, bool) 
 		e.Secrets, e.SecretsSet, changed = i.Secrets, true, true
 	}
 	return e, changed
+}
+
+// selfReviewWithoutReviewers reports whether the defaults set
+// prevent_self_review while GitHub has no reviewers to keep it.
+func selfReviewWithoutReviewers(d, i manifest.Environment) bool {
+	return d.PreventSelfReview != nil && i.HasReviewers() && len(i.Reviewers) == 0
 }
 
 func secretsEqual(a, b []manifest.Secret) bool {

@@ -245,8 +245,19 @@ func TestRoundTrip_ImportIntoRepositorySet(t *testing.T) {
 		{name: "defaults have an environment GitHub does not", mutate: withEnvironments,
 			defaults: &manifest.RepositorySpec{Environments: append([]manifest.Environment{{Name: "extra"}}, envBase.Spec.Environments...)},
 			wantPlan: []string{"environment"}, wantWarn: "environments"},
-		{name: "defaults have environments, GitHub none",
-			defaults: &manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "extra"}}}},
+		{name: "defaults have environments, GitHub none", mutate: func(s *repository.CurrentState) {
+			s.Environments = map[string]*repository.CurrentEnvironment{} // read, and none
+		}, defaults: &manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "extra"}}}},
+		{name: "defaults set prevent_self_review, GitHub has no reviewers", mutate: func(s *repository.CurrentState) {
+			s.Environments = map[string]*repository.CurrentEnvironment{
+				"production": {Name: "production", CanAdminsBypass: true, BranchPolicy: manifest.DeploymentBranchesAll},
+			}
+		}, defaults: &manifest.RepositorySpec{Environments: []manifest.Environment{{
+			Name: "production", PreventSelfReview: manifest.Ptr(true), Reviewers: []manifest.EnvironmentReviewer{{User: "alice"}},
+		}}}, wantPlan: []string{"environment"}, wantWarn: "environments.production.reviewers"},
+		{name: "environments could not be read", entry: &manifest.RepositorySpec{
+			Environments: []manifest.Environment{{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "${ENV_TOKEN}"}}}},
+		}, wantPlan: []string{"environment"}},
 		{name: "no defaults"},
 		{name: "no defaults, the entry differs from GitHub", entry: &manifest.RepositorySpec{
 			Description: manifest.Ptr("old"), Topics: []string{"go"}, Features: &manifest.Features{Wiki: manifest.Ptr(false)}}},

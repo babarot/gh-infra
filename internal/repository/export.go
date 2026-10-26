@@ -149,7 +149,12 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		})
 	}
 
-	repo.Spec.Environments = exportEnvironments(r.Environments)
+	// Environments that could not be read are left out, so import --into
+	// leaves the manifest's alone instead of reading them as none.
+	if r.Environments != nil {
+		repo.Spec.Environments = exportEnvironments(r.Environments)
+		repo.Spec.EnvironmentsSet = true
+	}
 
 	labelNames := make([]string, 0, len(r.Labels))
 	for name := range r.Labels {

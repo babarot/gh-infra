@@ -29,7 +29,7 @@ type CurrentState struct {
 	Variables        map[string]string                   // name → value
 	Labels           map[string]*CurrentLabel            // name → label
 	Milestones       map[string]*CurrentMilestone        // title → milestone
-	Environments     map[string]*CurrentEnvironment      // lowercase name → environment
+	Environments     map[string]*CurrentEnvironment      // lowercase name → environment; nil when not read
 	Actions          CurrentActions
 }
 
