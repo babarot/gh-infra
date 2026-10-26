@@ -772,7 +772,8 @@ func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
-// MarshalYAML keeps an explicit reviewers: [], which omitempty would drop.
+// MarshalYAML keeps an explicit reviewers: [], variables: [] and secrets: [],
+// which omitempty would drop.
 func (e Environment) MarshalYAML() (any, error) {
 	out := struct {
 		Name                   string                  `yaml:"name"`
@@ -781,10 +782,26 @@ func (e Environment) MarshalYAML() (any, error) {
 		CanAdminsBypass        *bool                   `yaml:"can_admins_bypass,omitempty"`
 		Reviewers              *[]EnvironmentReviewer  `yaml:"reviewers,omitempty"`
 		DeploymentBranchPolicy *DeploymentBranchPolicy `yaml:"deployment_branch_policy,omitempty"`
-		Variables              []Variable              `yaml:"variables,omitempty"`
-		Secrets                []Secret                `yaml:"secrets,omitempty"`
+		Variables              *[]Variable             `yaml:"variables,omitempty"`
+		Secrets                *[]Secret               `yaml:"secrets,omitempty"`
 	}{Name: e.Name, WaitTimer: e.WaitTimer, PreventSelfReview: e.PreventSelfReview, CanAdminsBypass: e.CanAdminsBypass,
-		DeploymentBranchPolicy: e.DeploymentBranchPolicy, Variables: e.Variables, Secrets: e.Secrets}
+		DeploymentBranchPolicy: e.DeploymentBranchPolicy}
+	// An explicit [] drops the defaults' variables or secrets in a
+	// RepositorySet entry.
+	if e.VariablesSet || len(e.Variables) > 0 {
+		vars := e.Variables
+		if vars == nil {
+			vars = []Variable{}
+		}
+		out.Variables = &vars
+	}
+	if e.SecretsSet || len(e.Secrets) > 0 {
+		secrets := e.Secrets
+		if secrets == nil {
+			secrets = []Secret{}
+		}
+		out.Secrets = &secrets
+	}
 	if e.HasReviewers() {
 		reviewers := e.Reviewers
 		if reviewers == nil {

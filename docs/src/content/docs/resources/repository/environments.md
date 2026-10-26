@@ -110,6 +110,10 @@ A change that widens who or what can deploy is easy to miss in a plan, so `plan`
 
 A new repository's environments are created by the same `apply`. GitHub drops a reviewer who cannot read the repository, and in a new one only its owner can, so `apply` adds the owner and leaves other reviewers (and `prevent_self_review`, when no reviewer is left) to a later `plan`, which adds them once they have access. `plan` says so in a note.
 
+## Import
+
+`gh infra import` writes every environment of the repository, including the ones GitHub made, such as `github-pages`: gh-infra never deletes an environment, so declaring them does no harm. It writes their variables but not their secrets, whose values GitHub does not return; `import --into` keeps the secrets the manifest declares for the environments GitHub has. An environment the manifest declares but GitHub does not have is removed with its secrets, as any item import does not find on GitHub. When the environments cannot be read, `import --into` leaves the manifest's as they are.
+
 ## What is not managed
 
 - Custom deployment protection rules (GitHub Apps)

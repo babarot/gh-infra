@@ -944,6 +944,7 @@ func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, s
 		e := declared(env)
 		return e != nil && manages(*e)
 	}
+	// Not nil even with no environment: nil means they could not be read.
 	envs := make(map[string]*CurrentEnvironment)
 	for _, page := range pages {
 		for _, e := range page.Environments {
