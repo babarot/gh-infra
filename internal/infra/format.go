@@ -300,9 +300,7 @@ func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 		// Compute column width for this group
 		w := 0
 		for _, r := range repoByName[name] {
-			if len(r.Change.Field) > w {
-				w = len(r.Change.Field)
-			}
+			w = max(w, len(applyResultField(r.Change)))
 		}
 		for _, r := range fileByTarget[name] {
 			if len(r.Change.Path) > w {
@@ -344,10 +342,11 @@ func printApplyResults(p ui.Printer, repoResults []repository.ApplyResult, fileR
 			}
 		}
 		for _, r := range regularResults {
+			field := applyResultField(r.Change)
 			if r.Err != nil {
-				p.PrintResult(ui.ResultItem{Icon: ui.IconError, Field: r.Change.Field, Detail: r.Err.Error()})
+				p.PrintResult(ui.ResultItem{Icon: ui.IconError, Field: field, Detail: r.Err.Error()})
 			} else {
-				p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: r.Change.Field, Detail: fmt.Sprintf("%sd", r.Change.Type)})
+				p.PrintResult(ui.ResultItem{Icon: ui.IconSuccess, Field: field, Detail: fmt.Sprintf("%sd", r.Change.Type)})
 			}
 		}
 		for _, resource := range groupResultOrder {
@@ -415,7 +414,7 @@ func printApplyFollowUps(p ui.Printer, repoResults []repository.ApplyResult, fil
 	for _, r := range repoResults {
 		if r.Err != nil {
 			note(r.Change.Name)
-			failures[r.Change.Name] = append(failures[r.Change.Name], failure{r.Change.Field, r.Err.Error()})
+			failures[r.Change.Name] = append(failures[r.Change.Name], failure{applyResultField(r.Change), r.Err.Error()})
 		}
 	}
 	for _, r := range fileResults {
@@ -570,21 +569,43 @@ func repoChangesToDiffGroups(changes []repository.Change) []ui.DiffGroup {
 }
 
 func repoChangeGroupHeader(c repository.Change) string {
-	if resource, key, ok := splitBracketResource(c.Resource); ok {
-		switch resource {
-		case manifest.ResourceRuleset:
-			return fmt.Sprintf("ruleset %q", key)
-		case manifest.ResourceBranchProtection:
-			return fmt.Sprintf("branch protection %q", key)
-		case manifest.ResourceEnvironment:
-			return fmt.Sprintf("environment %q", key)
-		}
+	if named, ok := namedItem(c); ok {
+		return named
 	}
 	header := c.Field
 	if s, ok := c.NewValue.(string); ok && s != "" {
 		header = fmt.Sprintf("%s[%s]", c.Field, s)
 	}
 	return header
+}
+
+// namedItem names the item a change to a ruleset, branch protection rule or
+// environment is for (`environment "production"`), taken from its resource
+// (`Environment[production]`). Changes to other resources have none.
+func namedItem(c repository.Change) (string, bool) {
+	resource, key, ok := splitBracketResource(c.Resource)
+	if !ok {
+		return "", false
+	}
+	switch resource {
+	case manifest.ResourceRuleset:
+		return fmt.Sprintf("ruleset %q", key), true
+	case manifest.ResourceBranchProtection:
+		return fmt.Sprintf("branch protection %q", key), true
+	case manifest.ResourceEnvironment:
+		return fmt.Sprintf("environment %q", key), true
+	}
+	return "", false
+}
+
+// applyResultField is what an apply result's line shows for a change: the
+// item's name, as the plan shows it, for a ruleset, branch protection rule
+// or environment, and the change's field otherwise.
+func applyResultField(c repository.Change) string {
+	if named, ok := namedItem(c); ok {
+		return named
+	}
+	return c.Field
 }
 
 func splitBracketResource(resource string) (name, key string, ok bool) {
