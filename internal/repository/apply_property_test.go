@@ -117,6 +117,13 @@ func TestApplyProperties(t *testing.T) {
 			Enabled: bptr(true), AllowedActions: ptr("all"), SHAPinningRequired: bptr(false),
 			WorkflowPermissions: ptr("write"), CanApprovePullRequests: bptr(true), ForkPRApproval: ptr("all_external_contributors"),
 		}}},
+		// GitHub does not report the fork PR approval of a private
+		// repository (422); apply makes it public first, then sets it.
+		{name: "public with fork PR approval", state: func(s *fakeState) {
+			s.Repo.Visibility = "private"
+		}, spec: manifest.RepositorySpec{Visibility: ptr("public"), Actions: &manifest.Actions{
+			Enabled: bptr(true), ForkPRApproval: ptr("all_external_contributors"),
+		}}},
 		{name: "selected actions", spec: manifest.RepositorySpec{Actions: &manifest.Actions{
 			Enabled: bptr(true), AllowedActions: ptr("selected"),
 			SelectedActions: &manifest.SelectedActions{VerifiedAllowed: bptr(true), PatternsAllowed: []string{"actions/*", "docker/*"}},

@@ -106,6 +106,7 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		// fork_pr_approval without visibility could not apply it there.
 		{name: "fork PR approval 422", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: invalid, wantErr: true},
 		{name: "fork PR approval 404", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: notFound, wantErr: true},
+		{name: "fork PR approval 422, made public", spec: manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: invalid},
 		{name: "fork PR approval 422, not set", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{})}, cmd: forkPRCmd, err: invalid},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

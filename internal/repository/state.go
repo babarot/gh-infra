@@ -154,11 +154,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		g.Go(func() error {
 			status("fetching actions...")
 			var err error
-			var managed *manifest.Actions
-			if spec != nil {
-				managed = spec.Actions
-			}
-			actions, err = p.fetchActionsSettings(ctx, owner, name, managed)
+			actions, err = p.fetchActionsSettings(ctx, owner, name, spec)
 			if err != nil && strict && errors.Is(err, gh.ErrForbidden) {
 				return fetchError(strict, "actions settings", owner, name, err)
 			}
@@ -1185,13 +1181,17 @@ func formatTimeAgo(t time.Time) string {
 	}
 }
 
-// fetchActionsSettings reads the Actions settings from four endpoints. With
-// managed, the Actions settings the manifest sets, an endpoint that cannot be
-// read (404, or a response that does not parse) is an error when the
-// manifest sets a field it reads: read as its zero value, the field would be
-// planned against a value GitHub does not have. Otherwise, as for import, a
-// 404 leaves what the endpoint reads at its zero value.
-func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string, managed *manifest.Actions) (CurrentActions, error) {
+// fetchActionsSettings reads the Actions settings from four endpoints. With a
+// spec, an endpoint that cannot be read (404, or a response that does not
+// parse) is an error when the spec sets a field it reads: read as its zero
+// value, the field would be planned against a value GitHub does not have.
+// Otherwise, as for import (a nil spec), a 404 leaves what the endpoint reads
+// at its zero value.
+func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string, spec *manifest.RepositorySpec) (CurrentActions, error) {
+	var managed *manifest.Actions
+	if spec != nil {
+		managed = spec.Actions
+	}
 	var result CurrentActions
 	fullName := fmt.Sprintf("repos/%s/%s", owner, name)
 	// unreadable reports err for what, an endpoint's part of the settings,
@@ -1282,14 +1282,18 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 
 	// 4. Fork PR approval. GitHub answers 422 on private repositories, which
 	// do not have it; a manifest that sets it there could not apply it, so
-	// that is an error too.
+	// that is an error too, unless the manifest makes the repository public
+	// or internal: apply changes the visibility first, so what the private
+	// repository has does not matter.
 	setsForkPR := managed != nil && managed.ForkPRApproval != nil
+	madeNotPrivate := spec != nil && spec.Visibility != nil && *spec.Visibility != manifest.VisibilityPrivate
 	out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/fork-pr-contributor-approval")
 	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrValidation) {
 		return result, fmt.Errorf("fetch actions fork-pr-approval for %s/%s: %w", owner, name, err)
 	}
 	if err != nil {
-		if err := unreadable("fork-pr-approval", setsForkPR, err); err != nil {
+		privateNow := errors.Is(err, gh.ErrValidation)
+		if err := unreadable("fork-pr-approval", setsForkPR && (!privateNow || !madeNotPrivate), err); err != nil {
 			return result, err
 		}
 	} else {
