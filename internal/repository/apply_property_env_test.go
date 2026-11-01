@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
@@ -94,6 +95,27 @@ func TestApplyPropertiesEnvironments(t *testing.T) {
 			s.Environments[0].Reviewers = nil
 		}, spec: env(manifest.Environment{Name: "production", Reviewers: []manifest.EnvironmentReviewer{{User: "bob"}}})},
 		{name: "a slash in the name", spec: env(manifest.Environment{Name: "deploy/eu", WaitTimer: iptr(1)})},
+		{name: "variables and secrets of a new environment", spec: env(manifest.Environment{
+			Name: "staging", DeploymentBranchPolicy: custom(manifest.DeploymentBranchRule{Name: "main"}),
+			Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}},
+			Secrets:   []manifest.Secret{{Name: "TOKEN", Value: "staging-token"}},
+		})},
+		{name: "variables and secrets of an existing environment", state: func(s *fakeState) {
+			s.Environments[0].Variables = map[string]string{"REGION": "us", "KEEP": "1"}
+			s.Environments[0].Secrets = map[string]string{"OLD": "x"}
+		}, spec: env(manifest.Environment{
+			Name:      "production",
+			Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}, {Name: "NEW", Value: "1"}},
+			Secrets:   []manifest.Secret{{Name: "OLD", Value: "rotated"}, {Name: "TOKEN", Value: "prod-token"}},
+		})},
+		{name: "variables and secrets as on GitHub", noPlan: true, state: func(s *fakeState) {
+			s.Environments[0].Variables = map[string]string{"REGION": "eu"}
+			s.Environments[0].Secrets = map[string]string{"TOKEN": "x"}
+		}, spec: env(manifest.Environment{
+			Name:      "production",
+			Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}},
+			Secrets:   []manifest.Secret{{Name: "TOKEN", Value: "y"}},
+		})},
 		{name: "private repository on Enterprise", state: func(s *fakeState) {
 			s.Repo.Visibility, s.Org.Plan = "private", "enterprise"
 		}, spec: env(manifest.Environment{Name: "staging", WaitTimer: iptr(5), Reviewers: []manifest.EnvironmentReviewer{{User: "bob"}}})},
@@ -272,6 +294,11 @@ func TestApplyEnvironmentsNewRepository(t *testing.T) {
 		{name: "a team as reviewer", deferred: true, env: manifest.Environment{
 			Name: "production", PreventSelfReview: bptr(true), Reviewers: []manifest.EnvironmentReviewer{{Team: "deployers"}},
 		}},
+		{name: "variables and secrets", env: manifest.Environment{
+			Name:      "production",
+			Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}},
+			Secrets:   []manifest.Secret{{Name: "TOKEN", Value: "x"}},
+		}},
 		{name: "the owner and a team", deferred: true, env: manifest.Environment{
 			Name: "production", PreventSelfReview: bptr(true), Reviewers: []manifest.EnvironmentReviewer{{User: "o"}, {Team: "deployers"}},
 		}},
@@ -392,4 +419,170 @@ func TestVerifyEnvironmentResponse(t *testing.T) {
 	if err := verifyEnvironmentResponse([]byte(saved), sent); err != nil {
 		t.Fatalf("err = %v, want none", err)
 	}
+}
+
+// An environment's secret gets the environment's value, not the one of the
+// repository's secret with the same name; --force-secrets sets it again; and
+// the repository's secret is left alone.
+func TestApplyEnvironmentSecrets(t *testing.T) {
+	ctx := context.Background()
+	s := propEnvState() // the repository has the secret TOKEN = "old"
+	s.Environments[0].Secrets = map[string]string{"EXISTING": "before"}
+	fake := newFakeGitHub("o", "r", s)
+	p := NewProcessor(fake, manifest.NewResolver(fake))
+	repo := &manifest.Repository{
+		Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"},
+		Spec: manifest.RepositorySpec{
+			Secrets: []manifest.Secret{{Name: "TOKEN", Value: "repo-token"}},
+			Environments: []manifest.Environment{
+				{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "prod-token"}, {Name: "EXISTING", Value: "after"}}},
+				{Name: "staging", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "staging-token"}}},
+			},
+		},
+	}
+	apply := func(force bool) {
+		t.Helper()
+		changes, targets, err := p.Plan(ctx, []*manifest.Repository{repo}, PlanOptions{ForceSecrets: force}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range p.Apply(ctx, changes, targets, nil) {
+			if r.Err != nil {
+				t.Fatalf("apply %s: %v", r.Change.Resource, r.Err)
+			}
+		}
+	}
+
+	apply(false)
+	got := fake.state()
+	if v := got.Secrets["TOKEN"]; v != "old" {
+		t.Errorf("repository secret TOKEN = %q, want it left as %q", v, "old")
+	}
+	envs := map[string]*fakeEnvironment{}
+	for _, e := range got.Environments {
+		envs[e.Name] = e
+	}
+	if v := envs["production"].Secrets["TOKEN"]; v != "prod-token" {
+		t.Errorf("production TOKEN = %q", v)
+	}
+	if v := envs["production"].Secrets["EXISTING"]; v != "before" {
+		t.Errorf("existing secret set without --force-secrets: %q", v)
+	}
+	if v := envs["staging"].Secrets["TOKEN"]; v != "staging-token" {
+		t.Errorf("staging TOKEN = %q", v)
+	}
+
+	apply(true)
+	if v := fake.state().Environments[0].Secrets["EXISTING"]; v != "after" {
+		t.Errorf("--force-secrets did not set EXISTING again: %q", v)
+	}
+}
+
+// A new environment with secrets and no deployment_branch_policy allows
+// every branch to read them; the plan says so.
+func TestChangeNotesSecretsOfAnUnlimitedEnvironment(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		policy *manifest.DeploymentBranchPolicy
+		want   bool
+	}{
+		{name: "no policy", want: true},
+		{name: "patterns", policy: &manifest.DeploymentBranchPolicy{CustomBranchPolicies: []manifest.DeploymentBranchRule{{Name: "main"}}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newFakeGitHub("o", "r", propEnvState())
+			p := NewProcessor(fake, manifest.NewResolver(fake))
+			repo := &manifest.Repository{
+				Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"},
+				Spec: manifest.RepositorySpec{Environments: []manifest.Environment{{
+					Name: "staging", DeploymentBranchPolicy: tt.policy,
+					Secrets: []manifest.Secret{{Name: "TOKEN", Value: "x"}},
+				}}},
+			}
+			changes, _, err := p.Plan(context.Background(), []*manifest.Repository{repo}, PlanOptions{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			notes := strings.Join(ChangeNotes(changes), "\n")
+			if got := strings.Contains(notes, "readable from any branch"); got != tt.want {
+				t.Errorf("notes = %q, want the note: %v", notes, tt.want)
+			}
+		})
+	}
+}
+
+// After apply, an environment's variables hold the manifest's values; ones
+// the manifest leaves out are kept.
+func TestApplyEnvironmentVariables(t *testing.T) {
+	ctx := context.Background()
+	s := propEnvState()
+	s.Environments[0].Variables = map[string]string{"REGION": "us", "KEEP": "1"}
+	fake := newFakeGitHub("o", "r", s)
+	p := NewProcessor(fake, manifest.NewResolver(fake))
+	repo := &manifest.Repository{
+		Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"},
+		Spec: manifest.RepositorySpec{Environments: []manifest.Environment{{
+			Name: "production", Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}, {Name: "NEW", Value: "2"}},
+		}}},
+	}
+	changes, targets, err := p.Plan(ctx, []*manifest.Repository{repo}, PlanOptions{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range p.Apply(ctx, changes, targets, nil) {
+		if r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	}
+	got := fake.state().Environments[0].Variables
+	if got["REGION"] != "eu" || got["NEW"] != "2" || got["KEEP"] != "1" {
+		t.Errorf("variables = %v", got)
+	}
+}
+
+// An environment's secrets or variables that cannot be read fail the
+// repository at plan rather than being read as none, which would plan an
+// existing secret as new.
+func TestPlanEnvironmentValuesUnreadable(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		env  manifest.Environment
+		cmd  string
+	}{
+		{name: "secrets", env: manifest.Environment{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "x"}}},
+			cmd: "secret list --repo o/r --env production --json name --jq .[].name"},
+		{name: "variables", env: manifest.Environment{Name: "production", Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}}},
+			cmd: "variable list --repo o/r --env production --json name,value"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newFakeGitHub("o", "r", propEnvState())
+			runner := &failingRunner{Runner: fake, cmd: tt.cmd, err: fakeStatus(gh.ErrNotFound, "Not Found")}
+			p := NewProcessor(runner, manifest.NewResolver(runner))
+			repo := &manifest.Repository{
+				Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"},
+				Spec:     manifest.RepositorySpec{Environments: []manifest.Environment{tt.env}},
+			}
+			changes, _, err := p.Plan(context.Background(), []*manifest.Repository{repo}, PlanOptions{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(changes) > 0 {
+				t.Errorf("planned %s from values that could not be read", formatChanges(changes))
+			}
+		})
+	}
+}
+
+// failingRunner fails one command and passes the rest to Runner.
+type failingRunner struct {
+	gh.Runner
+	cmd string
+	err error
+}
+
+func (r *failingRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
+	if strings.Join(args, " ") == r.cmd {
+		return nil, r.err
+	}
+	return r.Runner.Run(ctx, args...)
 }

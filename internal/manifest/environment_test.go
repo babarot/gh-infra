@@ -72,6 +72,9 @@ func TestEnvironment_Invalid(t *testing.T) {
 		{name: "reviewer with neither", env: "      reviewers:\n        - {}\n", wantErr: "exactly one of: user or team"},
 		{name: "reviewer twice", env: "      reviewers:\n        - user: Alice\n        - user: alice\n", wantErr: "listed twice"},
 		{name: "too many reviewers", env: "      reviewers:\n        - user: a\n        - user: b\n        - user: c\n        - user: d\n        - user: e\n        - user: f\n        - user: g\n", wantErr: "at most 6"},
+		{name: "null variables", env: "      variables:\n", wantErr: "variables must be a sequence"},
+		{name: "duplicate secret", env: "      secrets:\n        - name: A\n          value: x\n        - name: A\n          value: y\n", wantErr: "duplicate name"},
+		{name: "secret without a name", env: "      secrets:\n        - value: x\n", wantErr: "name is required"},
 		{name: "self review without reviewers", env: "      reviewers: []\n      prevent_self_review: true\n", wantErr: "needs at least one reviewer"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -143,6 +146,12 @@ defaults:
           custom_branch_policies:
             - name: main
             - name: release/*
+        variables:
+          - name: REGION
+            value: us
+        secrets:
+          - name: TOKEN
+            value: default
       - name: staging
 repositories:
   - name: inherits
@@ -153,6 +162,12 @@ repositories:
           can_admins_bypass: false
           reviewers: []
           deployment_branch_policy: {}
+          variables:
+            - name: REGION
+              value: eu
+            - name: TIER
+              value: prod
+          secrets: []
         - name: preview
   - name: none
     spec:
@@ -192,11 +207,38 @@ repositories:
 	if prod.DeploymentBranchPolicy.Mode() != DeploymentBranchesAll {
 		t.Errorf("deployment_branch_policy: {} did not replace the defaults' patterns: %+v", prod.DeploymentBranchPolicy)
 	}
+	if len(prod.Variables) != 2 || prod.Variables[0].Value != "eu" || prod.Variables[1].Name != "TIER" {
+		t.Errorf("variables not merged by name: %+v", prod.Variables)
+	}
+	if !prod.SecretsSet || len(prod.Secrets) != 0 {
+		t.Errorf("secrets: [] inherited the defaults: %+v", prod.Secrets)
+	}
+	if got := byName["inherits"].Spec.Environments[0].Secrets; len(got) != 1 || got[0].Value != "default" {
+		t.Errorf("inherits: secrets = %+v", got)
+	}
 	if envs[2].Name != "preview" {
 		t.Errorf("new environment not appended: %+v", envs[2])
 	}
 
 	if got := byName["none"].Spec.Environments; len(got) != 0 || byName["none"].Spec.ManagesEnvironments() {
 		t.Errorf("none: environments = %+v", got)
+	}
+}
+
+func TestResolveSecrets_Environments(t *testing.T) {
+	t.Setenv("ENV_PROD_TOKEN", "p")
+	repos := []*Repository{{
+		Metadata: RepositoryMetadata{Name: "repo", Owner: "org"},
+		Spec: RepositorySpec{Environments: []Environment{{
+			Name:    "production",
+			Secrets: []Secret{{Name: "TOKEN", Value: "${ENV_PROD_TOKEN}"}, {Name: "LEAK", Value: "${GH_TOKEN}"}},
+		}}},
+	}}
+	err := ResolveSecrets(repos)
+	if err == nil || !strings.Contains(err.Error(), `environment "production": secret "LEAK"`) {
+		t.Fatalf("err = %v, want the environment's secret named", err)
+	}
+	if got := repos[0].Spec.Environments[0].Secrets[0].Value; got != "p" {
+		t.Errorf("TOKEN = %q, want it expanded", got)
 	}
 }

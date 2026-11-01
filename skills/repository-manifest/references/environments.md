@@ -17,6 +17,12 @@ spec:
           - name: main            # type defaults to branch
           - name: "v*"
             type: tag
+      variables:                  # added/updated, never deleted
+        - name: REGION
+          value: eu-west-1
+      secrets:                    # ${ENV_*} only, never deleted, like repository secrets
+        - name: DEPLOY_TOKEN
+          value: "${ENV_DEPLOY_TOKEN}"
 ```
 
 `deployment_branch_policy`:
@@ -38,5 +44,6 @@ Rules and gotchas:
 - plan fails for `wait_timer` or reviewers on a private repo unless the owner's plan is Enterprise; it reads the plan (org owner token, or the user's own token with the `user` scope), else accepts only if an environment of the repo already has that kind of rule
 - private repos on Free have no environments; Pro/Team private repos allow branch policies and `can_admins_bypass` only
 - in a new repository only the owner is added as reviewer by the creating apply; other reviewers (and `prevent_self_review` when none is left) come in a later plan
-- plan notes changes that widen deployment: policy to `{}`, reviewers to `[]`, `can_admins_bypass` to true
-- in a RepositorySet, environments merge by name (ignoring case) field by field; `reviewers` and `deployment_branch_policy` replace as a whole
+- plan notes changes that widen deployment: policy to `{}`, reviewers to `[]`, `can_admins_bypass` to true; and a new environment with secrets but no `deployment_branch_policy` (its secrets are readable from any branch)
+- environment secrets are separate from repository secrets of the same name; `--force-secrets` also sets environment secrets again
+- in a RepositorySet, environments merge by name (ignoring case) field by field; `reviewers` and `deployment_branch_policy` replace as a whole; `variables` and `secrets` merge by name (`[]` inherits none)

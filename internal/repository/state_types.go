@@ -47,6 +47,10 @@ type CurrentEnvironment struct {
 	// BranchRules are the name patterns of a custom policy. They are read
 	// only when the manifest sets deployment_branch_policy (or on import).
 	BranchRules []CurrentBranchRule
+	// Secrets (names only) and Variables are read only when the manifest
+	// declares some for the environment (or on import).
+	Secrets   []string
+	Variables map[string]string
 }
 
 type CurrentEnvironmentReviewer struct {

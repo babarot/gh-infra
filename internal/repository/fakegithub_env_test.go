@@ -23,14 +23,16 @@ import (
 // wait timers and reviewers.
 
 type fakeEnvironment struct {
-	Name              string           `json:"name"`
-	CanAdminsBypass   bool             `json:"can_admins_bypass"`
-	WaitTimer         int              `json:"wait_timer"`
-	ReviewersRule     bool             `json:"reviewers_rule"`
-	PreventSelfReview bool             `json:"prevent_self_review"`
-	Reviewers         []fakeReviewer   `json:"reviewers"`
-	Policy            string           `json:"policy"` // all, protected or custom
-	Rules             []fakeBranchRule `json:"rules"`
+	Name              string            `json:"name"`
+	CanAdminsBypass   bool              `json:"can_admins_bypass"`
+	WaitTimer         int               `json:"wait_timer"`
+	ReviewersRule     bool              `json:"reviewers_rule"`
+	PreventSelfReview bool              `json:"prevent_self_review"`
+	Reviewers         []fakeReviewer    `json:"reviewers"`
+	Policy            string            `json:"policy"` // all, protected or custom
+	Rules             []fakeBranchRule  `json:"rules"`
+	Secrets           map[string]string `json:"secrets"` // GitHub returns names only
+	Variables         map[string]string `json:"variables"`
 }
 
 type fakeReviewer struct {
@@ -346,6 +348,25 @@ func (f *fakeGitHub) apiAccount(path, method string) ([]byte, bool, bool, error)
 	return nil, false, false, nil
 }
 
+// envValues returns the secrets or variables a gh secret / gh variable
+// command reads or writes: the repository's, or with --env, those of the
+// environment, which must exist.
+func (f *fakeGitHub) envValues(args []string, repo map[string]string, pick func(*fakeEnvironment) *map[string]string) (map[string]string, error) {
+	name, ok := fakeFlag(args, "--env")
+	if !ok {
+		return repo, nil
+	}
+	e := f.findEnvironment(name)
+	if e == nil {
+		return nil, fakeStatus(gh.ErrNotFound, "environment "+name)
+	}
+	m := pick(e)
+	if *m == nil {
+		*m = map[string]string{}
+	}
+	return *m, nil
+}
+
 // fakeFields returns the -f key=value fields of a gh api command.
 func fakeFields(args []string) map[string]string {
 	fields := map[string]string{}
@@ -377,6 +398,12 @@ func flattenEnvironments(out map[string]string, envs []*fakeEnvironment) {
 		out[key+"reviewers"] = strings.Join(rvs, ",")
 		for _, r := range e.Rules {
 			out[key+"rules."+r.Type+":"+r.Name] = "1"
+		}
+		for n, v := range e.Secrets {
+			out[key+"secrets."+n] = v
+		}
+		for n, v := range e.Variables {
+			out[key+"variables."+n] = v
 		}
 	}
 }

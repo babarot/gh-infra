@@ -25,7 +25,17 @@ const (
 	envFieldReviewers    = "reviewers"
 	envFieldBranchPolicy = "deployment_branch_policy"
 	envFieldBranchRule   = "branch_policy"
+	envFieldVariable     = "variable"
+	envFieldSecret       = "secret"
 )
+
+// defaultBranchPolicy is shown for a new environment whose policy the
+// manifest leaves out.
+const defaultBranchPolicy = manifest.DeploymentBranchesAll + " (GitHub's default)"
+
+func hasDetail(c Change, match func(Change) bool) bool {
+	return slices.ContainsFunc(c.Details, match)
+}
 
 // removedByGitHub marks a pattern GitHub deletes itself when a policy stops
 // being custom: the plan shows it, and apply sends nothing for it.
@@ -123,7 +133,7 @@ func formatBranchRule(name, typ string) string {
 // a single change: Details show what changes, and Children are what apply
 // does in order: the PUT of the environment, then the patterns.
 // Environments the manifest leaves out are left alone.
-func diffEnvironments(name string, desired *manifest.Repository, current *CurrentState) []Change {
+func diffEnvironments(name string, desired *manifest.Repository, current *CurrentState, forceSecrets bool) []Change {
 	if !desired.Spec.ManagesEnvironments() {
 		return nil
 	}
@@ -137,6 +147,7 @@ func diffEnvironments(name string, desired *manifest.Repository, current *Curren
 		} else {
 			c = diffExistingEnvironment(name, env, cur, reconcile)
 		}
+		diffEnvironmentValues(&c, env, cur, forceSecrets)
 		if len(c.Children) > 0 {
 			changes = append(changes, c)
 		}
@@ -173,7 +184,7 @@ func diffNewEnvironment(name, owner string, env manifest.Environment, newRepo bo
 			details = append(details, Change{Type: ChangeCreate, Field: envFieldBranchRule, NewValue: formatBranchRule(r.Name, r.RuleType())})
 		}
 	} else {
-		details = append(details, Change{Type: ChangeCreate, Field: envFieldBranchPolicy, NewValue: manifest.DeploymentBranchesAll + " (GitHub's default)"})
+		details = append(details, Change{Type: ChangeCreate, Field: envFieldBranchPolicy, NewValue: defaultBranchPolicy})
 	}
 	children := append([]Change{{Type: ChangeCreate, Field: envFieldSettings, NewValue: fields}}, rules...)
 	return Change{
@@ -270,6 +281,41 @@ func diffExistingEnvironment(name string, env manifest.Environment, cur *Current
 	}
 }
 
+// diffEnvironmentValues adds the variables and secrets of an environment to
+// its change; they are set after the environment exists. As for those of the
+// repository, a secret's value cannot be read, so an existing secret is set
+// again only with --force-secrets, and none is deleted.
+func diffEnvironmentValues(c *Change, env manifest.Environment, cur *CurrentEnvironment, forceSecrets bool) {
+	var curVars map[string]string
+	var curSecrets []string
+	if cur != nil {
+		curVars, curSecrets = cur.Variables, cur.Secrets
+	}
+	for _, v := range env.Variables {
+		old, exists := curVars[v.Name]
+		switch {
+		case !exists:
+			c.Details = append(c.Details, Change{Type: ChangeCreate, Field: "variables." + v.Name, NewValue: v.Value})
+		case old != v.Value:
+			c.Details = append(c.Details, Change{Type: ChangeUpdate, Field: "variables." + v.Name, OldValue: old, NewValue: v.Value})
+		default:
+			continue
+		}
+		c.Children = append(c.Children, Change{Type: ChangeUpdate, Field: envFieldVariable, NewValue: v.Name})
+	}
+	for _, sec := range env.Secrets {
+		switch {
+		case !slices.Contains(curSecrets, sec.Name):
+			c.Details = append(c.Details, Change{Type: ChangeCreate, Field: "secrets." + sec.Name, NewValue: "(new)"})
+		case forceSecrets:
+			c.Details = append(c.Details, Change{Type: ChangeUpdate, Field: "secrets." + sec.Name, OldValue: "(exists)", NewValue: "(force update)"})
+		default:
+			continue
+		}
+		c.Children = append(c.Children, Change{Type: ChangeUpdate, Field: envFieldSecret, NewValue: sec.Name})
+	}
+}
+
 // environmentCreateNotes lists the reviewers a new repository's environments
 // get from a later plan.
 func environmentCreateNotes(desired *manifest.Repository) []string {
@@ -296,7 +342,16 @@ func ChangeNotes(changes []Change) []string {
 	var notes []string
 	for _, c := range changes {
 		resource, env, ok := splitApplyResource(c.Resource)
-		if !ok || resource != manifest.ResourceEnvironment || c.Type != ChangeUpdate {
+		if !ok || resource != manifest.ResourceEnvironment {
+			continue
+		}
+		if c.Type == ChangeCreate {
+			// A new environment allows every branch unless the manifest
+			// limits it, so its secrets are readable from any branch.
+			if hasDetail(c, func(d Change) bool { return d.Field == envFieldBranchPolicy && d.NewValue == defaultBranchPolicy }) &&
+				hasDetail(c, func(d Change) bool { return strings.HasPrefix(d.Field, "secrets.") }) {
+				notes = append(notes, fmt.Sprintf("environment %q: its secrets are readable from any branch; set deployment_branch_policy to limit them", env))
+			}
 			continue
 		}
 		for _, d := range c.Details {
@@ -561,12 +616,44 @@ func (p *Processor) applyEnvironment(ctx context.Context, c Change, repo *manife
 			"-f", "name="+r.Name, "-f", "type="+r.RuleType())
 		return wrapError(err, fullName, target+":"+formatBranchRule(r.Name, r.RuleType()))
 
+	case c.Field == envFieldVariable || c.Field == envFieldSecret:
+		env := findEnvironment(repo.Spec.Environments, envName)
+		key, _ := c.NewValue.(string)
+		value, ok := environmentValue(env, c.Field, key)
+		if !ok {
+			return wrapError(fmt.Errorf("%s %q of environment %q is not in the manifest", c.Field, key, envName), fullName, target)
+		}
+		_, err := p.runner.Run(ctx, c.Field, "set", key, "--repo", fullName, "--env", envName, "--body", value)
+		return wrapError(err, fullName, target+":"+c.Field+":"+key)
+
 	case c.Field == envFieldBranchRule && c.Type == ChangeDelete:
 		r, _ := c.OldValue.(CurrentBranchRule)
 		_, err := p.runner.Run(ctx, "api", fmt.Sprintf("%s/deployment-branch-policies/%d", path, r.ID), "--method", "DELETE")
 		return wrapError(err, fullName, target+":"+formatBranchRule(r.Name, r.Type))
 	}
 	return fmt.Errorf("unknown environment change: %s %s", c.Type, c.Field)
+}
+
+// environmentValue returns the value of an environment's variable or secret
+// in the manifest, never one of the repository with the same name.
+func environmentValue(env *manifest.Environment, kind, key string) (string, bool) {
+	if env == nil {
+		return "", false
+	}
+	if kind == envFieldSecret {
+		for _, s := range env.Secrets {
+			if s.Name == key {
+				return s.Value, true
+			}
+		}
+		return "", false
+	}
+	for _, v := range env.Variables {
+		if v.Name == key {
+			return v.Value, true
+		}
+	}
+	return "", false
 }
 
 // sentEnvironment is what a PUT sent, to check GitHub saved it.

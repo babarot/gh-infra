@@ -34,6 +34,8 @@ gh infra apply ./repos/ --force-secrets
 
 This is useful after rotating credentials — without the flag, `apply` would skip existing secrets because it can't tell they've changed.
 
+Secrets of a deployment environment, which only jobs that name the environment can read, are declared under the environment: see [Environments](./environments/#variables-and-secrets).
+
 ## Variables
 
 Variables store non-sensitive configuration like environment names or regions.

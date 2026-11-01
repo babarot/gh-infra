@@ -793,13 +793,17 @@ func (f *fakeGitHub) secretCmd(args []string) ([]byte, bool, error) {
 	if repo, _ := fakeFlag(args, "--repo"); repo != f.fullName() {
 		return nil, false, errUnknown
 	}
+	secrets, err := f.envValues(args, f.s.Secrets, func(e *fakeEnvironment) *map[string]string { return &e.Secrets })
+	if err != nil {
+		return nil, false, err
+	}
 	switch args[0] {
 	case "list":
 		if jq, _ := fakeFlag(args, "--jq"); jq != ".[].name" {
 			return nil, false, errUnknown
 		}
-		names := make([]string, 0, len(f.s.Secrets))
-		for n := range f.s.Secrets {
+		names := make([]string, 0, len(secrets))
+		for n := range secrets {
 			names = append(names, n)
 		}
 		sort.Strings(names)
@@ -809,7 +813,7 @@ func (f *fakeGitHub) secretCmd(args []string) ([]byte, bool, error) {
 		if !ok {
 			return nil, false, errUnknown
 		}
-		f.s.Secrets[args[1]] = v
+		secrets[args[1]] = v
 		return nil, true, nil
 	}
 	return nil, false, errUnknown
@@ -819,14 +823,18 @@ func (f *fakeGitHub) variableCmd(args []string) ([]byte, bool, error) {
 	if repo, _ := fakeFlag(args, "--repo"); repo != f.fullName() {
 		return nil, false, errUnknown
 	}
+	vars, err := f.envValues(args, f.s.Variables, func(e *fakeEnvironment) *map[string]string { return &e.Variables })
+	if err != nil {
+		return nil, false, err
+	}
 	switch args[0] {
 	case "list":
 		if j, _ := fakeFlag(args, "--json"); j != "name,value" {
 			return nil, false, errUnknown
 		}
 		var out []map[string]string
-		for _, n := range fakeSortedKeys(f.s.Variables) {
-			out = append(out, map[string]string{"name": n, "value": f.s.Variables[n]})
+		for _, n := range fakeSortedKeys(vars) {
+			out = append(out, map[string]string{"name": n, "value": vars[n]})
 		}
 		return mustJSON(out), false, nil
 	case "set":
@@ -834,7 +842,7 @@ func (f *fakeGitHub) variableCmd(args []string) ([]byte, bool, error) {
 		if !ok {
 			return nil, false, errUnknown
 		}
-		f.s.Variables[args[1]] = v
+		vars[args[1]] = v
 		return nil, true, nil
 	}
 	return nil, false, errUnknown

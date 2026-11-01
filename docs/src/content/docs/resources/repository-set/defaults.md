@@ -77,7 +77,7 @@ Collections with a natural key field are merged. Entries with the same key are m
 | `rulesets` | `name` | Entry replaced |
 | `secrets` | `name` | Entry replaced |
 | `variables` | `name` | Entry replaced |
-| `environments` | `name` (ignoring case) | Fields merged; `reviewers` and `deployment_branch_policy` are each replaced as a whole |
+| `environments` | `name` (ignoring case) | Fields merged; `reviewers` and `deployment_branch_policy` are each replaced as a whole, `variables` and `secrets` are merged by `name` |
 
 `milestones` is not merged: a non-empty list replaces the defaults' list, and `[]` means none.
 

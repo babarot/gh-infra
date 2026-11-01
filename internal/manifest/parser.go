@@ -835,7 +835,8 @@ func mergeVariables(base, override []Variable) []Variable {
 
 // mergeEnvironments merges two environment slices by name, ignoring case as
 // GitHub does. Same-name entries are merged field by field; reviewers and
-// deployment_branch_policy are each replaced as a whole.
+// deployment_branch_policy are each replaced as a whole, and variables and
+// secrets are merged by name.
 func mergeEnvironments(base, override []Environment) []Environment {
 	return mergeByKeyWith(base, override,
 		func(e Environment) string { return strings.ToLower(e.Name) },
@@ -861,6 +862,14 @@ func mergeEnvironmentEntry(base, override Environment) Environment {
 	}
 	if override.DeploymentBranchPolicy != nil {
 		result.DeploymentBranchPolicy = override.DeploymentBranchPolicy
+	}
+	if override.VariablesSet || len(override.Variables) > 0 {
+		result.Variables = mergeOrEmpty(result.Variables, override.Variables, mergeVariables)
+		result.VariablesSet = true
+	}
+	if override.SecretsSet || len(override.Secrets) > 0 {
+		result.Secrets = mergeOrEmpty(result.Secrets, override.Secrets, mergeSecrets)
+		result.SecretsSet = true
 	}
 	return result
 }
@@ -911,23 +920,29 @@ func expandEnvVars(s string) (expanded string, disallowed, missing []string) {
 // corrupted value.
 func ResolveSecrets(repos []*Repository) error {
 	var errs []error
-	for _, repo := range repos {
-		for i := range repo.Spec.Secrets {
-			secret := &repo.Spec.Secrets[i]
+	resolve := func(repo *Repository, where string, secrets []Secret) {
+		for i := range secrets {
+			secret := &secrets[i]
 			resolved, disallowed, missing := expandEnvVars(secret.Value)
 			secret.Value = resolved
 			for _, key := range disallowed {
 				errs = append(errs, fmt.Errorf(
-					"repo %s: secret %q references ${%s}: only ${ENV_*} variables are allowed",
-					repo.Metadata.Name, secret.Name, key,
+					"repo %s: %ssecret %q references ${%s}: only ${ENV_*} variables are allowed",
+					repo.Metadata.Name, where, secret.Name, key,
 				))
 			}
 			for _, key := range missing {
 				errs = append(errs, fmt.Errorf(
-					"repo %s: secret %q references ${%s}, which is unset or empty",
-					repo.Metadata.Name, secret.Name, key,
+					"repo %s: %ssecret %q references ${%s}, which is unset or empty",
+					repo.Metadata.Name, where, secret.Name, key,
 				))
 			}
+		}
+	}
+	for _, repo := range repos {
+		resolve(repo, "", repo.Spec.Secrets)
+		for _, env := range repo.Spec.Environments {
+			resolve(repo, fmt.Sprintf("environment %q: ", env.Name), env.Secrets)
 		}
 	}
 	return errors.Join(errs...)

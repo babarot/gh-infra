@@ -693,8 +693,14 @@ type Environment struct {
 	CanAdminsBypass        *bool                   `yaml:"can_admins_bypass,omitempty"`
 	Reviewers              []EnvironmentReviewer   `yaml:"reviewers,omitempty"`
 	DeploymentBranchPolicy *DeploymentBranchPolicy `yaml:"deployment_branch_policy,omitempty"`
+	// Variables and Secrets are added and updated, never deleted, as those
+	// of the repository.
+	Variables []Variable `yaml:"variables,omitempty" validate:"unique=name"`
+	Secrets   []Secret   `yaml:"secrets,omitempty"   validate:"unique=name"`
 
 	ReviewersSet bool `yaml:"-"`
+	VariablesSet bool `yaml:"-"`
+	SecretsSet   bool `yaml:"-"`
 }
 
 // EnvironmentReviewer is a user or a team who can approve deployments.
@@ -751,6 +757,18 @@ func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	if p, ok := fields["deployment_branch_policy"]; ok && p == nil {
 		return fmt.Errorf("environments[%s].deployment_branch_policy must not be null; use {} to allow all branches and tags", e.Name)
 	}
+	if v, ok := fields["variables"]; ok {
+		if v == nil {
+			return fmt.Errorf("environments[%s].variables must be a sequence; use [] to inherit no variables from defaults", e.Name)
+		}
+		e.VariablesSet = true
+	}
+	if v, ok := fields["secrets"]; ok {
+		if v == nil {
+			return fmt.Errorf("environments[%s].secrets must be a sequence; use [] to inherit no secrets from defaults", e.Name)
+		}
+		e.SecretsSet = true
+	}
 	return nil
 }
 
@@ -763,7 +781,10 @@ func (e Environment) MarshalYAML() (any, error) {
 		CanAdminsBypass        *bool                   `yaml:"can_admins_bypass,omitempty"`
 		Reviewers              *[]EnvironmentReviewer  `yaml:"reviewers,omitempty"`
 		DeploymentBranchPolicy *DeploymentBranchPolicy `yaml:"deployment_branch_policy,omitempty"`
-	}{Name: e.Name, WaitTimer: e.WaitTimer, PreventSelfReview: e.PreventSelfReview, CanAdminsBypass: e.CanAdminsBypass, DeploymentBranchPolicy: e.DeploymentBranchPolicy}
+		Variables              []Variable              `yaml:"variables,omitempty"`
+		Secrets                []Secret                `yaml:"secrets,omitempty"`
+	}{Name: e.Name, WaitTimer: e.WaitTimer, PreventSelfReview: e.PreventSelfReview, CanAdminsBypass: e.CanAdminsBypass,
+		DeploymentBranchPolicy: e.DeploymentBranchPolicy, Variables: e.Variables, Secrets: e.Secrets}
 	if e.HasReviewers() {
 		reviewers := e.Reviewers
 		if reviewers == nil {
