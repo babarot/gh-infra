@@ -18,6 +18,9 @@ type DiffInput struct {
 	Repos         []*manifest.RepositoryDocument
 	Imported      *manifest.Repository
 	ManifestBytes map[string][]byte
+	// Unread is what could not be read from GitHub (CurrentState.Unread):
+	// the manifest's value is kept for it.
+	Unread map[string]error
 }
 
 // DiffRepository compares local Repository spec vs GitHub-imported spec,
@@ -41,13 +44,21 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 		imported.Rulesets = preserveUnreturnedRulesetParams(local.Rulesets, imported.Rulesets)
 		// Preserve the environments' secrets, as the repository's.
 		imported.Environments, imported.EnvironmentsSet = importedEnvironments(local, imported)
+		// Keep what could not be read as the manifest has it.
+		keepUnread(&imported, local, input.Unread)
+
+		fullName := doc.Resource.Metadata.FullName()
+		for _, w := range unreadWarnings(input.Unread) {
+			w.Target = fullName
+			w.SourcePath = doc.SourcePath
+			plan.Warnings = append(plan.Warnings, w)
+		}
 
 		diffs := compareSpecs(local, imported)
 		if len(diffs) == 0 {
 			continue
 		}
 
-		fullName := doc.Resource.Metadata.FullName()
 		for i := range diffs {
 			diffs[i].Target = fullName
 			diffs[i].SourcePath = doc.SourcePath
@@ -175,6 +186,9 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		imported.LabelSync = doc.Resource.Spec.LabelSync
 		imported.Rulesets = preserveUnreturnedRulesetParams(doc.Resource.Spec.Rulesets, imported.Rulesets)
 		imported.Environments, imported.EnvironmentsSet = importedEnvironments(doc.Resource.Spec, imported)
+		// Keep what could not be read as the merged spec has it, so the
+		// entry's override is computed back to what it is.
+		keepUnread(&imported, doc.Resource.Spec, input.Unread)
 
 		newOverride := minimalOverride(defaults, imported)
 
@@ -183,11 +197,19 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		if doc.OriginalEntrySpec != nil {
 			entrySpec = *doc.OriginalEntrySpec
 		}
+		// The override of a list that differs from the defaults is the whole
+		// merged list, so what could not be read is set back to the entry's
+		// own: the entry is left as it is.
+		keepUnread(&newOverride, entrySpec, input.Unread)
 		diffs := compareSpecs(entrySpec, newOverride)
 		diffs = append(diffs, emptyOverrideDiffs(entrySpec, newOverride)...)
 
 		fullName := doc.Resource.Metadata.FullName()
-		for _, w := range missingDefaultsWarnings(defaults, imported) {
+		// The merged spec put in place of what could not be read has every
+		// default item (or none, with []), so it adds no missing-defaults
+		// warning.
+		warnings := append(unreadWarnings(input.Unread), missingDefaultsWarnings(defaults, imported)...)
+		for _, w := range warnings {
 			w.Target = fullName
 			w.SourcePath = doc.SourcePath
 			plan.Warnings = append(plan.Warnings, w)

@@ -215,6 +215,14 @@ if [[ "$args" == *"/rulesets"*"--paginate"* ]]; then
   exit 0
 fi
 
+# Milestones: none. A list gh-infra cannot parse is read as unreadable, so
+# it answers as GitHub does.
+if [[ "$args" == *"/milestones"* && "$args" != *"--method"* && "$args" != *"-X"* ]]; then
+  delay
+  echo '[]'
+  exit 0
+fi
+
 # Environments: none
 if [[ "$args" == *"/environments"*"--paginate"* && "$args" != *"--method"* ]]; then
   delay

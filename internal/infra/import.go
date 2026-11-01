@@ -50,8 +50,10 @@ func Import(ctx context.Context, runner gh.Runner, args []string) error {
 	defer stop()
 
 	type fetchResult struct {
-		data []byte
-		err  error
+		name   string
+		data   []byte
+		unread []string // what could not be read and is left out
+		err    error
 	}
 	results := parallel.Map(ctx, targets, parallel.DefaultConcurrency, func(ctx context.Context, _ int, t importer.TargetMatches) fetchResult {
 		fullName := t.Target.FullName()
@@ -74,7 +76,7 @@ func Import(ctx context.Context, runner gh.Runner, args []string) error {
 		} else {
 			tracker.Done(fullName)
 		}
-		return fetchResult{data: data, err: err}
+		return fetchResult{name: fullName, data: data, unread: importer.UnreadKeys(current.Unread), err: err}
 	})
 	tracker.Wait()
 	// Errors of interrupted work are not reported.
@@ -82,6 +84,14 @@ func Import(ctx context.Context, runner gh.Runner, args []string) error {
 		return context.Canceled
 	}
 	tracker.PrintErrors()
+
+	// What could not be read is left out of the YAML, which cannot tell it
+	// from what GitHub does not have, so it is said here, on stderr.
+	for _, r := range results {
+		if r.err == nil && len(r.unread) > 0 {
+			p.Warning(r.name, strings.Join(r.unread, ", ")+" could not be read and are left out")
+		}
+	}
 
 	// Collect YAML docs for successful targets; failures are already reported
 	// by tracker.PrintErrors above.

@@ -152,7 +152,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 	// Environments that could not be read are left out, so import --into
 	// leaves the manifest's alone instead of reading them as none.
 	if r.Environments != nil {
-		repo.Spec.Environments = exportEnvironments(r.Environments)
+		repo.Spec.Environments = exportEnvironments(r.Environments, r.Unread)
 		repo.Spec.EnvironmentsSet = true
 	}
 
@@ -190,8 +190,9 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		repo.Spec.Milestones = append(repo.Spec.Milestones, m)
 	}
 
-	// Actions
-	if r.Actions.Enabled || r.Actions.AllowedActions != "" || r.Actions.SHAPinningRequired {
+	// Actions, unless they could not be read: written with zero values, they
+	// would replace the manifest's.
+	if _, unread := r.Unread["actions"]; !unread && (r.Actions.Enabled || r.Actions.AllowedActions != "" || r.Actions.SHAPinningRequired) {
 		actions := &manifest.Actions{
 			Enabled:                manifest.Ptr(r.Actions.Enabled),
 			SHAPinningRequired:     manifest.Ptr(r.Actions.SHAPinningRequired),
@@ -250,7 +251,7 @@ func nonEmpty(s string) *string {
 // harm, and leaving them out by name would not last. Secrets are not
 // written, as their values cannot be read; prevent_self_review is written
 // only with reviewers, whose rule holds it.
-func exportEnvironments(envs map[string]*CurrentEnvironment) []manifest.Environment {
+func exportEnvironments(envs map[string]*CurrentEnvironment, unread map[string]error) []manifest.Environment {
 	keys := make([]string, 0, len(envs))
 	for k := range envs {
 		keys = append(keys, k)
@@ -271,6 +272,13 @@ func exportEnvironments(envs map[string]*CurrentEnvironment) []manifest.Environm
 		if e.HasReviewersRule && len(e.Reviewers) > 0 {
 			env.PreventSelfReview = manifest.Ptr(e.PreventSelfReview)
 		}
+		// A custom policy whose patterns could not be read is left out:
+		// written with none, it would replace the manifest's patterns.
+		if _, ok := unread[environmentKey(e.Name, "deployment_branch_policy")]; ok {
+			env.Variables = exportEnvironmentVariables(e.Variables)
+			out = append(out, env)
+			continue
+		}
 		policy := &manifest.DeploymentBranchPolicy{}
 		switch e.BranchPolicy {
 		case manifest.DeploymentBranchesProtected:
@@ -287,15 +295,22 @@ func exportEnvironments(envs map[string]*CurrentEnvironment) []manifest.Environm
 			}
 		}
 		env.DeploymentBranchPolicy = policy
-		names := make([]string, 0, len(e.Variables))
-		for n := range e.Variables {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		for _, n := range names {
-			env.Variables = append(env.Variables, manifest.Variable{Name: n, Value: e.Variables[n]})
-		}
+		env.Variables = exportEnvironmentVariables(e.Variables)
 		out = append(out, env)
+	}
+	return out
+}
+
+// exportEnvironmentVariables writes an environment's variables by name.
+func exportEnvironmentVariables(vars map[string]string) []manifest.Variable {
+	names := make([]string, 0, len(vars))
+	for n := range vars {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var out []manifest.Variable
+	for _, n := range names {
+		out = append(out, manifest.Variable{Name: n, Value: vars[n]})
 	}
 	return out
 }

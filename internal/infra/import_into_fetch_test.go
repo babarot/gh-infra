@@ -46,8 +46,13 @@ func (r *importRunner) Run(ctx context.Context, args ...string) ([]byte, error) 
 			return fmt.Appendf(nil, `{"content":%q,"encoding":"base64"}`, enc), nil
 		}
 	}
-	// Everything else of the repository is empty.
+	// Everything else of the repository is empty, in the shape GitHub
+	// answers: a list that does not parse is read as unreadable.
 	switch {
+	case strings.Contains(cmd, "/environments"):
+		return []byte(`[{"total_count":0,"environments":[]}]`), nil
+	case strings.Contains(cmd, "/rulesets") || strings.Contains(cmd, "/milestones"):
+		return []byte("[]"), nil
 	case strings.Contains(cmd, "--jq {"):
 		return []byte("{}"), nil
 	case strings.Contains(cmd, "--jq"):

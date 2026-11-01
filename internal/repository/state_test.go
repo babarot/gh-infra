@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -282,7 +283,7 @@ func TestFetchVariables(t *testing.T) {
 		}
 	})
 
-	t.Run("permission error returns nil", func(t *testing.T) {
+	t.Run("permission error leaves them unread for import", func(t *testing.T) {
 		mock := &gh.MockRunner{
 			Errors: map[string]error{
 				"variable list --repo myorg/myrepo --json name,value": gh.ErrForbidden,
@@ -290,8 +291,8 @@ func TestFetchVariables(t *testing.T) {
 		}
 		p := NewProcessor(mock, nil)
 		vars, err := p.fetchVariables(context.Background(), "myorg", "myrepo", false)
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
+		if !errors.As(err, new(unreadError)) {
+			t.Fatalf("expected an unread setting, got %v", err)
 		}
 		if vars != nil {
 			t.Errorf("expected nil vars on error, got %v", vars)
@@ -739,8 +740,10 @@ func TestFetchRulesets_MultipleRulesets(t *testing.T) {
 	}
 }
 
-func TestFetchRulesets_IndividualFailureSkipped(t *testing.T) {
-	// Two rulesets, one fetch fails. The failure must not abort the whole fetch.
+func TestFetchRulesets_IndividualFailure(t *testing.T) {
+	// Two rulesets, one fetch fails. For import, the rulesets are left
+	// unread rather than returned without it: import --into would remove it
+	// from the manifest. One that is gone (404) is skipped.
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
 			"api repos/myorg/myrepo/rulesets --paginate": []byte(`[
@@ -756,6 +759,12 @@ func TestFetchRulesets_IndividualFailureSkipped(t *testing.T) {
 
 	p := NewProcessor(mock, nil)
 	got, err := p.fetchRulesets(context.Background(), "myorg", "myrepo", false)
+	if !errors.As(err, new(unreadError)) || got != nil {
+		t.Fatalf("got %v, %v; want the rulesets unread", got, err)
+	}
+
+	mock.Errors["api repos/myorg/myrepo/rulesets/2"] = fmt.Errorf("%w: gone", gh.ErrNotFound)
+	got, err = p.fetchRulesets(context.Background(), "myorg", "myrepo", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -877,7 +886,7 @@ func TestFetchMilestones(t *testing.T) {
 		}
 	})
 
-	t.Run("permission error returns nil", func(t *testing.T) {
+	t.Run("permission error leaves them unread for import", func(t *testing.T) {
 		mock := &gh.MockRunner{
 			Errors: map[string]error{
 				"api repos/myorg/myrepo/milestones?state=all&per_page=100 --paginate": gh.ErrForbidden,
@@ -885,8 +894,8 @@ func TestFetchMilestones(t *testing.T) {
 		}
 		p := NewProcessor(mock, nil)
 		milestones, err := p.fetchMilestones(context.Background(), "myorg", "myrepo", false)
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
+		if !errors.As(err, new(unreadError)) {
+			t.Fatalf("expected an unread setting, got %v", err)
 		}
 		if milestones != nil {
 			t.Errorf("expected nil milestones on error, got %v", milestones)

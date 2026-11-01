@@ -25,8 +25,9 @@ type DiffOptions struct {
 type fetchResult struct {
 	tm       TargetMatches
 	imported *manifest.Repository
-	fatal    error // auth errors, context canceled — abort all
-	skip     bool  // fetch failed non-fatally — skip this target
+	unread   map[string]error // what could not be read (CurrentState.Unread)
+	fatal    error            // auth errors, context canceled — abort all
+	skip     bool             // fetch failed non-fatally — skip this target
 }
 
 // Diff builds a change plan for all targets.
@@ -119,7 +120,7 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 
 		imported := repository.ToManifest(ctx, current, resolver)
 		tracker.Checkpoint(fullName, "repository")
-		return fetchResult{tm: tm, imported: imported}
+		return fetchResult{tm: tm, imported: imported, unread: current.Unread}
 	})
 
 	// Abort on fatal errors (auth failure, context canceled).
@@ -200,6 +201,7 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 				Repos:         f.tm.Matches.Repositories,
 				Imported:      f.imported,
 				ManifestBytes: manifestBytes,
+				Unread:        f.unread,
 			})
 			if err != nil {
 				err := fmt.Errorf("plan repository %s: %w", fullName, err)
@@ -216,6 +218,7 @@ func Diff(ctx context.Context, opts DiffOptions) (*Result, error) {
 				Repos:         f.tm.Matches.RepositorySets,
 				Imported:      f.imported,
 				ManifestBytes: manifestBytes,
+				Unread:        f.unread,
 			})
 			if err != nil {
 				err := fmt.Errorf("plan repositoryset %s: %w", fullName, err)
