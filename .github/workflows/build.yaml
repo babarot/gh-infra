@@ -12,6 +12,9 @@ on:
       - '.golangci.yaml'
       - '.octocov.yaml'
       - '.github/workflows/build.yaml'
+  schedule:
+    # Weekly, to catch newly published vulnerabilities with govulncheck
+    - cron: '0 0 * * 1'
   workflow_call:
     secrets:
       GIST_SECRET:
