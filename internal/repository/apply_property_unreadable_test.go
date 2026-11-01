@@ -89,6 +89,7 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		{name: "labels [] authoritative 404", spec: manifest.RepositorySpec{LabelsSet: true}, recon: authoritative, cmd: labelsCmd, err: notFound, wantErr: true},
 		{name: "labels [] additive 404", spec: manifest.RepositorySpec{LabelsSet: true}, cmd: labelsCmd, err: notFound},
 		{name: "milestones 404", spec: manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v2"}}}, cmd: milestonesCmd, err: notFound, wantErr: true},
+		{name: "milestones 422", spec: manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v2"}}}, cmd: milestonesCmd, err: invalid, wantErr: true},
 		{name: "milestones unparsable", spec: manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v2"}}}, cmd: milestonesCmd, wantErr: true},
 		{name: "rulesets 404", spec: manifest.RepositorySpec{Rulesets: []manifest.Ruleset{{Name: "main", Enforcement: manifest.Ptr("active")}}}, cmd: rulesetsCmd, err: notFound, wantErr: true},
 		{name: "rulesets unparsable", spec: manifest.RepositorySpec{Rulesets: []manifest.Ruleset{{Name: "main", Enforcement: manifest.Ptr("active")}}}, cmd: rulesetsCmd, wantErr: true},
