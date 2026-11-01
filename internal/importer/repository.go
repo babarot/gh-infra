@@ -201,9 +201,10 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		diffs = append(diffs, emptyOverrideDiffs(entrySpec, newOverride)...)
 
 		fullName := doc.Resource.Metadata.FullName()
-		// A setting that could not be read compared the manifest's value,
-		// not GitHub's, with the defaults.
-		warnings := append(unreadWarnings(input.Unread), withoutUnread(missingDefaultsWarnings(defaults, imported), input.Unread)...)
+		// The merged spec put in place of what could not be read has every
+		// default item (or none, with []), so it adds no missing-defaults
+		// warning.
+		warnings := append(unreadWarnings(input.Unread), missingDefaultsWarnings(defaults, imported)...)
 		for _, w := range warnings {
 			w.Target = fullName
 			w.SourcePath = doc.SourcePath

@@ -26,8 +26,8 @@ type fetchResult struct {
 	tm       TargetMatches
 	imported *manifest.Repository
 	unread   map[string]error // what could not be read (CurrentState.Unread)
-	fatal    error // auth errors, context canceled — abort all
-	skip     bool  // fetch failed non-fatally — skip this target
+	fatal    error            // auth errors, context canceled — abort all
+	skip     bool             // fetch failed non-fatally — skip this target
 }
 
 // Diff builds a change plan for all targets.

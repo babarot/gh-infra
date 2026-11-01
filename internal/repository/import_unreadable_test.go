@@ -62,7 +62,9 @@ func TestImportUnreadableSettings(t *testing.T) {
 		{name: "an environment's variables 403", cmd: envVarsCmd, err: forbidden, unread: []string{"environments.production.variables"},
 			absent: func(s manifest.RepositorySpec) bool { return environment(s, "production").Variables == nil }},
 		{name: "an environment's branch patterns 502", cmd: envRulesCmd, err: serverError, unread: []string{"environments.production.deployment_branch_policy"},
-			absent: func(s manifest.RepositorySpec) bool { return environment(s, "production").DeploymentBranchPolicy == nil }},
+			absent: func(s manifest.RepositorySpec) bool {
+				return environment(s, "production").DeploymentBranchPolicy == nil
+			}},
 		{name: "actions 403", cmd: actionsCmd, err: forbidden, unread: []string{"actions"},
 			absent: func(s manifest.RepositorySpec) bool { return s.Actions == nil }},
 		{name: "actions 404", cmd: actionsCmd, err: notFound, unread: []string{"actions"},

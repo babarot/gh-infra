@@ -127,20 +127,3 @@ func unreadReason(err error) string {
 	}
 	return "unknown"
 }
-
-// withoutUnread leaves out the warnings about a setting that could not be
-// read, or a part of it: they compared the manifest's value, put in its
-// place, rather than GitHub's.
-func withoutUnread(warnings []RepoWarning, unread map[string]error) []RepoWarning {
-	if len(unread) == 0 {
-		return warnings
-	}
-	return slices.DeleteFunc(warnings, func(w RepoWarning) bool {
-		for key := range unread {
-			if w.Field == key || strings.HasPrefix(w.Field, key+".") {
-				return true
-			}
-		}
-		return false
-	})
-}
