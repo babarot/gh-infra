@@ -1,9 +1,7 @@
 name: Go
 
+# On main, Release runs this before it releases
 on:
-  push:
-    branches:
-      - main
   pull_request:
     paths:
       - '**/*.go'
@@ -14,6 +12,13 @@ on:
       - '.golangci.yaml'
       - '.octocov.yaml'
       - '.github/workflows/build.yaml'
+  schedule:
+    # Weekly, to catch newly published vulnerabilities with govulncheck
+    - cron: '0 0 * * 1'
+  workflow_call:
+    secrets:
+      GIST_SECRET:
+        required: false
   workflow_dispatch:
 
 jobs:
@@ -36,8 +41,30 @@ jobs:
         uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
           version: 2026.9.18
-      - name: Run golangci-lint
+      - name: Run golangci-lint and go mod tidy
         run: mise run lint
+
+  vuln:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Setup mise
+        uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+      - name: Run govulncheck
+        run: mise run vuln
 
   build:
     strategy:
