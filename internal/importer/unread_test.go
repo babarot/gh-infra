@@ -169,3 +169,50 @@ func TestImportIntoRepositorySetKeepsUnread(t *testing.T) {
 		})
 	}
 }
+
+// An entry that adds to the defaults' list keeps its own items only: the
+// list that could not be read is not rewritten as the merged one.
+func TestImportIntoRepositorySetKeepsUnreadOverride(t *testing.T) {
+	ctx := context.Background()
+	resolver := manifest.NewResolver(rtRunner{})
+	set := map[string]any{
+		"apiVersion": manifest.APIVersion,
+		"kind":       manifest.KindRepositorySet,
+		"metadata":   map[string]any{"owner": "o"},
+		"defaults": map[string]any{"spec": map[string]any{
+			"variables":    []map[string]any{{"name": "GLOBAL", "value": "old"}},
+			"environments": []map[string]any{{"name": "production", "variables": []map[string]any{{"name": "TIER", "value": "1"}}}},
+		}},
+		"repositories": []map[string]any{{"name": "r", "spec": map[string]any{
+			"variables":    []map[string]any{{"name": "REGION", "value": "jp"}},
+			"environments": []map[string]any{{"name": "production", "variables": []map[string]any{{"name": "REGION", "value": "eu"}}}},
+		}}},
+	}
+	path, data := writeYAML(t, set)
+	parsed, err := manifest.ParseAll(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, data)
+	}
+	for _, key := range []string{"variables", "environments.production.variables"} {
+		t.Run(key, func(t *testing.T) {
+			current := fullState()
+			for _, tt := range unreadCases {
+				if tt.key == key {
+					tt.unset(current)
+				}
+			}
+			unread := map[string]error{key: fmt.Errorf("fetch: %w", gh.ErrNotFound)}
+			current.Unread = unread
+			rp, err := DiffRepositorySet(DiffInput{Repos: parsed.RepositoryDocs, Imported: repository.ToManifest(ctx, current, resolver),
+				ManifestBytes: map[string][]byte{path: data}, Unread: unread})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range rp.Diffs {
+				if strings.HasPrefix(d.Field, key) {
+					t.Errorf("changed the entry's %s, which could not be read: %+v", key, d)
+				}
+			}
+		})
+	}
+}

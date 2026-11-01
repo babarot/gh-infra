@@ -197,6 +197,10 @@ func DiffRepositorySet(input DiffInput) (RepoResult, error) {
 		if doc.OriginalEntrySpec != nil {
 			entrySpec = *doc.OriginalEntrySpec
 		}
+		// The override of a list that differs from the defaults is the whole
+		// merged list, so what could not be read is set back to the entry's
+		// own: the entry is left as it is.
+		keepUnread(&newOverride, entrySpec, input.Unread)
 		diffs := compareSpecs(entrySpec, newOverride)
 		diffs = append(diffs, emptyOverrideDiffs(entrySpec, newOverride)...)
 
