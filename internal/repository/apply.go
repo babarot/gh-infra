@@ -116,6 +116,8 @@ func applyStatusTarget(c Change) string {
 			return fmt.Sprintf("ruleset %q", key)
 		case manifest.ResourceBranchProtection:
 			return fmt.Sprintf("branch protection %q", key)
+		case manifest.ResourceEnvironment:
+			return fmt.Sprintf("environment %q", key)
 		}
 	}
 	switch c.Resource {
@@ -200,6 +202,8 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 		err = p.applyBranchProtection(ctx, c, repo)
 	case strings.HasPrefix(c.Resource, manifest.ResourceRuleset):
 		err = p.applyRuleset(ctx, c, repo)
+	case strings.HasPrefix(c.Resource, manifest.ResourceEnvironment+"["):
+		err = p.applyEnvironment(ctx, c, repo)
 	case c.Resource == manifest.ResourceSecret:
 		err = p.applySecret(ctx, c, repo)
 	case c.Resource == manifest.ResourceVariable:

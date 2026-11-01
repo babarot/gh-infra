@@ -540,6 +540,10 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 		result.Labels = mergeOrEmpty(result.Labels, override.Labels, mergeLabels)
 		result.LabelsSet = true
 	}
+	if override.EnvironmentsSet {
+		result.Environments = mergeOrEmpty(result.Environments, override.Environments, mergeEnvironments)
+		result.EnvironmentsSet = true
+	}
 	if override.LabelSync != nil {
 		result.LabelSync = override.LabelSync
 	}
@@ -573,6 +577,9 @@ func mergeReconcile(defaults *RepositorySetDefaults, override *RepositoryReconci
 	}
 	if override.Rulesets != nil {
 		result.Rulesets = override.Rulesets
+	}
+	if override.DeploymentBranchPolicies != nil {
+		result.DeploymentBranchPolicies = override.DeploymentBranchPolicies
 	}
 	return &result
 }
@@ -824,6 +831,38 @@ func mergeSecrets(base, override []Secret) []Secret {
 // for entries with the same name; new variables are appended.
 func mergeVariables(base, override []Variable) []Variable {
 	return mergeByKey(base, override, func(v Variable) string { return v.Name })
+}
+
+// mergeEnvironments merges two environment slices by name, ignoring case as
+// GitHub does. Same-name entries are merged field by field; reviewers and
+// deployment_branch_policy are each replaced as a whole.
+func mergeEnvironments(base, override []Environment) []Environment {
+	return mergeByKeyWith(base, override,
+		func(e Environment) string { return strings.ToLower(e.Name) },
+		mergeEnvironmentEntry,
+	)
+}
+
+func mergeEnvironmentEntry(base, override Environment) Environment {
+	result := base
+	result.Name = override.Name
+	if override.WaitTimer != nil {
+		result.WaitTimer = override.WaitTimer
+	}
+	if override.PreventSelfReview != nil {
+		result.PreventSelfReview = override.PreventSelfReview
+	}
+	if override.CanAdminsBypass != nil {
+		result.CanAdminsBypass = override.CanAdminsBypass
+	}
+	if override.HasReviewers() {
+		result.Reviewers = override.Reviewers
+		result.ReviewersSet = true
+	}
+	if override.DeploymentBranchPolicy != nil {
+		result.DeploymentBranchPolicy = override.DeploymentBranchPolicy
+	}
+	return result
 }
 
 func mergeSelectedActions(base, override *SelectedActions) *SelectedActions {

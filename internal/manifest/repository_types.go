@@ -17,6 +17,7 @@ const (
 	ResourceActions          = "Actions"
 	ResourceLabel            = "Label"
 	ResourceMilestone        = "Milestone"
+	ResourceEnvironment      = "Environment"
 
 	// Label sync mode values.
 	LabelSyncAdditive = "additive"
@@ -25,6 +26,19 @@ const (
 	// Collection reconcile mode values.
 	CollectionReconcileAdditive      = "additive"
 	CollectionReconcileAuthoritative = "authoritative"
+
+	// Deployment branch policy types and modes.
+	DeploymentBranchTypeBranch  = "branch"
+	DeploymentBranchTypeTag     = "tag"
+	DeploymentBranchesAll       = "all"
+	DeploymentBranchesProtected = "protected"
+	DeploymentBranchesCustom    = "custom"
+
+	// EnvironmentReviewersMax is how many reviewers GitHub allows on an
+	// environment; EnvironmentWaitTimerMax is its longest wait timer, in
+	// minutes.
+	EnvironmentReviewersMax = 6
+	EnvironmentWaitTimerMax = 43200
 
 	// Ruleset enforcement values.
 	RulesetEnforcementActive   = "active"
@@ -97,8 +111,10 @@ type RepositorySpec struct {
 	Secrets             []Secret           `yaml:"secrets,omitempty"           validate:"unique=name"`
 	Variables           []Variable         `yaml:"variables,omitempty"         validate:"unique=name"`
 	Actions             *Actions           `yaml:"actions,omitempty"`
+	Environments        []Environment      `yaml:"environments,omitempty"`
 
 	BranchProtectionSet bool `yaml:"-"`
+	EnvironmentsSet     bool `yaml:"-"`
 	LabelsSet           bool `yaml:"-"`
 	MilestonesSet       bool `yaml:"-"`
 	RulesetsSet         bool `yaml:"-"`
@@ -111,6 +127,10 @@ type RepositoryReconcile struct {
 	BranchProtection *string `yaml:"branch_protection,omitempty" validate:"omitempty,oneof=additive authoritative"`
 	Labels           *string `yaml:"labels,omitempty"            validate:"omitempty,oneof=additive authoritative"`
 	Rulesets         *string `yaml:"rulesets,omitempty"           validate:"omitempty,oneof=additive authoritative"`
+	// DeploymentBranchPolicies applies to the name patterns of each declared
+	// environment that sets custom_branch_policies; spec has no collection of
+	// this name.
+	DeploymentBranchPolicies *string `yaml:"deployment_branch_policies,omitempty" validate:"omitempty,oneof=additive authoritative"`
 }
 
 // UnmarshalYAML tracks whether collection fields were present in YAML. For
@@ -169,6 +189,12 @@ func (s *RepositorySpec) UnmarshalYAML(unmarshal func(any) error) error {
 		s.VariablesSet = true
 		if v == nil {
 			return fmt.Errorf("variables must be a sequence; use [] to inherit no variables from defaults")
+		}
+	}
+	if v, ok := fields["environments"]; ok {
+		s.EnvironmentsSet = true
+		if v == nil {
+			return fmt.Errorf("environments must be a sequence; use [] to inherit no environments from defaults")
 		}
 	}
 
@@ -623,6 +649,13 @@ func RulesetsReconcileMode(r *RepositoryReconcile) string {
 	return *r.Rulesets
 }
 
+func DeploymentBranchPoliciesReconcileMode(r *RepositoryReconcile) string {
+	if r == nil || r.DeploymentBranchPolicies == nil {
+		return CollectionReconcileAdditive
+	}
+	return *r.DeploymentBranchPolicies
+}
+
 type Milestone struct {
 	Title       string  `yaml:"title"       validate:"required"`
 	Description *string `yaml:"description,omitempty"`
@@ -648,4 +681,157 @@ type Secret struct {
 type Variable struct {
 	Name  string `yaml:"name" validate:"required"`
 	Value string `yaml:"value"`
+}
+
+// Environment is a deployment environment. gh-infra creates and updates the
+// environments a manifest declares and never deletes one: GitHub creates
+// environments too (github-pages, or one a workflow names).
+type Environment struct {
+	Name                   string                  `yaml:"name" validate:"required"`
+	WaitTimer              *int                    `yaml:"wait_timer,omitempty"`
+	PreventSelfReview      *bool                   `yaml:"prevent_self_review,omitempty"`
+	CanAdminsBypass        *bool                   `yaml:"can_admins_bypass,omitempty"`
+	Reviewers              []EnvironmentReviewer   `yaml:"reviewers,omitempty"`
+	DeploymentBranchPolicy *DeploymentBranchPolicy `yaml:"deployment_branch_policy,omitempty"`
+
+	ReviewersSet bool `yaml:"-"`
+}
+
+// EnvironmentReviewer is a user or a team who can approve deployments.
+type EnvironmentReviewer struct {
+	User string `yaml:"user,omitempty"`
+	Team string `yaml:"team,omitempty"` // team slug
+}
+
+// DeploymentBranchPolicy says which branches and tags can deploy to an
+// environment: {} for all, protected_branches: true for protected branches,
+// or custom_branch_policies for name patterns.
+type DeploymentBranchPolicy struct {
+	ProtectedBranches    *bool                  `yaml:"protected_branches,omitempty"`
+	CustomBranchPolicies []DeploymentBranchRule `yaml:"custom_branch_policies,omitempty"`
+
+	CustomBranchPoliciesSet bool `yaml:"-"`
+}
+
+// DeploymentBranchRule is a name pattern of branches or tags.
+type DeploymentBranchRule struct {
+	Name string `yaml:"name" validate:"required"`
+	Type string `yaml:"type,omitempty" validate:"omitempty,oneof=branch tag"`
+}
+
+// RuleType returns the type of the pattern; GitHub's default is branch.
+func (r DeploymentBranchRule) RuleType() string {
+	if r.Type == "" {
+		return DeploymentBranchTypeBranch
+	}
+	return r.Type
+}
+
+// UnmarshalYAML tracks whether reviewers was present, and rejects a null
+// reviewers or deployment_branch_policy: a null policy reads too much like
+// {}, which allows every branch.
+func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
+	type raw Environment
+	var v raw
+	if err := unmarshal(&v); err != nil {
+		return err
+	}
+	*e = Environment(v)
+
+	var fields map[string]any
+	if err := unmarshal(&fields); err != nil {
+		return err
+	}
+	if r, ok := fields["reviewers"]; ok {
+		if r == nil {
+			return fmt.Errorf("environments[%s].reviewers must be a sequence; use [] to remove all reviewers", e.Name)
+		}
+		e.ReviewersSet = true
+	}
+	if p, ok := fields["deployment_branch_policy"]; ok && p == nil {
+		return fmt.Errorf("environments[%s].deployment_branch_policy must not be null; use {} to allow all branches and tags", e.Name)
+	}
+	return nil
+}
+
+// MarshalYAML keeps an explicit reviewers: [], which omitempty would drop.
+func (e Environment) MarshalYAML() (any, error) {
+	out := struct {
+		Name                   string                  `yaml:"name"`
+		WaitTimer              *int                    `yaml:"wait_timer,omitempty"`
+		PreventSelfReview      *bool                   `yaml:"prevent_self_review,omitempty"`
+		CanAdminsBypass        *bool                   `yaml:"can_admins_bypass,omitempty"`
+		Reviewers              *[]EnvironmentReviewer  `yaml:"reviewers,omitempty"`
+		DeploymentBranchPolicy *DeploymentBranchPolicy `yaml:"deployment_branch_policy,omitempty"`
+	}{Name: e.Name, WaitTimer: e.WaitTimer, PreventSelfReview: e.PreventSelfReview, CanAdminsBypass: e.CanAdminsBypass, DeploymentBranchPolicy: e.DeploymentBranchPolicy}
+	if e.HasReviewers() {
+		reviewers := e.Reviewers
+		if reviewers == nil {
+			reviewers = []EnvironmentReviewer{}
+		}
+		out.Reviewers = &reviewers
+	}
+	return out, nil
+}
+
+// HasReviewers reports whether the manifest sets reviewers.
+func (e Environment) HasReviewers() bool {
+	return e.ReviewersSet || len(e.Reviewers) > 0
+}
+
+// UnmarshalYAML tracks whether custom_branch_policies was present: [] allows
+// no branch, while leaving it out of {} allows every branch.
+func (p *DeploymentBranchPolicy) UnmarshalYAML(unmarshal func(any) error) error {
+	type raw DeploymentBranchPolicy
+	var v raw
+	if err := unmarshal(&v); err != nil {
+		return err
+	}
+	*p = DeploymentBranchPolicy(v)
+
+	var fields map[string]any
+	if err := unmarshal(&fields); err != nil {
+		return err
+	}
+	if c, ok := fields["custom_branch_policies"]; ok {
+		if c == nil {
+			return fmt.Errorf("custom_branch_policies must be a sequence; use [] to allow no branch")
+		}
+		p.CustomBranchPoliciesSet = true
+	}
+	return nil
+}
+
+// MarshalYAML keeps an explicit custom_branch_policies: [], which omitempty
+// would drop and so turn "no branch" into "every branch".
+func (p DeploymentBranchPolicy) MarshalYAML() (any, error) {
+	out := struct {
+		ProtectedBranches    *bool                   `yaml:"protected_branches,omitempty"`
+		CustomBranchPolicies *[]DeploymentBranchRule `yaml:"custom_branch_policies,omitempty"`
+	}{ProtectedBranches: p.ProtectedBranches}
+	if p.HasCustom() {
+		rules := p.CustomBranchPolicies
+		if rules == nil {
+			rules = []DeploymentBranchRule{}
+		}
+		out.CustomBranchPolicies = &rules
+	}
+	return out, nil
+}
+
+// HasCustom reports whether custom_branch_policies is set.
+func (p DeploymentBranchPolicy) HasCustom() bool {
+	return p.CustomBranchPoliciesSet || len(p.CustomBranchPolicies) > 0
+}
+
+// Mode returns which branches can deploy: all, protected or custom.
+func (p DeploymentBranchPolicy) Mode() string {
+	switch {
+	case p.HasCustom():
+		return DeploymentBranchesCustom
+	case p.ProtectedBranches != nil && *p.ProtectedBranches:
+		return DeploymentBranchesProtected
+	default:
+		return DeploymentBranchesAll
+	}
 }

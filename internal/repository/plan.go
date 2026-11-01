@@ -80,6 +80,12 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 		}
 
 		changes := Diff(ctx, r, current, diffOpts)
+		// What GitHub would reject or drop in the environment changes.
+		if err := p.checkEnvironments(ctx, r, current, changes, diffOpts.Resolver); err != nil {
+			logger.Error("environment check failed", "repo", fullName, "err", err)
+			tracker.Error(fullName, err)
+			return repoResult{index: idx, repo: r, err: err, fatal: true}
+		}
 		// gh-infra does not change an archived repository except to unarchive
 		// it: report the repository instead of planning changes to it.
 		if err := archivedChangesError(current, changes); err != nil {

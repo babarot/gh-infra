@@ -576,6 +576,8 @@ func repoChangeGroupHeader(c repository.Change) string {
 			return fmt.Sprintf("ruleset %q", key)
 		case manifest.ResourceBranchProtection:
 			return fmt.Sprintf("branch protection %q", key)
+		case manifest.ResourceEnvironment:
+			return fmt.Sprintf("environment %q", key)
 		}
 	}
 	header := c.Field

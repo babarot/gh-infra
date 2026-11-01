@@ -56,6 +56,7 @@ func TestFetchRepository(t *testing.T) {
 			"api repos/myorg/myrepo/automated-security-fixes":                                      []byte(`{"enabled": false, "paused": false}`),
 			"api repos/myorg/myrepo/private-vulnerability-reporting":                               []byte(`{"enabled": false}`),
 			"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte(``),
+			"api repos/myorg/myrepo/environments --paginate --slurp":                               []byte(`[{"total_count":0,"environments":[]}]`),
 			"secret list --repo myorg/myrepo --json name --jq .[].name":                            []byte("SECRET1\nSECRET2"),
 			"variable list --repo myorg/myrepo --json name,value":                                  []byte(`[{"name":"VAR1","value":"val1"},{"name":"VAR2","value":"val2"}]`),
 		},
@@ -385,6 +386,7 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		"api repos/myorg/myrepo/automated-security-fixes":                                      []byte(`{"enabled": false, "paused": false}`),
 		"api repos/myorg/myrepo/private-vulnerability-reporting":                               []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte(``),
+		"api repos/myorg/myrepo/environments --paginate --slurp":                               []byte(`[{"total_count":0,"environments":[]}]`),
 	}
 
 	t.Run("commit message settings 404 is ignored", func(t *testing.T) {
@@ -631,6 +633,7 @@ func TestFetchBranchProtection_MultipleBranches(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
 			"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte("main\ndevelop\nrelease/1\nrelease/2\nrelease/3\n"),
+			"api repos/myorg/myrepo/environments --paginate --slurp":                               []byte(`[{"total_count":0,"environments":[]}]`),
 			"api repos/myorg/myrepo/branches/main/protection":                                      []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
 			"api repos/myorg/myrepo/branches/develop/protection":                                   []byte(`{"required_pull_request_reviews":{"required_approving_review_count":2}}`),
 			"api repos/myorg/myrepo/branches/release/1/protection":                                 []byte(`{"required_pull_request_reviews":{"required_approving_review_count":3}}`),
@@ -671,6 +674,7 @@ func TestFetchBranchProtection_IndividualFailureSkipped(t *testing.T) {
 	mock := &gh.MockRunner{
 		Responses: map[string][]byte{
 			"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte("main\nbroken\n"),
+			"api repos/myorg/myrepo/environments --paginate --slurp":                               []byte(`[{"total_count":0,"environments":[]}]`),
 			"api repos/myorg/myrepo/branches/main/protection":                                      []byte(`{"required_pull_request_reviews":{"required_approving_review_count":1}}`),
 		},
 		Errors: map[string]error{

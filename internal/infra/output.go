@@ -167,8 +167,8 @@ func (r *PlanResult) PlanDocument(showDiff bool) Document {
 	for _, w := range r.Warnings {
 		doc.Warnings = append(doc.Warnings, Message{Message: w})
 	}
-	for _, name := range slices.Sorted(maps.Keys(r.CreateNotes)) {
-		for _, n := range r.CreateNotes[name] {
+	for _, name := range slices.Sorted(maps.Keys(r.Notes)) {
+		for _, n := range r.Notes[name] {
 			doc.Warnings = append(doc.Warnings, Message{Target: name, Message: n})
 		}
 	}

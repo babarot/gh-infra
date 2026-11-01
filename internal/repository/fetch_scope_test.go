@@ -16,6 +16,7 @@ import (
 // mock's empty default output.
 func scopeResponses(visibility string) map[string][]byte {
 	return map[string][]byte{
+		"api repos/myorg/myrepo/environments --paginate --slurp": []byte(`[{"total_count":0,"environments":[]}]`),
 		repoViewKey: []byte(`{"visibility":"` + visibility + `"}`),
 		"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}": []byte(`{}`),
 		"api repos/myorg/myrepo/immutable-releases":              []byte(`{"enabled": false}`),
@@ -46,6 +47,8 @@ func fetchedGroups(called [][]string) []string {
 			add("secrets")
 		case strings.HasPrefix(c, "variable list"):
 			add("variables")
+		case strings.Contains(c, "/environments"):
+			add("environments")
 		case strings.HasPrefix(c, "label list"):
 			add("labels")
 		case strings.Contains(c, "/milestones"):
@@ -95,7 +98,9 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		{"branch protection []", manifest.RepositorySpec{BranchProtectionSet: true}, []string{"branch_protection"}},
 		{"variables", manifest.RepositorySpec{Variables: []manifest.Variable{{Name: "V", Value: "1"}}}, []string{"variables"}},
 		{"milestones", manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1"}}}, []string{"milestones"}},
+		{"environments", manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "production"}}}, []string{"environments"}},
 		{"label_sync only", manifest.RepositorySpec{LabelSync: manifest.Ptr("mirror")}, []string{"labels"}},
+		{"empty environments only opt out", manifest.RepositorySpec{Environments: []manifest.Environment{}, EnvironmentsSet: true}, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &gh.MockRunner{Responses: scopeResponses("PUBLIC")}
@@ -115,8 +120,8 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		if _, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if got := fetchedGroups(mock.Called); len(got) != 12 {
-			t.Errorf("fetched %v, want all 12 groups", got)
+		if got := fetchedGroups(mock.Called); len(got) != 13 {
+			t.Errorf("fetched %v, want all 13 groups", got)
 		}
 	})
 }

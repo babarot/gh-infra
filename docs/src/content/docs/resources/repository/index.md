@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-`Repository` manages a **single** GitHub repository — its description, visibility, topics, labels, features, merge strategy, branch protection rules, rulesets, secrets, variables, and Actions settings.
+`Repository` manages a **single** GitHub repository — its description, visibility, topics, labels, features, merge strategy, branch protection rules, rulesets, secrets, variables, environments, and Actions settings.
 
 :::tip[Example]
 ```yaml
@@ -99,6 +99,7 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `rulesets` | Modern rulesets with enforcement modes and bypass actors — see [Rulesets](./rulesets/) |
 | `secrets` | GitHub Actions secrets (via `${ENV_*}` references) — see [Secrets & Variables](./secrets-variables/) |
 | `variables` | Repository variables — see [Secrets & Variables](./secrets-variables/) |
+| `environments` | Deployment environments: branch policies, reviewers, wait timer — see [Environments](./environments/) |
 | `actions` | GitHub Actions permissions, SHA pinning, workflow defaults, and fork PR policy — see [Actions](./actions/) |
 
 All fields are optional — declare only what you want to manage. Fields not present in the YAML are left unchanged on GitHub.
@@ -129,6 +130,7 @@ spec:
 | `reconcile.labels` | `additive`, `authoritative` | Controls how `spec.labels` is compared with existing GitHub labels |
 | `reconcile.rulesets` | `additive`, `authoritative` | Controls how `spec.rulesets` is compared with existing GitHub rulesets |
 | `reconcile.branch_protection` | `additive`, `authoritative` | Controls how `spec.branch_protection` is compared with existing classic branch protection rules |
+| `reconcile.deployment_branch_policies` | `additive`, `authoritative` | Controls how the `custom_branch_policies` of each environment in `spec.environments` are compared with its patterns on GitHub — see [Environments](./environments/#what-gh-infra-deletes) |
 
 `additive` is the default. `authoritative` deletes remote entries that are not declared in YAML, but only when the corresponding `spec` collection is present. If `spec.rulesets`, `spec.branch_protection`, or `spec.labels` is omitted, that collection is unmanaged even when `reconcile` has a policy for it.
 
@@ -179,6 +181,7 @@ A new repository is empty, so these are planned against nothing, with two except
 
 - **Default labels**: GitHub creates default labels in a new repository (`bug`, `documentation`, and others; an organization can change them). A label with the name of one of them is updated instead of created, so what the manifest leaves out of it, such as its description, stays as GitHub made it. With `reconcile.labels: authoritative`, the default labels the manifest does not declare are deleted by the next `plan` and `apply`.
 - **Branch protection**: a new repository has no branch to protect. The next `plan` after the branch exists shows the protection, and `apply` adds it. Rulesets do not need a branch and are applied at once.
+- **Environment reviewers**: GitHub drops a reviewer who cannot read the repository, and in a new one only its owner can. Other reviewers are added by a later `plan`, once they have access (see [Environments](./environments/#new-repositories)).
 
 The `-o json` and `-o markdown` plans list these notes as warnings for the repository. FileSets for the new repository are applied after it is created. The repository has no commits then, so a FileSet with `via: pull_request` is planned and applied as a push for it (see [Empty repositories](../file/delivery/#empty-repositories)).
 

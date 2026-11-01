@@ -114,6 +114,10 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 		return fmt.Errorf("actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or make the repository public/internal)")
 	}
 
+	if err := validateEnvironmentDependencies(desired, current); err != nil {
+		return err
+	}
+
 	if current.IsNew {
 		return nil
 	}
@@ -283,6 +287,7 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffRulesets(ctx, name, desired, current, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
+	changes = append(changes, diffEnvironments(name, desired, current)...)
 	changes = append(changes, diffLabels(name, desired, current, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
@@ -311,6 +316,7 @@ func diffNew(ctx context.Context, desired *manifest.Repository, empty *CurrentSt
 	changes = append(changes, diffRulesets(ctx, name, desired, empty, opt.Resolver)...)
 	changes = append(changes, diffSecrets(name, desired, empty, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, empty)...)
+	changes = append(changes, diffEnvironments(name, desired, empty)...)
 	// GitHub's default labels are not known here: a label with the name of
 	// one of them is updated by apply instead of created (see CreateNotes).
 	changes = append(changes, diffLabels(name, desired, empty, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
@@ -337,6 +343,7 @@ func CreateNotes(desired *manifest.Repository) []string {
 	if desired.Spec.ManagesLabels() && manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync) == manifest.CollectionReconcileAuthoritative {
 		notes = append(notes, "GitHub's default labels not declared here are deleted by the next plan")
 	}
+	notes = append(notes, environmentCreateNotes(desired)...)
 	return notes
 }
 

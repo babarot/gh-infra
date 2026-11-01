@@ -78,6 +78,14 @@ type fakeOrg struct {
 	Teams       map[string]int `json:"teams"`
 	Apps        map[string]int `json:"apps"`
 	CustomRoles map[string]int `json:"custom_roles"`
+	Users       map[string]int `json:"users"`
+	// UserOwner: the owner is a user, not an organization. Plan is the
+	// owner's plan ("" for Free), readable by an organization owner or the
+	// user themselves (AuthUser); PlanHidden: the token cannot read it.
+	UserOwner  bool   `json:"user_owner"`
+	Plan       string `json:"plan"`
+	PlanHidden bool   `json:"plan_hidden"`
+	AuthUser   string `json:"auth_user"`
 }
 
 // unknownAppID is the app GitHub binds a required check to when the PUT

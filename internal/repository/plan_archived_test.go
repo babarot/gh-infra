@@ -46,6 +46,8 @@ func TestPlan_ChangesToAnArchivedRepository(t *testing.T) {
 			Labels:    []manifest.Label{{Name: "new", Color: "00ff00"}},
 			Variables: []manifest.Variable{{Name: "NEW", Value: "x"}},
 		}, wantErr: "and 1 more"},
+		{name: "an environment", spec: manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "staging"}}},
+			wantErr: `environment "staging"`},
 		{name: "no change", spec: manifest.RepositorySpec{Archived: bptr(true), Description: ptr("a repository")}},
 		{name: "unarchived first", spec: manifest.RepositorySpec{Archived: bptr(false), Description: ptr("new")}},
 	} {

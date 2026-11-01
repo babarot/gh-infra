@@ -60,9 +60,11 @@ type PlanResult struct {
 	Updates int
 	Deletes int
 
-	// CreateNotes explains, per repository this plan creates, how its create
-	// differs from what the plan shows, such as what a later plan applies.
-	CreateNotes map[string][]string
+	// Notes explains, per repository, what the plan does not show plainly:
+	// how the create of a new repository differs from what it shows, such
+	// as what a later plan applies, and changes that let more deploy to an
+	// environment.
+	Notes map[string][]string
 
 	HasChanges bool
 
@@ -249,7 +251,7 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 		FailedTargets: failedTargets(tracker.Errors()),
 		TargetErrors:  tracker.Errors(),
 		Warnings:      parsed.Warnings,
-		CreateNotes:   createNotes(repoChanges, targetRepos),
+		Notes:         planNotes(repoChanges, targetRepos),
 		engine:        eng,
 		runner:        runner,
 	}
@@ -275,7 +277,7 @@ func Plan(ctx context.Context, opts PlanOptions) (*PlanResult, error) {
 
 	p.Separator()
 
-	printPlanWithNotes(p, repoChanges, fileChanges, result.CreateNotes, unseenOf(result.TargetRepos), opts.ShowDiff)
+	printPlanWithNotes(p, repoChanges, fileChanges, result.Notes, unseenOf(result.TargetRepos), opts.ShowDiff)
 
 	changed := plannedRepos(repoChanges, fileChanges)
 	upToDate := countUpToDate(slices.Concat(repoNames, fileNames), changed, result.FailedTargets)
@@ -387,16 +389,23 @@ func createdRepos(changes []repository.Change) map[string]bool {
 	return created
 }
 
-// createNotes returns the notes on the create of each new repository.
-func createNotes(changes []repository.Change, repos []*manifest.Repository) map[string][]string {
+// planNotes returns the notes on each repository: on the create of a new
+// one, and on changes that let more deploy to an environment.
+func planNotes(changes []repository.Change, repos []*manifest.Repository) map[string][]string {
 	created := createdRepos(changes)
+	byRepo := make(map[string][]repository.Change)
+	for _, c := range changes {
+		byRepo[c.Name] = append(byRepo[c.Name], c)
+	}
 	var out map[string][]string
 	for _, r := range repos {
 		name := r.Metadata.FullName()
-		if !created[name] {
-			continue
+		var notes []string
+		if created[name] {
+			notes = repository.CreateNotes(r)
 		}
-		if notes := repository.CreateNotes(r); len(notes) > 0 {
+		notes = append(notes, repository.ChangeNotes(byRepo[name])...)
+		if len(notes) > 0 {
 			if out == nil {
 				out = make(map[string][]string)
 			}

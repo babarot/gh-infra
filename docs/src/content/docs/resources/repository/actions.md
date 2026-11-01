@@ -1,7 +1,7 @@
 ---
 title: Actions
 sidebar:
-  order: 7
+  order: 8
 ---
 
 Manage GitHub Actions permissions, SHA pinning, workflow defaults, allowed actions, and fork PR approval policies.
@@ -113,6 +113,6 @@ The following Actions settings are **not yet supported** by gh-infra:
 - Artifact and log retention period
 - Cache retention and storage limits
 - OIDC subject claim customization
-- Environments (deployment protection rules, reviewers, branch policies)
+- Custom deployment protection rules of environments (GitHub Apps); environments themselves are managed under [Environments](./environments/)
 - Self-hosted runner configuration
 - Fork PR settings for private repositories (`send_write_tokens`, `send_secrets`)

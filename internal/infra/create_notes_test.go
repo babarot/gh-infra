@@ -30,7 +30,7 @@ func newRepoWithNotes() (*manifest.Repository, []repository.Change) {
 // What a create leaves to the next plan is said, but not planned as a change.
 func TestCreateNotes(t *testing.T) {
 	repo, changes := newRepoWithNotes()
-	notes := createNotes(changes, []*manifest.Repository{repo})["o/new"]
+	notes := planNotes(changes, []*manifest.Repository{repo})["o/new"]
 	for _, want := range []string{"updated instead of created", "branch protection for main", "default labels not declared here are deleted"} {
 		if !slices.ContainsFunc(notes, func(n string) bool { return strings.Contains(n, want) }) {
 			t.Errorf("notes = %q, want one about %q", notes, want)
@@ -38,14 +38,14 @@ func TestCreateNotes(t *testing.T) {
 	}
 
 	existing := []repository.Change{{Type: repository.ChangeUpdate, Resource: manifest.ResourceRepository, Name: "o/new", Field: "description"}}
-	if got := createNotes(existing, []*manifest.Repository{repo}); len(got) != 0 {
+	if got := planNotes(existing, []*manifest.Repository{repo}); len(got) != 0 {
 		t.Errorf("notes for a repository that exists = %v, want none", got)
 	}
 }
 
 func TestCreateNotes_ShownInTextAndDocument(t *testing.T) {
 	repo, changes := newRepoWithNotes()
-	notes := createNotes(changes, []*manifest.Repository{repo})
+	notes := planNotes(changes, []*manifest.Repository{repo})
 
 	var buf bytes.Buffer
 	printPlanWithNotes(ui.NewStandardPrinterWith(&buf, &buf), changes, nil, notes, nil, false)
@@ -53,7 +53,7 @@ func TestCreateNotes_ShownInTextAndDocument(t *testing.T) {
 		t.Errorf("text plan lacks the note:\n%s", buf.String())
 	}
 
-	doc := (&PlanResult{RepoChanges: changes, TargetRepos: []*manifest.Repository{repo}, CreateNotes: notes}).PlanDocument(false)
+	doc := (&PlanResult{RepoChanges: changes, TargetRepos: []*manifest.Repository{repo}, Notes: notes}).PlanDocument(false)
 	var found bool
 	for _, w := range doc.Warnings {
 		if w.Target == "o/new" && strings.Contains(w.Message, "branch protection for main") {
