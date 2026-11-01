@@ -3025,3 +3025,35 @@ repositories:
 		}
 	})
 }
+
+func TestParseFileSet_DuplicateRepository(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+apiVersion: v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - repo-a
+    - name: repo-a
+      overrides:
+        - path: .github/ci.yml
+          content: "custom ci"
+  files:
+    - path: .github/ci.yml
+      content: "name: CI"
+`
+	path := filepath.Join(dir, "fileset.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ParseAll(path, fileOpts())
+	if err == nil {
+		t.Fatal("expected an error for a repository listed twice")
+	}
+	if !strings.Contains(err.Error(), "duplicate name") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
