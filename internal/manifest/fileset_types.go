@@ -68,7 +68,7 @@ func sanitizeBranchName(s string) string {
 }
 
 type FileSetSpec struct {
-	Repositories  []FileSetRepository `yaml:"repositories" validate:"required,unique=Name"`
+	Repositories  []FileSetRepository `yaml:"repositories" validate:"required,unique=name"`
 	Files         []FileEntry         `yaml:"files"        validate:"required"`
 	CommitMessage string              `yaml:"commit_message,omitempty"`
 	Via           string              `yaml:"via,omitempty" validate:"omitempty,oneof=push pull_request"`

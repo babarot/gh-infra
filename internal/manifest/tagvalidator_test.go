@@ -228,6 +228,23 @@ func TestValidateStruct_Unique(t *testing.T) {
 	}
 }
 
+func TestValidateStruct_UniqueUnknownField(t *testing.T) {
+	type Item struct {
+		Name string `yaml:"name"`
+	}
+	type S struct {
+		// The Go field name instead of the yaml one
+		Items []Item `yaml:"items" validate:"unique=Name"`
+	}
+	err := ValidateStruct("", &S{Items: []Item{{Name: "a"}}})
+	if err == nil {
+		t.Fatal("expected an error for a unique key that names no yaml field")
+	}
+	if !strings.Contains(err.Error(), "unique=Name") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestValidateStruct_Exclusive(t *testing.T) {
 	type S struct {
 		Content string `yaml:"content" validate:"exclusive=source"`

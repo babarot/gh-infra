@@ -255,16 +255,21 @@ func checkOneOf(name string, fv reflect.Value, allowed []string) error {
 // keyYAML is the yaml field name (e.g. "name", "pattern").
 // e.g. validate:"unique=name" on a []Secret checks that no two secrets share the same name.
 func checkUnique(fieldPath string, fv reflect.Value, keyYAML string) error {
-	if fv.Kind() != reflect.Slice || fv.IsNil() || fv.Len() == 0 {
+	if fv.Kind() != reflect.Slice {
 		return nil
 	}
-	// Resolve yaml name to Go field name from the element type
+	// Resolve yaml name to Go field name from the element type. A key that
+	// names no yaml field is a mistake in the tag, reported even for an empty
+	// slice rather than turning the check off.
 	elemType := fv.Type().Elem()
 	if elemType.Kind() == reflect.Pointer {
 		elemType = elemType.Elem()
 	}
 	sf, ok := goFieldByYAMLName(elemType, keyYAML)
 	if !ok {
+		return fmt.Errorf("%s: validate tag unique=%s names no yaml field of %s", fieldPath, keyYAML, elemType.Name())
+	}
+	if fv.IsNil() || fv.Len() == 0 {
 		return nil
 	}
 	seen := make(map[string]bool)
