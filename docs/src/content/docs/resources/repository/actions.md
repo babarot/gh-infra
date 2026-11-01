@@ -106,6 +106,8 @@ Control when manual approval is required before running workflows on pull reques
 For open-source projects, `all_external_contributors` is the safest choice to prevent malicious `pull_request_target` attacks.
 :::
 
+`fork_pr_approval` is not available on private repositories. `validate` rejects it when the manifest sets `visibility: private`, and `plan` fails for the repository when GitHub reports the setting as unavailable.
+
 ## What Is Not Managed
 
 The following Actions settings are **not yet supported** by gh-infra:

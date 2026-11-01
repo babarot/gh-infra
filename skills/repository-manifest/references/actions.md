@@ -31,6 +31,6 @@ spec:
 - `sha_pinning_required`: require full SHA pinning for actions
 - `workflow_permissions`: `read` or `write`
 - `can_approve_pull_requests`: allow workflows to approve PRs
-- `fork_pr_approval`: `first_time_contributors_new_to_github`, `first_time_contributors`, `all_external_contributors`
+- `fork_pr_approval`: `first_time_contributors_new_to_github`, `first_time_contributors`, `all_external_contributors`; not available on private repositories (validate rejects it with `visibility: private`; otherwise plan fails the repo on GitHub's 422)
 
 Prefer `workflow_permissions: read` and `can_approve_pull_requests: false` unless the repo needs stronger automation.
