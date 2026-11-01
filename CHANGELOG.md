@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.18.0](https://github.com/babarot/gh-infra/compare/v0.17.5...v0.18.0) - 2026-11-01
+### New Features
+- Manage deployment environments and their branch policies by @babarot in https://github.com/babarot/gh-infra/pull/294
+- Manage variables and secrets of deployment environments by @babarot in https://github.com/babarot/gh-infra/pull/295
+- Import deployment environments by @babarot in https://github.com/babarot/gh-infra/pull/296
+### Bug fixes
+- Reject a FileSet that lists a repository twice by @babarot in https://github.com/babarot/gh-infra/pull/300
+### Improvements
+- Test before releasing, and check tidiness and vulnerabilities by @babarot in https://github.com/babarot/gh-infra/pull/297
+
 ## [v0.17.5](https://github.com/babarot/gh-infra/compare/v0.17.4...v0.17.5) - 2026-10-25
 ### Improvements
 - Put a settings group with a single child on one line by @babarot in https://github.com/babarot/gh-infra/pull/283
