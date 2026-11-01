@@ -103,7 +103,7 @@ func TestEnvironment_NullEnvironments(t *testing.T) {
 // An explicit [] is kept when written back: custom_branch_policies: [] allows
 // no branch, but without it {} allows every branch.
 func TestEnvironment_MarshalKeepsEmptyLists(t *testing.T) {
-	repos, err := parseEnvironmentsYAML(t, "  environments:\n    - name: production\n      reviewers: []\n      deployment_branch_policy:\n        custom_branch_policies: []\n")
+	repos, err := parseEnvironmentsYAML(t, "  environments:\n    - name: production\n      reviewers: []\n      variables: []\n      secrets: []\n      deployment_branch_policy:\n        custom_branch_policies: []\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,8 @@ func TestEnvironment_MarshalKeepsEmptyLists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "custom_branch_policies: []") || !strings.Contains(string(out), "reviewers: []") {
+	if !strings.Contains(string(out), "custom_branch_policies: []") || !strings.Contains(string(out), "reviewers: []") ||
+		!strings.Contains(string(out), "variables: []") || !strings.Contains(string(out), "secrets: []") {
 		t.Fatalf("marshaled:\n%s", out)
 	}
 	var back []Environment

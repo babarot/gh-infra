@@ -93,7 +93,7 @@ Use `write` only when you want to update the underlying shared source. Use `patc
 
 ## What Does Not Get Imported
 
-- secrets: GitHub does not return secret values
+- secrets, of the repository and of its environments: GitHub does not return secret values; the manifest's are kept
 - `github://` sources: no local write target
 - template-backed files that cannot be reverse-mapped safely
 

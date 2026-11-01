@@ -2253,3 +2253,103 @@ func TestCompareMilestones(t *testing.T) {
 		})
 	}
 }
+
+// GitHub does not return secret values, so importing environments keeps the
+// secrets the manifest declares for them.
+func TestDiffRepository_PreservesEnvironmentSecrets(t *testing.T) {
+	yamlData := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  environments:
+    - name: production
+      wait_timer: 5
+      secrets:
+        - name: TOKEN
+          value: "${ENV_TOKEN}"
+`)
+	path := filepath.Join(t.TempDir(), "test.yaml")
+	if err := os.WriteFile(path, yamlData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := manifest.ParseAll(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported := &manifest.Repository{Spec: manifest.RepositorySpec{Environments: []manifest.Environment{{
+		Name: "production", WaitTimer: manifest.Ptr(10),
+		Variables: []manifest.Variable{{Name: "REGION", Value: "eu"}},
+	}}}}
+	mb := map[string][]byte{path: yamlData}
+	rp, err := DiffRepository(DiffInput{Repos: parsed.RepositoryDocs, Imported: imported, ManifestBytes: mb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := map[string]bool{}
+	for _, d := range rp.Diffs {
+		if strings.Contains(d.Field, "secret") {
+			t.Errorf("secrets reported as a change: %+v", d)
+		}
+		fields[d.Field] = true
+	}
+	for _, want := range []string{"environments.production.wait_timer", "environments.production.variables.REGION"} {
+		if !fields[want] {
+			t.Errorf("no %s diff in %+v", want, rp.Diffs)
+		}
+	}
+	updated := string(rp.ManifestEdits[path])
+	for _, want := range []string{"wait_timer: 10", "REGION", "${ENV_TOKEN}"} {
+		if !strings.Contains(updated, want) {
+			t.Errorf("updated manifest lacks %s:\n%s", want, updated)
+		}
+	}
+}
+
+// An entry writes an environment's secrets only when they differ from the
+// defaults', and keeps its own.
+func TestMinimalEnvironments_Secrets(t *testing.T) {
+	defaults := []manifest.Environment{{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "${ENV_TOKEN}"}}}}
+	same := minimalEnvironments(defaults, []manifest.Environment{{Name: "production", Secrets: defaults[0].Secrets}})
+	if len(same) != 0 {
+		t.Errorf("same secrets as the defaults written: %+v", same)
+	}
+	own := []manifest.Secret{{Name: "TOKEN", Value: "${ENV_TOKEN}"}, {Name: "EXTRA", Value: "${ENV_EXTRA}"}}
+	got := minimalEnvironments(defaults, []manifest.Environment{{Name: "production", Secrets: own}})
+	if len(got) != 1 || len(got[0].Secrets) != 2 {
+		t.Errorf("the entry's own secret lost: %+v", got)
+	}
+}
+
+func TestCompareEnvironments_NewOnGitHub(t *testing.T) {
+	diffs := compareEnvironments(nil, []manifest.Environment{{
+		Name: "staging", WaitTimer: manifest.Ptr(0),
+		DeploymentBranchPolicy: &manifest.DeploymentBranchPolicy{CustomBranchPolicies: []manifest.DeploymentBranchRule{{Name: "v*", Type: "tag"}}},
+		Variables:              []manifest.Variable{{Name: "REGION", Value: "eu"}},
+	}})
+	got := map[string]any{}
+	for _, d := range diffs {
+		got[d.Field] = d.New
+	}
+	if got["environments.staging.deployment_branch_policy"] != "custom: [tag:v*]" || got["environments.staging.variables.REGION"] != "eu" {
+		t.Errorf("diffs = %+v", diffs)
+	}
+}
+
+// When the environments could not be read, export leaves them unset and
+// import --into leaves the manifest's alone instead of reading them as none.
+func TestDiffRepository_EnvironmentsNotRead(t *testing.T) {
+	local := manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "production", Secrets: []manifest.Secret{{Name: "TOKEN", Value: "${ENV_TOKEN}"}}}}}
+	if diffs := compareSpecs(local, manifest.RepositorySpec{}); len(diffs) == 0 {
+		t.Fatal("compareSpecs sees no difference; the test would pass for nothing")
+	}
+	envs, set := importedEnvironments(local, manifest.RepositorySpec{})
+	if len(envs) != 1 || envs[0].Secrets[0].Value != "${ENV_TOKEN}" || set != local.EnvironmentsSet {
+		t.Errorf("environments = %+v", envs)
+	}
+	envs, _ = importedEnvironments(local, manifest.RepositorySpec{EnvironmentsSet: true})
+	if len(envs) != 0 {
+		t.Errorf("environments read as none were kept: %+v", envs)
+	}
+}
