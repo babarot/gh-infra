@@ -2353,3 +2353,43 @@ func TestDiffRepository_EnvironmentsNotRead(t *testing.T) {
 		t.Errorf("environments read as none were kept: %+v", envs)
 	}
 }
+
+func TestDiffRepository_CollectionsNotRead(t *testing.T) {
+	data := []byte(`apiVersion: gh-infra/v1
+kind: Repository
+metadata:
+  name: test
+  owner: org
+spec:
+  variables:
+    - name: TOKEN
+      value: secret
+  labels:
+    - name: bug
+      color: ff0000
+  milestones:
+    - title: v1
+      state: open
+`)
+	local := manifest.RepositorySpec{
+		Variables:     []manifest.Variable{{Name: "TOKEN", Value: "secret"}},
+		VariablesSet:  true,
+		Labels:        []manifest.Label{{Name: "bug", Color: "ff0000"}},
+		LabelsSet:     true,
+		Milestones:    []manifest.Milestone{{Title: "v1", State: manifest.Ptr("open")}},
+		MilestonesSet: true,
+	}
+	doc := &manifest.RepositoryDocument{Resource: &manifest.Repository{Metadata: manifest.RepositoryMetadata{Name: "test", Owner: "org"}, Spec: local}, SourcePath: "test.yaml"}
+	bytesByPath := map[string][]byte{"test.yaml": data}
+	result, err := DiffRepository(DiffInput{
+		Repos:         []*manifest.RepositoryDocument{doc},
+		Imported:      &manifest.Repository{Spec: manifest.RepositorySpec{}},
+		ManifestBytes: bytesByPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.HasChanges() {
+		t.Errorf("unread collections produced manifest changes: %+v", result.Diffs)
+	}
+}

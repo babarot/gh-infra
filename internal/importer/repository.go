@@ -41,6 +41,9 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 		imported.Rulesets = preserveUnreturnedRulesetParams(local.Rulesets, imported.Rulesets)
 		// Preserve the environments' secrets, as the repository's.
 		imported.Environments, imported.EnvironmentsSet = importedEnvironments(local, imported)
+		imported.Variables = preserveUnreadCollection(local.Variables, imported.Variables)
+		imported.Labels = preserveUnreadCollection(local.Labels, imported.Labels)
+		imported.Milestones = preserveUnreadCollection(local.Milestones, imported.Milestones)
 
 		diffs := compareSpecs(local, imported)
 		if len(diffs) == 0 {
@@ -75,6 +78,16 @@ func DiffRepository(input DiffInput) (RepoResult, error) {
 	}
 
 	return plan, nil
+}
+
+// preserveUnreadCollection keeps the manifest's collection when import could
+// not read it from GitHub. Export leaves unread collections nil; a readable
+// empty collection is non-nil and therefore remains an imported empty list.
+func preserveUnreadCollection[T any](local, imported []T) []T {
+	if imported == nil {
+		return local
+	}
+	return imported
 }
 
 // preserveUnreturnedRulesetParams carries local ruleset parameters over to
