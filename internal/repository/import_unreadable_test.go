@@ -30,6 +30,11 @@ func TestImportUnreadableSettings(t *testing.T) {
 		workflowCmd   = "api repos/o/r/actions/permissions/workflow"
 		selectedCmd   = "api repos/o/r/actions/permissions/selected-actions"
 		forkPRCmd     = "api repos/o/r/actions/permissions/fork-pr-contributor-approval"
+		repoCmd       = "api repos/o/r --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}"
+		immutableCmd  = "api repos/o/r/immutable-releases"
+		alertsCmd     = "api repos/o/r/vulnerability-alerts"
+		fixesCmd      = "api repos/o/r/automated-security-fixes"
+		reportingCmd  = "api repos/o/r/private-vulnerability-reporting"
 	)
 	forbidden := fakeStatus(gh.ErrForbidden, "Resource not accessible by personal access token")
 	notFound := fakeStatus(gh.ErrNotFound, "Not Found")
@@ -81,6 +86,32 @@ func TestImportUnreadableSettings(t *testing.T) {
 		// of the Actions settings are written.
 		{name: "fork PR approval 422", cmd: forkPRCmd, err: invalid,
 			absent: func(s manifest.RepositorySpec) bool { return s.Actions != nil && s.Actions.ForkPRApproval == nil }},
+		// The settings read one by one are left out rather than written at
+		// their defaults.
+		{name: "commit message settings 403", cmd: repoCmd, err: forbidden, unread: []string{
+			"features.pull_requests", "merge_strategy.allow_auto_merge",
+			"merge_strategy.merge_commit_message", "merge_strategy.merge_commit_title",
+			"merge_strategy.squash_merge_commit_message", "merge_strategy.squash_merge_commit_title",
+		}, absent: func(s manifest.RepositorySpec) bool {
+			m := s.MergeStrategy
+			return s.Features.PullRequests == nil && m.AllowAutoMerge == nil && m.MergeCommitTitle == nil &&
+				m.MergeCommitMessage == nil && m.SquashMergeCommitTitle == nil && m.SquashMergeCommitMessage == nil
+		}},
+		{name: "release immutability 403", cmd: immutableCmd, err: forbidden, unread: []string{"release_immutability"},
+			absent: func(s manifest.RepositorySpec) bool { return s.ReleaseImmutability == nil }},
+		{name: "release immutability unparsable", cmd: immutableCmd, unread: []string{"release_immutability"},
+			absent: func(s manifest.RepositorySpec) bool { return s.ReleaseImmutability == nil }},
+		{name: "vulnerability alerts 403", cmd: alertsCmd, err: forbidden, unread: []string{"security.vulnerability_alerts"},
+			absent: func(s manifest.RepositorySpec) bool { return s.Security.VulnerabilityAlerts == nil }},
+		{name: "automated security fixes 403", cmd: fixesCmd, err: forbidden, unread: []string{"security.automated_security_fixes"},
+			absent: func(s manifest.RepositorySpec) bool { return s.Security.AutomatedSecurityFixes == nil }},
+		{name: "private vulnerability reporting 403", cmd: reportingCmd, err: forbidden, unread: []string{"security.private_vulnerability_reporting"},
+			absent: func(s manifest.RepositorySpec) bool { return s.Security.PrivateVulnerabilityReporting == nil }},
+		// GitHub documents a 404 of the vulnerability alerts as disabled.
+		{name: "vulnerability alerts 404", cmd: alertsCmd, err: notFound,
+			absent: func(s manifest.RepositorySpec) bool {
+				return s.Security.VulnerabilityAlerts != nil && !*s.Security.VulnerabilityAlerts
+			}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			runner := &unreadableRunner{Runner: newFakeGitHub("o", "r", propEnvState()), cmd: tt.cmd, err: tt.err}

@@ -12,8 +12,10 @@ import (
 
 // keepUnread replaces each setting of imported that could not be read from
 // GitHub with the manifest's (local), so import --into does not read it as
-// none and remove it from the manifest. unread is keyed as
-// repository.CurrentState.Unread: a manifest key ("labels", "actions"), or
+// none or at its default and remove or replace it in the manifest. unread is
+// keyed as repository.CurrentState.Unread: a manifest key ("labels",
+// "actions", "release_immutability", "security.vulnerability_alerts",
+// "merge_strategy.allow_auto_merge", "features.pull_requests"), or
 // "environments.<name>.variables" and
 // "environments.<name>.deployment_branch_policy" for a part of an
 // environment.
@@ -38,7 +40,42 @@ func keepUnread(imported *manifest.RepositorySpec, local manifest.RepositorySpec
 			imported.Environments, imported.EnvironmentsSet = local.Environments, local.EnvironmentsSet
 		case "actions":
 			imported.Actions = local.Actions
+		case "release_immutability":
+			imported.ReleaseImmutability = local.ReleaseImmutability
+		case "features.pull_requests":
+			f := cloneOrZero(imported.Features)
+			if local.Features != nil {
+				f.PullRequests = local.Features.PullRequests
+			} else {
+				f.PullRequests = nil
+			}
+			imported.Features = &f
 		default:
+			if field, ok := strings.CutPrefix(key, "security."); ok {
+				imported.Security = keepUnreadSecurity(imported.Security, local.Security, field)
+				continue
+			}
+			if field, ok := strings.CutPrefix(key, "merge_strategy."); ok {
+				m := cloneOrZero(imported.MergeStrategy)
+				var l manifest.MergeStrategy
+				if local.MergeStrategy != nil {
+					l = *local.MergeStrategy
+				}
+				switch field {
+				case "allow_auto_merge":
+					m.AllowAutoMerge = l.AllowAutoMerge
+				case "merge_commit_title":
+					m.MergeCommitTitle = l.MergeCommitTitle
+				case "merge_commit_message":
+					m.MergeCommitMessage = l.MergeCommitMessage
+				case "squash_merge_commit_title":
+					m.SquashMergeCommitTitle = l.SquashMergeCommitTitle
+				case "squash_merge_commit_message":
+					m.SquashMergeCommitMessage = l.SquashMergeCommitMessage
+				}
+				imported.MergeStrategy = &m
+				continue
+			}
 			env, part, ok := environmentPart(key)
 			if !ok {
 				continue
@@ -52,6 +89,38 @@ func keepUnread(imported *manifest.RepositorySpec, local manifest.RepositorySpec
 			keepUnreadEnvironmentPart(&imported.Environments, local.Environments, env, part)
 		}
 	}
+}
+
+// keepUnreadSecurity returns imported's security settings with field set as
+// local has it; none when no field is left.
+func keepUnreadSecurity(imported, local *manifest.Security, field string) *manifest.Security {
+	s := cloneOrZero(imported)
+	var l manifest.Security
+	if local != nil {
+		l = *local
+	}
+	switch field {
+	case "vulnerability_alerts":
+		s.VulnerabilityAlerts = l.VulnerabilityAlerts
+	case "automated_security_fixes":
+		s.AutomatedSecurityFixes = l.AutomatedSecurityFixes
+	case "private_vulnerability_reporting":
+		s.PrivateVulnerabilityReporting = l.PrivateVulnerabilityReporting
+	}
+	if s.VulnerabilityAlerts == nil && s.AutomatedSecurityFixes == nil && s.PrivateVulnerabilityReporting == nil {
+		return nil
+	}
+	return &s
+}
+
+// cloneOrZero copies *p, which the other manifests of the repository share,
+// or returns the zero value for nil.
+func cloneOrZero[T any](p *T) T {
+	var v T
+	if p != nil {
+		v = *p
+	}
+	return v
 }
 
 // keepUnreadEnvironmentPart gives the environment env of imported the
