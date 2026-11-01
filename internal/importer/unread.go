@@ -49,28 +49,37 @@ func keepUnread(imported *manifest.RepositorySpec, local manifest.RepositorySpec
 				imported.Environments = slices.Clone(imported.Environments)
 				cloned = true
 			}
-			keepUnreadEnvironmentPart(imported.Environments, local.Environments, env, part)
+			keepUnreadEnvironmentPart(&imported.Environments, local.Environments, env, part)
 		}
 	}
 }
 
-// keepUnreadEnvironmentPart gives the imported environment env the
+// keepUnreadEnvironmentPart gives the environment env of imported the
 // manifest's part of it. An environment the manifest does not declare keeps
-// the part unset, as import leaves it.
-func keepUnreadEnvironmentPart(imported, local []manifest.Environment, env, part string) {
-	i := slices.IndexFunc(imported, func(e manifest.Environment) bool { return strings.EqualFold(e.Name, env) })
-	if i < 0 {
-		return
-	}
+// the part unset, as import leaves it. An environment imported leaves out (a
+// RepositorySet override that matches the defaults) is added back with the
+// part when the manifest sets it, so the manifest keeps it.
+func keepUnreadEnvironmentPart(imported *[]manifest.Environment, local []manifest.Environment, env, part string) {
 	var l manifest.Environment
+	declared := false
 	if j := slices.IndexFunc(local, func(e manifest.Environment) bool { return strings.EqualFold(e.Name, env) }); j >= 0 {
-		l = local[j]
+		l, declared = local[j], true
+	}
+	i := slices.IndexFunc(*imported, func(e manifest.Environment) bool { return strings.EqualFold(e.Name, env) })
+	if i < 0 {
+		sets := (part == "variables" && (l.VariablesSet || len(l.Variables) > 0)) ||
+			(part == "deployment_branch_policy" && l.DeploymentBranchPolicy != nil)
+		if !declared || !sets {
+			return
+		}
+		*imported = append(*imported, manifest.Environment{Name: l.Name})
+		i = len(*imported) - 1
 	}
 	switch part {
 	case "variables":
-		imported[i].Variables, imported[i].VariablesSet = l.Variables, l.VariablesSet
+		(*imported)[i].Variables, (*imported)[i].VariablesSet = l.Variables, l.VariablesSet
 	case "deployment_branch_policy":
-		imported[i].DeploymentBranchPolicy = l.DeploymentBranchPolicy
+		(*imported)[i].DeploymentBranchPolicy = l.DeploymentBranchPolicy
 	}
 }
 

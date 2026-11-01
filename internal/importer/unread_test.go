@@ -216,3 +216,45 @@ func TestImportIntoRepositorySetKeepsUnreadOverride(t *testing.T) {
 		})
 	}
 }
+
+// An environment the override would leave out, since it matches the
+// defaults, keeps the entry's part of it that could not be read.
+func TestImportIntoRepositorySetKeepsUnreadEnvironmentPart(t *testing.T) {
+	ctx := context.Background()
+	resolver := manifest.NewResolver(rtRunner{})
+	// The defaults match GitHub's production, but for its variables.
+	defaultEnvs := repository.ToManifest(ctx, fullState(), resolver).Spec.Environments
+	for i := range defaultEnvs {
+		if defaultEnvs[i].Name == "production" {
+			defaultEnvs[i].Variables = []manifest.Variable{{Name: "TIER", Value: "1"}}
+		}
+	}
+	set := map[string]any{
+		"apiVersion": manifest.APIVersion,
+		"kind":       manifest.KindRepositorySet,
+		"metadata":   map[string]any{"owner": "o"},
+		"defaults":   map[string]any{"spec": manifest.RepositorySpec{Environments: defaultEnvs}},
+		"repositories": []map[string]any{{"name": "r", "spec": map[string]any{
+			"environments": []map[string]any{{"name": "production", "variables": []map[string]any{{"name": "TIER", "value": "1"}}}},
+		}}},
+	}
+	path, data := writeYAML(t, set)
+	parsed, err := manifest.ParseAll(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, data)
+	}
+	current := fullState()
+	current.Environments["production"].Variables = nil
+	unread := map[string]error{"environments.production.variables": fmt.Errorf("fetch: %w", gh.ErrNotFound)}
+	current.Unread = unread
+	rp, err := DiffRepositorySet(DiffInput{Repos: parsed.RepositoryDocs, Imported: repository.ToManifest(ctx, current, resolver),
+		ManifestBytes: map[string][]byte{path: data}, Unread: unread})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range rp.Diffs {
+		if strings.HasPrefix(d.Field, "environments") {
+			t.Errorf("changed the entry's environment, whose variables could not be read: %+v", d)
+		}
+	}
+}
