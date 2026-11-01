@@ -294,6 +294,50 @@ func TestPrintApplyResults_Error(t *testing.T) {
 	}
 }
 
+// A change to a named item shows the item's name, as the plan does, so two
+// environments or rulesets created in one apply can be told apart.
+func TestPrintApplyResults_NamedItems(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	repoResults := []repository.ApplyResult{
+		{Change: repository.Change{Type: repository.ChangeCreate, Name: "org/repo", Resource: "Environment[production]", Field: "environment"}},
+		{Change: repository.Change{Type: repository.ChangeCreate, Name: "org/repo", Resource: "Environment[staging]", Field: "environment"}},
+		{Change: repository.Change{Type: repository.ChangeUpdate, Name: "org/repo", Resource: "Ruleset[main]", Field: "ruleset"}, Err: fmt.Errorf("forbidden")},
+		{Change: repository.Change{Type: repository.ChangeUpdate, Name: "org/repo", Resource: "BranchProtection[main]", Field: "branch_protection"}},
+		{Change: repository.Change{Type: repository.ChangeUpdate, Name: "org/repo", Resource: manifest.ResourceRepository, Field: "visibility", NewValue: "private"}},
+	}
+
+	printApplyResults(p, repoResults, nil)
+	out := buf.String()
+
+	for _, want := range []string{
+		`environment "production"`,
+		`environment "staging"`,
+		`ruleset "main"`,
+		`branch protection "main"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %s in output, got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "visibility[") {
+		t.Errorf("a change to an unnamed setting should show its field only, got:\n%s", out)
+	}
+}
+
+func TestPrintApplyFollowUps_NamedItems(t *testing.T) {
+	var buf bytes.Buffer
+	p := ui.NewStandardPrinterWith(&buf, &buf)
+
+	printApplyFollowUps(p, []repository.ApplyResult{
+		{Change: repository.Change{Type: repository.ChangeCreate, Name: "org/repo", Resource: "Environment[production]", Field: "environment"}, Err: fmt.Errorf("forbidden")},
+	}, nil)
+	if out := buf.String(); !strings.Contains(out, `environment "production"`) {
+		t.Errorf("expected the environment's name in output, got:\n%s", out)
+	}
+}
+
 func TestPrintApplyResults_FileResults(t *testing.T) {
 	var buf bytes.Buffer
 	p := ui.NewStandardPrinterWith(&buf, &buf)
