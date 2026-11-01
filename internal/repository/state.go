@@ -195,20 +195,23 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		privateVulnerabilityReporting bool
 	)
 
-	// fetchSetting runs a single-value fetch. 404 (e.g. GHES without the
-	// feature) leaves the default; so does 403, unless the setting is
-	// managed. Other errors propagate.
-	fetchSetting := func(what string, ignoreNotFound bool, fetch func() error) func() error {
+	// fetchSetting runs a single-value fetch of what, which the manifest
+	// keys name. With a spec, a setting that cannot be read is an error (a
+	// 404 too, e.g. GHES without the feature: apply could not set it).
+	// Import leaves one that cannot be read (403, 404, 422, or a response
+	// that does not parse) unread rather than at its default. Other errors
+	// (5xx) propagate.
+	fetchSetting := func(what string, keys []string, fetch func() error) func() error {
 		return func() error {
 			status("fetching " + what + "...")
 			err := fetch()
 			if err == nil {
 				return nil
 			}
-			if ignoreNotFound && errors.Is(err, gh.ErrNotFound) {
-				return nil
-			}
-			if errors.Is(err, gh.ErrForbidden) && !strict {
+			if !strict && (isIgnorableSubresourceError(err) || isParseError(err)) {
+				for _, key := range keys {
+					_ = record(key, unreadSetting(err))
+				}
 				return nil
 			}
 			return fetchError(strict, what, owner, name, err)
@@ -217,7 +220,14 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 
 	if want(manifest.RepositorySpec.ManagesCommitMessageSettings) {
 		// Not available in gh repo view --json.
-		g.Go(fetchSetting("commit message settings", true, func() error {
+		g.Go(fetchSetting("commit message settings", []string{
+			"features.pull_requests",
+			"merge_strategy.allow_auto_merge",
+			"merge_strategy.merge_commit_message",
+			"merge_strategy.merge_commit_title",
+			"merge_strategy.squash_merge_commit_message",
+			"merge_strategy.squash_merge_commit_title",
+		}, func() error {
 			s, err := p.fetchCommitMessageSettings(ctx, owner, name)
 			if err == nil {
 				commitMsgSettings = s
@@ -227,7 +237,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 	}
 
 	if want(manifest.RepositorySpec.ManagesReleaseImmutability) {
-		g.Go(fetchSetting("release immutability", true, func() error {
+		g.Go(fetchSetting("release immutability", []string{"release_immutability"}, func() error {
 			v, err := p.fetchReleaseImmutability(ctx, owner, name)
 			releaseImmutability = v
 			return err
@@ -237,7 +247,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 	// For the security settings, 404 is handled inside the fetchers (it is
 	// the documented "disabled" response).
 	if want(manifest.RepositorySpec.ManagesVulnerabilityAlerts) {
-		g.Go(fetchSetting("vulnerability alerts", false, func() error {
+		g.Go(fetchSetting("vulnerability alerts", []string{"security.vulnerability_alerts"}, func() error {
 			v, err := p.fetchVulnerabilityAlerts(ctx, owner, name)
 			vulnerabilityAlerts = v
 			return err
@@ -245,7 +255,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 	}
 
 	if want(manifest.RepositorySpec.ManagesAutomatedSecurityFixes) {
-		g.Go(fetchSetting("automated security fixes", false, func() error {
+		g.Go(fetchSetting("automated security fixes", []string{"security.automated_security_fixes"}, func() error {
 			v, err := p.fetchAutomatedSecurityFixes(ctx, owner, name)
 			automatedSecurityFixes = v
 			return err
@@ -253,7 +263,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 	}
 
 	if want(manifest.RepositorySpec.ManagesPrivateVulnerabilityReporting) {
-		g.Go(fetchSetting("private vulnerability reporting", false, func() error {
+		g.Go(fetchSetting("private vulnerability reporting", []string{"security.private_vulnerability_reporting"}, func() error {
 			v, err := p.fetchPrivateVulnerabilityReporting(ctx, owner, name)
 			privateVulnerabilityReporting = v
 			return err
@@ -618,8 +628,9 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 		"--paginate",
 	)
 	if err != nil {
-		// 404/403 can mean rulesets are not available (GHES without them, or
-		// a plan without them). Import leaves them empty; when the manifest
+		// 403 or 404 can mean rulesets are not available: GitHub answers 403
+		// on a plan without them (a GitHub Free private repository), and GHES
+		// without them 404. Import leaves them unread; when the manifest
 		// manages rulesets, they are reported instead: they could not be
 		// applied either, and read as none, existing ones would be planned as
 		// new. All other errors (429, 5xx) propagate to prevent false diffs.
@@ -1375,6 +1386,13 @@ type unreadError struct{ err error }
 
 func (e unreadError) Error() string { return e.err.Error() }
 func (e unreadError) Unwrap() error { return e.err }
+
+// isParseError reports whether err is a JSON response that does not parse.
+func isParseError(err error) bool {
+	var syntax *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	return errors.As(err, &syntax) || errors.As(err, &typ)
+}
 
 // unreadSetting marks err as a setting import could not read.
 func unreadSetting(err error) error { return unreadError{err: err} }

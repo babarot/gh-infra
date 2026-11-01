@@ -20,6 +20,12 @@ func fullState() *repository.CurrentState {
 	s.BranchProtection = map[string]*repository.CurrentBranchProtection{"main": {Pattern: "main", RequiredReviews: 1}}
 	s.Rulesets = map[string]*repository.CurrentRuleset{"main": {ID: 1, Name: "main", Target: "branch", Enforcement: "active",
 		Conditions: &repository.CurrentRulesetConditions{RefName: &repository.CurrentRulesetRefCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}}}}
+	// The single settings differ from the defaults FetchRepository leaves
+	// them at when they cannot be read.
+	s.ReleaseImmutability = true
+	s.Security = repository.CurrentSecurity{VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true}
+	s.MergeStrategy.AllowAutoMerge = true
+	s.Features.PullRequests = false
 	return s
 }
 
@@ -38,6 +44,15 @@ var unreadCases = []struct {
 	{"actions", func(s *repository.CurrentState) { s.Actions = repository.CurrentActions{} }},
 	{"environments.production.variables", func(s *repository.CurrentState) { s.Environments["production"].Variables = nil }},
 	{"environments.production.deployment_branch_policy", func(s *repository.CurrentState) { s.Environments["production"].BranchRules = nil }},
+	{"release_immutability", func(s *repository.CurrentState) { s.ReleaseImmutability = false }},
+	{"security.vulnerability_alerts", func(s *repository.CurrentState) { s.Security.VulnerabilityAlerts = false }},
+	{"security.automated_security_fixes", func(s *repository.CurrentState) { s.Security.AutomatedSecurityFixes = false }},
+	{"security.private_vulnerability_reporting", func(s *repository.CurrentState) { s.Security.PrivateVulnerabilityReporting = false }},
+	{"merge_strategy.allow_auto_merge", func(s *repository.CurrentState) { s.MergeStrategy.AllowAutoMerge = false }},
+	{"merge_strategy.squash_merge_commit_title", func(s *repository.CurrentState) { s.MergeStrategy.SquashMergeCommitTitle = "" }},
+	{"features.pull_requests", func(s *repository.CurrentState) {
+		s.Features.PullRequests, s.Features.PullRequestCreation = true, manifest.PullRequestCreationAll
+	}},
 }
 
 func hasWarning(ws []RepoWarning, field, message string) bool {
@@ -256,5 +271,20 @@ func TestImportIntoRepositorySetKeepsUnreadEnvironmentPart(t *testing.T) {
 		if strings.HasPrefix(d.Field, "environments") {
 			t.Errorf("changed the entry's environment, whose variables could not be read: %+v", d)
 		}
+	}
+}
+
+// A setting put back as the manifest has it leaves no empty object, which
+// would be written as {} into an entry with no spec.
+func TestKeepUnreadLeavesNoEmptyObject(t *testing.T) {
+	unread := map[string]error{
+		"merge_strategy.allow_auto_merge": gh.ErrForbidden,
+		"features.pull_requests":          gh.ErrForbidden,
+		"security.vulnerability_alerts":   gh.ErrForbidden,
+	}
+	var imported manifest.RepositorySpec
+	keepUnread(&imported, manifest.RepositorySpec{}, unread)
+	if imported.MergeStrategy != nil || imported.Features != nil || imported.Security != nil {
+		t.Errorf("left empty objects: %+v %+v %+v", imported.MergeStrategy, imported.Features, imported.Security)
 	}
 }

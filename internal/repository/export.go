@@ -23,18 +23,14 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			Visibility:          manifest.Ptr(r.Visibility),
 			Archived:            manifest.Ptr(r.Archived),
 			Topics:              r.Topics,
-			ReleaseImmutability: manifest.Ptr(r.ReleaseImmutability),
-			Security: &manifest.Security{
-				VulnerabilityAlerts:           manifest.Ptr(r.Security.VulnerabilityAlerts),
-				AutomatedSecurityFixes:        manifest.Ptr(r.Security.AutomatedSecurityFixes),
-				PrivateVulnerabilityReporting: manifest.Ptr(r.Security.PrivateVulnerabilityReporting),
-			},
-			Features: exportFeatures(r),
+			ReleaseImmutability: readPtr(r, "release_immutability", r.ReleaseImmutability),
+			Security:            exportSecurity(r),
+			Features:            exportFeatures(r),
 			MergeStrategy: &manifest.MergeStrategy{
 				AllowMergeCommit:       manifest.Ptr(r.MergeStrategy.AllowMergeCommit),
 				AllowSquashMerge:       manifest.Ptr(r.MergeStrategy.AllowSquashMerge),
 				AllowRebaseMerge:       manifest.Ptr(r.MergeStrategy.AllowRebaseMerge),
-				AllowAutoMerge:         manifest.Ptr(r.MergeStrategy.AllowAutoMerge),
+				AllowAutoMerge:         readPtr(r, "merge_strategy.allow_auto_merge", r.MergeStrategy.AllowAutoMerge),
 				AutoDeleteHeadBranches: manifest.Ptr(r.MergeStrategy.AutoDeleteHeadBranches),
 				// Empty when GET /repos could not be read: not a value a
 				// manifest accepts, and plan does not compare an omitted one.
@@ -220,14 +216,42 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 	return repo
 }
 
-func exportFeatures(r *CurrentState) *manifest.Features {
-	pr := &manifest.PullRequests{
-		Enabled: manifest.Ptr(r.Features.PullRequests),
+// readPtr returns a pointer to v, or nil when import could not read the
+// setting key (see CurrentState.Unread): written at its default, it would
+// replace the manifest's value.
+func readPtr[T any](r *CurrentState, key string, v T) *T {
+	if _, unread := r.Unread[key]; unread {
+		return nil
 	}
-	// The creation policy only applies, and is only written to YAML, while
-	// pull requests are enabled.
-	if r.Features.PullRequests && r.Features.PullRequestCreation != "" && r.Features.PullRequestCreation != manifest.PullRequestCreationAll {
-		pr.Creation = manifest.Ptr(r.Features.PullRequestCreation)
+	return manifest.Ptr(v)
+}
+
+// exportSecurity writes the security settings that could be read, or none.
+func exportSecurity(r *CurrentState) *manifest.Security {
+	s := &manifest.Security{
+		VulnerabilityAlerts:           readPtr(r, "security.vulnerability_alerts", r.Security.VulnerabilityAlerts),
+		AutomatedSecurityFixes:        readPtr(r, "security.automated_security_fixes", r.Security.AutomatedSecurityFixes),
+		PrivateVulnerabilityReporting: readPtr(r, "security.private_vulnerability_reporting", r.Security.PrivateVulnerabilityReporting),
+	}
+	if s.VulnerabilityAlerts == nil && s.AutomatedSecurityFixes == nil && s.PrivateVulnerabilityReporting == nil {
+		return nil
+	}
+	return s
+}
+
+func exportFeatures(r *CurrentState) *manifest.Features {
+	var pr *manifest.PullRequests
+	// Read from GET /repos with the commit message settings; left out when
+	// that could not be read.
+	if _, unread := r.Unread["features.pull_requests"]; !unread {
+		pr = &manifest.PullRequests{
+			Enabled: manifest.Ptr(r.Features.PullRequests),
+		}
+		// The creation policy only applies, and is only written to YAML,
+		// while pull requests are enabled.
+		if r.Features.PullRequests && r.Features.PullRequestCreation != "" && r.Features.PullRequestCreation != manifest.PullRequestCreationAll {
+			pr.Creation = manifest.Ptr(r.Features.PullRequestCreation)
+		}
 	}
 	return &manifest.Features{
 		Issues:       manifest.Ptr(r.Features.Issues),

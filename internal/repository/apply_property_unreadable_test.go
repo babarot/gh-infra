@@ -57,6 +57,9 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		workflowCmd   = "api repos/o/r/actions/permissions/workflow"
 		selectedCmd   = "api repos/o/r/actions/permissions/selected-actions"
 		forkPRCmd     = "api repos/o/r/actions/permissions/fork-pr-contributor-approval"
+		repoCmd       = "api repos/o/r --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}"
+		immutableCmd  = "api repos/o/r/immutable-releases"
+		alertsCmd     = "api repos/o/r/vulnerability-alerts"
 	)
 	notFound := fakeStatus(gh.ErrNotFound, "Not Found")
 	invalid := fakeStatus(gh.ErrValidation, "Validation Failed")
@@ -107,6 +110,13 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		{name: "fork PR approval 422", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: invalid, wantErr: true},
 		{name: "fork PR approval 404", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: notFound, wantErr: true},
 		{name: "fork PR approval 422, made public", spec: manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: invalid},
+		// A single setting that cannot be read is not compared at its
+		// default: a 404 (GHES without the feature) could not be applied.
+		{name: "release immutability 404", spec: manifest.RepositorySpec{ReleaseImmutability: manifest.Ptr(true)}, cmd: immutableCmd, err: notFound, wantErr: true},
+		{name: "release immutability unparsable", spec: manifest.RepositorySpec{ReleaseImmutability: manifest.Ptr(true)}, cmd: immutableCmd, wantErr: true},
+		{name: "commit message settings 404", spec: manifest.RepositorySpec{MergeStrategy: &manifest.MergeStrategy{AllowAutoMerge: manifest.Ptr(false)}}, cmd: repoCmd, err: notFound, wantErr: true},
+		// GitHub documents a 404 of the vulnerability alerts as disabled.
+		{name: "vulnerability alerts 404", spec: manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: manifest.Ptr(false)}}, cmd: alertsCmd, err: notFound},
 		{name: "fork PR approval 422, not set", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{})}, cmd: forkPRCmd, err: invalid},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

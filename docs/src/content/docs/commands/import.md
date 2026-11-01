@@ -245,7 +245,7 @@ Skipped files are shown in the plan output with a warning icon and the skip reas
 
 A file that does not exist on GitHub has nothing to import. When a repository, or a file of it, cannot be read for another reason (no permission for the repository or its contents, a server error, a rate limit that resets too late), the repository is reported as an error and left out: none of its settings or files are written, and the other repositories are still imported. The run ends with `Some repositories were skipped due to errors above.` when nothing else changed. An invalid token (401), or a 403 when reading a repository's settings, stops the import before anything is written.
 
-A list or Actions settings that cannot be read (a 403, 404 or 422, or a response that does not parse) is not read as none. `import` leaves it out of the YAML and says so on stderr, after the progress and before the YAML:
+A list, the Actions settings or a setting read on its own that cannot be read (a 403, 404 or 422, or a response that does not parse) is not read as none or at its default. `import` leaves it out of the YAML and says so on stderr, after the progress and before the YAML:
 
 ```console
   ⚠ owner/repo  labels, variables could not be read and are left out
@@ -259,7 +259,7 @@ A list or Actions settings that cannot be read (a 403, 404 or 422, or a response
       ⚠ labels       could not be read (HTTP 403); left as in the manifest
 ```
 
-This applies to `labels`, `variables`, `milestones`, `rulesets`, `branch_protection`, `environments` and `actions`, and to the `variables` and `deployment_branch_policy` of an environment. A list that is read and empty is still imported as none. On a private repository, GitHub does not have `fork_pr_approval`, so it is left out without a warning.
+This applies to `labels`, `variables`, `milestones`, `rulesets`, `branch_protection`, `environments` and `actions`, to the `variables` and `deployment_branch_policy` of an environment, and to the settings read on their own: `release_immutability`, each of `security`, and `merge_strategy.allow_auto_merge`, the commit message settings and `features.pull_requests` (read together). A token without the Administration permission, for example, cannot read `release_immutability` or `security`, and they are no longer written as `false`. A list that is read and empty is still imported as none. On a private repository, GitHub does not have `fork_pr_approval`, so it is left out without a warning.
 
 ### Shared Source Files
 
