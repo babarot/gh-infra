@@ -116,7 +116,9 @@ Read [references/repository-set.md](./references/repository-set.md) for the exac
 - environments are never deleted; undeclared deployment branch patterns are deleted only with `reconcile.deployment_branch_policies: authoritative`
 - for `gh infra import --into`, use the dedicated `import-into` skill
 - Repository deletion is not supported
-- plan reads only the settings the manifest sets; a managed setting the token cannot read (403) fails the repo with `cannot read ...` instead of being treated as empty (rulesets on GitHub Free private repos fail this way)
+- plan reads only the settings the manifest sets; a managed setting that cannot be read (403, 404, 422, or a response that does not parse) fails the repo instead of being treated as empty or at its default; a 403 says `cannot read ...` and the permission it needs (declared rulesets on GitHub Free private repos fail this way)
+- an empty `labels`, `rulesets` or `branch_protection` that is not authoritative is not read: it plans nothing whatever GitHub has, so `rulesets: []` that only opts out of the defaults never fails on an unreadable list
+- Actions: a 404 or unparsable response of an Actions endpoint fails the repo only when the manifest sets a field that endpoint reads; `fork_pr_approval` on a private repository (GitHub answers 422) fails plan even without `visibility: private` in the manifest
 
 ## Verification
 

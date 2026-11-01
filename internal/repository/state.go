@@ -1341,11 +1341,12 @@ func fetchError(strict bool, what, owner, name string, err error) error {
 	return fmt.Errorf("fetch %s for %s/%s: %w", what, owner, name, err)
 }
 
-// isIgnorableSubresourceError reports whether a sub-resource fetch failure can
-// be ignored without aborting repository state collection. This is limited to
-// optional sub-resources (secrets, variables, labels, milestones) that may be
-// inaccessible due to permissions, plan restrictions, or non-existence. All
-// other errors (network, timeout, 5xx) are propagated.
+// isIgnorableSubresourceError reports whether import (no spec) can leave a
+// sub-resource (secrets, variables, labels, milestones, environments) that
+// failed to fetch empty instead of aborting: one that may be inaccessible due
+// to permissions, plan restrictions, or non-existence. Plan reports these for
+// the settings it manages. All other errors (network, timeout, 5xx) are
+// propagated.
 func isIgnorableSubresourceError(err error) bool {
 	return errors.Is(err, gh.ErrNotFound) ||
 		errors.Is(err, gh.ErrForbidden) ||
