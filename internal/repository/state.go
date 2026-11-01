@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -56,6 +57,25 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		spec, reconcile = &desired.Spec, desired.Reconcile
 	}
 	strict := spec != nil
+	// record keeps what import could not read in Unread and leaves the
+	// setting unset; any other error is returned.
+	var (
+		unreadMu sync.Mutex
+		unread   map[string]error
+	)
+	record := func(key string, err error) error {
+		var u unreadError
+		if !errors.As(err, &u) {
+			return err
+		}
+		unreadMu.Lock()
+		defer unreadMu.Unlock()
+		if unread == nil {
+			unread = make(map[string]error)
+		}
+		unread[key] = u.err
+		return nil
+	}
 	want := func(manages func(manifest.RepositorySpec) bool) bool {
 		return spec == nil || manages(*spec)
 	}
@@ -89,7 +109,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 			status("fetching branch protection...")
 			var err error
 			bp, err = p.fetchBranchProtection(ctx, owner, name, strict)
-			return err
+			return record("branch_protection", err)
 		})
 	}
 
@@ -98,7 +118,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 			status("fetching rulesets...")
 			var err error
 			rulesets, err = p.fetchRulesets(ctx, owner, name, strict)
-			return err
+			return record("rulesets", err)
 		})
 	}
 
@@ -116,7 +136,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 			status("fetching variables...")
 			var err error
 			vars, err = p.fetchVariables(ctx, owner, name, strict)
-			return err
+			return record("variables", err)
 		})
 	}
 
@@ -125,7 +145,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 			status("fetching labels...")
 			var err error
 			labels, err = p.fetchLabels(ctx, owner, name, strict)
-			return err
+			return record("labels", err)
 		})
 	}
 
@@ -135,7 +155,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 			status("fetching milestones...")
 			var err error
 			milestones, err = p.fetchMilestones(ctx, owner, name, strict)
-			return err
+			return record("milestones", err)
 		})
 	}
 
@@ -144,8 +164,8 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		g.Go(func() error {
 			status("fetching environments...")
 			var err error
-			environments, err = p.fetchEnvironments(ctx, owner, name, spec, strict)
-			return err
+			environments, err = p.fetchEnvironments(ctx, owner, name, spec, strict, record)
+			return record("environments", err)
 		})
 	}
 
@@ -158,7 +178,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 			if err != nil && strict && errors.Is(err, gh.ErrForbidden) {
 				return fetchError(strict, "actions settings", owner, name, err)
 			}
-			return err
+			return record("actions", err)
 		})
 	}
 
@@ -252,6 +272,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 	repo.Milestones = milestones
 	repo.Environments = environments
 	repo.Actions = actions
+	repo.Unread = unread
 	repo.ReleaseImmutability = releaseImmutability
 	repo.MergeStrategy.MergeCommitTitle = commitMsgSettings.MergeCommitTitle
 	repo.MergeStrategy.MergeCommitMessage = commitMsgSettings.MergeCommitMessage
@@ -481,6 +502,9 @@ func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name strin
 		"--paginate", "--jq", ".[].name",
 	)
 	if err != nil {
+		if !strict && isIgnorableSubresourceError(err) {
+			return nil, unreadSetting(err)
+		}
 		return nil, fmt.Errorf("fetch branches for %s/%s: %w", owner, name, err)
 	}
 
@@ -491,10 +515,10 @@ func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name strin
 		}
 	}
 
-	// Fetch per-branch protection rules in parallel. A branch whose rule
-	// cannot be read is skipped, unless branch protection is managed: then
-	// only a rule that is gone (404) is skipped, since skipping one that
-	// could not be read would plan a create over it.
+	// Fetch per-branch protection rules in parallel. Only a rule that is
+	// gone (404) is skipped: skipping one that could not be read would plan
+	// a create over it, or have import --into remove it from the manifest,
+	// so for import the whole branch protection is left unread instead.
 	type fetchedRule struct {
 		bp  *CurrentBranchProtection
 		err error
@@ -502,10 +526,14 @@ func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name strin
 	fetched := parallel.Map(ctx, protectedBranches, parallel.DefaultConcurrency, func(ctx context.Context, _ int, branch string) fetchedRule {
 		bp, err := p.fetchBranchProtectionRule(ctx, owner, name, branch)
 		if err != nil {
-			if strict && !errors.Is(err, gh.ErrNotFound) {
+			switch {
+			case errors.Is(err, gh.ErrNotFound):
+				return fetchedRule{}
+			case strict:
 				return fetchedRule{err: fetchError(strict, "branch protection", owner, name, err)}
+			default:
+				return fetchedRule{err: unreadSetting(err)}
 			}
-			return fetchedRule{}
 		}
 		return fetchedRule{bp: bp}
 	})
@@ -596,7 +624,7 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 		// applied either, and read as none, existing ones would be planned as
 		// new. All other errors (429, 5xx) propagate to prevent false diffs.
 		if !strict && (errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden)) {
-			return make(map[string]*CurrentRuleset), nil
+			return nil, unreadSetting(err)
 		}
 		return nil, fetchError(strict, "rulesets", owner, name, err)
 	}
@@ -610,7 +638,7 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 		if strict {
 			return nil, fetchError(strict, "rulesets", owner, name, fmt.Errorf("parse response: %w", err))
 		}
-		return make(map[string]*CurrentRuleset), nil
+		return nil, unreadSetting(fmt.Errorf("parse response: %w", err))
 	}
 
 	// Filter out org/enterprise-level rulesets (not manageable at repo level).
@@ -622,9 +650,9 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 		ids = append(ids, item.ID)
 	}
 
-	// Fetch per-ruleset details in parallel. A ruleset that cannot be read is
-	// skipped, unless rulesets are managed: then only one that is gone (404)
-	// is skipped.
+	// Fetch per-ruleset details in parallel. Only a ruleset that is gone
+	// (404) is skipped; for import, one that cannot be read leaves the whole
+	// rulesets unread, as for branch protection.
 	type fetchedRuleset struct {
 		rs  *CurrentRuleset
 		err error
@@ -632,10 +660,14 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 	fetched := parallel.Map(ctx, ids, parallel.DefaultConcurrency, func(ctx context.Context, _ int, id int) fetchedRuleset {
 		rs, err := p.fetchRuleset(ctx, owner, name, id)
 		if err != nil {
-			if strict && !errors.Is(err, gh.ErrNotFound) {
+			switch {
+			case errors.Is(err, gh.ErrNotFound):
+				return fetchedRuleset{}
+			case strict:
 				return fetchedRuleset{err: fetchError(strict, "rulesets", owner, name, err)}
+			default:
+				return fetchedRuleset{err: unreadSetting(err)}
 			}
-			return fetchedRuleset{}
 		}
 		return fetchedRuleset{rs: rs}
 	})
@@ -830,9 +862,9 @@ func (p *Processor) fetchVariablesOf(ctx context.Context, owner, name, env strin
 	}
 	out, err := p.runner.Run(ctx, append(args, "--json", "name,value")...)
 	if err != nil {
-		// As for secrets.
+		// As for secrets; import leaves them unread.
 		if !strict && isIgnorableSubresourceError(err) {
-			return nil, nil
+			return nil, unreadSetting(err)
 		}
 		return nil, fetchError(strict, what, owner, name, err)
 	}
@@ -845,7 +877,7 @@ func (p *Processor) fetchVariablesOf(ctx context.Context, owner, name, env strin
 		if strict {
 			return nil, fetchError(strict, what, owner, name, fmt.Errorf("parse response: %w", err))
 		}
-		return nil, nil
+		return nil, unreadSetting(fmt.Errorf("parse response: %w", err))
 	}
 
 	result := make(map[string]string)
@@ -923,11 +955,13 @@ func environmentPath(owner, name, env string) string {
 // custom policies the spec's environments need: those whose
 // deployment_branch_policy it sets, since a change from custom removes them.
 // With a nil spec (import) it reads the patterns of every custom policy.
-func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, spec *manifest.RepositorySpec, strict bool) (map[string]*CurrentEnvironment, error) {
+// record keeps a part of an environment that import could not read (see
+// CurrentState.Unread).
+func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, spec *manifest.RepositorySpec, strict bool, record func(key string, err error) error) (map[string]*CurrentEnvironment, error) {
 	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/environments", owner, name), "--paginate", "--slurp")
 	if err != nil {
 		if !strict && isIgnorableSubresourceError(err) {
-			return nil, nil
+			return nil, unreadSetting(err)
 		}
 		return nil, fetchError(strict, "environments", owner, name, err)
 	}
@@ -935,10 +969,10 @@ func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, s
 		Environments []apiEnvironment `json:"environments"`
 	}
 	if err := json.Unmarshal(out, &pages); err != nil {
-		// Import leaves what it cannot read empty, as for the other
+		// Import leaves what it cannot read unread, as for the other
 		// settings; plan reports it.
 		if !strict {
-			return nil, nil
+			return nil, unreadSetting(fmt.Errorf("parse response: %w", err))
 		}
 		return nil, fetchError(strict, "environments", owner, name, fmt.Errorf("parse response: %w", err))
 	}
@@ -965,8 +999,15 @@ func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, s
 			env := e.current()
 			if env.BranchPolicy == manifest.DeploymentBranchesCustom && needs(env.Name, func(e manifest.Environment) bool { return e.DeploymentBranchPolicy != nil }) {
 				rules, err := p.fetchBranchRules(ctx, owner, name, env.Name)
-				if err != nil && strict {
-					return nil, fetchError(strict, fmt.Sprintf("deployment branch policies of environment %q", env.Name), owner, name, err)
+				if err != nil {
+					if strict {
+						return nil, fetchError(strict, fmt.Sprintf("deployment branch policies of environment %q", env.Name), owner, name, err)
+					}
+					// Read as no patterns, import would write the
+					// policy as custom with none.
+					if err := record(environmentKey(env.Name, "deployment_branch_policy"), unreadSetting(err)); err != nil {
+						return nil, err
+					}
 				}
 				env.BranchRules = rules
 			}
@@ -980,7 +1021,7 @@ func (p *Processor) fetchEnvironments(ctx context.Context, owner, name string, s
 			}
 			if needs(env.Name, func(e manifest.Environment) bool { return len(e.Variables) > 0 }) {
 				vars, err := p.fetchVariablesOf(ctx, owner, name, env.Name, strict)
-				if err != nil {
+				if err := record(environmentKey(env.Name, "variables"), err); err != nil {
 					return nil, err
 				}
 				env.Variables = vars
@@ -1024,9 +1065,9 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string, strict 
 	)
 	if err != nil {
 		// Managed labels that cannot be read are an error: read as none,
-		// existing labels would be planned as new.
+		// existing labels would be planned as new. Import leaves them unread.
 		if !strict && isIgnorableSubresourceError(err) {
-			return nil, nil
+			return nil, unreadSetting(err)
 		}
 		return nil, fetchError(strict, "labels", owner, name, err)
 	}
@@ -1040,7 +1081,7 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string, strict 
 		if strict {
 			return nil, fetchError(strict, "labels", owner, name, fmt.Errorf("parse response: %w", err))
 		}
-		return nil, nil
+		return nil, unreadSetting(fmt.Errorf("parse response: %w", err))
 	}
 
 	result := make(map[string]*CurrentLabel)
@@ -1063,7 +1104,7 @@ func (p *Processor) fetchMilestones(ctx context.Context, owner, name string, str
 	if err != nil {
 		// As for labels.
 		if !strict && isIgnorableSubresourceError(err) {
-			return nil, nil
+			return nil, unreadSetting(err)
 		}
 		return nil, fetchError(strict, "milestones", owner, name, err)
 	}
@@ -1079,7 +1120,7 @@ func (p *Processor) fetchMilestones(ctx context.Context, owner, name string, str
 		if strict {
 			return nil, fetchError(strict, "milestones", owner, name, fmt.Errorf("parse response: %w", err))
 		}
-		return nil, nil
+		return nil, unreadSetting(fmt.Errorf("parse response: %w", err))
 	}
 
 	result := make(map[string]*CurrentMilestone)
@@ -1184,9 +1225,11 @@ func formatTimeAgo(t time.Time) string {
 // fetchActionsSettings reads the Actions settings from four endpoints. With a
 // spec, an endpoint that cannot be read (404, or a response that does not
 // parse) is an error when the spec sets a field it reads: read as its zero
-// value, the field would be planned against a value GitHub does not have.
-// Otherwise, as for import (a nil spec), a 404 leaves what the endpoint reads
-// at its zero value.
+// value, the field would be planned against a value GitHub does not have;
+// one whose fields the spec does not set is left at its zero value. Import (a
+// nil spec) leaves the whole Actions settings unread when an endpoint cannot
+// be read (403, 404, 422, or a response that does not parse): written with
+// zero values, they would replace the manifest's.
 func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string, spec *manifest.RepositorySpec) (CurrentActions, error) {
 	var managed *manifest.Actions
 	if spec != nil {
@@ -1197,17 +1240,26 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 	// unreadable reports err for what, an endpoint's part of the settings,
 	// when the manifest sets a field of it, and leaves it unread otherwise.
 	unreadable := func(what string, sets bool, err error) error {
-		if managed != nil && sets {
-			return fmt.Errorf("fetch actions %s for %s/%s: %w", what, owner, name, err)
+		err = fmt.Errorf("fetch actions %s for %s/%s: %w", what, owner, name, err)
+		switch {
+		case spec == nil:
+			return unreadSetting(err)
+		case managed != nil && sets:
+			return err
 		}
 		return nil
+	}
+	// missing reports whether err only says the endpoint cannot be read,
+	// rather than a failure (5xx) that is returned as it is.
+	missing := func(err error) bool {
+		return errors.Is(err, gh.ErrNotFound) || (spec == nil && isIgnorableSubresourceError(err))
 	}
 
 	// 1. Actions permissions (enabled + allowed_actions). The manifest
 	// always compares enabled when it manages Actions.
 	out, err := p.runner.Run(ctx, "api", fullName+"/actions/permissions")
 	if err != nil {
-		if errors.Is(err, gh.ErrNotFound) {
+		if missing(err) {
 			return result, unreadable("permissions", true, err) // Actions API not available for this repo
 		}
 		return result, fmt.Errorf("fetch actions permissions for %s/%s: %w", owner, name, err)
@@ -1227,7 +1279,7 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 	// 2. Workflow permissions (GITHUB_TOKEN defaults)
 	setsWorkflow := managed != nil && (managed.WorkflowPermissions != nil || managed.CanApprovePullRequests != nil)
 	out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/workflow")
-	if err != nil && !errors.Is(err, gh.ErrNotFound) {
+	if err != nil && !missing(err) {
 		return result, fmt.Errorf("fetch actions workflow permissions for %s/%s: %w", owner, name, err)
 	}
 	if err != nil {
@@ -1253,7 +1305,7 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 	if result.AllowedActions == "selected" {
 		setsSelected := managed != nil && managed.SelectedActions != nil
 		out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/selected-actions")
-		if err != nil && !errors.Is(err, gh.ErrNotFound) {
+		if err != nil && !missing(err) {
 			return result, fmt.Errorf("fetch actions selected-actions for %s/%s: %w", owner, name, err)
 		}
 		if err != nil {
@@ -1288,13 +1340,18 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 	setsForkPR := managed != nil && managed.ForkPRApproval != nil
 	madeNotPrivate := spec != nil && spec.Visibility != nil && *spec.Visibility != manifest.VisibilityPrivate
 	out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/fork-pr-contributor-approval")
-	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrValidation) {
+	if err != nil && !missing(err) && !errors.Is(err, gh.ErrValidation) {
 		return result, fmt.Errorf("fetch actions fork-pr-approval for %s/%s: %w", owner, name, err)
 	}
+	// For import, a 404 or 422 says the repository does not have the
+	// setting (a private one does not), so it is left empty, not unread.
+	notAvailable := spec == nil && (errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrValidation))
 	if err != nil {
 		privateNow := errors.Is(err, gh.ErrValidation)
-		if err := unreadable("fork-pr-approval", setsForkPR && (!privateNow || !madeNotPrivate), err); err != nil {
-			return result, err
+		if !notAvailable {
+			if err := unreadable("fork-pr-approval", setsForkPR && (!privateNow || !madeNotPrivate), err); err != nil {
+				return result, err
+			}
 		}
 	} else {
 		var fpr struct {
@@ -1310,6 +1367,21 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 	}
 
 	return result, nil
+}
+
+// unreadError marks a setting import could not read: FetchRepository records
+// it in CurrentState.Unread and leaves the setting unset.
+type unreadError struct{ err error }
+
+func (e unreadError) Error() string { return e.err.Error() }
+func (e unreadError) Unwrap() error { return e.err }
+
+// unreadSetting marks err as a setting import could not read.
+func unreadSetting(err error) error { return unreadError{err: err} }
+
+// environmentKey is the Unread key of part, a field of the environment env.
+func environmentKey(env, part string) string {
+	return "environments." + env + "." + part
 }
 
 // forbiddenWhenManaged reports whether err is a 403 for a resource the

@@ -31,6 +31,14 @@ type CurrentState struct {
 	Milestones       map[string]*CurrentMilestone        // title → milestone
 	Environments     map[string]*CurrentEnvironment      // lowercase name → environment; nil when not read
 	Actions          CurrentActions
+
+	// Unread is what import (a fetch without a spec) could not read, by
+	// its manifest key: "labels", "actions", or "environments.<name>.variables"
+	// for a part of an environment. Such a setting is left unset (a nil
+	// collection), not read as none, so import does not write it and
+	// import --into keeps the manifest's. With a spec, a setting that cannot
+	// be read is an error instead, and Unread is nil.
+	Unread map[string]error
 }
 
 // CurrentEnvironment is a deployment environment as GitHub reports it.
