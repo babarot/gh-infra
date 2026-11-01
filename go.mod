@@ -1,6 +1,6 @@
 module github.com/babarot/gh-infra
 
-go 1.26.0
+go 1.26.10
 
 require (
 	charm.land/bubbles/v2 v2.0.0

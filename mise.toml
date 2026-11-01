@@ -31,8 +31,15 @@ go test -race $(echo "$pkgs" | grep -E "$cmd")
 '''
 
 [tasks.lint]
-description = "Run golangci-lint"
-run = "golangci-lint run ./..."
+description = "Run golangci-lint, and check that go.mod and go.sum are tidy"
+run = '''
+golangci-lint run ./...
+go mod tidy -diff
+'''
+
+[tasks.vuln]
+description = "Check the dependencies and the standard library for known vulnerabilities"
+run = "go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./..."
 
 [tasks."docs:install"]
 description = "Install the docs site's dependencies"
