@@ -22,7 +22,24 @@ func scopeResponses(visibility string) map[string][]byte {
 		"api repos/myorg/myrepo/immutable-releases":              []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/automated-security-fixes":        []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/private-vulnerability-reporting": []byte(`{"enabled": false}`),
+		// A managed list or Actions setting whose response does not parse
+		// is an error, so these answer with what GitHub does for none.
+		"label list --repo myorg/myrepo --json name,color,description --limit 1000": []byte(`[]`),
+		"variable list --repo myorg/myrepo --json name,value":                       []byte(`[]`),
+		"api repos/myorg/myrepo/milestones?state=all&per_page=100 --paginate":       []byte(`[]`),
+		"api repos/myorg/myrepo/rulesets --paginate":                                []byte(`[]`),
+		"api repos/myorg/myrepo/actions/permissions":                                []byte(`{"enabled": true, "allowed_actions": "all"}`),
+		"api repos/myorg/myrepo/actions/permissions/workflow":                       []byte(`{"default_workflow_permissions": "read"}`),
+		"api repos/myorg/myrepo/actions/permissions/fork-pr-contributor-approval":   []byte(`{"approval_policy": "first_time_contributors"}`),
 	}
+}
+
+// authoritative is the reconcile under which an empty collection deletes
+// what GitHub has, so it is fetched.
+var authoritative = &manifest.RepositoryReconcile{
+	BranchProtection: manifest.Ptr(manifest.CollectionReconcileAuthoritative),
+	Labels:           manifest.Ptr(manifest.CollectionReconcileAuthoritative),
+	Rulesets:         manifest.Ptr(manifest.CollectionReconcileAuthoritative),
 }
 
 const repoViewKey = "repo view myorg/myrepo --json description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef"
@@ -84,7 +101,6 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		{"labels", manifest.RepositorySpec{Labels: []manifest.Label{{Name: "bug", Color: "d73a4a"}}}, []string{"labels"}},
 		{"empty secrets only opt out", manifest.RepositorySpec{Secrets: []manifest.Secret{}, SecretsSet: true}, nil},
 		{"secrets", manifest.RepositorySpec{Secrets: []manifest.Secret{{Name: "S", Value: "v"}}}, []string{"secrets"}},
-		{"rulesets []", manifest.RepositorySpec{RulesetsSet: true}, []string{"rulesets"}},
 		{"actions", manifest.RepositorySpec{Actions: &manifest.Actions{Enabled: yes}}, []string{"actions"}},
 		{"merge commits", manifest.RepositorySpec{MergeStrategy: &manifest.MergeStrategy{AllowMergeCommit: yes}}, nil},
 		{"auto merge", manifest.RepositorySpec{MergeStrategy: &manifest.MergeStrategy{AllowAutoMerge: yes}}, []string{"commit_message_settings"}},
@@ -95,18 +111,43 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		{"vulnerability alerts", manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: yes}}, []string{"vulnerability_alerts"}},
 		{"private vulnerability reporting", manifest.RepositorySpec{Security: &manifest.Security{PrivateVulnerabilityReporting: yes}}, []string{"private_vulnerability_reporting"}},
 		{"release immutability", manifest.RepositorySpec{ReleaseImmutability: yes}, []string{"release_immutability"}},
-		{"branch protection []", manifest.RepositorySpec{BranchProtectionSet: true}, []string{"branch_protection"}},
 		{"variables", manifest.RepositorySpec{Variables: []manifest.Variable{{Name: "V", Value: "1"}}}, []string{"variables"}},
 		{"milestones", manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1"}}}, []string{"milestones"}},
 		{"environments", manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "production"}}}, []string{"environments"}},
-		{"label_sync only", manifest.RepositorySpec{LabelSync: manifest.Ptr("mirror")}, []string{"labels"}},
 		{"empty environments only opt out", manifest.RepositorySpec{Environments: []manifest.Environment{}, EnvironmentsSet: true}, nil},
+		{"label_sync only", manifest.RepositorySpec{LabelSync: manifest.Ptr("mirror")}, []string{"labels"}},
+		{"label_sync additive only", manifest.RepositorySpec{LabelSync: manifest.Ptr("additive")}, nil},
+		// An empty collection plans nothing unless it is authoritative.
+		{"rulesets []", manifest.RepositorySpec{RulesetsSet: true}, nil},
+		{"branch protection []", manifest.RepositorySpec{BranchProtectionSet: true}, nil},
+		{"labels []", manifest.RepositorySpec{LabelsSet: true}, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &gh.MockRunner{Responses: scopeResponses("PUBLIC")}
 			p := NewProcessor(mock, nil)
 			spec := tt.spec
-			if _, err := p.FetchRepository(context.Background(), "myorg", "myrepo", &spec, nil); err != nil {
+			if _, err := p.FetchRepository(context.Background(), "myorg", "myrepo", &manifest.Repository{Spec: spec}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if got := fetchedGroups(mock.Called); !slices.Equal(got, tt.want) {
+				t.Errorf("fetched %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	for _, tt := range []struct {
+		name string
+		spec manifest.RepositorySpec
+		want []string
+	}{
+		{"rulesets [] authoritative", manifest.RepositorySpec{RulesetsSet: true}, []string{"rulesets"}},
+		{"branch protection [] authoritative", manifest.RepositorySpec{BranchProtectionSet: true}, []string{"branch_protection"}},
+		{"labels [] authoritative", manifest.RepositorySpec{LabelsSet: true}, []string{"labels"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &gh.MockRunner{Responses: scopeResponses("PUBLIC")}
+			desired := &manifest.Repository{Spec: tt.spec, Reconcile: authoritative}
+			if _, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", desired, nil); err != nil {
 				t.Fatal(err)
 			}
 			if got := fetchedGroups(mock.Called); !slices.Equal(got, tt.want) {
@@ -161,7 +202,7 @@ func TestFetchRepository_ForbiddenManagedSettingIsAnError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &gh.MockRunner{Responses: responses, Errors: errs}
 			spec := tt.spec
-			_, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", &spec, nil)
+			_, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", &manifest.Repository{Spec: spec, Reconcile: authoritative}, nil)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to contain %q", err, tt.want)
 			}
@@ -189,14 +230,14 @@ func TestFetchRepository_ManagedBranchRuleServerErrorIsNotSkipped(t *testing.T) 
 	responses["api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name"] = []byte("main\n")
 	errs := map[string]error{"api repos/myorg/myrepo/branches/main/protection": errors.New("HTTP 502: Bad Gateway")}
 
-	spec := manifest.RepositorySpec{BranchProtectionSet: true}
-	_, err := NewProcessor(&gh.MockRunner{Responses: responses, Errors: errs}, nil).FetchRepository(context.Background(), "myorg", "myrepo", &spec, nil)
+	desired := &manifest.Repository{Spec: manifest.RepositorySpec{BranchProtectionSet: true}, Reconcile: authoritative}
+	_, err := NewProcessor(&gh.MockRunner{Responses: responses, Errors: errs}, nil).FetchRepository(context.Background(), "myorg", "myrepo", desired, nil)
 	if err == nil || !strings.Contains(err.Error(), "Bad Gateway") {
 		t.Errorf("a rule that could not be read must not look unprotected: err = %v", err)
 	}
 
 	errs["api repos/myorg/myrepo/branches/main/protection"] = fmt.Errorf("%w: gone", gh.ErrNotFound)
-	state, err := NewProcessor(&gh.MockRunner{Responses: responses, Errors: errs}, nil).FetchRepository(context.Background(), "myorg", "myrepo", &spec, nil)
+	state, err := NewProcessor(&gh.MockRunner{Responses: responses, Errors: errs}, nil).FetchRepository(context.Background(), "myorg", "myrepo", desired, nil)
 	if err != nil || len(state.BranchProtection) != 0 {
 		t.Errorf("a rule that is gone is skipped: state %+v, err %v", state, err)
 	}

@@ -37,19 +37,32 @@ func NewProcessor(runner gh.Runner, resolver *manifest.Resolver) *Processor {
 // Sub-fetches (branch protection, secrets, variables) run in parallel.
 // The optional onStatus callback is invoked with a human-readable label before each sub-fetch.
 //
-// With a spec (plan and apply), only the settings it manages are fetched, so
-// the token needs only their permissions, and a 403 on one of them is an
-// error rather than "none" or a default. With a nil spec (import), everything
-// is fetched and what cannot be read is left empty or at its default.
-func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spec *manifest.RepositorySpec, onStatus func(string)) (*CurrentState, error) {
+// With a desired repository (plan and apply), only the settings it manages
+// are fetched, so the token needs only their permissions, and one of them
+// that cannot be read is an error rather than "none" or a default. A
+// collection declared empty that is not authoritative is not fetched: it
+// plans nothing, so what GitHub has does not matter. With a nil desired
+// repository (import), everything is fetched and what cannot be read is left
+// empty or at its default.
+func (p *Processor) FetchRepository(ctx context.Context, owner, name string, desired *manifest.Repository, onStatus func(string)) (*CurrentState, error) {
 	status := func(s string) {
 		if onStatus != nil {
 			onStatus(s)
 		}
 	}
+	var spec *manifest.RepositorySpec
+	var reconcile *manifest.RepositoryReconcile
+	if desired != nil {
+		spec, reconcile = &desired.Spec, desired.Reconcile
+	}
 	strict := spec != nil
 	want := func(manages func(manifest.RepositorySpec) bool) bool {
 		return spec == nil || manages(*spec)
+	}
+	// wantCollection is want, with a spec, for a collection that deletes
+	// only when authoritative: declared empty and additive, it plans nothing.
+	wantCollection := func(manages func(manifest.RepositorySpec) bool, declared int, mode string) bool {
+		return manages(*spec) && (declared > 0 || mode == manifest.CollectionReconcileAuthoritative)
 	}
 
 	status("fetching settings...")
@@ -71,7 +84,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spe
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	if want(manifest.RepositorySpec.ManagesBranchProtection) {
+	if spec == nil || wantCollection(manifest.RepositorySpec.ManagesBranchProtection, len(spec.BranchProtection), manifest.BranchProtectionReconcileMode(reconcile)) {
 		g.Go(func() error {
 			status("fetching branch protection...")
 			var err error
@@ -80,7 +93,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spe
 		})
 	}
 
-	if want(manifest.RepositorySpec.ManagesRulesets) {
+	if spec == nil || wantCollection(manifest.RepositorySpec.ManagesRulesets, len(spec.Rulesets), manifest.RulesetsReconcileMode(reconcile)) {
 		g.Go(func() error {
 			status("fetching rulesets...")
 			var err error
@@ -107,7 +120,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spe
 		})
 	}
 
-	if want(manifest.RepositorySpec.ManagesLabels) {
+	if spec == nil || wantCollection(manifest.RepositorySpec.ManagesLabels, len(spec.Labels), manifest.LabelsReconcileMode(reconcile, spec.LabelSync)) {
 		g.Go(func() error {
 			status("fetching labels...")
 			var err error
@@ -141,7 +154,11 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, spe
 		g.Go(func() error {
 			status("fetching actions...")
 			var err error
-			actions, err = p.fetchActionsSettings(ctx, owner, name)
+			var managed *manifest.Actions
+			if spec != nil {
+				managed = spec.Actions
+			}
+			actions, err = p.fetchActionsSettings(ctx, owner, name, managed)
 			if err != nil && strict && errors.Is(err, gh.ErrForbidden) {
 				return fetchError(strict, "actions settings", owner, name, err)
 			}
@@ -577,17 +594,15 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 		"--paginate",
 	)
 	if err != nil {
-		// 404/403 means rulesets not available (e.g., free plan private repo,
-		// GHES without rulesets). When the manifest manages rulesets, a 403 is
-		// reported instead: they could not be applied either.
-		if (errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden)) && !forbiddenWhenManaged(strict, err) {
+		// 404/403 can mean rulesets are not available (GHES without them, or
+		// a plan without them). Import leaves them empty; when the manifest
+		// manages rulesets, they are reported instead: they could not be
+		// applied either, and read as none, existing ones would be planned as
+		// new. All other errors (429, 5xx) propagate to prevent false diffs.
+		if !strict && (errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrForbidden)) {
 			return make(map[string]*CurrentRuleset), nil
 		}
-		if forbiddenWhenManaged(strict, err) {
-			return nil, fetchError(strict, "rulesets", owner, name, err)
-		}
-		// All other errors (429, 5xx) propagate to prevent false diffs
-		return nil, fmt.Errorf("fetch rulesets for %s/%s: %w", owner, name, err)
+		return nil, fetchError(strict, "rulesets", owner, name, err)
 	}
 
 	var rawList []struct {
@@ -596,6 +611,9 @@ func (p *Processor) fetchRulesets(ctx context.Context, owner, name string, stric
 		SourceType string `json:"source_type"`
 	}
 	if err := json.Unmarshal(out, &rawList); err != nil {
+		if strict {
+			return nil, fetchError(strict, "rulesets", owner, name, fmt.Errorf("parse response: %w", err))
+		}
 		return make(map[string]*CurrentRuleset), nil
 	}
 
@@ -783,10 +801,10 @@ func (p *Processor) fetchSecretsOf(ctx context.Context, owner, name, env string,
 	}
 	out, err := p.runner.Run(ctx, append(args, "--json", "name", "--jq", ".[].name")...)
 	if err != nil {
-		// An environment's secrets the manifest manages are read from an
-		// environment that exists, so any failure is an error: read as
-		// none, an existing secret would be planned as new.
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) && (env == "" || !strict) {
+		// Secrets the manifest manages that cannot be read are an error:
+		// read as none, an existing secret would be planned as new and set
+		// again, which nothing would show since values cannot be compared.
+		if !strict && isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fetchError(strict, what, owner, name, err)
@@ -816,8 +834,8 @@ func (p *Processor) fetchVariablesOf(ctx context.Context, owner, name, env strin
 	}
 	out, err := p.runner.Run(ctx, append(args, "--json", "name,value")...)
 	if err != nil {
-		// As for an environment's secrets.
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) && (env == "" || !strict) {
+		// As for secrets.
+		if !strict && isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fetchError(strict, what, owner, name, err)
@@ -828,7 +846,7 @@ func (p *Processor) fetchVariablesOf(ctx context.Context, owner, name, env strin
 		Value string `json:"value"`
 	}
 	if err := json.Unmarshal(out, &vars); err != nil {
-		if env != "" && strict {
+		if strict {
 			return nil, fetchError(strict, what, owner, name, fmt.Errorf("parse response: %w", err))
 		}
 		return nil, nil
@@ -1009,7 +1027,9 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string, strict 
 		"--limit", "1000",
 	)
 	if err != nil {
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
+		// Managed labels that cannot be read are an error: read as none,
+		// existing labels would be planned as new.
+		if !strict && isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fetchError(strict, "labels", owner, name, err)
@@ -1021,6 +1041,9 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string, strict 
 		Description string `json:"description"`
 	}
 	if err := json.Unmarshal(out, &labels); err != nil {
+		if strict {
+			return nil, fetchError(strict, "labels", owner, name, fmt.Errorf("parse response: %w", err))
+		}
 		return nil, nil
 	}
 
@@ -1042,7 +1065,8 @@ func (p *Processor) fetchMilestones(ctx context.Context, owner, name string, str
 		"--paginate",
 	)
 	if err != nil {
-		if isIgnorableSubresourceError(err) && !forbiddenWhenManaged(strict, err) {
+		// As for labels.
+		if !strict && isIgnorableSubresourceError(err) {
 			return nil, nil
 		}
 		return nil, fetchError(strict, "milestones", owner, name, err)
@@ -1056,6 +1080,9 @@ func (p *Processor) fetchMilestones(ctx context.Context, owner, name string, str
 		DueOn       string `json:"due_on"`
 	}
 	if err := json.Unmarshal(out, &milestones); err != nil {
+		if strict {
+			return nil, fetchError(strict, "milestones", owner, name, fmt.Errorf("parse response: %w", err))
+		}
 		return nil, nil
 	}
 
@@ -1158,15 +1185,30 @@ func formatTimeAgo(t time.Time) string {
 	}
 }
 
-func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string) (CurrentActions, error) {
+// fetchActionsSettings reads the Actions settings from four endpoints. With
+// managed, the Actions settings the manifest sets, an endpoint that cannot be
+// read (404, or a response that does not parse) is an error when the
+// manifest sets a field it reads: read as its zero value, the field would be
+// planned against a value GitHub does not have. Otherwise, as for import, a
+// 404 leaves what the endpoint reads at its zero value.
+func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string, managed *manifest.Actions) (CurrentActions, error) {
 	var result CurrentActions
 	fullName := fmt.Sprintf("repos/%s/%s", owner, name)
+	// unreadable reports err for what, an endpoint's part of the settings,
+	// when the manifest sets a field of it, and leaves it unread otherwise.
+	unreadable := func(what string, sets bool, err error) error {
+		if managed != nil && sets {
+			return fmt.Errorf("fetch actions %s for %s/%s: %w", what, owner, name, err)
+		}
+		return nil
+	}
 
-	// 1. Actions permissions (enabled + allowed_actions)
+	// 1. Actions permissions (enabled + allowed_actions). The manifest
+	// always compares enabled when it manages Actions.
 	out, err := p.runner.Run(ctx, "api", fullName+"/actions/permissions")
 	if err != nil {
 		if errors.Is(err, gh.ErrNotFound) {
-			return result, nil // Actions API not available for this repo
+			return result, unreadable("permissions", true, err) // Actions API not available for this repo
 		}
 		return result, fmt.Errorf("fetch actions permissions for %s/%s: %w", owner, name, err)
 	}
@@ -1176,23 +1218,32 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 		SHAPinningRequired bool   `json:"sha_pinning_required"`
 	}
 	if err := json.Unmarshal(out, &perms); err != nil {
-		return result, nil
+		return result, unreadable("permissions", true, fmt.Errorf("parse response: %w", err))
 	}
 	result.Enabled = perms.Enabled
 	result.AllowedActions = perms.AllowedActions
 	result.SHAPinningRequired = perms.SHAPinningRequired
 
 	// 2. Workflow permissions (GITHUB_TOKEN defaults)
+	setsWorkflow := managed != nil && (managed.WorkflowPermissions != nil || managed.CanApprovePullRequests != nil)
 	out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/workflow")
 	if err != nil && !errors.Is(err, gh.ErrNotFound) {
 		return result, fmt.Errorf("fetch actions workflow permissions for %s/%s: %w", owner, name, err)
 	}
-	if err == nil {
+	if err != nil {
+		if err := unreadable("workflow permissions", setsWorkflow, err); err != nil {
+			return result, err
+		}
+	} else {
 		var wf struct {
 			DefaultWorkflowPermissions   string `json:"default_workflow_permissions"`
 			CanApprovePullRequestReviews bool   `json:"can_approve_pull_request_reviews"`
 		}
-		if json.Unmarshal(out, &wf) == nil {
+		if err := json.Unmarshal(out, &wf); err != nil {
+			if err := unreadable("workflow permissions", setsWorkflow, fmt.Errorf("parse response: %w", err)); err != nil {
+				return result, err
+			}
+		} else {
 			result.WorkflowPermissions = wf.DefaultWorkflowPermissions
 			result.CanApprovePullRequests = wf.CanApprovePullRequestReviews
 		}
@@ -1200,17 +1251,26 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 
 	// 3. Selected actions (only when allowed_actions == "selected")
 	if result.AllowedActions == "selected" {
+		setsSelected := managed != nil && managed.SelectedActions != nil
 		out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/selected-actions")
 		if err != nil && !errors.Is(err, gh.ErrNotFound) {
 			return result, fmt.Errorf("fetch actions selected-actions for %s/%s: %w", owner, name, err)
 		}
-		if err == nil {
+		if err != nil {
+			if err := unreadable("selected-actions", setsSelected, err); err != nil {
+				return result, err
+			}
+		} else {
 			var sa struct {
 				GithubOwnedAllowed bool     `json:"github_owned_allowed"`
 				VerifiedAllowed    bool     `json:"verified_allowed"`
 				PatternsAllowed    []string `json:"patterns_allowed"`
 			}
-			if json.Unmarshal(out, &sa) == nil {
+			if err := json.Unmarshal(out, &sa); err != nil {
+				if err := unreadable("selected-actions", setsSelected, fmt.Errorf("parse response: %w", err)); err != nil {
+					return result, err
+				}
+			} else {
 				result.SelectedActions = &CurrentSelectedActions{
 					GithubOwnedAllowed: sa.GithubOwnedAllowed,
 					VerifiedAllowed:    sa.VerifiedAllowed,
@@ -1220,16 +1280,27 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 		}
 	}
 
-	// 4. Fork PR approval (may 404 on user-owned repos or 422 on private repos — ignore gracefully)
+	// 4. Fork PR approval. GitHub answers 422 on private repositories, which
+	// do not have it; a manifest that sets it there could not apply it, so
+	// that is an error too.
+	setsForkPR := managed != nil && managed.ForkPRApproval != nil
 	out, err = p.runner.Run(ctx, "api", fullName+"/actions/permissions/fork-pr-contributor-approval")
 	if err != nil && !errors.Is(err, gh.ErrNotFound) && !errors.Is(err, gh.ErrValidation) {
 		return result, fmt.Errorf("fetch actions fork-pr-approval for %s/%s: %w", owner, name, err)
 	}
-	if err == nil {
+	if err != nil {
+		if err := unreadable("fork-pr-approval", setsForkPR, err); err != nil {
+			return result, err
+		}
+	} else {
 		var fpr struct {
 			ApprovalPolicy string `json:"approval_policy"`
 		}
-		if json.Unmarshal(out, &fpr) == nil {
+		if err := json.Unmarshal(out, &fpr); err != nil {
+			if err := unreadable("fork-pr-approval", setsForkPR, fmt.Errorf("parse response: %w", err)); err != nil {
+				return result, err
+			}
+		} else {
 			result.ForkPRApproval = fpr.ApprovalPolicy
 		}
 	}

@@ -802,7 +802,7 @@ func TestFetchActionsSettings(t *testing.T) {
 	}
 
 	p := NewProcessor(mock, nil)
-	actions, err := p.fetchActionsSettings(context.Background(), "myorg", "myrepo")
+	actions, err := p.fetchActionsSettings(context.Background(), "myorg", "myrepo", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

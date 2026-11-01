@@ -89,32 +89,53 @@ func TestFetchRepository_PrunedStateGivesSameDiff(t *testing.T) {
 		{"rulesets []", manifest.RepositorySpec{RulesetsSet: true}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			p := NewProcessor(richRepository, nil)
-			full, err := p.FetchRepository(ctx, "o", "r", nil, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			spec := tt.spec
-			pruned, err := p.FetchRepository(ctx, "o", "r", &spec, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			desired := &manifest.Repository{Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"}, Spec: spec}
-			desired.Reconcile = &manifest.RepositoryReconcile{
+			checkPrunedSameDiff(t, tt.spec, &manifest.RepositoryReconcile{
 				Labels:           manifest.Ptr(manifest.CollectionReconcileAuthoritative),
 				Rulesets:         manifest.Ptr(manifest.CollectionReconcileAuthoritative),
 				BranchProtection: manifest.Ptr(manifest.CollectionReconcileAuthoritative),
-			}
-
-			fullDiff, prunedDiff := Diff(ctx, desired, full), Diff(ctx, desired, pruned)
-			if !reflect.DeepEqual(fullDiff, prunedDiff) {
-				t.Errorf("diff differs\nfull:   %+v\npruned: %+v", fullDiff, prunedDiff)
-			}
-			fullErr, prunedErr := ValidateDependencies(desired, full), ValidateDependencies(desired, pruned)
-			if fmt.Sprint(fullErr) != fmt.Sprint(prunedErr) {
-				t.Errorf("ValidateDependencies differs: full %v, pruned %v", fullErr, prunedErr)
-			}
+			})
 		})
+	}
+
+	// Additive and empty, these collections are not fetched: they plan
+	// nothing whatever GitHub has.
+	for _, tt := range []struct {
+		name string
+		spec manifest.RepositorySpec
+	}{
+		{"branch protection [] additive", manifest.RepositorySpec{BranchProtectionSet: true}},
+		{"rulesets [] additive", manifest.RepositorySpec{RulesetsSet: true}},
+		{"labels [] additive", manifest.RepositorySpec{LabelsSet: true}},
+		{"label_sync additive", manifest.RepositorySpec{LabelSync: manifest.Ptr("additive")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			checkPrunedSameDiff(t, tt.spec, nil)
+		})
+	}
+}
+
+// checkPrunedSameDiff checks that fetching only what the desired repository
+// manages gives the same diff and dependency check result as fetching
+// everything.
+func checkPrunedSameDiff(t *testing.T, spec manifest.RepositorySpec, recon *manifest.RepositoryReconcile) {
+	t.Helper()
+	ctx := context.Background()
+	p := NewProcessor(richRepository, nil)
+	full, err := p.FetchRepository(ctx, "o", "r", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired := &manifest.Repository{Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"}, Spec: spec, Reconcile: recon}
+	pruned, err := p.FetchRepository(ctx, "o", "r", desired, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullDiff, prunedDiff := Diff(ctx, desired, full), Diff(ctx, desired, pruned)
+	if !reflect.DeepEqual(fullDiff, prunedDiff) {
+		t.Errorf("diff differs\nfull:   %+v\npruned: %+v", fullDiff, prunedDiff)
+	}
+	fullErr, prunedErr := ValidateDependencies(desired, full), ValidateDependencies(desired, pruned)
+	if fmt.Sprint(fullErr) != fmt.Sprint(prunedErr) {
+		t.Errorf("ValidateDependencies differs: full %v, pruned %v", fullErr, prunedErr)
 	}
 }
