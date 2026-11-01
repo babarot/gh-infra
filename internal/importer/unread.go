@@ -3,6 +3,7 @@ package importer
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -49,7 +50,7 @@ func keepUnread(imported *manifest.RepositorySpec, local manifest.RepositorySpec
 			} else {
 				f.PullRequests = nil
 			}
-			imported.Features = &f
+			imported.Features = nilIfZero(f)
 		default:
 			if field, ok := strings.CutPrefix(key, "security."); ok {
 				imported.Security = keepUnreadSecurity(imported.Security, local.Security, field)
@@ -73,7 +74,7 @@ func keepUnread(imported *manifest.RepositorySpec, local manifest.RepositorySpec
 				case "squash_merge_commit_message":
 					m.SquashMergeCommitMessage = l.SquashMergeCommitMessage
 				}
-				imported.MergeStrategy = &m
+				imported.MergeStrategy = nilIfZero(m)
 				continue
 			}
 			env, part, ok := environmentPart(key)
@@ -107,10 +108,16 @@ func keepUnreadSecurity(imported, local *manifest.Security, field string) *manif
 	case "private_vulnerability_reporting":
 		s.PrivateVulnerabilityReporting = l.PrivateVulnerabilityReporting
 	}
-	if s.VulnerabilityAlerts == nil && s.AutomatedSecurityFixes == nil && s.PrivateVulnerabilityReporting == nil {
+	return nilIfZero(s)
+}
+
+// nilIfZero returns a pointer to v, or nil when no field of it is set: an
+// empty object would be written as {}.
+func nilIfZero[T any](v T) *T {
+	if reflect.ValueOf(v).IsZero() {
 		return nil
 	}
-	return &s
+	return &v
 }
 
 // cloneOrZero copies *p, which the other manifests of the repository share,

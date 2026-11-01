@@ -273,3 +273,18 @@ func TestImportIntoRepositorySetKeepsUnreadEnvironmentPart(t *testing.T) {
 		}
 	}
 }
+
+// A setting put back as the manifest has it leaves no empty object, which
+// would be written as {} into an entry with no spec.
+func TestKeepUnreadLeavesNoEmptyObject(t *testing.T) {
+	unread := map[string]error{
+		"merge_strategy.allow_auto_merge": gh.ErrForbidden,
+		"features.pull_requests":          gh.ErrForbidden,
+		"security.vulnerability_alerts":   gh.ErrForbidden,
+	}
+	var imported manifest.RepositorySpec
+	keepUnread(&imported, manifest.RepositorySpec{}, unread)
+	if imported.MergeStrategy != nil || imported.Features != nil || imported.Security != nil {
+		t.Errorf("left empty objects: %+v %+v %+v", imported.MergeStrategy, imported.Features, imported.Security)
+	}
+}
