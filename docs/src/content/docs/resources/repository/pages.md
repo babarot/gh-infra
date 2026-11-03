@@ -60,7 +60,7 @@ A `workflow` site has no source. GitHub keeps reporting the last one it had, whi
 
 ## HTTPS and the certificate
 
-GitHub refuses `https_enforced: true` until it has issued a certificate for the site's domain, which it does in its own time after the domain is set (DNS has to point to GitHub Pages). When the certificate is not issued yet, or the same `apply` sets the domain, `plan` shows the change as waiting, and `apply` does not send it:
+A site without a custom domain is served from GitHub's domain (or from the domain of the owner's user site), and `https_enforced` is set at once. With a custom domain, GitHub refuses `https_enforced: true` until it has issued a certificate for it, which it does in its own time after the domain is set (DNS has to point to GitHub Pages). When the certificate is not issued yet, or the same `apply` sets the domain, `plan` shows the change as waiting, and `apply` does not send it:
 
 ```
   ~ babarot/my-project

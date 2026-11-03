@@ -14,9 +14,10 @@ type fakePages struct {
 	Source        fakePagesSource `json:"source"`
 	CNAME         string          `json:"cname"`
 	HTTPSEnforced bool            `json:"https_enforced"`
-	// CertificateState is the state of the site's certificate, "" when
-	// GitHub reports none. GitHub issues one in its own time after the site
-	// gets a domain; the fake never does, a test sets it.
+	// CertificateState is the state of the certificate of the site's custom
+	// domain, "" when GitHub reports none (as for a site without a domain).
+	// GitHub issues one in its own time after the site gets a domain; the
+	// fake never does, a test sets it.
 	CertificateState string `json:"certificate_state"`
 }
 
@@ -133,7 +134,9 @@ func (f *fakeGitHub) apiPages(method string, body []byte) ([]byte, bool, error) 
 		if next.BuildType == manifest.PagesBuildTypeLegacy && p.BuildType != manifest.PagesBuildTypeLegacy && req["source"] == nil {
 			return nil, false, errUnknown
 		}
-		if next.HTTPSEnforced && !p.HTTPSEnforced && next.CertificateState != certificateApproved {
+		// A site without a custom domain is served from GitHub's, which
+		// needs no certificate of its own: GitHub may report none.
+		if next.HTTPSEnforced && !p.HTTPSEnforced && next.CNAME != "" && next.CertificateState != certificateApproved {
 			return nil, false, fakeStatus(gh.ErrNotFound, "The certificate does not exist yet")
 		}
 		f.s.Pages = &next

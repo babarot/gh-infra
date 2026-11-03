@@ -21,8 +21,8 @@ const (
 const certificateApproved = "approved"
 
 // pagesHTTPSDeferred is what a plan shows for https_enforced: true that this
-// run cannot send: GitHub refuses it until it has issued the site's
-// certificate. apply sends nothing for it, and a later plan shows it again.
+// run cannot send: GitHub refuses it for a custom domain until it has issued
+// the domain's certificate. apply sends nothing for it, and a later plan shows it again.
 const pagesHTTPSDeferred = "true (once GitHub has issued the certificate)"
 
 func formatPagesSource(branch, path string) string {
@@ -64,11 +64,18 @@ func diffPages(name string, desired *manifest.Repository, current *CurrentState)
 	if cnameChanges && (cur.Enabled || *p.CNAME != "") {
 		add(pagesFieldCNAME, cur.CNAME, *p.CNAME)
 	}
+	// The domain the site has after apply.
+	cname := cur.CNAME
+	if p.CNAME != nil {
+		cname = *p.CNAME
+	}
 	if h := p.HTTPSEnforced; h != nil && (!cur.Enabled || *h != cur.HTTPSEnforced) {
 		switch {
-		case *h && (!cur.Enabled || cnameChanges || cur.CertificateState != certificateApproved):
-			// GitHub issues the certificate after the site has its domain,
-			// in its own time.
+		case *h && cname != "" && (!cur.Enabled || cnameChanges || cur.CertificateState != certificateApproved):
+			// GitHub issues the certificate of a custom domain after the
+			// site has it, in its own time. A site without one is served
+			// from GitHub's domain, which needs no certificate of its own
+			// (GitHub may report none).
 			add(pagesFieldHTTPSEnforced, cur.HTTPSEnforced, pagesHTTPSDeferred)
 		default:
 			add(pagesFieldHTTPSEnforced, cur.HTTPSEnforced, *h)

@@ -177,6 +177,18 @@ func TestApplyProperties(t *testing.T) {
 		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{
 			BuildType: ptr("workflow"), CNAME: ptr("docs.example.com"), HTTPSEnforced: bptr(true),
 		}}},
+		// A site without a custom domain needs no certificate: HTTPS is
+		// enforced at once, on a new site too.
+		{name: "pages enabled with https and no domain", spec: manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: ptr("workflow"), HTTPSEnforced: bptr(true),
+		}}},
+		{name: "pages https enforced without a domain", state: func(s *fakeState) {
+			s.Pages = &fakePages{BuildType: "workflow", Source: fakePagesSource{Branch: "main", Path: "/"}}
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{HTTPSEnforced: bptr(true)}}},
+		{name: "pages domain removed with https enforced", state: func(s *fakeState) {
+			s.Pages = propPages()
+			s.Pages.HTTPSEnforced, s.Pages.CertificateState = false, ""
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{CNAME: ptr(""), HTTPSEnforced: bptr(true)}}},
 		{name: "pages domain changed and removed", state: func(s *fakeState) {
 			s.Pages = propPages()
 		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{CNAME: ptr(""), HTTPSEnforced: bptr(false)}}},
