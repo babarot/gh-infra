@@ -26,9 +26,40 @@ In this example, `my-cli` gets the default CODEOWNERS (`* @babarot`), while `gh-
 
 ## How Overrides Work
 
-An override replaces the matching file entry (matched by `path`) for that repository only. A field the override leaves out is taken from the original entry, including `content` and `source`, so an override can change a single field such as `vars` or `description`. An override matches the `path` of a single file; it does not match an entry with a directory source.
+An override replaces the matching file entry (matched by `path`) for that repository only. A field the override leaves out is taken from the original entry, including `content` and `source`, so an override can change a single field such as `vars` or `description`.
 
 Files without a matching override are unchanged — they use the default from the `files` list.
+
+An override must match an entry: one whose `path` is in no entry of `files`, or two overrides with the same `path` for one repository, make `validate`, `plan` and `apply` fail.
+
+## Directory Entries
+
+For an entry with a directory source, the override's `path` is the entry's `path`, the directory:
+
+```yaml
+spec:
+  repositories:
+    - name: api
+      overrides:
+        # Change fields of every file in the directory
+        - path: .regomark/policy
+          description: Policies for the API's ADRs.
+    - name: web
+      overrides:
+        # Replace the directory: web gets ./web-policy/ instead
+        - path: .regomark/policy
+          source: ./web-policy/
+
+  files:
+    - path: .regomark/policy
+      source: ./policy/
+      reconcile: authoritative
+```
+
+- Without `content` or `source`, the override sets its fields (`vars`, `patches`, `reconcile`, `executable`, `description`) on every file of the directory. Each file keeps its own content.
+- With a directory source, the override replaces the whole directory: the repository gets the files of the override's directory and none of the original's. Fields the override leaves out come from the original entry. With `reconcile: authoritative`, a file only the original directory has is deleted from the repository; with `additive`, it is left there.
+- An override can also replace one file of the directory by its full path (`path: .regomark/policy/links.rego`). It applies after an override of the directory's fields, and cannot be combined with replacing the directory: change the file in the replacing directory instead.
+- A directory source ends in `/`. The override's directory must have files, and its files cannot share a path with another entry. A `content`, or a single-file source, for a directory entry is an error, as is a directory source for a file entry.
 
 ## Vars Inheritance
 
