@@ -378,13 +378,39 @@ func parseFileSet(ctx context.Context, data []byte, path string, resolver *Sourc
 	}
 	fs.Spec.Files = resolved
 
+	if err := checkOverrides(fs.Spec.Repositories); err != nil {
+		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+	}
 	for i, repo := range fs.Spec.Repositories {
-		if len(repo.Overrides) > 0 {
-			resolvedOverrides, err := resolver.ResolveFiles(ctx, repo.Overrides, filepath.Dir(path))
+		if len(repo.Overrides) == 0 {
+			continue
+		}
+		// Each override is resolved on its own, so one whose directory has
+		// no files is not lost without a word.
+		var resolvedOverrides []FileEntry
+		for _, o := range repo.Overrides {
+			r, err := resolver.ResolveFiles(ctx, []FileEntry{o}, filepath.Dir(path))
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("%s: resolve overrides for %s: %w", path, repo.Name, err)
 			}
-			fs.Spec.Repositories[i].Overrides = resolvedOverrides
+			if len(r) == 0 {
+				return nil, nil, nil, fmt.Errorf("%s: override %s for %s: source %s has no files", path, o.Path, repo.Name, o.Source)
+			}
+			resolvedOverrides = append(resolvedOverrides, r...)
+		}
+		if err := checkDuplicatePaths(resolvedOverrides); err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: resolve overrides for %s: %w", path, repo.Name, err)
+		}
+		fs.Spec.Repositories[i].Overrides = resolvedOverrides
+	}
+	// With github:// sources left unresolved (SkipRemoteSources), entries
+	// and overrides cannot be matched; the manifest is parsed again with
+	// them resolved before it is planned.
+	if resolver == nil || !resolver.skipRemote {
+		for _, repo := range fs.Spec.Repositories {
+			if _, err := fs.FilesFor(repo); err != nil {
+				return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
+			}
 		}
 	}
 

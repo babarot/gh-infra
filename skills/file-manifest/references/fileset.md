@@ -37,7 +37,10 @@ spec:
 - If override omits `executable`, base `executable` is inherited
 - If override omits `description`, base `description` is inherited
 - If override omits `content` and `source`, the base content/source is inherited, so `path` + `description` alone changes only that repo's PR description
-- An override matches a single file's `path`; it does NOT match an entry with a directory source (`path: .regomark/policy` in overrides is silently ignored)
+- An override whose `path` matches no entry, or two overrides with the same `path` for one repo, fail `validate`/`plan`/`apply`
+- Directory entry (`path: policy, source: ./policy/`): an override with `path: policy` and no `content`/`source` sets its fields on every file (each keeps its content); with `source: ./other/` (trailing `/`) it replaces the whole directory for that repo (files only the original has are not delivered; deleted from the repo only with `reconcile: authoritative`)
+- A file inside a directory entry can be overridden by its full path (`path: policy/a.rego`); applied after a directory-fields override. Cannot be combined with replacing the same directory (parse fails on a duplicate path); edit the replacing directory instead
+- Errors: `content` or a single-file source on a directory entry; a directory source on a file entry; an override directory with no files; a replacing directory bringing a path another entry also writes
 - If override sets `patches`, it replaces the base patch list
 
 Use `FileSet` for shared files across many repos. Use separate `File` resources when repos diverge heavily and need cleaner per-repo history.

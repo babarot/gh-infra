@@ -71,7 +71,10 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			if filterRepo != "" && fullName != filterRepo {
 				continue
 			}
-			files := ResolveFiles(fs, target)
+			files, err := fs.FilesFor(target)
+			if err != nil {
+				return nil, err
+			}
 			units = append(units, planUnit{
 				fileSet:     fs,
 				fileSetName: fs.Identity(),

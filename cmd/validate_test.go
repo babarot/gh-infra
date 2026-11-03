@@ -82,3 +82,17 @@ func TestRunValidate_ChecksFilesAndDescriptions(t *testing.T) {
 		})
 	}
 }
+
+func TestRunValidate_RejectsOverrideMatchingNothing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fs.yaml")
+	content := strings.Replace(prFileSetYAML, "    - repo\n", "    - name: repo\n      overrides:\n        - path: b.txt\n          content: b\n", 1)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runValidate([]string{path}, false)
+
+	if err == nil || !strings.Contains(err.Error(), "override b.txt for repo matches no entry in files") {
+		t.Fatalf("expected an override error, got %v", err)
+	}
+}

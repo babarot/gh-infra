@@ -94,7 +94,7 @@ Each repository entry is either:
 - a simple repo name string
 - an object with `name` and optional `overrides`
 
-Overrides replace the matching base entry by `path` for that repository only.
+Overrides replace the matching base entry by `path` for that repository only. For a directory entry, use the directory's `path`: without `content`/`source` the fields apply to every file; with a directory `source` the whole directory is replaced. An override matching no entry is an error.
 
 ## High-Value Gotchas
 

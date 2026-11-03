@@ -870,7 +870,7 @@ spec:
   repositories:
     - name: repo
       overrides:
-        - path: override.txt
+        - path: additive.txt
           content: hello
           reconcile: mirror
   files:
