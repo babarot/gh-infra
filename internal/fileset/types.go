@@ -16,8 +16,8 @@ type Change struct {
 	// on it rather than FileSetID, which distinct FileSets can share.
 	FileSet *manifest.FileSet
 	// FileSetID is the FileSet's Identity(): it names the FileSet in plan
-	// output and JSON and derives the default commit message, PR branch, and
-	// PR body. It is not unique across FileSets.
+	// output and JSON and derives the default PR branch. It is not unique
+	// across FileSets.
 	FileSetID   string
 	Target      string // owner/repo
 	Path        string
@@ -31,6 +31,14 @@ type Change struct {
 	// NoCommits is set when the target repository has no commits, so a
 	// pull_request FileSet is pushed to it (see PushToEmpty).
 	NoCommits bool
+	// Entry is the path of the manifest file entry that planned this
+	// change: the directory for a file from a directory source, otherwise
+	// Path. EntryIndex orders entries as the manifest lists them, and
+	// Description is the entry's description, not yet rendered. They make
+	// .Files in commit and pull request messages.
+	Entry       string
+	EntryIndex  int
+	Description string
 }
 
 // NoCommitsNote explains why a pull_request FileSet is pushed to a repository.

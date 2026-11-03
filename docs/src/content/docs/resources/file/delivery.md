@@ -13,7 +13,7 @@ Commits directly to the default branch. All file changes are bundled into a sing
 ```yaml
 spec:
   via: push
-  commit_message: "ci: sync shared files"  # optional, auto-generated if omitted
+  commit_message: "ci: add the shared CI workflow"  # optional, made from the changed files if omitted
 ```
 
 Use this for low-risk files (LICENSE, CODEOWNERS, security policies) or routine syncs of already-reviewed templates.
@@ -25,17 +25,20 @@ Creates a branch, commits all files, and opens a pull request for review before 
 ```yaml
 spec:
   via: pull_request
-  commit_message: "ci: sync shared files"  # optional, auto-generated if omitted
-  branch: gh-infra/sync-shared             # optional, see below
-  pr_title: "Sync shared files"            # optional, defaults to commit_message
-  pr_body: |                               # optional, supports Markdown
-    Automated file sync by gh-infra.
-    Updates CI workflows and shared config.
+  commit_message: "ci: add the shared CI workflow"  # optional, made from the changed files if omitted
+  branch: gh-infra/sync-shared                       # optional, see below
+  pr_title: "Add the shared CI workflow"             # optional, defaults to the commit headline
+  pr_body: |                                         # optional, supports Markdown
+    Run the same CI as the other repositories.
+
+    <% range .Files -%>
+    - <% .Action %> `<% .Path %>`: <% .Description %>
+    <% end -%>
 ```
 
-Use this when changes need review — for example, CI workflows or Dockerfiles that could break builds.
+Use this when changes need review — for example, CI workflows or Dockerfiles that could break builds. See [Pull request description](#pull-request-description) for what the pull request says.
 
-If a pull request already exists for the branch, gh-infra updates it instead of creating a new one.
+If a pull request is already open for the branch, `apply` resets the branch and commits again, so the pull request shows the new changes. Its title and body stay as they were: gh-infra sets them only when it opens the pull request.
 
 ### Pull request branch
 
@@ -47,10 +50,46 @@ Each apply resets the branch to the default branch before committing, so two `pu
 
 | Field | Used by | Default | Description |
 |---|---|---|---|
-| `commit_message` | both | auto | Commit message for the sync commit |
+| `commit_message` | both | made from the changed files | Commit message for the sync commit |
 | `branch` | `pull_request` | `gh-infra/sync-<owner>-<name>` | Branch name for the pull request (see [Pull request branch](#pull-request-branch)) |
-| `pr_title` | `pull_request` | value of `commit_message` | Pull request title |
-| `pr_body` | `pull_request` | auto | Pull request body (supports Markdown) |
+| `pr_title` | `pull_request` | headline of `commit_message` | Pull request title |
+| `pr_body` | `pull_request` | a line per changed file entry | Pull request body (supports Markdown) |
+| `files[].description` | both | *(none)* | What the file is for, in `.Files` and the default pull request body (see [Pull request description](#pull-request-description)) |
+
+## Pull request description
+
+The pull request is read by people who look only at the target repository. Write it from that repository's point of view, saying what is added and why, rather than where the files come from. Give each file entry a `description` of what the file does for that repository:
+
+```yaml
+spec:
+  files:
+    - path: .regomark/policy
+      source: ./templates/.regomark/policy/
+      reconcile: authoritative
+      description: Policies that check docs/adr against the ADR rules.
+
+    - path: .github/workflows/regomark.yaml
+      source: ./templates/.github/workflows/regomark.yaml
+      description: Runs regomark check on every pull request.
+
+  via: pull_request
+  pr_title: Check docs/adr against the ADR rules
+```
+
+Without `pr_body`, the body has a line for each file entry the commit changes, in the order of `files`:
+
+```markdown
+- Add `.regomark/policy/` (11 files): Policies that check docs/adr against the ADR rules.
+- Add `.github/workflows/regomark.yaml`: Runs regomark check on every pull request.
+```
+
+An entry is `Add` when all its changed files are created, `Remove` when all are deleted (by `reconcile: authoritative`), and `Update` otherwise. An entry with a directory source is one line with the number of its changed files. Entries with nothing to change are left out.
+
+Without `commit_message`, the commit headline, and so the default pull request title, names the change: `Add .tagpr` for a single file, `Add 12 files` when every file has the same action, and `Update 12 files` otherwise. A count says little, so set `pr_title` for pull requests.
+
+To write the body yourself, use `.Files` in `pr_body` (see [Templated messages](#templated-messages)). A `description` accepts the same `<% %>` expressions as the messages, except `.Files`. In a `FileSet`, an override can change the description for one repository, for example to explain why a file of its own is replaced (see [Per-repo Overrides](../../fileset/overrides/)).
+
+The title and body are set when gh-infra opens the pull request. While it stays open, later applies update its branch but not its title or body, so a file that changes after the pull request was opened is not listed in its body.
 
 ## File modes
 
@@ -86,10 +125,32 @@ Only regular files can be marked: a symlink or submodule at the path is reported
 |---|---|
 | `<% .Repo.Name %>`, `<% .Repo.Owner %>`, `<% .Repo.FullName %>` | Target repository, as in [Templating](/resources/file/templating/) |
 | `<% .Source.URL %>` | Value of the `GH_INFRA_SOURCE_URL` environment variable, or empty if unset |
+| `<% .Files %>` | The file entries the commit changes in the target repository, in the order of `files` (see below) |
 
-`.Vars` is not available in messages. A multi-line `commit_message` is split Git-style: the first line becomes the commit headline and the rest becomes the body. When `pr_title` is omitted, only the headline is used as the title.
+Each element of `.Files` is a file entry with changes:
 
-Link each sync commit back to the change that triggered it by setting `GH_INFRA_SOURCE_URL` in CI, for example to `${{ github.event.head_commit.url }}` in a workflow that applies on push (see [Apply on merge](../../../patterns/ci-cd/#apply-on-merge)). `plan` and `validate` render the messages with an empty URL to check them. Wrap the line in `if` so nothing is emitted when the variable is unset:
+| Field | Value |
+|---|---|
+| `.Path` | The entry's `path`; the directory for a directory source |
+| `.Paths` | The changed files of the entry |
+| `.Count` | The number of changed files |
+| `.Type` | `create`, `update` or `delete`, or `mixed` when the files differ |
+| `.Action` | `Add`, `Update` or `Remove`; `Update` for `mixed` |
+| `.Description` | The entry's `description`, rendered, without trailing newlines |
+
+```yaml
+spec:
+  pr_body: |
+    Add the rules for writing ADRs and a CI check that keeps docs/adr in line with them.
+
+    <% range .Files -%>
+    - <% .Action %> `<% .Path %>`<% if gt .Count 1 %> (<% .Count %> files)<% end %>: <% .Description %>
+    <% end -%>
+```
+
+`-%>` drops the newline after the action, so the list has no blank lines between its items. `.Vars` is not available in messages. A multi-line `commit_message` is split Git-style: the first line becomes the commit headline and the rest becomes the body. When `pr_title` is omitted, only the headline is used as the title.
+
+Link each sync commit back to the change that triggered it by setting `GH_INFRA_SOURCE_URL` in CI, for example to `${{ github.event.head_commit.url }}` in a workflow that applies on push (see [Apply on merge](../../../patterns/ci-cd/#apply-on-merge)). `plan` and `validate` render the messages and descriptions with an empty URL to check them. `plan` renders them against the files it plans to change; `validate`, which plans nothing, against every file entry as if each were added. Wrap the line in `if` so nothing is emitted when the variable is unset:
 
 ```yaml
 spec:
@@ -101,4 +162,4 @@ spec:
 
 ## Empty repositories
 
-For repositories with no commits yet, gh-infra falls back to the Contents API. Each file becomes a separate commit. With `via: pull_request` there is no branch to open a pull request from, so the files are pushed to the default branch; `plan` shows `via push` for that repository, including one the same `apply` creates. See [GraphQL Commit API vs Contents API](/internals/git-api/) for details.
+For repositories with no commits yet, gh-infra falls back to the Contents API. Each file becomes a separate commit, named `Add <path>` without `commit_message`, or `<headline>: <path>` with it. With `via: pull_request` there is no branch to open a pull request from, so the files are pushed to the default branch; `plan` shows `via push` for that repository, including one the same `apply` creates. See [GraphQL Commit API vs Contents API](/internals/git-api/) for details.

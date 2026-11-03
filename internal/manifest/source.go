@@ -57,6 +57,7 @@ func (r *SourceResolver) ResolveFiles(ctx context.Context, files []FileEntry, ya
 				entries[i].Patches = patches
 				entries[i].Reconcile = entry.Reconcile
 				entries[i].Executable = entry.Executable
+				entries[i].Description = entry.Description
 				if isDir {
 					entries[i].DirScope = entry.Path
 				}
@@ -74,6 +75,7 @@ func (r *SourceResolver) ResolveFiles(ctx context.Context, files []FileEntry, ya
 				entries[i].Patches = patches
 				entries[i].Reconcile = entry.Reconcile
 				entries[i].Executable = entry.Executable
+				entries[i].Description = entry.Description
 				if isDir {
 					entries[i].DirScope = entry.Path
 				}

@@ -37,11 +37,12 @@ spec:
       source: github://babarot/shared-config/workflows/ci.yml
 
   via: push                               # push | pull_request
-  commit_message: "ci: sync managed files"
-  # pr_title: "chore: sync files"         # pull_request only
+  commit_message: "ci: add the managed files"
+  # pr_title: "Add the managed files"     # pull_request only
   # pr_body: |                            # pull_request only
-  #   ## Summary
-  #   Automated file sync.
+  #   <% range .Files -%>
+  #   - <% .Action %> `<% .Path %>`: <% .Description %>
+  #   <% end -%>
 ```
 :::
 
@@ -63,11 +64,12 @@ The combination of `owner` and `name` identifies the target repository (`babarot
 | `files[].patches` | *(none)* | List of unified diff patches (file paths or inline) applied after template expansion — see [Patches](./patches/). |
 | `files[].reconcile` | `additive` | Per-entry reconcile mode: `additive` (add/update), `authoritative` (add/update/delete), or `create_only` (create if missing, never update) — see [Reconcile](./reconcile/). |
 | `files[].executable` | *(none)* | `true` commits the file as executable (`100755`), `false` as non-executable (`100644`). When omitted, the current mode is kept. See [File modes](./delivery/#file-modes). |
+| `files[].description` | *(none)* | What the file is for, written for the target repository. Listed in the default pull request body and available as `.Files` in messages — see [Pull request description](./delivery/#pull-request-description). |
 | `via` | `push` | Delivery method: `push` or `pull_request` — see [Delivery Method](./delivery/). |
-| `commit_message` | auto | Custom commit message. Accepts `<% %>` expressions such as `<% .Repo.Name %>` (see [Templated messages](./delivery/#templated-messages)) |
+| `commit_message` | made from the changed files | Custom commit message. Accepts `<% %>` expressions such as `<% .Repo.Name %>` (see [Templated messages](./delivery/#templated-messages)) |
 | `branch` | `gh-infra/sync-<owner>-<name>` | Branch name for `pull_request` mode. Must differ from other `pull_request` resources on the same repository — see [Pull request branch](./delivery/#pull-request-branch) |
-| `pr_title` | `commit_message` | Custom PR title (`pull_request` only). Templated like `commit_message` |
-| `pr_body` | auto | Custom PR body (`pull_request` only). Templated like `commit_message` |
+| `pr_title` | headline of `commit_message` | Custom PR title (`pull_request` only). Templated like `commit_message` |
+| `pr_body` | a line per changed file entry | Custom PR body (`pull_request` only). Templated like `commit_message` |
 
 File content supports `<% %>` template syntax for per-repo customization — see [Templating](./templating/).
 

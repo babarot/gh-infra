@@ -94,6 +94,7 @@ type FileEntry struct {
 	Vars           map[string]string `yaml:"vars,omitempty"`
 	Reconcile      string            `yaml:"reconcile,omitempty" validate:"omitempty,oneof=additive authoritative create_only"`
 	Executable     *bool             `yaml:"executable,omitempty"`
+	Description    string            `yaml:"description,omitempty"` // for .Files in commit and PR messages
 	DirScope       string            `yaml:"-"`
 	OriginalSource string            `yaml:"-"` // local file path set during source resolution (import --into)
 

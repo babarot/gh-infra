@@ -45,15 +45,15 @@ The Contents API can only operate on one file per request, so **each file become
 
 ```
 # Normal repository (GraphQL createCommitOnBranch)
-commit abc123 ✓: "chore: sync files via gh-infra"
+commit abc123 ✓: "Add 3 files"
   - .github/CODEOWNERS       (created)
   - .github/workflows/ci.yml (created)
   - LICENSE                   (created)
 
 # Empty repository (Contents API fallback)
-commit abc123: "chore: sync files: .github/CODEOWNERS"
-commit def456: "chore: sync files: .github/workflows/ci.yml"
-commit 789ghi: "chore: sync files: LICENSE"
+commit abc123: "Add .github/CODEOWNERS"
+commit def456: "Add .github/workflows/ci.yml"
+commit 789ghi: "Add LICENSE"
 ```
 
 This fallback is automatic — no user configuration is needed. After the first files are committed, all subsequent `apply` runs use the GraphQL mutation as normal.

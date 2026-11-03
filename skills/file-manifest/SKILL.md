@@ -42,11 +42,12 @@ Key fields:
 
 - `files`: required
 - `via`: `push` or `pull_request`
-- `commit_message`, `branch`, `pr_title`, `pr_body`: delivery controls. `commit_message`, `pr_title`, `pr_body` accept `<% .Repo.Name %>`, `<% .Repo.FullName %>`, `<% .Source.URL %>` (env `GH_INFRA_SOURCE_URL`, set in CI); see [references/reconcile-and-delivery.md](./references/reconcile-and-delivery.md)
+- `commit_message`, `branch`, `pr_title`, `pr_body`: delivery controls. `commit_message`, `pr_title`, `pr_body` accept `<% .Repo.Name %>`, `<% .Repo.FullName %>`, `<% .Source.URL %>` (env `GH_INFRA_SOURCE_URL`, set in CI) and `.Files` (the changed file entries); see [references/reconcile-and-delivery.md](./references/reconcile-and-delivery.md)
 - `files[].vars`: template variables
 - `files[].patches`: unified diff patches
 - `files[].reconcile`: `additive`, `authoritative`, `create_only`
 - `files[].executable`: `true` for mode 100755, `false` for 100644, omitted keeps the current mode
+- `files[].description`: what the file does for the target repo; listed in the default PR body and in `.Files`. Write it from the target repo's point of view
 
 Read these references as needed:
 

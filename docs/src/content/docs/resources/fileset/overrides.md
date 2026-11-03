@@ -26,7 +26,7 @@ In this example, `my-cli` gets the default CODEOWNERS (`* @babarot`), while `gh-
 
 ## How Overrides Work
 
-An override replaces the matching file entry (matched by `path`) for that repository only. The override must specify `path` and either `content` or `source`, just like a regular file entry.
+An override replaces the matching file entry (matched by `path`) for that repository only. A field the override leaves out is taken from the original entry, including `content` and `source`, so an override can change a single field such as `vars` or `description`. An override matches the `path` of a single file; it does not match an entry with a directory source.
 
 Files without a matching override are unchanged — they use the default from the `files` list.
 
@@ -55,4 +55,27 @@ spec:
 - `special-repo` uses `binary_name: "special-binary"` (from the override)
 
 `executable` is inherited the same way: an override without `executable` uses the value from the original file entry.
+
+## Description
+
+`description` is inherited the same way. Override it to tell one repository something the others do not need, for example that the shared file replaces one of its own:
+
+```yaml
+spec:
+  repositories:
+    - claude-recall
+    - name: drop
+      overrides:
+        - path: .claude/rules/adr.md
+          description: >-
+            Replaces this repository's own ADR rule with the shared one,
+            so its ADRs follow the same rules as the other repositories.
+
+  files:
+    - path: .claude/rules/adr.md
+      source: ./templates/.claude/rules/adr.md
+      description: The rules for writing ADRs in docs/adr.
+```
+
+See [Pull request description](../../file/delivery/#pull-request-description).
 

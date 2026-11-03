@@ -93,13 +93,28 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 		updateStatus := func(s string) {
 			tracker.UpdateStatus(fullName, s)
 		}
-		if err := CheckMessages(u.fileSet, fullName); err != nil {
+		// Checked first against every file of the FileSet, so a template
+		// error is reported even if the files cannot be fetched, and again
+		// below against the files the commit would change.
+		if err := CheckMessages(u.fileSet, u.target, nil); err != nil {
 			tracker.Error(fullName, err)
 			return unitResult{err: err}
 		}
+		// The manifest entry of each file: a directory source's files share
+		// the directory's entry, at the position of its first file.
+		type entryInfo struct {
+			index       int
+			description string
+		}
+		dirEntries := make(map[string]entryInfo)
+		for i, file := range u.files {
+			if _, ok := dirEntries[file.DirScope]; file.DirScope != "" && !ok {
+				dirEntries[file.DirScope] = entryInfo{i, file.Description}
+			}
+		}
 		var out []Change
 		var modes *modeLookup // fetched on first use by a file with `executable` set
-		for _, file := range u.files {
+		for i, file := range u.files {
 			updateStatus("fetching file " + file.Path + "...")
 			// Template rendering (deep copy vars to avoid data races)
 			needsTemplate := HasTemplate(file.Content, file.Vars) || HasTemplate(file.Path, nil)
@@ -154,6 +169,10 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 				tracker.Error(fullName, err)
 				return unitResult{}
 			}
+			change.Entry, change.EntryIndex, change.Description = file.Path, i, file.Description
+			if e, ok := dirEntries[file.DirScope]; ok {
+				change.Entry, change.EntryIndex = file.DirScope, e.index
+			}
 			out = append(out, change)
 		}
 		// Authoritative mode: detect orphaned files in target repo
@@ -180,11 +199,15 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 			}
 			for _, repoFile := range repoFiles {
 				if !allPlannedPaths[repoFile] {
+					e := dirEntries[dirScope]
 					out = append(out, Change{
-						Type:      ChangeDelete,
-						Target:    fullName,
-						Path:      repoFile,
-						FileSetID: u.fileSetName,
+						Type:        ChangeDelete,
+						Target:      fullName,
+						Path:        repoFile,
+						FileSetID:   u.fileSetName,
+						Entry:       dirScope,
+						EntryIndex:  e.index,
+						Description: e.description,
 					})
 				}
 			}
@@ -194,6 +217,12 @@ func (p *Processor) Plan(ctx context.Context, fileSets []*manifest.FileSet, filt
 		for i := range out {
 			out[i].FileSet = u.fileSet
 			out[i].Via = u.via
+		}
+		if HasChanges(out) {
+			if err := CheckMessages(u.fileSet, u.target, out); err != nil {
+				tracker.Error(fullName, err)
+				return unitResult{err: err}
+			}
 		}
 		if u.via == manifest.ViaPullRequest && HasChanges(out) {
 			empty, err := p.hasNoCommits(ctx, fullName, modes)
