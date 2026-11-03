@@ -8,11 +8,11 @@ import (
 
 func TestDeliveryFor_RendersPerRepository(t *testing.T) {
 	opts := ApplyOptions{FileSetID: "owner/sync", Via: manifest.ViaPullRequest, CommitMessage: "chore: sync <% .Repo.Name %>"}
-	a, err := DeliveryFor(opts, "owner/api")
+	a, err := DeliveryFor(opts, "owner/api", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := DeliveryFor(opts, "owner/web")
+	b, err := DeliveryFor(opts, "owner/web", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestDeliveryFor_RendersPerRepository(t *testing.T) {
 }
 
 func TestDeliveryFor_PushHasNoPullRequest(t *testing.T) {
-	d, err := DeliveryFor(ApplyOptions{FileSetID: "owner/sync", Via: manifest.ViaPush, PRTitle: "<% .Repo.Name %>"}, "owner/api")
+	d, err := DeliveryFor(ApplyOptions{FileSetID: "owner/sync", Via: manifest.ViaPush, PRTitle: "<% .Repo.Name %>"}, "owner/api", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,28 +40,47 @@ func TestDeliveryFor_PushHasNoPullRequest(t *testing.T) {
 // TestDeliveryFor_MatchesApply checks DeliveryFor against the pull request
 // apply opens, so the two cannot drift apart.
 func TestDeliveryFor_MatchesApply(t *testing.T) {
-	opts := ApplyOptions{
-		FileSetID: "owner/sync", Via: manifest.ViaPullRequest, Branch: "sync/<% .Repo.Name %>",
-		PRTitle: "Sync <% .Repo.FullName %>", PRBody: "Files for <% .Repo.Name %>",
+	changes := []Change{
+		{Target: "owner/repo", Path: "Justfile", Type: ChangeUpdate, Desired: "build:\n", Entry: "Justfile", Description: "Tasks for <% .Repo.Name %>"},
+		{Target: "owner/repo", Path: ".github/a.yml", Type: ChangeCreate, Desired: "a\n", Entry: ".github", EntryIndex: 1},
 	}
-	mock := newNoopGuardMock("new-tree")
-	applyChanges(t, mock, []Change{{Target: "owner/repo", Path: "Justfile", Type: ChangeUpdate, Desired: "build:\n"}}, opts)
+	tests := []struct {
+		name string
+		opts ApplyOptions
+	}{
+		{"templated", ApplyOptions{
+			FileSetID: "owner/sync", Via: manifest.ViaPullRequest, Branch: "sync/<% .Repo.Name %>",
+			PRTitle: "Sync <% .Repo.FullName %>", PRBody: "Files for <% .Repo.Name %>",
+		}},
+		{"default", ApplyOptions{FileSetID: "owner/sync", Via: manifest.ViaPullRequest}},
+		{"files", ApplyOptions{
+			FileSetID: "owner/sync", Via: manifest.ViaPullRequest,
+			PRTitle: "<% (index .Files 0).Action %> <% (index .Files 0).Path %>",
+			PRBody:  "<% range .Files %>- <% .Action %> <% .Path %>: <% .Description %>\n<% end %>",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newNoopGuardMock("new-tree")
+			applyChanges(t, mock, changes, tt.opts)
 
-	got := map[string]string{}
-	for _, call := range mock.Called {
-		if len(call) < 2 || call[0] != "pr" || call[1] != "create" {
-			continue
-		}
-		for i := 2; i+1 < len(call); i++ {
-			got[call[i]] = call[i+1]
-		}
-	}
-	want, err := DeliveryFor(opts, "owner/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got["--title"] != want.PRTitle || got["--body"] != want.PRBody || got["--head"] != want.Branch {
-		t.Errorf("apply opened title %q, body %q, head %q; DeliveryFor says %q, %q, %q",
-			got["--title"], got["--body"], got["--head"], want.PRTitle, want.PRBody, want.Branch)
+			got := map[string]string{}
+			for _, call := range mock.Called {
+				if len(call) < 2 || call[0] != "pr" || call[1] != "create" {
+					continue
+				}
+				for i := 2; i+1 < len(call); i++ {
+					got[call[i]] = call[i+1]
+				}
+			}
+			want, err := DeliveryFor(tt.opts, "owner/repo", changes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got["--title"] != want.PRTitle || got["--body"] != want.PRBody || got["--head"] != want.Branch {
+				t.Errorf("apply opened title %q, body %q, head %q; DeliveryFor says %q, %q, %q",
+					got["--title"], got["--body"], got["--head"], want.PRTitle, want.PRBody, want.Branch)
+			}
+		})
 	}
 }

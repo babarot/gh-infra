@@ -153,12 +153,17 @@ type Delivery struct {
 	PRBody        string
 }
 
-// DeliveryFor returns how apply delivers files to repo with opts, rendering
-// templates as apply does, so a plan can tell whether two repositories get
-// their files the same way. The pull request fields are set only for
+// DeliveryFor returns how apply delivers changes to repo with opts,
+// rendering templates as apply does, so a plan can tell whether two
+// repositories get their files the same way. changes are the repository's
+// changes of the FileSet. The pull request fields are set only for
 // pull_request.
-func DeliveryFor(opts ApplyOptions, repo string) (Delivery, error) {
-	msg, err := resolveCommitMessage(opts, repo)
+func DeliveryFor(opts ApplyOptions, repo string, changes []Change) (Delivery, error) {
+	files, err := buildFiles(changes, repo, opts.SourceURL)
+	if err != nil {
+		return Delivery{}, err
+	}
+	msg, err := resolveCommitMessage(opts, repo, files)
 	if err != nil {
 		return Delivery{}, fmt.Errorf("render commit message: %w", err)
 	}
@@ -167,10 +172,10 @@ func DeliveryFor(opts ApplyOptions, repo string) (Delivery, error) {
 		return d, nil
 	}
 	d.Branch = pullRequestBranch(opts)
-	if d.PRTitle, err = resolvePRTitle(opts, repo); err != nil {
+	if d.PRTitle, err = resolvePRTitle(opts, repo, files); err != nil {
 		return Delivery{}, err
 	}
-	if d.PRBody, err = resolvePRBody(opts, repo); err != nil {
+	if d.PRBody, err = resolvePRBody(opts, repo, files); err != nil {
 		return Delivery{}, err
 	}
 	return d, nil
@@ -185,10 +190,10 @@ func pullRequestBranch(opts ApplyOptions) string {
 }
 
 // resolvePRTitle returns the pull request title from opts, or the first
-// line of the commit message, rendered against repo.
-func resolvePRTitle(opts ApplyOptions, repo string) (string, error) {
+// line of the commit message, rendered against repo and files.
+func resolvePRTitle(opts ApplyOptions, repo string, files []FileContext) (string, error) {
 	if opts.PRTitle == "" {
-		msg, err := resolveCommitMessage(opts, repo)
+		msg, err := resolveCommitMessage(opts, repo, files)
 		if err != nil {
 			return "", fmt.Errorf("render PR title: %w", err)
 		}
@@ -198,38 +203,39 @@ func resolvePRTitle(opts ApplyOptions, repo string) (string, error) {
 	if !HasTemplate(opts.PRTitle, nil) {
 		return opts.PRTitle, nil
 	}
-	title, err := RenderCommitMessage(opts.PRTitle, repo, opts.SourceURL)
+	title, err := renderMessage(opts.PRTitle, repo, opts.SourceURL, files)
 	if err != nil {
 		return "", fmt.Errorf("render PR title: %w", err)
 	}
 	return title, nil
 }
 
-// resolvePRBody returns the pull request body from opts or a default,
-// rendered against repo.
-func resolvePRBody(opts ApplyOptions, repo string) (string, error) {
+// resolvePRBody returns the pull request body from opts, or a line per
+// changed entry (defaultPRBody), rendered against repo and files.
+func resolvePRBody(opts ApplyOptions, repo string, files []FileContext) (string, error) {
 	if opts.PRBody == "" {
-		return fmt.Sprintf("Automated file sync by gh-infra FileSet `%s`.", opts.FileSetID), nil
+		return defaultPRBody(files), nil
 	}
 	if !HasTemplate(opts.PRBody, nil) {
 		return opts.PRBody, nil
 	}
-	body, err := RenderCommitMessage(opts.PRBody, repo, opts.SourceURL)
+	body, err := renderMessage(opts.PRBody, repo, opts.SourceURL, files)
 	if err != nil {
 		return "", fmt.Errorf("render PR body: %w", err)
 	}
 	return body, nil
 }
 
-// resolveCommitMessage returns the commit message from opts or a default,
-// rendering any <% %> template expressions against the given repo.
-func resolveCommitMessage(opts ApplyOptions, repo string) (string, error) {
+// resolveCommitMessage returns the commit message from opts, or one made
+// from files (defaultCommitMessage), rendering any <% %> template
+// expressions against repo and files.
+func resolveCommitMessage(opts ApplyOptions, repo string, files []FileContext) (string, error) {
 	msg := opts.CommitMessage
 	if msg == "" {
-		msg = fmt.Sprintf("chore: sync %s files via gh-infra", opts.FileSetID)
+		return defaultCommitMessage(files), nil
 	}
 	if !HasTemplate(msg, nil) {
 		return msg, nil
 	}
-	return RenderCommitMessage(msg, repo, opts.SourceURL)
+	return renderMessage(msg, repo, opts.SourceURL, files)
 }

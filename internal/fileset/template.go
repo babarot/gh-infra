@@ -59,12 +59,17 @@ func RenderTemplate(content string, repo string, vars map[string]string) (string
 // RenderCommitMessage renders a commit or PR message template with Repo and Source context.
 // Vars are not available in commit messages — use .Repo and .Source fields only.
 func RenderCommitMessage(msg string, repo string, sourceURL string) (string, error) {
-	repoCtx := buildRepoContext(repo)
-	ctx := TemplateContext{
-		Repo:   repoCtx,
+	return renderMessage(msg, repo, sourceURL, nil)
+}
+
+// renderMessage renders commit_message, pr_title or pr_body with .Repo,
+// .Source and .Files.
+func renderMessage(msg, repo, sourceURL string, files []FileContext) (string, error) {
+	return execTemplate(msg, messageContext{
+		Repo:   buildRepoContext(repo),
 		Source: SourceContext{URL: sourceURL},
-	}
-	return execTemplate(msg, ctx)
+		Files:  files,
+	})
 }
 
 // HasTemplate returns true if the content uses <% %> template syntax or has vars.
@@ -87,7 +92,7 @@ func buildRepoContext(repo string) RepoContext {
 	return RepoContext{Name: repo, FullName: repo}
 }
 
-func execTemplate(text string, ctx TemplateContext) (string, error) {
+func execTemplate(text string, ctx any) (string, error) {
 	tmpl, err := template.New("").
 		Delims(delimLeft, delimRight).
 		Option("missingkey=error").
@@ -112,10 +117,23 @@ func copyVars(m map[string]string) map[string]string {
 	return cp
 }
 
-// CheckMessages renders the FileSet's commit_message, pr_title and pr_body
-// for repo, so a template error is reported by plan and validate rather than
-// partway through apply (e.g. after the PR branch was committed to).
-func CheckMessages(fs *manifest.FileSet, repo string) error {
+// CheckMessages renders the FileSet's commit_message, pr_title and pr_body,
+// and the descriptions of its files, for target, so a template error is
+// reported by plan and validate rather than partway through apply (e.g.
+// after the PR branch was committed to). changes are the target's planned
+// changes of the FileSet; .Files is built from them as apply builds it, or,
+// when none has anything to do (and for validate, which plans nothing),
+// from every file of the FileSet as if each were created. The source URL is
+// empty, as apply is the only command that has it.
+func CheckMessages(fs *manifest.FileSet, target manifest.FileSetRepository, changes []Change) error {
+	repo := fs.RepoFullName(target.Name)
+	files, err := buildFiles(changes, repo, "")
+	if err == nil && len(files) == 0 {
+		files, err = entryFiles(ResolveFiles(fs, target), repo)
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", repo, err)
+	}
 	for _, m := range []struct{ field, text string }{
 		{"commit_message", fs.Spec.CommitMessage},
 		{"pr_title", fs.Spec.PRTitle},
@@ -124,7 +142,7 @@ func CheckMessages(fs *manifest.FileSet, repo string) error {
 		if !HasTemplate(m.text, nil) {
 			continue
 		}
-		if _, err := RenderCommitMessage(m.text, repo, ""); err != nil {
+		if _, err := renderMessage(m.text, repo, "", files); err != nil {
 			return fmt.Errorf("%s for %s: %w", m.field, repo, err)
 		}
 	}

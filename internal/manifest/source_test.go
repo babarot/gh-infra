@@ -467,9 +467,10 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 
 	files := []FileEntry{
 		{
-			Path:      ".github/workflows",
-			Source:    "configs",
-			Reconcile: ReconcileAuthoritative,
+			Path:        ".github/workflows",
+			Source:      "configs",
+			Reconcile:   ReconcileAuthoritative,
+			Description: "Workflows",
 		},
 	}
 	result, err := r.ResolveFiles(context.Background(), files, dir)
@@ -488,6 +489,9 @@ func TestResolveFiles_DirScope_LocalDirectory(t *testing.T) {
 		}
 		if entry.Reconcile != ReconcileAuthoritative {
 			t.Errorf("result[%d].Reconcile = %q, want %q", i, entry.Reconcile, ReconcileAuthoritative)
+		}
+		if entry.Description != "Workflows" {
+			t.Errorf("result[%d].Description = %q, want %q", i, entry.Description, "Workflows")
 		}
 	}
 }
@@ -856,6 +860,44 @@ spec:
 		}
 		if got == nil || got.Err() == nil {
 			t.Errorf("%s: the github:// fetch did not get the parse context", kind)
+		}
+	}
+}
+
+// Every file of a directory source carries the entry's description, from a
+// GitHub source as from a local one.
+func TestResolveFiles_GitHubDirectoryKeepsDescription(t *testing.T) {
+	dirResp, _ := json.Marshal([]struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+		Type string `json:"type"`
+	}{
+		{Name: "a.rego", Path: "policy/a.rego", Type: "file"},
+		{Name: "b.rego", Path: "policy/b.rego", Type: "file"},
+	})
+	fileResp, _ := json.Marshal(struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}{Content: base64.StdEncoding.EncodeToString([]byte("package x")), Encoding: "base64"})
+	r := &SourceResolver{RunGH: func(_ context.Context, args ...string) ([]byte, error) {
+		if args[len(args)-1] == "repos/owner/repo/contents/policy" {
+			return dirResp, nil
+		}
+		return fileResp, nil
+	}}
+
+	result, err := r.ResolveFiles(context.Background(), []FileEntry{
+		{Path: ".regomark/policy", Source: "github://owner/repo/policy/", Description: "Policies"},
+	}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 entries, got %+v", result)
+	}
+	for i, e := range result {
+		if e.Description != "Policies" || e.DirScope != ".regomark/policy" {
+			t.Errorf("result[%d] = %+v, want the entry's description and DirScope", i, e)
 		}
 	}
 }

@@ -407,3 +407,25 @@ func TestFileDeliveriesTellFilesApart(t *testing.T) {
 		t.Errorf("deliveries read the same though b.txt goes in other pull requests:\n%s", a.Delivery)
 	}
 }
+
+// TestFileDeliveriesUseFiles checks that the pull request body is built
+// from the repository's changes as apply builds it: the same files and
+// descriptions read the same, a different description does not.
+func TestFileDeliveriesUseFiles(t *testing.T) {
+	fs := &manifest.FileSet{Metadata: manifest.FileSetMetadata{Owner: "acme", Name: "sync"}, Spec: manifest.FileSetSpec{Via: manifest.ViaPullRequest}}
+	files := func(target, desc string) []fileset.Change {
+		c := fileChange(target, "a.txt", fileset.ChangeCreate, "", "a\n", manifest.ViaPullRequest)
+		c.FileSet, c.Entry, c.Description = fs, "a.txt", desc
+		return []fileset.Change{c}
+	}
+	unseen := unseenOf(nil)
+	api := unseen("acme/api", nil, files("acme/api", "Shared"))
+	web := unseen("acme/web", nil, files("acme/web", "Shared"))
+	ops := unseen("acme/ops", nil, files("acme/ops", "Only for ops"))
+	if api.Delivery != web.Delivery {
+		t.Errorf("same files and descriptions should read the same:\n%s\n%s", api.Delivery, web.Delivery)
+	}
+	if api.Delivery == ops.Delivery {
+		t.Errorf("a different description should read differently:\n%s", api.Delivery)
+	}
+}

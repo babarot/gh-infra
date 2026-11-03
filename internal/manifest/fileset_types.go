@@ -21,7 +21,7 @@ type FileSetMetadata struct {
 // Identity returns "owner/name" when metadata.name is set (kind: File sets it
 // to the target repository), and otherwise "owner/" plus the sorted repository
 // names joined by "+". It names the FileSet in plan output and derives the
-// default commit message, PR branch, and PR body. It is not unique: unnamed
+// default PR branch. It is not unique: unnamed
 // FileSets listing the same repositories, and kind: File manifests for the same
 // repository, share it.
 func (fs *FileSet) Identity() string {

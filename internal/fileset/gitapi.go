@@ -66,7 +66,11 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 	if needsGitDataAPI(changes) {
 		commit = p.commitViaGitDataAPI
 	}
-	message, err := resolveCommitMessage(opts, repo)
+	files, err := buildFiles(changes, repo, opts.SourceURL)
+	if err != nil {
+		return "", opts.Via, false, err
+	}
+	message, err := resolveCommitMessage(opts, repo, files)
 	if err != nil {
 		return "", opts.Via, false, fmt.Errorf("render commit message: %w", err)
 	}
@@ -112,7 +116,7 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 		// concurrent commit on it already carries the desired content, so the
 		// PR is still opened (or the existing one returned).
 		statusFn("creating pull request...")
-		prURL, err := p.openPR(ctx, repo, defaultBranch, targetBranch, opts)
+		prURL, err := p.openPR(ctx, repo, defaultBranch, targetBranch, opts, files)
 		return prURL, opts.Via, false, err
 	}
 	return "", opts.Via, skipped, nil
@@ -433,15 +437,24 @@ func (p *Processor) applyToEmptyRepo(ctx context.Context, repo string, changes [
 		}
 	}
 	p.writer.Progress(fmt.Sprintf("Updating %s (empty repo, using fallback)...", repo))
-	message, err := resolveCommitMessage(opts, repo)
+	files, err := buildFiles(changes, repo, opts.SourceURL)
+	if err != nil {
+		return err
+	}
+	message, err := resolveCommitMessage(opts, repo, files)
 	if err != nil {
 		return fmt.Errorf("render commit message: %w", err)
 	}
 	headline, body := splitCommitMessage(message)
 	for _, c := range changes {
-		commitMsg := fmt.Sprintf("%s: %s", headline, c.Path)
-		if body != "" {
-			commitMsg += "\n\n" + body
+		// A commit per file: without commit_message, each says its own
+		// change rather than the count of all of them.
+		commitMsg := actionOf(string(c.Type)) + " " + c.Path
+		if opts.CommitMessage != "" {
+			commitMsg = fmt.Sprintf("%s: %s", headline, c.Path)
+			if body != "" {
+				commitMsg += "\n\n" + body
+			}
 		}
 		if err := p.putFileViaContentsAPI(ctx, repo, c.Path, c.Desired, "", commitMsg, ""); err != nil {
 			return err
@@ -534,12 +547,12 @@ func (p *Processor) createBranchAt(ctx context.Context, repo, branch, sha string
 }
 
 // openPR opens a pull request from head into base. The head branch must already exist.
-func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts ApplyOptions) (string, error) {
-	prTitle, err := resolvePRTitle(opts, repo)
+func (p *Processor) openPR(ctx context.Context, repo, base, head string, opts ApplyOptions, files []FileContext) (string, error) {
+	prTitle, err := resolvePRTitle(opts, repo, files)
 	if err != nil {
 		return "", err
 	}
-	prBody, err := resolvePRBody(opts, repo)
+	prBody, err := resolvePRBody(opts, repo, files)
 	if err != nil {
 		return "", err
 	}

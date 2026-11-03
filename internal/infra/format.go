@@ -83,14 +83,15 @@ func fileDeliveries(name string, changes []fileset.Change) (any, error) {
 			continue
 		}
 		index[c.FileSet] = len(out)
+		var fsChanges []fileset.Change
 		opts := fileset.ApplyOptions{}
 		if c.FileSet != nil {
-			_, opts = fileSetApplyArgs(c.FileSet, changes)
+			fsChanges, opts = fileSetApplyArgs(c.FileSet, changes)
 		}
 		if c.Via != "" {
 			opts.Via = c.Via
 		}
-		d, err := fileset.DeliveryFor(opts, name)
+		d, err := fileset.DeliveryFor(opts, name, fsChanges)
 		if err != nil {
 			return nil, err
 		}

@@ -59,7 +59,7 @@ func runValidate(args []string, failOnUnknown bool) error {
 	}
 	for _, fs := range parsed.FileSets {
 		for _, target := range fs.Spec.Repositories {
-			if err := fileset.CheckMessages(fs, fs.RepoFullName(target.Name)); err != nil {
+			if err := fileset.CheckMessages(fs, target, nil); err != nil {
 				return err
 			}
 		}
