@@ -3,6 +3,7 @@ package repository
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -136,6 +137,14 @@ func (f *fakeGitHub) apiBranches(sub, method string, body []byte, rest []string)
 		return fakeLines(names), false, nil
 	}
 	branch, ok := strings.CutSuffix(strings.TrimPrefix(sub, "branches/"), "/protection")
+	if !ok && method == "GET" {
+		// GET branches/{branch}: whether it exists.
+		branch, err := url.PathUnescape(branch)
+		if err != nil || !slices.Contains(f.s.Branches, branch) {
+			return nil, false, fakeStatus(gh.ErrNotFound, "Branch not found")
+		}
+		return mustJSON(map[string]any{"name": branch}), false, nil
+	}
 	if !ok || !slices.Contains(f.s.Branches, branch) {
 		return nil, false, fakeStatus(gh.ErrNotFound, "branch "+branch)
 	}

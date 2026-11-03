@@ -22,6 +22,7 @@ When either side changes, check whether the other side needs updating.
 | `resources/repository/secrets-variables.md` | `repository-manifest` | `references/secrets-variables.md` |
 | `resources/repository/environments.md` | `repository-manifest` | `references/environments.md` |
 | `resources/repository/security.md` | `repository-manifest` | `references/security.md` |
+| `resources/repository/pages.md` | `repository-manifest` | `references/pages.md` |
 | `resources/repository-set/defaults.md`, `resources/repository-set/index.md` | `repository-manifest` | `references/repository-set.md` |
 | `resources/file/sources.md`, `resources/file/templating.md` | `file-manifest` | `references/sources-and-templating.md` |
 | `resources/file/delivery.md`, `resources/file/index.md` | `file-manifest` | `references/reconcile-and-delivery.md` |

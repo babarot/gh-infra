@@ -133,6 +133,15 @@ func TestRoundTrip_ExportThenPlan(t *testing.T) {
 		{"variables", func(s *CurrentState) {
 			s.Variables = map[string]string{"ENV": "prod", "EMPTY": ""}
 		}},
+		// GitHub keeps reporting the last source of a workflow site.
+		{"pages from a workflow with a domain", func(s *CurrentState) {
+			s.Pages = CurrentPages{Enabled: true, BuildType: "workflow", Source: CurrentPagesSource{Branch: "main", Path: "/docs"},
+				CNAME: "gomi.dev", HTTPSEnforced: false}
+		}},
+		{"pages from a branch", func(s *CurrentState) {
+			s.Pages = CurrentPages{Enabled: true, BuildType: "legacy", Source: CurrentPagesSource{Branch: "gh-pages", Path: "/"},
+				HTTPSEnforced: true, CertificateState: "approved", SourceBranchExists: true}
+		}},
 		{"environments", func(s *CurrentState) {
 			s.Environments = map[string]*CurrentEnvironment{
 				"production": {Name: "production", CanAdminsBypass: false, WaitTimer: 10, HasReviewersRule: true, PreventSelfReview: true,

@@ -52,6 +52,14 @@ func propState() fakeState {
 	}
 }
 
+// propPages is a workflow site with a domain whose certificate is issued.
+func propPages() *fakePages {
+	return &fakePages{
+		BuildType: "workflow", Source: fakePagesSource{Branch: "main", Path: "/"},
+		CNAME: "docs.example.com", HTTPSEnforced: true, CertificateState: certificateApproved,
+	}
+}
+
 func TestApplyProperties(t *testing.T) {
 	ptr := manifest.Ptr[string]
 	bptr := manifest.Ptr[bool]
@@ -155,6 +163,63 @@ func TestApplyProperties(t *testing.T) {
 			Secrets:   []manifest.Secret{{Name: "NEW", Value: "s3cret"}},
 			Variables: []manifest.Variable{{Name: "ENV", Value: "dev"}, {Name: "NEW", Value: "x"}},
 		}},
+		{name: "pages enabled", spec: manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: ptr("workflow"), CNAME: ptr("docs.example.com"), HTTPSEnforced: bptr(false),
+		}}},
+		{name: "pages enabled from a branch", state: func(s *fakeState) {
+			s.Branches = []string{"main", "gh-pages"}
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: ptr("legacy"), Source: &manifest.PagesSource{Branch: "gh-pages"},
+		}}},
+		{name: "pages the same as GitHub", noPlan: true, state: func(s *fakeState) {
+			s.Branches = []string{"main"}
+			s.Pages = propPages()
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: ptr("workflow"), CNAME: ptr("docs.example.com"), HTTPSEnforced: bptr(true),
+		}}},
+		// A site without a custom domain needs no certificate: HTTPS is
+		// enforced at once, on a new site too.
+		{name: "pages enabled with https and no domain", spec: manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: ptr("workflow"), HTTPSEnforced: bptr(true),
+		}}},
+		{name: "pages https enforced without a domain", state: func(s *fakeState) {
+			s.Pages = &fakePages{BuildType: "workflow", Source: fakePagesSource{Branch: "main", Path: "/"}}
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{HTTPSEnforced: bptr(true)}}},
+		{name: "pages domain removed with https enforced", state: func(s *fakeState) {
+			s.Pages = propPages()
+			s.Pages.HTTPSEnforced, s.Pages.CertificateState = false, ""
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{CNAME: ptr(""), HTTPSEnforced: bptr(true)}}},
+		{name: "pages domain changed and removed", state: func(s *fakeState) {
+			s.Pages = propPages()
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{CNAME: ptr(""), HTTPSEnforced: bptr(false)}}},
+		{name: "pages domain changed", state: func(s *fakeState) {
+			s.Pages = propPages()
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{CNAME: ptr("www.example.com")}}},
+		{name: "pages https enforced with its certificate", state: func(s *fakeState) {
+			s.Pages = propPages()
+			s.Pages.HTTPSEnforced = false
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{HTTPSEnforced: bptr(true)}}},
+		// GitHub keeps the last source of a workflow site; a move to legacy
+		// sends the declared one even when they match.
+		{name: "pages moved to a branch", state: func(s *fakeState) {
+			s.Branches = []string{"main"}
+			s.Pages = propPages()
+			s.Pages.Source = fakePagesSource{Branch: "main", Path: "/docs"}
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: ptr("legacy"), Source: &manifest.PagesSource{Branch: "main", Path: "/docs"},
+		}}},
+		{name: "pages moved to workflow", state: func(s *fakeState) {
+			s.Branches = []string{"main"}
+			s.Pages = propPages()
+			s.Pages.BuildType = "legacy"
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{BuildType: ptr("workflow")}}},
+		{name: "pages source changed", state: func(s *fakeState) {
+			s.Branches = []string{"main", "gh-pages"}
+			s.Pages = propPages()
+			s.Pages.BuildType = "legacy"
+		}, spec: manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: ptr("legacy"), Source: &manifest.PagesSource{Branch: "gh-pages", Path: "/"},
+		}}},
 		{name: "milestones", spec: manifest.RepositorySpec{Milestones: []manifest.Milestone{
 			{Title: "v1", State: ptr("open"), DueOn: ptr("")},
 			{Title: "v2", Description: ptr("second"), DueOn: ptr("2026-06-30")},
@@ -288,6 +353,12 @@ func flattenState(s fakeState) map[string]string {
 		out[key+"state"] = m.State
 		out[key+"due_on"] = derefStr(m.DueOn)
 	}
+	if pg := s.Pages; pg != nil {
+		out["pages.enabled"] = "true"
+		for k, v := range mustJSONMap(*pg) {
+			out["pages."+k] = fmt.Sprint(v)
+		}
+	}
 	flattenEnvironments(out, s.Environments)
 	flattenProtections(out, s.Protections)
 	flattenRulesets(out, s.Rulesets)
@@ -396,6 +467,10 @@ func allowedPaths(changes []Change) pathSet {
 		}
 	}
 	for _, c := range changes {
+		if c.Resource == manifest.ResourcePages {
+			addPagesPaths(set, c)
+			continue
+		}
 		if resource, key, ok := splitApplyResource(c.Resource); ok {
 			addKeyedPaths(set, resource, key, c)
 			continue
@@ -403,6 +478,29 @@ func allowedPaths(changes []Change) pathSet {
 		add(c.Resource, c)
 	}
 	return set
+}
+
+// addPagesPaths allows what a Pages change may change: a new site as a
+// whole, otherwise the fields its details name.
+func addPagesPaths(set pathSet, c Change) {
+	if c.Type == ChangeCreate {
+		set["pages."] = true
+		return
+	}
+	for _, d := range c.Details {
+		switch d.Field {
+		case pagesFieldBuildType:
+			set["pages.build_type"] = true
+			set["pages.source"] = true // sent with a move to legacy
+		case pagesFieldSource:
+			set["pages.source"] = true
+		case pagesFieldCNAME:
+			set["pages.cname"] = true
+			set["pages.certificate_state"] = true // a new domain needs a new certificate
+		case pagesFieldHTTPSEnforced:
+			set["pages.https_enforced"] = true
+		}
+	}
 }
 
 func formatChanges(changes []Change) string {

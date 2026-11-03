@@ -135,6 +135,8 @@ func applyStatusTarget(c Change) string {
 		return fmt.Sprintf("branch protection %q", c.Field)
 	case manifest.ResourceActions:
 		return "actions settings"
+	case manifest.ResourcePages:
+		return "pages"
 	case manifest.ResourceRepository:
 		if c.Field == "" {
 			return "repository settings"
@@ -214,6 +216,8 @@ func (p *Processor) applyChange(ctx context.Context, c Change, repo *manifest.Re
 		err = p.applyMilestone(ctx, c, repo)
 	case c.Resource == manifest.ResourceActions:
 		err = p.applyActions(ctx, c, repo)
+	case c.Resource == manifest.ResourcePages:
+		err = p.applyPages(ctx, c, repo)
 	default:
 		err = fmt.Errorf("unknown resource type: %s", c.Resource)
 	}

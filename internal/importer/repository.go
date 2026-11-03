@@ -388,7 +388,7 @@ type repositoryPatchPlan struct {
 	deletes              []string
 }
 
-var repositoryNestedMergeOrder = []string{"features", "merge_strategy", "actions", "security"}
+var repositoryNestedMergeOrder = []string{"features", "merge_strategy", "actions", "security", "pages"}
 
 var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 	{
@@ -742,10 +742,65 @@ func applyRepositoryDescriptor(plan *repositoryPatchPlan, field string, desired 
 		}
 		return
 	}
+	if field == "pages" || strings.HasPrefix(field, "pages.") {
+		applyPagesDescriptor(plan, field, desired.Pages)
+		return
+	}
 	for _, desc := range repositoryFieldDescriptors {
 		if desc.matches(field) {
 			desc.apply(plan, desired)
 			return
+		}
+	}
+}
+
+// applyPagesDescriptor writes the Pages site: as a whole when the manifest
+// has none or GitHub has none, otherwise the field that differs.
+func applyPagesDescriptor(plan *repositoryPatchPlan, field string, desired *manifest.Pages) {
+	pagesPath := plan.basePath + ".pages"
+	del := func(path string) {
+		if !slices.Contains(plan.deletes, path) {
+			plan.deletes = append(plan.deletes, path)
+		}
+	}
+	if desired == nil {
+		del(pagesPath)
+		return
+	}
+	if field == "pages" {
+		plan.rootMerge["pages"] = desired
+		return
+	}
+	merge := func(key string, v any) {
+		if plan.nestedMerges["pages"] == nil {
+			plan.nestedMerges["pages"] = map[string]any{}
+		}
+		plan.nestedMerges["pages"][key] = v
+	}
+	switch strings.TrimPrefix(field, "pages.") {
+	case "build_type":
+		if desired.BuildType == nil {
+			del(pagesPath + ".build_type")
+		} else {
+			merge("build_type", *desired.BuildType)
+		}
+	case "source":
+		if desired.Source == nil {
+			del(pagesPath + ".source")
+		} else {
+			merge("source", map[string]any{"branch": desired.Source.Branch, "path": desired.Source.SourcePath()})
+		}
+	case "cname":
+		if desired.CNAME == nil {
+			del(pagesPath + ".cname")
+		} else {
+			merge("cname", *desired.CNAME)
+		}
+	case "https_enforced":
+		if desired.HTTPSEnforced == nil {
+			del(pagesPath + ".https_enforced")
+		} else {
+			merge("https_enforced", *desired.HTTPSEnforced)
 		}
 	}
 }
@@ -1003,6 +1058,9 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	// Nested map: security
 	diffs = append(diffs, compareSecurity(local.Security, imported.Security)...)
 
+	// Nested map: pages
+	diffs = append(diffs, comparePages(local.Pages, imported.Pages)...)
+
 	// Branch protection (Phase 2c)
 	diffs = append(diffs, compareBranchProtection(local.BranchProtection, imported.BranchProtection)...)
 
@@ -1022,6 +1080,49 @@ func compareSpecs(local, imported manifest.RepositorySpec) []FieldDiff {
 	diffs = append(diffs, compareMilestones(local.Milestones, imported.Milestones)...)
 
 	return diffs
+}
+
+// comparePages compares the Pages site. A site only one side has is one
+// diff of the whole "pages"; otherwise its fields are compared, a source by
+// its branch and path with the path "/" when left out.
+func comparePages(local, imported *manifest.Pages) []FieldDiff {
+	switch {
+	case local == nil && imported == nil:
+		return nil
+	case local == nil:
+		return []FieldDiff{{Field: "pages", Old: nil, New: pagesSummary(imported)}}
+	case imported == nil:
+		return []FieldDiff{{Field: "pages", Old: pagesSummary(local), New: nil}}
+	}
+	var diffs []FieldDiff
+	diffs = appendPtrDiff(diffs, "pages.build_type", local.BuildType, imported.BuildType)
+	if l, i := pagesSourceString(local.Source), pagesSourceString(imported.Source); l != i {
+		diffs = append(diffs, FieldDiff{Field: "pages.source", Old: l, New: i})
+	}
+	diffs = appendPtrDiff(diffs, "pages.cname", local.CNAME, imported.CNAME)
+	diffs = appendBoolPtrDiff(diffs, "pages.https_enforced", local.HTTPSEnforced, imported.HTTPSEnforced)
+	return diffs
+}
+
+func pagesSourceString(s *manifest.PagesSource) string {
+	if s == nil {
+		return ""
+	}
+	return s.Branch + ":" + s.SourcePath()
+}
+
+func pagesSummary(p *manifest.Pages) string {
+	parts := []string{"build_type: " + derefStr(p.BuildType)}
+	if p.Source != nil {
+		parts = append(parts, "source: "+pagesSourceString(p.Source))
+	}
+	if p.CNAME != nil && *p.CNAME != "" {
+		parts = append(parts, "cname: "+*p.CNAME)
+	}
+	if p.HTTPSEnforced != nil {
+		parts = append(parts, fmt.Sprintf("https_enforced: %t", *p.HTTPSEnforced))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // compareSecurity compares Security fields.
@@ -1735,6 +1836,9 @@ func minimalOverride(defaults, imported manifest.RepositorySpec) manifest.Reposi
 	// Security: key-level comparison (matches mergeSecurity behavior).
 	override.Security = minimalSecurity(defaults.Security, imported.Security)
 
+	// Pages: key-level comparison (matches mergePages behavior).
+	override.Pages = minimalPages(defaults.Pages, imported.Pages)
+
 	// List: topics — override if different
 	if !stringSliceEqual(defaults.Topics, imported.Topics) {
 		override.Topics = imported.Topics
@@ -1892,6 +1996,12 @@ func missingDefaultsWarnings(defaults, imported manifest.RepositorySpec) []RepoW
 				})
 			}
 		}
+	}
+	if defaults.Pages != nil && imported.Pages == nil {
+		warnings = append(warnings, RepoWarning{
+			Field:   "pages",
+			Message: "in defaults but GitHub Pages is not enabled (an entry cannot drop the defaults' pages, so plan will enable it)",
+		})
 	}
 	check("labels",
 		keys(len(defaults.Labels), func(i int) string { return strings.ToLower(defaults.Labels[i].Name) }),
@@ -2082,6 +2192,44 @@ func minimalFeatures(defaults, imported *manifest.Features) *manifest.Features {
 		return nil
 	}
 	return &f
+}
+
+// minimalPages returns the Pages fields that differ from the defaults'. A
+// site GitHub does not have cannot be written over the defaults' (an entry
+// cannot drop it); missingDefaultsWarnings says so.
+func minimalPages(defaults, imported *manifest.Pages) *manifest.Pages {
+	if imported == nil {
+		return nil
+	}
+	if defaults == nil {
+		return imported
+	}
+	var p manifest.Pages
+	any := false
+	if !ptrEqual(defaults.BuildType, imported.BuildType) {
+		p.BuildType = imported.BuildType
+		any = true
+	}
+	if pagesSourceString(defaults.Source) != pagesSourceString(imported.Source) {
+		p.Source = imported.Source
+		any = true
+	}
+	if !ptrEqual(defaults.CNAME, imported.CNAME) {
+		p.CNAME = imported.CNAME
+		if p.CNAME == nil {
+			// The defaults' domain is not on GitHub: "" removes it.
+			p.CNAME = manifest.Ptr("")
+		}
+		any = true
+	}
+	if !boolPtrEqual(defaults.HTTPSEnforced, imported.HTTPSEnforced) {
+		p.HTTPSEnforced = imported.HTTPSEnforced
+		any = true
+	}
+	if !any {
+		return nil
+	}
+	return &p
 }
 
 func minimalSecurity(defaults, imported *manifest.Security) *manifest.Security {

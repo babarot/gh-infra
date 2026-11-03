@@ -287,6 +287,14 @@ if [[ "$args" == *"/actions/permissions"* ]]; then
   exit 0
 fi
 
+# GitHub Pages: no site (GitHub answers 404). Read by import, and by plan
+# only for a manifest that declares pages.
+if [[ "$args" =~ repos/[^/\ ]+/[^/\ ]+/pages($|\ ) && "$args" != *"--method"* && "$args" != *"-X"* ]]; then
+  delay
+  echo "gh: Not Found (HTTP 404)" >&2
+  exit 1
+fi
+
 # Immutable releases
 if [[ "$args" == *"/immutable-releases"* ]]; then
   delay

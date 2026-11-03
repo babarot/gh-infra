@@ -43,6 +43,7 @@ Read these references as needed:
 - Secrets and variables: [references/secrets-variables.md](./references/secrets-variables.md)
 - Deployment environments: [references/environments.md](./references/environments.md)
 - Security (Dependabot, vulnerability alerts): [references/security.md](./references/security.md)
+- GitHub Pages (build type, source, domain, HTTPS): [references/pages.md](./references/pages.md)
 
 ## RepositorySet
 

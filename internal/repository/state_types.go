@@ -31,6 +31,7 @@ type CurrentState struct {
 	Milestones       map[string]*CurrentMilestone        // title → milestone
 	Environments     map[string]*CurrentEnvironment      // lowercase name → environment; nil when not read
 	Actions          CurrentActions
+	Pages            CurrentPages
 
 	// Unread is what import (a fetch without a spec) could not read, by
 	// its manifest key: "labels", "actions", or "environments.<name>.variables"
@@ -71,6 +72,27 @@ type CurrentBranchRule struct {
 	ID   int
 	Name string
 	Type string // branch or tag
+}
+
+// CurrentPages is the GitHub Pages site as GitHub reports it.
+type CurrentPages struct {
+	Enabled   bool // false when GitHub has no site (404)
+	BuildType string
+	// Source is reported for a workflow site too: the last one it had.
+	Source CurrentPagesSource
+	CNAME  string // "" when there is none
+	// HTTPSEnforced and CertificateState: the state of the site's
+	// certificate ("approved" once it is issued), "" when GitHub reports none.
+	HTTPSEnforced    bool
+	CertificateState string
+	// SourceBranchExists is read only when the manifest builds the site
+	// from a branch (legacy): whether its source branch exists.
+	SourceBranchExists bool
+}
+
+type CurrentPagesSource struct {
+	Branch string
+	Path   string
 }
 
 func (r *CurrentState) FullName() string {

@@ -336,10 +336,12 @@ func environmentCreateNotes(desired *manifest.Repository) []string {
 	return notes
 }
 
-// ChangeNotes warns about planned changes that let more deploy to an
-// environment than before, which are easy to miss in a plan.
+// ChangeNotes explains what of the planned changes a later plan applies
+// (https_enforced of a Pages site waiting for its certificate), and warns
+// about changes that let more deploy to an environment than before, which
+// are easy to miss in a plan.
 func ChangeNotes(changes []Change) []string {
-	var notes []string
+	notes := pagesChangeNotes(changes)
 	for _, c := range changes {
 		resource, env, ok := splitApplyResource(c.Resource)
 		if !ok || resource != manifest.ResourceEnvironment {

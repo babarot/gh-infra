@@ -546,6 +546,9 @@ func mergeSpecs(defaults *RepositorySetDefaults, override RepositorySpec) Reposi
 	if override.Actions != nil {
 		result.Actions = mergeActions(result.Actions, override.Actions)
 	}
+	if override.Pages != nil {
+		result.Pages = mergePages(result.Pages, override.Pages)
+	}
 	// A collection written as [] in an entry means the repository has none:
 	// the defaults' entries are not inherited. A non-empty list is merged by
 	// key with the defaults; leaving it out inherits them.
@@ -712,6 +715,32 @@ func mergeSecurity(base, override *Security) *Security {
 	}
 	if override.PrivateVulnerabilityReporting != nil {
 		result.PrivateVulnerabilityReporting = override.PrivateVulnerabilityReporting
+	}
+	return &result
+}
+
+// mergePages merges by field; a source replaces the defaults' as a whole.
+// An entry that builds with a workflow does not inherit the defaults'
+// source, which only a legacy site has.
+func mergePages(base, override *Pages) *Pages {
+	if base == nil {
+		return override
+	}
+	result := *base
+	if override.BuildType != nil {
+		result.BuildType = override.BuildType
+		if *override.BuildType == PagesBuildTypeWorkflow {
+			result.Source = nil
+		}
+	}
+	if override.Source != nil {
+		result.Source = override.Source
+	}
+	if override.CNAME != nil {
+		result.CNAME = override.CNAME
+	}
+	if override.HTTPSEnforced != nil {
+		result.HTTPSEnforced = override.HTTPSEnforced
 	}
 	return &result
 }

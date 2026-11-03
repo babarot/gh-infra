@@ -479,7 +479,7 @@ func fieldDiffsToDiffGroups(diffs []importer.FieldDiff) []ui.DiffGroup {
 
 	// Prefix classification
 	nestedObject := map[string]bool{
-		"features": true, "merge_strategy": true, "actions": true, "security": true,
+		"features": true, "merge_strategy": true, "actions": true, "security": true, "pages": true,
 	}
 	keyedCollection := map[string]bool{
 		"branch_protection": true, "rulesets": true,
