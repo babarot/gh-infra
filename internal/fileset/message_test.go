@@ -223,21 +223,40 @@ func TestApplyToEmptyRepo_DefaultMessagePerFile(t *testing.T) {
 	}
 }
 
-func TestResolveFiles_OverrideInheritsDescription(t *testing.T) {
-	fs := &manifest.FileSet{Spec: manifest.FileSetSpec{
-		Files: []manifest.FileEntry{
-			{Path: "a", Source: "./a", Description: "Default"},
-			{Path: "b", Source: "./b", Description: "B"},
+// A directory replaced by an override, with reconcile: authoritative, is
+// planned against the override's files: one only the base has is deleted,
+// one only the override has is created.
+func TestPlan_ReplacedDirectoryIsAuthoritativeOverItsFiles(t *testing.T) {
+	mock := &gh.MockRunner{
+		Responses: map[string][]byte{
+			contentsKey("owner/repo", "policy"): dirContentsJSON([]struct{ Path, Type string }{
+				{Path: "policy/a.rego", Type: "file"},
+				{Path: "policy/b.rego", Type: "file"},
+			}),
+			contentsKey("owner/repo", "policy/a.rego"): contentsJSON("a", "sha1"),
 		},
-	}}
-	got := ResolveFiles(fs, manifest.FileSetRepository{Name: "r", Overrides: []manifest.FileEntry{
-		{Path: "a", Description: "For r"},
-		{Path: "b", Content: "custom"},
-	}})
-	if got[0].Description != "For r" || got[0].Source != "./a" {
-		t.Errorf("description-only override = %+v, want its description and the original source", got[0])
+		Errors: map[string]error{contentsKey("owner/repo", "policy/c.rego"): gh.ErrNotFound},
 	}
-	if got[1].Description != "B" {
-		t.Errorf("override without description = %+v, want the original description", got[1])
+	p := NewProcessor(mock, ui.NewStandardPrinterWith(&bytes.Buffer{}, &bytes.Buffer{}))
+	fileSets := makeFileSet("owner", "repo", []manifest.FileEntry{
+		{Path: "policy/a.rego", Content: "a", DirScope: "policy", Reconcile: manifest.ReconcileAuthoritative},
+		{Path: "policy/b.rego", Content: "b", DirScope: "policy", Reconcile: manifest.ReconcileAuthoritative},
+	})
+	fileSets[0].Spec.Repositories[0].Overrides = []manifest.FileEntry{
+		{Path: "policy/a.rego", Content: "a", DirScope: "policy"},
+		{Path: "policy/c.rego", Content: "c", DirScope: "policy"},
+	}
+
+	changes, err := p.Plan(context.Background(), fileSets, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]ChangeType{}
+	for _, c := range changes {
+		got[c.Path] = c.Type
+	}
+	want := map[string]ChangeType{"policy/a.rego": ChangeNoOp, "policy/c.rego": ChangeCreate, "policy/b.rego": ChangeDelete}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("changes = %v, want %v", got, want)
 	}
 }

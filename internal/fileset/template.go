@@ -129,7 +129,10 @@ func CheckMessages(fs *manifest.FileSet, target manifest.FileSetRepository, chan
 	repo := fs.RepoFullName(target.Name)
 	files, err := buildFiles(changes, repo, "")
 	if err == nil && len(files) == 0 {
-		files, err = entryFiles(ResolveFiles(fs, target), repo)
+		var entries []manifest.FileEntry
+		if entries, err = fs.FilesFor(target); err == nil {
+			files, err = entryFiles(entries, repo)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", repo, err)

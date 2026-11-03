@@ -37,8 +37,10 @@ func DiffFiles(ctx context.Context, runner gh.Runner, fileSets []*manifest.FileD
 
 			repoCount := len(fs.Spec.Repositories)
 
-			// Resolve files with overrides
-			files := fileset.ResolveFiles(fs, repo)
+			files, err := fs.FilesFor(repo)
+			if err != nil {
+				return nil, err
+			}
 
 			for _, file := range files {
 				if opts.OnStatus != nil {
