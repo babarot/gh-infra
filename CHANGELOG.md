@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.19.0](https://github.com/babarot/gh-infra/compare/v0.18.0...v0.19.0) - 2026-11-03
+### New Features
+- Describe FileSet pull requests by the files they change by @babarot in https://github.com/babarot/gh-infra/pull/311
+### Bug fixes
+- Fail plan on managed lists that cannot be read by @babarot in https://github.com/babarot/gh-infra/pull/306
+- Keep what import cannot read in the manifest by @babarot in https://github.com/babarot/gh-infra/pull/308
+- Keep single settings that import could not read in the manifest by @babarot in https://github.com/babarot/gh-infra/pull/310
+### Improvements
+- Show the name of an environment or ruleset in apply results by @babarot in https://github.com/babarot/gh-infra/pull/304
+
 ## [v0.18.0](https://github.com/babarot/gh-infra/compare/v0.17.5...v0.18.0) - 2026-11-01
 ### New Features
 - Manage deployment environments and their branch policies by @babarot in https://github.com/babarot/gh-infra/pull/294
