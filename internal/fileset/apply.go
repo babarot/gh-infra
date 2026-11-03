@@ -20,6 +20,10 @@ type ApplyOptions struct {
 	PRTitle       string // custom PR title (pull_request only)
 	PRBody        string // custom PR body (pull_request only)
 	SourceURL     string // provenance URL for <% .Source.URL %> in templates
+	// VisibilityChanged names the repositories whose visibility the same
+	// apply changed. GitHub can refuse writes to them for a few seconds
+	// afterwards (see createBranchAfterVisibilityChange).
+	VisibilityChanged map[string]bool
 }
 
 // Apply executes the planned file changes using Git Data API.

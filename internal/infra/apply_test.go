@@ -6,6 +6,7 @@ import (
 
 	"github.com/babarot/gh-infra/internal/fileset"
 	"github.com/babarot/gh-infra/internal/manifest"
+	"github.com/babarot/gh-infra/internal/repository"
 )
 
 func TestFileSetApplyArgs(t *testing.T) {
@@ -178,5 +179,26 @@ func TestCountFileResults_Empty(t *testing.T) {
 	s, f := countFileResults(nil)
 	if s != 0 || f != 0 {
 		t.Errorf("expected (0, 0), got (%d, %d)", s, f)
+	}
+}
+
+func TestWithVisibilityChanged(t *testing.T) {
+	work := []fileSetWork{{targets: []string{"o/a"}}, {targets: []string{"o/b"}}}
+	results := []repository.ApplyResult{
+		{Change: repository.Change{Resource: manifest.ResourceRepository, Name: "o/a", Field: "visibility"}},
+		{Change: repository.Change{Resource: manifest.ResourceRepository, Name: "o/b", Field: "visibility"}, Err: fmt.Errorf("boom")},
+		{Change: repository.Change{Resource: manifest.ResourceRepository, Name: "o/c", Field: "description"}},
+	}
+	got := withVisibilityChanged(work, results)
+	for i, w := range got {
+		if !w.opts.VisibilityChanged["o/a"] || w.opts.VisibilityChanged["o/b"] || w.opts.VisibilityChanged["o/c"] {
+			t.Errorf("work %d: VisibilityChanged = %v, want only o/a", i, w.opts.VisibilityChanged)
+		}
+	}
+	if work[0].opts.VisibilityChanged != nil {
+		t.Error("withVisibilityChanged changed its input")
+	}
+	if got := withVisibilityChanged(work, results[2:]); got[0].opts.VisibilityChanged != nil {
+		t.Errorf("expected no VisibilityChanged without a visibility change, got %v", got[0].opts.VisibilityChanged)
 	}
 }

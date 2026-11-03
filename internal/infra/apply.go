@@ -129,7 +129,7 @@ func applySteps(ctx context.Context, eng *engine, result *PlanResult, work apply
 	// Step 2: FileSets, in parallel with each other.
 	var fileResults []fileset.ApplyResult
 	if ctx.Err() == nil {
-		fileResults = applyFileSets(ctx, eng, work.fileSets, view)
+		fileResults = applyFileSets(ctx, eng, withVisibilityChanged(work.fileSets, repoResults), view)
 	}
 
 	// Step 3: archives. An archived repository is read-only, so archiving
@@ -138,6 +138,25 @@ func applySteps(ctx context.Context, eng *engine, result *PlanResult, work apply
 		repoResults = append(repoResults, applyArchives(ctx, eng, work.archives, result.TargetRepos, repoResults, fileResults, view)...)
 	}
 	return repoResults, fileResults
+}
+
+// withVisibilityChanged returns fileSets with the repositories whose
+// visibility repoResults changed, which GitHub needs a moment to settle.
+func withVisibilityChanged(fileSets []fileSetWork, repoResults []repository.ApplyResult) []fileSetWork {
+	changed := make(map[string]bool)
+	for _, r := range repoResults {
+		if r.Err == nil && r.Change.Resource == manifest.ResourceRepository && r.Change.Field == "visibility" {
+			changed[r.Change.Name] = true
+		}
+	}
+	if len(changed) == 0 {
+		return fileSets
+	}
+	out := slices.Clone(fileSets)
+	for i := range out {
+		out[i].opts.VisibilityChanged = changed
+	}
+	return out
 }
 
 // applyView is how apply shows progress: the spinner, or with stream a line
