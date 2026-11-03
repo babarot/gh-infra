@@ -22,6 +22,8 @@ func scopeResponses(visibility string) map[string][]byte {
 		"api repos/myorg/myrepo/immutable-releases":              []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/automated-security-fixes":        []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/private-vulnerability-reporting": []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/pages":                           []byte(`{"build_type": "legacy", "source": {"branch": "gh-pages", "path": "/"}}`),
+		"api repos/myorg/myrepo/branches/gh-pages":               []byte(`{"name": "gh-pages"}`),
 		// A managed list or Actions setting whose response does not parse
 		// is an error, so these answer with what GitHub does for none.
 		"label list --repo myorg/myrepo --json name,color,description --limit 1000": []byte(`[]`),
@@ -82,6 +84,10 @@ func fetchedGroups(called [][]string) []string {
 			add("automated_security_fixes")
 		case strings.Contains(c, "private-vulnerability-reporting"):
 			add("private_vulnerability_reporting")
+		case strings.HasSuffix(c, "/pages"):
+			add("pages")
+		case strings.Contains(c, "/branches/"):
+			add("pages_source_branch")
 		default:
 			add("unknown: " + c)
 		}
@@ -111,6 +117,10 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		{"vulnerability alerts", manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: yes}}, []string{"vulnerability_alerts"}},
 		{"private vulnerability reporting", manifest.RepositorySpec{Security: &manifest.Security{PrivateVulnerabilityReporting: yes}}, []string{"private_vulnerability_reporting"}},
 		{"release immutability", manifest.RepositorySpec{ReleaseImmutability: yes}, []string{"release_immutability"}},
+		{"pages", manifest.RepositorySpec{Pages: &manifest.Pages{BuildType: manifest.Ptr("workflow")}}, []string{"pages"}},
+		{"pages built from a branch", manifest.RepositorySpec{Pages: &manifest.Pages{
+			BuildType: manifest.Ptr("legacy"), Source: &manifest.PagesSource{Branch: "gh-pages"},
+		}}, []string{"pages", "pages_source_branch"}},
 		{"variables", manifest.RepositorySpec{Variables: []manifest.Variable{{Name: "V", Value: "1"}}}, []string{"variables"}},
 		{"milestones", manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1"}}}, []string{"milestones"}},
 		{"environments", manifest.RepositorySpec{Environments: []manifest.Environment{{Name: "production"}}}, []string{"environments"}},
@@ -161,8 +171,8 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		if _, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if got := fetchedGroups(mock.Called); len(got) != 13 {
-			t.Errorf("fetched %v, want all 13 groups", got)
+		if got := fetchedGroups(mock.Called); len(got) != 14 {
+			t.Errorf("fetched %v, want all 14 groups", got)
 		}
 	})
 }

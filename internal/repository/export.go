@@ -25,6 +25,7 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 			Topics:              r.Topics,
 			ReleaseImmutability: readPtr(r, "release_immutability", r.ReleaseImmutability),
 			Security:            exportSecurity(r),
+			Pages:               exportPages(r),
 			Features:            exportFeatures(r),
 			MergeStrategy: &manifest.MergeStrategy{
 				AllowMergeCommit:       manifest.Ptr(r.MergeStrategy.AllowMergeCommit),
@@ -224,6 +225,24 @@ func readPtr[T any](r *CurrentState, key string, v T) *T {
 		return nil
 	}
 	return manifest.Ptr(v)
+}
+
+// exportPages writes the Pages site, or nothing when there is none or it
+// could not be read. A workflow site's source is not written: GitHub keeps
+// reporting the last one, which the site does not use.
+func exportPages(r *CurrentState) *manifest.Pages {
+	if !r.Pages.Enabled || r.Unread["pages"] != nil {
+		return nil
+	}
+	p := &manifest.Pages{
+		BuildType:     manifest.Ptr(r.Pages.BuildType),
+		CNAME:         nonEmpty(r.Pages.CNAME),
+		HTTPSEnforced: manifest.Ptr(r.Pages.HTTPSEnforced),
+	}
+	if r.Pages.BuildType == manifest.PagesBuildTypeLegacy {
+		p.Source = &manifest.PagesSource{Branch: r.Pages.Source.Branch, Path: r.Pages.Source.Path}
+	}
+	return p
 }
 
 // exportSecurity writes the security settings that could be read, or none.

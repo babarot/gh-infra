@@ -117,6 +117,9 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 	if err := validateEnvironmentDependencies(desired, current); err != nil {
 		return err
 	}
+	if err := validatePagesDependencies(desired, current); err != nil {
+		return err
+	}
 
 	if current.IsNew {
 		return nil
@@ -288,6 +291,9 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffSecrets(name, desired, current, opt.ForceSecrets)...)
 	changes = append(changes, diffVariables(name, desired, current)...)
 	changes = append(changes, diffEnvironments(name, desired, current, opt.ForceSecrets)...)
+	// After the environments: enabling a workflow site lets GitHub create
+	// its github-pages environment, which a declared one then is already.
+	changes = append(changes, diffPages(name, desired, current)...)
 	changes = append(changes, diffLabels(name, desired, current, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
@@ -344,6 +350,7 @@ func CreateNotes(desired *manifest.Repository) []string {
 		notes = append(notes, "GitHub's default labels not declared here are deleted by the next plan")
 	}
 	notes = append(notes, environmentCreateNotes(desired)...)
+	notes = append(notes, pagesCreateNotes(desired)...)
 	return notes
 }
 

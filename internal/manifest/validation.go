@@ -117,7 +117,49 @@ func (r *Repository) Validate() error {
 			}
 		}
 	}
+	if err := validatePages(name, r.Spec.Pages); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validatePages checks the Pages settings as far as that needs no current
+// state.
+func validatePages(name string, p *Pages) error {
+	if p == nil {
+		return nil
+	}
+	// GitHub ignores the source of a workflow site but keeps reporting the
+	// last one, so a source is only meaningful, and required, with legacy.
+	if p.Legacy() && p.Source == nil {
+		return fmt.Errorf("%s: pages.source is required when pages.build_type is legacy", name)
+	}
+	if p.Source != nil && !p.Legacy() {
+		return fmt.Errorf("%s: pages.source can only be used with \"build_type: legacy\"", name)
+	}
+	// GitHub may store a domain in another form than it was sent in; accept
+	// only the form it reports, so a plan after apply shows no change.
+	if p.CNAME != nil && *p.CNAME != "" && !validPagesDomain(*p.CNAME) {
+		return fmt.Errorf("%s: pages.cname %q must be a lowercase domain name without a scheme, path or trailing dot (e.g. docs.example.com)", name, *p.CNAME)
+	}
+	return nil
+}
+
+func validPagesDomain(d string) bool {
+	if len(d) > 253 || !strings.Contains(d, ".") {
+		return false
+	}
+	for label := range strings.SplitSeq(d, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, c := range label {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // validateEnvironments checks the environments the manifest declares, as far

@@ -43,6 +43,8 @@ func keepUnread(imported *manifest.RepositorySpec, local manifest.RepositorySpec
 			imported.Actions = local.Actions
 		case "release_immutability":
 			imported.ReleaseImmutability = local.ReleaseImmutability
+		case "pages":
+			imported.Pages = local.Pages
 		case "features.pull_requests":
 			f := cloneOrZero(imported.Features)
 			if local.Features != nil {

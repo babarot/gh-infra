@@ -262,7 +262,7 @@ A list, the Actions settings or a setting read on its own that cannot be read (a
       ⚠ labels       could not be read (HTTP 403); left as in the manifest
 ```
 
-This applies to `labels`, `variables`, `milestones`, `rulesets`, `branch_protection`, `environments` and `actions`, to the `variables` and `deployment_branch_policy` of an environment, and to the settings read on their own: `release_immutability`, each of `security`, and `merge_strategy.allow_auto_merge`, the commit message settings and `features.pull_requests` (read together). A token without the Administration permission, for example, cannot read `release_immutability` or `security`, and they are no longer written as `false`. A list that is read and empty is still imported as none. On a private repository, GitHub does not have `fork_pr_approval`, so it is left out without a warning.
+This applies to `labels`, `variables`, `milestones`, `rulesets`, `branch_protection`, `environments` and `actions`, to the `variables` and `deployment_branch_policy` of an environment, and to the settings read on their own: `pages`, `release_immutability`, each of `security`, and `merge_strategy.allow_auto_merge`, the commit message settings and `features.pull_requests` (read together). A token without the Administration permission, for example, cannot read `release_immutability` or `security`, and they are no longer written as `false`. A list that is read and empty is still imported as none. On a private repository, GitHub does not have `fork_pr_approval`, so it is left out without a warning.
 
 ### Shared Source Files
 

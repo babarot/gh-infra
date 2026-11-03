@@ -71,3 +71,6 @@ func (s RepositorySpec) ManagesAutomatedSecurityFixes() bool {
 func (s RepositorySpec) ManagesPrivateVulnerabilityReporting() bool {
 	return s.Security != nil && s.Security.PrivateVulnerabilityReporting != nil
 }
+
+// ManagesPages reports whether the GitHub Pages site is managed.
+func (s RepositorySpec) ManagesPages() bool { return s.Pages != nil }

@@ -182,6 +182,22 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		})
 	}
 
+	var pages CurrentPages
+	if want(manifest.RepositorySpec.ManagesPages) {
+		g.Go(func() error {
+			status("fetching pages...")
+			var err error
+			pages, err = p.fetchPages(ctx, owner, name, spec)
+			if err == nil {
+				return nil
+			}
+			if !strict && (isIgnorableSubresourceError(err) || isParseError(err)) {
+				return record("pages", unreadSetting(err))
+			}
+			return fetchError(strict, "pages", owner, name, err)
+		})
+	}
+
 	var (
 		// Initialize with safe defaults so that 403/404 fallback does not
 		// produce a destructive zero-value (e.g. has_pull_requests=false).
@@ -282,6 +298,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 	repo.Milestones = milestones
 	repo.Environments = environments
 	repo.Actions = actions
+	repo.Pages = pages
 	repo.Unread = unread
 	repo.ReleaseImmutability = releaseImmutability
 	repo.MergeStrategy.MergeCommitTitle = commitMsgSettings.MergeCommitTitle
@@ -441,6 +458,69 @@ func (p *Processor) fetchReleaseImmutability(ctx context.Context, owner, name st
 		return false, err
 	}
 	return raw.Enabled, nil
+}
+
+// apiPages is a GitHub Pages site in the shape of the Pages API.
+type apiPages struct {
+	BuildType *string `json:"build_type"`
+	Source    *struct {
+		Branch string `json:"branch"`
+		Path   string `json:"path"`
+	} `json:"source"`
+	CNAME            *string `json:"cname"`
+	HTTPSEnforced    bool    `json:"https_enforced"`
+	HTTPSCertificate *struct {
+		State string `json:"state"`
+	} `json:"https_certificate"`
+}
+
+// fetchPages reads the GitHub Pages site; a 404 is the documented "no
+// site". With a spec that builds the site from a branch, it also reads
+// whether that branch exists, which enabling the site or changing its
+// source needs.
+func (p *Processor) fetchPages(ctx context.Context, owner, name string, spec *manifest.RepositorySpec) (CurrentPages, error) {
+	var cur CurrentPages
+	out, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/pages", owner, name))
+	switch {
+	case errors.Is(err, gh.ErrNotFound):
+	case err != nil:
+		return CurrentPages{}, err
+	default:
+		var raw apiPages
+		if err := json.Unmarshal(out, &raw); err != nil {
+			return CurrentPages{}, fmt.Errorf("parse response: %w", err)
+		}
+		cur.Enabled = true
+		if raw.BuildType != nil {
+			cur.BuildType = *raw.BuildType
+		}
+		if raw.Source != nil {
+			cur.Source = CurrentPagesSource{Branch: raw.Source.Branch, Path: raw.Source.Path}
+		}
+		// GitHub's older sites have no build type; they are built from
+		// their source branch.
+		if cur.BuildType == "" && raw.Source != nil {
+			cur.BuildType = manifest.PagesBuildTypeLegacy
+		}
+		if raw.CNAME != nil {
+			cur.CNAME = *raw.CNAME
+		}
+		cur.HTTPSEnforced = raw.HTTPSEnforced
+		if raw.HTTPSCertificate != nil {
+			cur.CertificateState = raw.HTTPSCertificate.State
+		}
+	}
+	if spec != nil && spec.Pages.Legacy() && spec.Pages.Source != nil {
+		_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/branches/%s", owner, name, url.PathEscape(spec.Pages.Source.Branch)))
+		switch {
+		case err == nil:
+			cur.SourceBranchExists = true
+		case errors.Is(err, gh.ErrNotFound):
+		default:
+			return CurrentPages{}, fmt.Errorf("read branch %s: %w", spec.Pages.Source.Branch, err)
+		}
+	}
+	return cur, nil
 }
 
 // fetchVulnerabilityAlerts returns whether Dependabot vulnerability alerts are
@@ -1421,6 +1501,7 @@ var permissionFor = map[string]string{
 	"vulnerability alerts":     "Administration",
 	"automated security fixes": "Administration",
 	"actions settings":         "Administration",
+	"pages":                    "Pages",
 }
 
 // fetchError wraps a failed fetch of what. A 403 on a managed resource says

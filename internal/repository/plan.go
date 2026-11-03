@@ -86,6 +86,11 @@ func (p *Processor) Plan(ctx context.Context, repos []*manifest.Repository, opts
 			tracker.Error(fullName, err)
 			return repoResult{index: idx, repo: r, err: err, fatal: true}
 		}
+		if err := p.checkPagesPlan(ctx, r, current, changes); err != nil {
+			logger.Error("pages check failed", "repo", fullName, "err", err)
+			tracker.Error(fullName, err)
+			return repoResult{index: idx, repo: r, err: err, fatal: true}
+		}
 		// gh-infra does not change an archived repository except to unarchive
 		// it: report the repository instead of planning changes to it.
 		if err := archivedChangesError(current, changes); err != nil {

@@ -18,6 +18,15 @@ const (
 	ResourceLabel            = "Label"
 	ResourceMilestone        = "Milestone"
 	ResourceEnvironment      = "Environment"
+	ResourcePages            = "Pages"
+
+	// GitHub Pages build types.
+	PagesBuildTypeWorkflow = "workflow"
+	PagesBuildTypeLegacy   = "legacy"
+
+	// PagesSourcePathRoot is the source path of a legacy Pages site when the
+	// manifest leaves it out.
+	PagesSourcePathRoot = "/"
 
 	// Label sync mode values.
 	LabelSyncAdditive = "additive"
@@ -112,6 +121,7 @@ type RepositorySpec struct {
 	Variables           []Variable         `yaml:"variables,omitempty"         validate:"unique=name"`
 	Actions             *Actions           `yaml:"actions,omitempty"`
 	Environments        []Environment      `yaml:"environments,omitempty"`
+	Pages               *Pages             `yaml:"pages,omitempty"`
 
 	BranchProtectionSet bool `yaml:"-"`
 	EnvironmentsSet     bool `yaml:"-"`
@@ -208,6 +218,37 @@ type Security struct {
 	VulnerabilityAlerts           *bool `yaml:"vulnerability_alerts,omitempty"`
 	AutomatedSecurityFixes        *bool `yaml:"automated_security_fixes,omitempty"`
 	PrivateVulnerabilityReporting *bool `yaml:"private_vulnerability_reporting,omitempty"`
+}
+
+// Pages is the GitHub Pages site of a repository. gh-infra enables the site
+// and changes its settings; it does not disable it.
+type Pages struct {
+	BuildType *string `yaml:"build_type,omitempty" validate:"omitempty,oneof=workflow legacy"`
+	// Source is the branch and folder a legacy site is built from. A
+	// workflow site has none (GitHub still reports the last one it had).
+	Source *PagesSource `yaml:"source,omitempty"`
+	// CNAME is the custom domain; "" removes it.
+	CNAME         *string `yaml:"cname,omitempty"`
+	HTTPSEnforced *bool   `yaml:"https_enforced,omitempty"`
+}
+
+// PagesSource is the branch and folder a legacy Pages site is built from.
+type PagesSource struct {
+	Branch string `yaml:"branch"         validate:"required"`
+	Path   string `yaml:"path,omitempty" validate:"omitempty,oneof=/ /docs"`
+}
+
+// SourcePath is the folder of the source, "/" when left out.
+func (s PagesSource) SourcePath() string {
+	if s.Path == "" {
+		return PagesSourcePathRoot
+	}
+	return s.Path
+}
+
+// Legacy reports whether the manifest builds the site from a branch.
+func (p *Pages) Legacy() bool {
+	return p != nil && p.BuildType != nil && *p.BuildType == PagesBuildTypeLegacy
 }
 
 type Features struct {

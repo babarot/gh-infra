@@ -73,6 +73,9 @@ type fakeState struct {
 	// repository, besides its owner.
 	Collaborators []string
 	TeamRepos     []string
+
+	// Pages is the GitHub Pages site, nil when there is none.
+	Pages *fakePages
 }
 
 // fakeRepo holds the repository fields under their REST names.
@@ -491,6 +494,8 @@ func (f *fakeGitHub) api(body []byte, args []string) ([]byte, bool, error) {
 		return f.toggle(method, &f.s.PrivateVulnerabilityReporting, func() []byte {
 			return mustJSON(map[string]any{"enabled": f.s.PrivateVulnerabilityReporting})
 		})
+	case sub == "pages":
+		return f.apiPages(method, body)
 	case strings.HasPrefix(sub, "actions/permissions"):
 		return f.apiActions(strings.TrimPrefix(sub, "actions/permissions"), method, body)
 	case strings.HasPrefix(sub, "branches"):

@@ -271,6 +271,8 @@ During `plan`, each repository triggers the following API calls:
 | `GET /repos/{owner}/{repo}/actions/permissions/workflow` | 1 | Default workflow permissions |
 | `GET /repos/{owner}/{repo}/actions/permissions/selected-actions` | 0–1 | Only if allowed_actions = "selected" |
 | `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` | 1 | Fork PR approval setting |
+| `GET /repos/{owner}/{repo}/pages` | 0–1 | Only if the manifest declares `pages` |
+| `GET /repos/{owner}/{repo}/branches/{branch}` | 0–1 | Only with `pages.build_type: legacy`: whether its source branch exists |
 | `GET /repos/{owner}/{repo}/contents/{path}` | F | One per file (FileSet) |
 
 **Fixed cost per repo:** ~16 calls
