@@ -729,3 +729,32 @@ func TestWrite_CountsWhatItWrote(t *testing.T) {
 		t.Errorf("only skipped changes: %+v, %v", nothing, err)
 	}
 }
+
+// A single line read from GitHub (ending in a newline) is written to the
+// entry the change names, even when an earlier entry holds the same text.
+func TestWrite_WriteInlineSingleLineToTheEntry(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+	src := "apiVersion: gh-infra/v1\nkind: FileSet\nmetadata:\n  owner: org\nspec:\n  files:\n    - path: a.txt\n      content: mit\n    - path: b.txt\n      content: mit\n"
+	if err := os.WriteFile(manifestPath, []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	plan := &Result{ManifestEdits: map[string][]byte{}, FileChanges: []Change{{
+		Type:         fileset.ChangeUpdate,
+		WriteMode:    WriteInline,
+		ManifestPath: manifestPath,
+		YAMLPath:     "$.spec.files[1].content",
+		Desired:      "apache\n",
+	}}}
+	if _, err := Write(plan); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(src, "    - path: b.txt\n      content: mit\n", "    - path: b.txt\n      content: |\n        apache\n", 1)
+	if string(got) != want {
+		t.Errorf("manifest =\n%s\nwant\n%s", got, want)
+	}
+}

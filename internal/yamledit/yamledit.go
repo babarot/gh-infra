@@ -5,10 +5,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
 	"github.com/goccy/go-yaml/parser"
+	"github.com/goccy/go-yaml/token"
 )
 
 // Set replaces the node at yamlPath in the given document.
@@ -30,123 +33,297 @@ func Set(data []byte, docIndex int, yamlPath string, value any, opts ...goyaml.E
 	return ctx.bytes(), nil
 }
 
-// SetLiteral replaces the node at yamlPath, rendering multiline strings as a
-// literal block scalar (`|`).
+// SetLiteral replaces the scalar at yamlPath with content, as a literal block
+// scalar (`|`) when content has more than one line and can be held by one,
+// and as a plain or quoted scalar otherwise.
 //
-// goccy/go-yaml's ReplaceWithNode corrupts literal block scalars because
-// MappingValueNode.Replace adjusts Position.Column via AddColumn but
-// LiteralNode.String() uses the raw Origin text, ignoring Position entirely.
-// This causes characters to be eaten from the beginning of each content line.
-// See https://github.com/goccy/go-yaml/issues/636 for details.
-//
-// A fix has been submitted upstream (https://github.com/goccy/go-yaml/pull/864).
-// Once merged, this workaround (replaceLiteralContent / replaceWithLiteralBlock)
-// can be removed and SetLiteral can delegate to Set with UseLiteralStyleIfMultiline.
+// The value is replaced in place in the bytes, at the position the parser
+// gives for the node, so the rest of the file stays byte for byte as it was:
+// re-rendering the document (as Set does) would reformat other values, and
+// goccy/go-yaml's ReplaceWithNode corrupts literal block scalars
+// (https://github.com/goccy/go-yaml/issues/636). An anchor on the value
+// and a comment after it are kept. A value that cannot be located, or
+// written so that it reads back as content, is an error.
 func SetLiteral(data []byte, docIndex int, yamlPath string, content string) ([]byte, error) {
 	ctx, err := newPathContext(data, docIndex, yamlPath)
 	if err != nil {
 		return nil, err
 	}
-	node, err := ctx.path.ReadNode(ctx.tmpFile())
+	node, err := ctx.path.FilterNode(ctx.targetDoc.Body)
 	if err != nil {
 		return nil, err
 	}
-
-	if ln, ok := node.(*ast.LiteralNode); ok {
-		return replaceLiteralContent(data, ln, content)
+	if node == nil {
+		return nil, fmt.Errorf("yamledit: %q not found in doc %d", yamlPath, docIndex)
 	}
-
-	// Single-line content doesn't need a literal block scalar, and
-	// ReplaceWithNode handles plain/quoted scalars correctly.
-	if len(strings.Split(strings.TrimRight(content, "\n"), "\n")) <= 1 {
-		return Set(data, docIndex, yamlPath, content)
+	flow := inFlow(ctx.targetDoc.Body, node, false)
+	for {
+		switch n := node.(type) {
+		case *ast.AnchorNode:
+			node = n.Value
+			continue
+		case *ast.TagNode:
+			node = n.Value
+			continue
+		}
+		break
 	}
+	text := string(data)
+	start, err := offsetOf(text, node.GetToken().Position)
+	if err != nil {
+		return nil, fmt.Errorf("yamledit: %q: %w", yamlPath, err)
+	}
+	lineStart := strings.LastIndex(text[:start], "\n") + 1
 
-	// For non-LiteralNode (StringNode etc.) with multiline content, replace
-	// the entire node with a literal block scalar via direct byte replacement.
-	// Using ReplaceWithNode would corrupt the content (see replaceLiteralContent comment).
-	return replaceWithLiteralBlock(data, node, content)
+	// The old value runs from start to end, which is past the newline
+	// ending its last line (or the end of the file). rest is the remainder
+	// of its first line after it (a comment), and blank is the number of
+	// blank lines a block scalar ends with, written back as empty lines.
+	var end, blank int
+	rest := ""
+	switch n := node.(type) {
+	case *ast.AliasNode:
+		// Writing here would change what every other alias of the anchor
+		// reads too.
+		return nil, fmt.Errorf("yamledit: %q is an alias", yamlPath)
+	case *ast.LiteralNode:
+		header := strings.Trim(n.GetToken().Origin, yamlSpace)
+		if !strings.HasPrefix(text[start:], header) {
+			return nil, fmt.Errorf("yamledit: %q: cannot locate block scalar", yamlPath)
+		}
+		headerEnd := lineEnd(text, start)
+		rest = text[start+len(header) : headerEnd]
+		end = min(headerEnd+1, len(text))
+		lines, blankLines := blockLines(n.Value.GetToken().Origin)
+		if !strings.HasPrefix(text[end:], lines) {
+			return nil, fmt.Errorf("yamledit: %q: cannot locate block scalar", yamlPath)
+		}
+		end += len(lines)
+		blank = blankLines
+		// Spaces at the end of the file are a last blank line of the
+		// block, not the indentation of a line after it.
+		if end < len(text) && strings.Trim(text[end:], " \t") == "" {
+			end = len(text)
+			blank++
+		}
+	default:
+		if _, ok := node.(ast.ScalarNode); !ok {
+			return nil, fmt.Errorf("yamledit: %q is not a scalar", yamlPath)
+		}
+		value := strings.Trim(node.GetToken().Origin, yamlSpace)
+		if !strings.HasPrefix(text[start:], value) {
+			return nil, fmt.Errorf("yamledit: %q: cannot locate scalar", yamlPath)
+		}
+		rest = text[start+len(value) : lineEnd(text, start+len(value))]
+		end = min(start+len(value)+len(rest)+1, len(text))
+	}
+	after := strings.Repeat("\n", blank) + text[end:]
+
+	var out string
+	if block, ok := literalBlockFor(content, flow); ok {
+		header, body := block(strings.Repeat(" ", keyColumn(text[lineStart:start])+2))
+		out = text[:start] + header + rest + "\n" + body + after
+	} else {
+		scalar, err := scalarFor(content, flow)
+		if err != nil {
+			return nil, fmt.Errorf("yamledit: %q: %w", yamlPath, err)
+		}
+		out = text[:start] + scalar + rest + "\n" + after
+	}
+	// What was written must read back as content; never leave a file that
+	// does not.
+	if got, err := readValue([]byte(out), docIndex, ctx.path); err != nil || got != content {
+		return nil, fmt.Errorf("yamledit: %q: cannot write the value so that it reads back the same", yamlPath)
+	}
+	return []byte(out), nil
 }
 
-// replaceLiteralContent replaces a literal block scalar's content directly in
-// the byte stream, avoiding goccy/go-yaml's broken ReplaceWithNode for block scalars.
-// TODO: remove once https://github.com/goccy/go-yaml/pull/864 is merged.
-func replaceLiteralContent(data []byte, ln *ast.LiteralNode, newContent string) ([]byte, error) {
-	origin := ln.Value.GetToken().Origin
-	idx := strings.Index(string(data), origin)
-	if idx < 0 {
-		return nil, fmt.Errorf("yamledit: cannot locate literal block content in source")
+// readValue reads the value at path in document docIndex of data.
+func readValue(data []byte, docIndex int, path *goyaml.Path) (any, error) {
+	_, doc, err := parseDocument(data, docIndex)
+	if err != nil {
+		return nil, err
 	}
-
-	// Detect indentation from the original content lines
-	indent := ""
-	for line := range strings.SplitSeq(origin, "\n") {
-		trimmed := strings.TrimLeft(line, " \t")
-		if trimmed != "" {
-			indent = line[:len(line)-len(trimmed)]
-			break
-		}
+	node, err := path.FilterNode(doc.Body)
+	if err != nil || node == nil {
+		return nil, fmt.Errorf("not found")
 	}
-
-	// Build replacement with same indentation
-	lines := strings.Split(strings.TrimRight(newContent, "\n"), "\n")
-	var sb strings.Builder
-	for _, line := range lines {
-		sb.WriteString(indent)
-		sb.WriteString(line)
-		sb.WriteString("\n")
+	var v any
+	if err := goyaml.NodeToValue(node, &v); err != nil {
+		return nil, err
 	}
-	// Preserve trailing whitespace from original (indent before next key)
-	parts := strings.Split(origin, "\n")
-	sb.WriteString(parts[len(parts)-1])
-
-	result := string(data[:idx]) + sb.String() + string(data[idx+len(origin):])
-	return []byte(result), nil
+	return v, nil
 }
 
-// replaceWithLiteralBlock replaces any scalar node with a literal block scalar
-// via direct byte replacement. This avoids ReplaceWithNode which corrupts
-// LiteralNode content due to an AddColumn/Origin mismatch in goccy/go-yaml.
-// TODO: remove once https://github.com/goccy/go-yaml/pull/864 is merged.
-func replaceWithLiteralBlock(data []byte, node ast.Node, newContent string) ([]byte, error) {
-	origin := node.GetToken().Origin
-	idx := strings.Index(string(data), origin)
-	if idx < 0 {
-		return nil, fmt.Errorf("yamledit: cannot locate node origin in source")
-	}
+// yamlSpace is the white space YAML separates tokens with: unlike
+// strings.TrimSpace, it leaves other Unicode spaces, which are content.
+const yamlSpace = " \t\r\n"
 
-	// The Origin may have leading whitespace (e.g., " " between "- " and the
-	// value in a sequence). Preserve it so the replacement stays syntactically
-	// valid (e.g., "- |" not "-|").
-	leadingSpace := ""
-	for i, c := range origin {
-		if c != ' ' && c != '\t' {
-			leadingSpace = origin[:i]
-			break
+// blockLines returns the lines of a block scalar's text in the file, each
+// with its newline, and how many of them are blank (spaces only) at the end.
+// The parser's text runs on to the indentation of the line after the block,
+// which is not one of its lines.
+func blockLines(origin string) (string, int) {
+	if i := strings.LastIndex(origin, "\n"); i >= 0 && strings.Trim(origin[i+1:], " \t") == "" {
+		origin = origin[:i+1]
+	}
+	blank := 0
+	for line := range strings.SplitSeq(strings.TrimSuffix(origin, "\n"), "\n") {
+		if strings.Trim(line, " \t") == "" {
+			blank++
+		} else {
+			blank = 0
 		}
 	}
-
-	// Determine content indentation by looking at the line containing this node.
-	// For `content: old-a`, the key indent is the number of leading spaces before
-	// `content:`. Content lines inside a literal block are indented key_indent + 2.
-	lineStart := strings.LastIndex(string(data[:idx]), "\n") + 1
-	line := string(data[lineStart:idx])
-	keyIndent := len(line) - len(strings.TrimLeft(line, " \t"))
-	contentIndent := strings.Repeat(" ", keyIndent+2)
-
-	// Build literal block scalar: "<leading>|\n" + indented content lines
-	lines := strings.Split(strings.TrimRight(newContent, "\n"), "\n")
-	var sb strings.Builder
-	sb.WriteString(leadingSpace)
-	sb.WriteString("|\n")
-	for _, line := range lines {
-		sb.WriteString(contentIndent)
-		sb.WriteString(line)
-		sb.WriteString("\n")
+	if origin == "" {
+		blank = 0
 	}
+	return origin, blank
+}
 
-	result := string(data[:idx]) + sb.String() + string(data[idx+len(origin):])
-	return []byte(result), nil
+// offsetOf returns the byte offset in text of a parser position (1-based
+// line, and column in characters).
+func offsetOf(text string, pos *token.Position) (int, error) {
+	at := 0
+	for line := 1; line < pos.Line; line++ {
+		i := strings.IndexByte(text[at:], '\n')
+		if i < 0 {
+			return 0, fmt.Errorf("line %d is past the end", pos.Line)
+		}
+		at += i + 1
+	}
+	for col := 1; col < pos.Column; col++ {
+		if at >= len(text) || text[at] == '\n' {
+			return 0, fmt.Errorf("column %d is past the end of line %d", pos.Column, pos.Line)
+		}
+		_, size := utf8.DecodeRuneInString(text[at:])
+		at += size
+	}
+	return at, nil
+}
+
+// lineEnd returns the offset of the newline ending the line at i, or the
+// end of text.
+func lineEnd(text string, i int) int {
+	if j := strings.IndexByte(text[i:], '\n'); j >= 0 {
+		return i + j
+	}
+	return len(text)
+}
+
+// inFlow reports whether target is inside a flow mapping or sequence
+// under node, where a block scalar cannot be written.
+func inFlow(node, target ast.Node, flow bool) bool {
+	if node == nil {
+		return false
+	}
+	if node == target {
+		return flow
+	}
+	switch n := node.(type) {
+	case *ast.MappingNode:
+		for _, v := range n.Values {
+			if inFlow(v, target, flow || n.IsFlowStyle) {
+				return true
+			}
+		}
+	case *ast.MappingValueNode:
+		return inFlow(n.Value, target, flow)
+	case *ast.SequenceNode:
+		for _, v := range n.Values {
+			if inFlow(v, target, flow || n.IsFlowStyle) {
+				return true
+			}
+		}
+	case *ast.AnchorNode:
+		return inFlow(n.Value, target, flow)
+	case *ast.TagNode:
+		return inFlow(n.Value, target, flow)
+	}
+	return false
+}
+
+// keyColumn returns the column of the key on a line up to its value, e.g.
+// 4 for "  - content: " and 6 for "      content: ".
+func keyColumn(line string) int {
+	i := 0
+	for i < len(line) {
+		switch {
+		case line[i] == ' ':
+			i++
+		case line[i] == '-' && i+1 < len(line) && line[i+1] == ' ':
+			i += 2
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+// literalBlockFor returns a function writing content as a literal block
+// with its lines indented by indent, or false when a literal block cannot
+// hold content as it is: in a flow collection, without a newline, with a
+// first line starting with whitespace (it would be read as indentation), with
+// a carriage return or another control character YAML does not keep, with
+// more than one trailing newline (keeping them would also take in blank
+// lines that follow the value), or without a trailing newline but with
+// whitespace at the end.
+func literalBlockFor(content string, flow bool) (func(indent string) (string, string), bool) {
+	text := strings.TrimSuffix(content, "\n")
+	if flow || text == "" || !strings.Contains(content, "\n") || strings.HasSuffix(text, "\n") {
+		return nil, false
+	}
+	if first := strings.TrimLeft(text, "\n"); strings.HasPrefix(first, " ") || strings.HasPrefix(first, "\t") {
+		return nil, false
+	}
+	for _, r := range text {
+		if r != '\n' && r != '\t' && r != ' ' && !unicode.IsPrint(r) {
+			return nil, false
+		}
+	}
+	if !utf8.ValidString(text) {
+		return nil, false
+	}
+	header := "|"
+	if text == content {
+		// goccy/go-yaml strips trailing spaces from the last line of a
+		// strip-chomped block when it reads it back.
+		if strings.HasSuffix(text, " ") || strings.HasSuffix(text, "\t") {
+			return nil, false
+		}
+		header = "|-"
+	}
+	return func(indent string) (string, string) {
+		var b strings.Builder
+		for line := range strings.SplitSeq(text, "\n") {
+			if line != "" {
+				b.WriteString(indent + line)
+			}
+			b.WriteString("\n")
+		}
+		return header, b.String()
+	}, true
+}
+
+// scalarFor returns content as a plain scalar when goccy/go-yaml writes one
+// that reads back as content, and as a double-quoted scalar otherwise.
+func scalarFor(content string, flow bool) (string, error) {
+	if !utf8.ValidString(content) {
+		return "", fmt.Errorf("content is not valid UTF-8")
+	}
+	// goccy/go-yaml drops a tab in a plain scalar when it reads it back,
+	// and writes some control characters unquoted.
+	plain := !flow && !strings.ContainsFunc(content, func(r rune) bool { return r == '\t' || !unicode.IsPrint(r) && r != ' ' })
+	if plain {
+		if b, err := goyaml.Marshal(content); err == nil {
+			s := strings.TrimSuffix(string(b), "\n")
+			var back any
+			if !strings.Contains(s, "\n") && goyaml.Unmarshal([]byte(s), &back) == nil && back == content {
+				return s, nil
+			}
+		}
+	}
+	return strconv.Quote(content), nil
 }
 
 // Merge merges a mapping node at yamlPath in the given document. This is useful
