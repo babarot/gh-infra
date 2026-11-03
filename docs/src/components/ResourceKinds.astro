@@ -1,0 +1,123 @@
+---
+// The four resource kinds as the 2×2 grid of resources/overview.md:
+// settings or files, one repository or many.
+const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+
+const rows = [
+  {
+    label: 'Settings',
+    cells: [
+      { kind: 'Repository', href: 'resources/repository/', desc: 'Settings, labels, rulesets and branch protection for one repository.' },
+      { kind: 'RepositorySet', href: 'resources/repository-set/', desc: 'Shared defaults across repositories, with per-repository overrides.' },
+    ],
+  },
+  {
+    label: 'Files',
+    cells: [
+      { kind: 'File', href: 'resources/file/', desc: 'Files one repository should contain.' },
+      { kind: 'FileSet', href: 'resources/fileset/', desc: 'The same files across repositories, pushed or sent as a pull request.' },
+    ],
+  },
+];
+---
+<div class="kinds not-content" role="table" aria-label="Resource kinds">
+  <div class="row head" role="row">
+    <span role="columnheader"></span>
+    <span role="columnheader">1 repository</span>
+    <span role="columnheader">N repositories</span>
+  </div>
+  {
+    rows.map((row) => (
+      <div class="row" role="row">
+        <span class="label" role="rowheader">{row.label}</span>
+        {row.cells.map((c) => (
+          <a class="cell" role="cell" href={`${base}/${c.href}`}>
+            <code>{c.kind}</code>
+            <span class="desc">{c.desc}</span>
+          </a>
+        ))}
+      </div>
+    ))
+  }
+</div>
+
+<style>
+  .kinds {
+    overflow: hidden;
+    border: 1px solid var(--gi-line);
+    border-radius: 12px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 8.75rem repeat(2, minmax(0, 1fr));
+  }
+
+  .row + .row {
+    border-top: 1px solid var(--gi-line);
+  }
+
+  .row > * {
+    padding: 1.125rem 1.25rem;
+  }
+
+  .row > * + * {
+    border-left: 1px solid var(--gi-line);
+  }
+
+  .head > * {
+    padding-block: 0.75rem;
+    background: var(--gi-bg2);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    color: var(--gi-fg3);
+  }
+
+  .label {
+    display: flex;
+    align-items: center;
+    background: var(--gi-bg2);
+    font-size: 0.84375rem;
+    font-weight: 500;
+    color: var(--gi-fg2);
+  }
+
+  .cell {
+    display: block;
+    text-decoration: none;
+  }
+
+  .cell:hover {
+    background: var(--gi-bg2);
+  }
+
+  code {
+    font-family: var(--__sl-font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--gi-fg);
+  }
+
+  .desc {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--gi-fg2);
+  }
+
+  @media (max-width: 50rem) {
+    .row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .head {
+      display: none;
+    }
+
+    .row > * + * {
+      border-left: 0;
+      border-top: 1px solid var(--gi-line);
+    }
+  }
+</style>

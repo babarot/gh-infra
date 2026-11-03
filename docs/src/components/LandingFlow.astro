@@ -1,0 +1,115 @@
+---
+// The import → plan → apply steps on the landing page.
+import Window from './Window.astro';
+
+const steps = [
+  {
+    title: 'Import',
+    note: 'get the current settings',
+    command: 'gh infra import',
+    html: `<span class="t-dim">$</span> <span class="t-w">gh infra import babarot/my-project \\</span>
+<span class="t-w">    &gt; repos/my-project.yaml</span>
+
+<span class="t-key">apiVersion:</span> <span class="t-w">gh-infra/v1</span>
+<span class="t-key">kind:</span> <span class="t-w">Repository</span>
+<span class="t-dim">...</span>`,
+  },
+  {
+    title: 'Plan',
+    note: 'edit the YAML, see the diff',
+    command: 'gh infra plan',
+    html: `  <span class="t-chg">~</span> <span class="t-w">babarot/my-project</span>
+      <span class="t-chg">~</span> features.wiki  true <span class="t-dim">→</span> <span class="t-w">false</span>
+      <span class="t-chg">~</span> topics  [] <span class="t-dim">→</span> <span class="t-w">[go, cli]</span>
+
+Plan: <span class="t-chg">~</span> 2 to update`,
+  },
+  {
+    title: 'Apply',
+    note: 'make exactly those changes',
+    command: 'gh infra apply',
+    html: `<span class="t-add">✓</span> babarot/my-project  <span class="t-dim">2 applied</span>
+
+<span class="t-dim">$</span> <span class="t-w">gh infra plan ./repos/</span>
+No changes. Infrastructure is up-to-date.`,
+  },
+];
+---
+<ol class="flow not-content">
+  {
+    steps.map((s, i) => (
+      <li>
+        <div class="step-h">
+          <span class="n" aria-hidden="true">{i + 1}</span>
+          <h3>{s.title}</h3>
+          <span class="note">{s.note}</span>
+        </div>
+        <Window title={s.command} html={s.html} />
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+  }
+
+  li > :global(.gi-win) {
+    flex: 1;
+  }
+
+  li :global(.gi-win-body) {
+    font-size: 0.765rem;
+  }
+
+  .step-h {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .n {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 1px solid var(--gi-line2);
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--gi-fg);
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--gi-fg);
+  }
+
+  .note {
+    font-size: 0.875rem;
+    color: var(--gi-fg3);
+  }
+
+  @media (max-width: 50rem) {
+    .flow {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2rem;
+    }
+  }
+</style>

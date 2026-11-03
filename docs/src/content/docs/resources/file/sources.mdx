@@ -4,6 +4,8 @@ sidebar:
   order: 1
 ---
 
+import { FileTree } from '@astrojs/starlight/components';
+
 Each file entry specifies **where the content comes from** via `content` (inline) or `source` (external). There are four source types.
 
 ## Inline Content
@@ -97,13 +99,13 @@ files:
 
 For example, if `workflows/` in the source repo contains:
 
-```
-workflows/
-├── ci.yaml
-├── release.yaml
-└── checks/
-    └── lint.yaml
-```
+<FileTree>
+- workflows/
+  - ci.yaml
+  - release.yaml
+  - checks/
+    - lint.yaml
+</FileTree>
 
 This creates `.github/workflows/ci.yaml`, `.github/workflows/release.yaml`, and `.github/workflows/checks/lint.yaml` in the target repo.
 

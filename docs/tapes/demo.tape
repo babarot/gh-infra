@@ -5,6 +5,8 @@
 #
 # This tape uses a mock gh CLI (mock-gh) to simulate GitHub API responses.
 # gh-infra runs for real — spinners, diffs, and colors are all genuine.
+#
+# demo-site.tape records the same steps in the docs site's colors; keep them in sync.
 
 Output demo.gif
 Output demo.mp4

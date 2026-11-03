@@ -1,0 +1,18 @@
+---
+// A titled panel for terminal output and files on the landing page.
+// Pass the highlighted output as `html` (rendered in a <pre>), or put other
+// content (an image, a custom layout) in the slot. The colors of the spans
+// inside (t-*) and the changed-line marker (ln-chg) are in custom.css.
+interface Props {
+  title?: string;
+  html?: string;
+  class?: string;
+}
+
+const { title, html, class: className } = Astro.props;
+---
+
+<div class:list={['gi-win', className]}>
+  {title && <div class="gi-win-title">{title}</div>}
+  {html !== undefined ? <pre class="gi-win-body"><code set:html={html} /></pre> : <slot />}
+</div>

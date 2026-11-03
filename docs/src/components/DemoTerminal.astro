@@ -1,90 +1,42 @@
 ---
-// Terminal-styled container for demo GIF with light/dark theme support.
+// Panel for a demo GIF, with a light-theme variant.
 // Usage: <DemoTerminal /> or <DemoTerminal darkSrc="/demo-apply.gif" />
+// The default GIFs are recorded in the site's colors (docs/tapes/demo-site*.tape);
+// README uses demo.gif and demo-light.gif, recorded in the original colors.
+import Window from './Window.astro';
+
 interface Props {
   darkSrc?: string;
   lightSrc?: string;
   alt?: string;
+  title?: string;
 }
 
 const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
-const { darkSrc, lightSrc, alt = 'gh-infra demo' } = Astro.props;
-const darkUrl = darkSrc || `${base}/demo.gif`;
-const lightUrl = lightSrc || `${base}/demo-light.gif`;
+const { darkSrc, lightSrc, alt = 'gh-infra demo', title = '~/repos' } = Astro.props;
+const darkUrl = darkSrc || `${base}/demo-site.gif`;
+const lightUrl = lightSrc || `${base}/demo-site-light.gif`;
 const hasLight = !!lightSrc || !darkSrc;
 ---
-<div class="demo-terminal">
-  <div class="terminal-chrome">
-    <span class="dot red"></span>
-    <span class="dot yellow"></span>
-    <span class="dot green"></span>
-  </div>
-  <img
-    src={darkUrl}
-    alt={alt}
-    class:list={['demo-gif', { 'demo-dark': hasLight }]}
-    loading="eager"
-  />
-  {hasLight && (
-    <img
-      src={lightUrl}
-      alt={alt}
-      class="demo-gif demo-light"
-      loading="eager"
-    />
-  )}
-</div>
+<Window title={title} class="demo-terminal not-content">
+  <img src={darkUrl} alt={alt} class:list={['demo-gif', { 'demo-dark': hasLight }]} loading="eager" />
+  {hasLight && <img src={lightUrl} alt={alt} class="demo-gif demo-light" loading="eager" />}
+</Window>
 
 <style>
-  .demo-terminal {
-    max-width: 720px;
-    margin: 2rem auto 2rem;
-    background: #16161e;
-    border-radius: 10px;
-    border: 1px solid #292e42;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-    overflow: hidden;
+  :global(.demo-terminal) {
+    margin-block: 2rem;
   }
-
-  .terminal-chrome {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 14px;
-    background: #1a1b27;
-  }
-
-  .dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
-  .dot.red { background: #f7768e; }
-  .dot.yellow { background: #e0af68; }
-  .dot.green { background: #9ece6a; }
 
   .demo-gif {
-    width: 100%;
     display: block;
+    width: 100%;
+    height: auto;
     margin: 0;
-    padding: 0;
-    vertical-align: bottom;
   }
 
   .demo-light {
     display: none;
-  }
-
-  /* Light theme */
-  :global([data-theme='light']) .demo-terminal {
-    background: #e9e9ed;
-    border-color: #c4c8da;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
-  }
-
-  :global([data-theme='light']) .terminal-chrome {
-    background: #d5d6db;
-    border-color: #c4c8da;
   }
 
   :global([data-theme='light']) .demo-dark {

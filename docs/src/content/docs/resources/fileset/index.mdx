@@ -5,10 +5,11 @@ sidebar:
   order: 0
 ---
 
+import { FileTree } from '@astrojs/starlight/components';
+
 `FileSet` distributes **files** to **multiple** repositories with shared defaults. Use this when you have many repos that should contain identical files and want to avoid repeating the same configuration in every file. Each repository in the set receives the same files and can override specific ones.
 
-:::tip[Example]
-```yaml
+```yaml title="Example"
 apiVersion: gh-infra/v1
 kind: FileSet
 metadata:
@@ -40,7 +41,6 @@ spec:
   via: push
   commit_message: "ci: sync shared files"
 ```
-:::
 
 ## Metadata
 
@@ -70,13 +70,13 @@ All settings available in [File](../file/) — file sources, templating, reconci
 
 Suppose you manage 20 repositories that all need the same CODEOWNERS, LICENSE, and CI workflows. With individual `File` resources, you'd repeat those file definitions in every manifest:
 
-```
-repos/
-├── my-cli-files.yaml          # CODEOWNERS, LICENSE, ci.yml...
-├── dotfiles-files.yaml       # same CODEOWNERS, LICENSE, ci.yml...
-├── blog-files.yaml    # same CODEOWNERS, LICENSE, ci.yml...
-└── ... (17 more files with the same content)
-```
+<FileTree>
+- repos/
+  - my-cli-files.yaml CODEOWNERS, LICENSE, ci.yml...
+  - dotfiles-files.yaml same CODEOWNERS, LICENSE, ci.yml...
+  - blog-files.yaml same CODEOWNERS, LICENSE, ci.yml...
+  - … 17 more files with the same content
+</FileTree>
 
 When you need to change a shared file — say, update the CODEOWNERS to add a new team member — you have to edit all 20 files. Miss one, and your repos drift out of sync.
 

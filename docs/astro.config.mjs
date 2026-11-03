@@ -6,7 +6,8 @@ export default defineConfig({
   site: process.env.SITE_URL || 'http://localhost:4321',
   base: process.env.BASE_PATH || '/',
   integrations: [
-    mermaid(),
+    // Node and edge colors are overridden in custom.css to match the site.
+    mermaid({ mermaidConfig: { fontFamily: "'Geist Sans', sans-serif" } }),
     starlight({
       title: 'gh-infra',
       description: 'Declarative GitHub infrastructure management via YAML',
@@ -16,8 +17,24 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/babarot/gh-infra/edit/main/docs/',
       },
+      logo: {
+        dark: './src/assets/logo-dark.svg',
+        light: './src/assets/logo-light.svg',
+      },
       pagination: false,
-      customCss: ['./src/styles/custom.css'],
+      components: {
+        Hero: './src/components/Hero.astro',
+        PageTitle: './src/components/PageTitle.astro',
+        ThemeSelect: './src/components/ThemeSelect.astro',
+      },
+      customCss: [
+        '@fontsource/geist-sans/400.css',
+        '@fontsource/geist-sans/500.css',
+        '@fontsource/geist-sans/600.css',
+        '@fontsource/geist-mono/400.css',
+        '@fontsource/geist-mono/500.css',
+        './src/styles/custom.css',
+      ],
       sidebar: [
         { label: 'Introduction', items: [{ autogenerate: { directory: 'introduction' } }] },
         {

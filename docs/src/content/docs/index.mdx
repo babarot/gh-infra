@@ -3,147 +3,41 @@ title: gh-infra
 description: Declarative GitHub infrastructure management via YAML
 template: splash
 hero:
+  title: Declarative GitHub infrastructure
   tagline: >
-    Declarative GitHub infrastructure.<br>
-    No state file. No HCL. Just YAML.
+    Manage repository settings, labels, rulesets and files in YAML.
+    Review the changes with <code>plan</code>, then <code>apply</code> exactly those.
+    No state file, no HCL.
   actions:
     - text: Get Started
       link: ./introduction/getting-started/
-      icon: right-arrow
+      variant: primary
     - text: View on GitHub
       link: https://github.com/babarot/gh-infra
-      icon: external
-      variant: minimal
+      variant: secondary
 ---
 
-import InstallBox from '../../components/InstallBox.astro';
-import HeroTerminal from '../../components/HeroTerminal.astro';
-import CodeShowcase from '../../components/CodeShowcase.astro';
-import Features from '../../components/Features.astro';
-import CapabilityGrid from '../../components/CapabilityGrid.astro';
-import FadeIn from '../../components/FadeIn.astro';
+import LandingFlow from '../../components/LandingFlow.astro';
+import Principles from '../../components/Principles.astro';
+import ResourceKinds from '../../components/ResourceKinds.astro';
 
-<HeroTerminal />
+<div class="landing-section not-content">
+  <h2>From an existing repository to YAML you review</h2>
+  <p>Start from what is on GitHub today. Every later change goes through a plan.</p>
 
-<FadeIn>
-<div class="landing-section" style="text-align: center;">
-  <h2 class="narrative-heading">Get started in seconds.</h2>
-  <InstallBox />
+  <LandingFlow />
 </div>
-</FadeIn>
 
-export const importLeft = `<span class="hl-prompt">$</span> <span class="hl-cmd">gh infra import</span> babarot/my-project
+<div class="landing-section not-content">
+  <h2>Built for plan-only review</h2>
+  <p>A pull request shows the plan, and merging it runs apply. Nobody watches the apply, so three rules keep the plan honest.</p>
 
-<span class="hl-comment"># Exports current repo settings to YAML</span>`;
-
-export const importRight = `<span class="hl-key">apiVersion:</span> gh-infra/v1
-<span class="hl-key">kind:</span> Repository
-<span class="hl-key">metadata:</span>
-  <span class="hl-key">name:</span> my-project
-  <span class="hl-key">owner:</span> babarot
-
-<span class="hl-key">spec:</span>
-  <span class="hl-key">description:</span> <span class="hl-str">"My awesome project"</span>
-  <span class="hl-key">visibility:</span> public
-  <span class="hl-key">features:</span>
-    <span class="hl-key">wiki:</span> true
-    <span class="hl-key">discussions:</span> false`;
-
-<FadeIn>
-<div class="landing-section">
-  <h2 class="narrative-heading">Import what you already have.</h2>
-  <p class="narrative-sub">Point it at a repo. Get YAML back. No manual writing needed.</p>
-
-  <CodeShowcase
-    leftTitle="terminal"
-    rightTitle="repos/my-project.yaml"
-    leftHtml={importLeft}
-    rightHtml={importRight}
-  />
+  <Principles />
 </div>
-</FadeIn>
 
-export const planLeft = `<span class="hl-key">apiVersion:</span> gh-infra/v1
-<span class="hl-key">kind:</span> Repository
-<span class="hl-key">metadata:</span>
-  <span class="hl-key">name:</span> my-project
-  <span class="hl-key">owner:</span> babarot
+<div class="landing-section not-content">
+  <h2>Four resource kinds</h2>
+  <p>Manage one repository in detail, or share configuration across many.</p>
 
-<span class="hl-key">spec:</span>
-  <span class="hl-key">description:</span> <span class="hl-str">"My awesome project"</span>
-  <span class="hl-key">visibility:</span> public
-  <span class="hl-key">features:</span>
-    <span class="hl-key">wiki:</span> <span class="hl-changed">false</span>
-    <span class="hl-key">discussions:</span> <span class="hl-changed">true</span>
-  <span class="hl-key">topics:</span>
-    - <span class="hl-changed">go</span>
-    - <span class="hl-changed">cli</span>`;
-
-export const planRight = `  <span class="hl-change">~</span> <span class="hl-repo">babarot/my-project</span>  <span class="hl-dim">2 to update</span>
-      <span class="hl-change">~</span> <span class="hl-repo">features</span>
-          <span class="hl-change">~</span> wiki         <span class="hl-old">true</span>  <span class="hl-dim">→</span> <span class="hl-new">false</span>
-          <span class="hl-change">~</span> discussions  <span class="hl-old">false</span> <span class="hl-dim">→</span> <span class="hl-new">true</span>
-      <span class="hl-change">~</span> topics  <span class="hl-old">[]</span> <span class="hl-dim">→</span> <span class="hl-new">[go, cli]</span>
-
-<span class="hl-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-
-Plan: <span class="hl-add">+</span> <span class="hl-repo">0</span> to create   <span class="hl-change">~</span> <span class="hl-repo">2</span> to update   - <span class="hl-repo">0</span> to destroy
-      <span class="hl-dim">in 1 repository</span>
-To apply, run: <span class="hl-repo">gh infra apply ./repos/</span>`;
-
-<FadeIn>
-<div class="landing-section">
-  <h2 class="narrative-heading">See every change before it lands.</h2>
-  <p class="narrative-sub">Edit the YAML. Run plan. Get a precise diff of what will change.</p>
-
-  <CodeShowcase
-    leftTitle="repos/my-project.yaml"
-    rightTitle="gh infra plan"
-    leftHtml={planLeft}
-    rightHtml={planRight}
-  />
+  <ResourceKinds />
 </div>
-</FadeIn>
-
-export const applyLeft = `<span class="hl-prompt">$</span> <span class="hl-cmd">gh infra apply</span> ./repos/
-
-<span class="hl-dim">&gt;</span> <span class="hl-dim">Apply 3 changes to 1 repository?</span> <span class="hl-new">Yes</span>`;
-
-export const applyRight = `<span class="hl-new">✓</span> Applied 3 changes in 1.2s
-
-  <span class="hl-new">✓</span> <span class="hl-repo">babarot/my-project</span>   <span class="hl-dim">1.2s  3 applied</span>
-
-<span class="hl-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-
-Apply complete! 3 changes applied.`;
-
-<FadeIn>
-<div class="landing-section">
-  <h2 class="narrative-heading">Apply with confidence.</h2>
-  <p class="narrative-sub">Confirm once. Changes apply in parallel. Done.</p>
-
-  <CodeShowcase
-    leftTitle="gh infra apply"
-    rightTitle="result"
-    leftHtml={applyLeft}
-    rightHtml={applyRight}
-  />
-</div>
-</FadeIn>
-
-<FadeIn>
-<div class="landing-section">
-  <h2 class="narrative-heading">Everything you need. Nothing you don't.</h2>
-
-  <Features />
-</div>
-</FadeIn>
-
-<FadeIn>
-<div class="landing-section">
-  <h2 class="narrative-heading">See it in action.</h2>
-  <p class="narrative-sub">Real CLI output. Real workflows.</p>
-
-  <CapabilityGrid />
-</div>
-</FadeIn>

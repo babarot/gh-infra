@@ -7,8 +7,7 @@ sidebar:
 
 `Repository` manages a **single** GitHub repository — its description, visibility, topics, labels, features, merge strategy, branch protection rules, rulesets, secrets, variables, environments, and Actions settings.
 
-:::tip[Example]
-```yaml
+```yaml title="Example"
 apiVersion: gh-infra/v1
 kind: Repository
 metadata:
@@ -70,7 +69,6 @@ spec:
       github_owned_allowed: true
       patterns_allowed: ["actions/*"]
 ```
-:::
 
 ## Metadata
 

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The gh-infra mark without its tile, for places where the tile does not fit. The site uses logo-dark.svg and logo-light.svg. -->
+  <path d="M3.5 7.5h7l7.5 8.5M3.5 24.5h7l7.5-8.5M3.5 16H28.5" fill="none" stroke="#171717" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

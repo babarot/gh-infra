@@ -1,34 +1,22 @@
 ---
-// Copyable install command with terminal styling.
+// Copyable install command.
 // Usage: <InstallBox />
+const command = 'gh extension install babarot/gh-infra';
 ---
-<div class="install-box">
-  <code class="install-cmd">
-    <span class="install-prompt">$</span> gh extension install babarot/gh-infra
-  </code>
-  <button class="install-copy" aria-label="Copy install command">
-    <svg class="install-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <g class="icon-copy-g"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
-      <g class="icon-check-g" style="display:none"><polyline points="20 6 9 17 4 12"/></g>
-    </svg>
+<div class="install-box not-content">
+  <code><span class="prompt">$</span> {command}</code>
+  <button class="install-copy" type="button" aria-label="Copy install command" data-command={command}>
+    <svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+    <svg class="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
   </button>
 </div>
 
 <script>
-  document.querySelectorAll('.install-copy').forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>('.install-copy').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const copyG = btn.querySelector('.icon-copy-g') as SVGElement;
-      const checkG = btn.querySelector('.icon-check-g') as SVGElement;
-      if (!copyG || !checkG) return;
-      navigator.clipboard.writeText('gh extension install babarot/gh-infra').then(() => {
-        copyG.style.display = 'none';
-        checkG.style.display = '';
-        (btn.querySelector('.install-icon') as SVGElement).style.color = '#9ece6a';
-        setTimeout(() => {
-          copyG.style.display = '';
-          checkG.style.display = 'none';
-          (btn.querySelector('.install-icon') as SVGElement).style.color = '';
-        }, 2000);
+      navigator.clipboard.writeText(btn.dataset.command ?? '').then(() => {
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 2000);
       });
     });
   });
@@ -38,69 +26,61 @@
   .install-box {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
-    background: #16161e;
-    border: 1px solid #292e42;
+    gap: 0.5rem;
+    max-width: 100%;
+    margin-top: 1.25rem;
+    padding: 0.375rem 0.375rem 0.375rem 0.75rem;
+    border: 1px solid var(--gi-line);
     border-radius: 8px;
-    padding: 14px 24px;
-    margin: 1.5rem auto 0;
-    cursor: pointer;
-    transition: border-color 0.2s;
+    background: var(--gi-bg2);
   }
 
-  .install-box:hover {
-    border-color: #3b4261;
-  }
-
-  .install-cmd {
-    font-family: var(--sl-font-mono, monospace);
-    font-size: 0.85rem;
-    line-height: 1;
-    color: #a9b1d6;
+  code {
+    overflow-x: auto;
+    white-space: nowrap;
+    font-family: var(--__sl-font-mono);
+    font-size: 0.8125rem;
+    color: var(--gi-fg2);
     background: none;
     padding: 0;
-    white-space: nowrap;
   }
 
-  .install-prompt {
-    color: #565f89;
+  .prompt {
+    color: var(--gi-fg3);
   }
 
   .install-copy {
-    all: unset;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 1.625rem;
+    height: 1.625rem;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gi-fg3);
     cursor: pointer;
-    color: #565f89;
-    line-height: 0;
-    transition: color 0.2s;
   }
 
   .install-copy:hover {
-    color: #a9b1d6;
+    color: var(--gi-fg);
+    background: var(--gi-accbg);
   }
 
-  /* Light theme */
-  :global([data-theme='light']) .install-box {
-    background: #e9e9ed;
-    border-color: #c4c8da;
+  svg {
+    width: 14px;
+    height: 14px;
   }
 
-  :global([data-theme='light']) .install-box:hover {
-    border-color: #b4b5b9;
+  .icon-check,
+  .copied .icon-copy {
+    display: none;
   }
 
-  :global([data-theme='light']) .install-cmd {
-    color: #3b4261;
-  }
-
-  :global([data-theme='light']) .install-prompt {
-    color: #8990b3;
-  }
-
-  :global([data-theme='light']) .install-copy {
-    color: #8990b3;
-  }
-
-  :global([data-theme='light']) .install-copy:hover {
-    color: #3b4261;
+  .copied .icon-check {
+    display: block;
+    color: var(--gi-add);
   }
 </style>
