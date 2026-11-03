@@ -131,6 +131,30 @@ header.header {
   width: auto;
 }
 
+/* On narrow screens Starlight hides the header's right group and puts the
+   theme switch in the menu footer, which the landing page (no sidebar) does
+   not have. The one-button switch fits the header, so it stays there at all
+   widths and the footer copy is hidden. */
+@media (max-width: 49.99rem) {
+  div.header > .right-group {
+    display: flex;
+  }
+
+  div.header > .right-group > .social-icons {
+    display: none;
+  }
+
+  .mobile-preferences gi-theme-toggle {
+    display: none;
+  }
+
+  /* Keep the search button next to the switch instead of mid-header. */
+  div.header > div:nth-child(2) {
+    flex: 1;
+    justify-content: flex-end;
+  }
+}
+
 /* Search sits on the right with the GitHub link and the theme switch,
    leaving the site title alone on the left. */
 @media (min-width: 50rem) {
