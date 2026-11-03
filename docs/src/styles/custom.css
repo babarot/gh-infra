@@ -351,6 +351,14 @@ starlight-toc a[aria-current='true']:focus {
   display: none;
 }
 
+/* A code block inside an aside drops its border and sits on the page
+   background, so the aside stays the only box. */
+.starlight-aside .expressive-code {
+  --ec-brdCol: transparent;
+  --ec-brdRad: 6px;
+  --ec-codeBg: var(--gi-bg);
+}
+
 /* ===== Asides ===== */
 
 .starlight-aside {
