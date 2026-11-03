@@ -45,7 +45,7 @@ const dark = neutralTheme({
   fg: '#ededed',
   key: '#a1a1a1',
   muted: '#8f8f8f',
-  comment: '#707070',
+  comment: '#808080',
   add: '#3fb950',
   del: '#f85149',
 });
@@ -57,7 +57,7 @@ const light = neutralTheme({
   fg: '#171717',
   key: '#666666',
   muted: '#7a7a7a',
-  comment: '#8f8f8f',
+  comment: '#737373',
   add: '#1a7f37',
   del: '#cf222e',
 });
