@@ -1,0 +1,47 @@
+---
+// Page title with the sidebar groups that contain the page shown above it
+// (for example "Resources / Repository").
+// Starlight links "back to top" to this id (PAGE_TITLE_ID, not exported).
+const PAGE_TITLE_ID = '_top';
+
+type Entry = { type: 'link'; isCurrent: boolean } | { type: 'group'; label: string; entries: Entry[] };
+
+function trail(entries: Entry[], path: string[] = []): string[] | undefined {
+  for (const entry of entries) {
+    if (entry.type === 'link') {
+      if (entry.isCurrent) return path;
+    } else {
+      const found = trail(entry.entries, [...path, entry.label]);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+const route = Astro.locals.starlightRoute;
+const crumbs = trail(route.sidebar as Entry[]) ?? [];
+---
+
+{crumbs.length > 0 && <p class="gi-crumbs">{crumbs.join(' / ')}</p>}
+<h1 id={PAGE_TITLE_ID}>{route.entry.data.title}</h1>
+
+<style>
+  .gi-crumbs {
+    margin: 1rem 0 0.625rem;
+    font-size: var(--sl-text-xs);
+    color: var(--gi-fg3);
+  }
+
+  h1 {
+    margin-top: 1rem;
+    font-size: var(--sl-text-h1);
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--sl-color-white);
+  }
+
+  .gi-crumbs + h1 {
+    margin-top: 0;
+  }
+</style>

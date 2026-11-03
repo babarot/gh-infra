@@ -1,0 +1,87 @@
+---
+// Splash page hero: title, tagline, actions and the install command on the
+// left, a plan output on the right. Replaces Starlight's Hero component.
+import InstallBox from './InstallBox.astro';
+import Window from './Window.astro';
+
+// Starlight links "back to top" to this id (PAGE_TITLE_ID, not exported).
+const PAGE_TITLE_ID = '_top';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero || {};
+
+const plan = `  <span class="t-chg">~</span> <span class="t-w">babarot/my-project</span>  <span class="t-dim">2 to update</span>
+      <span class="t-chg">~</span> features
+          <span class="t-chg">~</span> wiki         true  <span class="t-dim">→</span> <span class="t-w">false</span>
+          <span class="t-chg">~</span> discussions  false <span class="t-dim">→</span> <span class="t-w">true</span>
+      <span class="t-chg">~</span> topics  [] <span class="t-dim">→</span> <span class="t-w">[go, cli]</span>
+
+Plan: <span class="t-add">+</span> 0 to create  <span class="t-chg">~</span> 2 to update  <span class="t-del">-</span> 0 to destroy`;
+---
+
+<div class="gi-hero not-content">
+  <div class="copy">
+    <h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+    {tagline && <p class="tagline" set:html={tagline} />}
+    {
+      actions.length > 0 && (
+        <div class="actions">
+          {actions.map(({ link, text, variant, attrs }) => (
+            <a href={link} class:list={['gi-btn', variant === 'primary' ? 'primary' : 'secondary']} {...attrs}>
+              {text}
+            </a>
+          ))}
+        </div>
+      )
+    }
+    <InstallBox />
+  </div>
+  <Window title="gh infra plan ./repos/" html={plan} />
+</div>
+
+<style>
+  .gi-hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3.5rem;
+    align-items: center;
+    padding-block: 4rem 1rem;
+  }
+
+  h1 {
+    margin: 0 0 1rem;
+    font-size: clamp(2.125rem, 1.4rem + 2.6vw, 2.75rem);
+    line-height: 1.1;
+    letter-spacing: -0.035em;
+    font-weight: 600;
+    color: var(--gi-fg);
+  }
+
+  .tagline {
+    margin: 0 0 1.75rem;
+    max-width: 30em;
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    color: var(--gi-fg2);
+  }
+
+  .tagline :global(code) {
+    font-family: var(--__sl-font-mono);
+    font-size: 0.9em;
+    color: var(--gi-fg);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.625rem;
+  }
+
+  @media (max-width: 50rem) {
+    .gi-hero {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+      padding-block: 1.5rem 0;
+    }
+  }
+</style>
