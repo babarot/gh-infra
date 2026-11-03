@@ -69,6 +69,7 @@ func TestPlanImportEntry_WriteInline(t *testing.T) {
 		Path:    ".github/dependabot.yaml",
 		Content: "inline content",
 		// No OriginalSource → inline
+		Origin: manifest.FileOrigin{Index: 3}, // set by parse
 	}
 	doc := &manifest.FileDocument{
 		Resource: &manifest.FileSet{

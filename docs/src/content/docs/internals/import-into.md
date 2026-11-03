@@ -76,9 +76,10 @@ There are two very different reasons a file may appear as skipped.
 
 The file is still importable, but gh-infra chooses `skip` as the safest default for this run.
 
-Typical example:
+Typical examples:
 
 - `reconcile: create_only`
+- a file of a directory source that other FileSets share: it cannot be patched (see below), and writing it changes the shared file
 
 In this case:
 
@@ -100,7 +101,14 @@ Typical examples:
 
 - `github://` source
 - directory-expanded patch target that cannot be reconstructed
+- a file of an override whose `files` entry has patches, when GitHub matches the content before those patches: the override cannot remove them
 - template-backed file whose remote content cannot be safely mapped back to the original template
+
+## Where Changes Are Written
+
+Inline content and patches are written to the entry as the manifest lists it: `spec.files[i]`, or `spec.repositories[r].overrides[i]` for a file an override applies to. Positions are counted before directory sources are expanded.
+
+A file expanded from a directory source has no patch target, since the `patches` of a directory entry apply to every file in it. It can only be written to its local file or skipped.
 
 ## Template-Backed File Import
 

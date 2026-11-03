@@ -111,15 +111,15 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 	} else if inlineBacked {
 		change.ManifestPath = meta.Doc.SourcePath
 		change.DocIndex = meta.Doc.DocIndex
-		overrideIdx := findFileIndex(meta.Repo.Overrides, file.Path)
-		if overrideIdx >= 0 {
-			change.YAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d].content", meta.RepoIndex, overrideIdx)
-		} else {
-			baseIdx := findFileIndex(meta.Doc.Resource.Spec.Files, file.Path)
-			if baseIdx >= 0 {
-				change.YAMLPath = fmt.Sprintf("$.spec.files[%d].content", baseIdx)
-			}
-		}
+		change.YAMLPath = entryYAMLPath(file, meta) + ".content"
+	}
+	// Writing the source of an entry of spec.files changes it for every
+	// repository of the FileSet. A file of a directory has no patch to
+	// write instead, so the warning is given here; configurePatchTarget
+	// gives it for the others.
+	if sourceBacked && file.Origin.Dir && !file.Origin.Override && meta.RepoCount > 1 {
+		change.Warnings = append(change.Warnings,
+			fmt.Sprintf("shared manifest: affects %d repositories", meta.RepoCount))
 	}
 
 	if hasTemplateSyntax {
@@ -164,6 +164,11 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		suggestedMode = WritePatch
 	}
 	setWriteMetadata(&change, suggestedMode, availableModes...)
+	if sourceBacked && !patchSupported && meta.Shared {
+		// Without a patch, writing would change a source other FileSets
+		// use too, so it is left to the user to choose.
+		change.DefaultSkipReason = "shared source of a directory"
+	}
 
 	// Fetch current content from GitHub
 	githubContent, err := fetchFileContent(ctx, runner, fullName, file.Path)
@@ -221,38 +226,36 @@ func planImportEntry(ctx context.Context, runner gh.Runner, fullName string, fil
 		}
 	}
 
-	change.UpdateTypeForMode(change.SuggestedWriteMode)
-	if change.Type == fileset.ChangeNoOp {
+	// An empty patch for an override only removes the override's own
+	// patches, and the patches of the entry it overrides then apply again.
+	if patchSupported && file.Origin.Override && file.BaseHasPatches && change.PatchContent == "" &&
+		strings.TrimRight(change.PatchCurrent, "\n") != strings.TrimRight(desiredContent, "\n") {
+		setWriteMetadata(&change, WriteSkip)
+		change.Type = fileset.ChangeNoOp
+		change.Reason = "the patches of files cannot be removed by an override"
 		return change, nil
 	}
 
+	change.UpdateTypeForMode(change.SuggestedWriteMode)
 	return change, nil
 }
 
+// configurePatchTarget sets where a patch for file is written: the patches
+// of the entry it comes from. A file of a directory has none, since the
+// patches of a directory entry apply to each of its files.
 func configurePatchTarget(change *Change, file manifest.FileEntry, meta importEntryContext) bool {
-	overrideIdx := findFileIndex(meta.Repo.Overrides, file.Path)
-	if overrideIdx >= 0 {
-		change.ManifestPath = meta.Doc.SourcePath
-		change.DocIndex = meta.Doc.DocIndex
-		change.PatchYAMLPath = fmt.Sprintf("$.spec.repositories[%d].overrides[%d]", meta.RepoIndex, overrideIdx)
-		if file.OriginalSource == "" {
-			change.YAMLPath = change.PatchYAMLPath + ".content"
-		}
-	} else {
-		baseIdx := findFileIndex(meta.Doc.Resource.Spec.Files, file.Path)
-		if baseIdx < 0 {
-			return false
-		}
-		change.ManifestPath = meta.Doc.SourcePath
-		change.DocIndex = meta.Doc.DocIndex
-		change.PatchYAMLPath = fmt.Sprintf("$.spec.files[%d]", baseIdx)
-		if file.OriginalSource == "" {
-			change.YAMLPath = change.PatchYAMLPath + ".content"
-		}
-		if meta.RepoCount > 1 {
-			change.Warnings = append(change.Warnings,
-				fmt.Sprintf("shared manifest: affects %d repositories", meta.RepoCount))
-		}
+	if file.Origin.Dir {
+		return false
+	}
+	change.ManifestPath = meta.Doc.SourcePath
+	change.DocIndex = meta.Doc.DocIndex
+	change.PatchYAMLPath = entryYAMLPath(file, meta)
+	if file.OriginalSource == "" {
+		change.YAMLPath = change.PatchYAMLPath + ".content"
+	}
+	if !file.Origin.Override && meta.RepoCount > 1 {
+		change.Warnings = append(change.Warnings,
+			fmt.Sprintf("shared manifest: affects %d repositories", meta.RepoCount))
 	}
 
 	entryCopy := file
@@ -266,14 +269,13 @@ func setWriteMetadata(change *Change, suggested WriteMode, available ...WriteMod
 	change.AvailableModes = append([]WriteMode(nil), available...)
 }
 
-// findFileIndex returns the index of the first FileEntry with the given path, or -1 if not found.
-func findFileIndex(files []manifest.FileEntry, path string) int {
-	for i, f := range files {
-		if f.Path == path {
-			return i
-		}
+// entryYAMLPath returns the YAML path of the entry file is written in: an
+// entry of spec.files, or of the repository's overrides.
+func entryYAMLPath(file manifest.FileEntry, meta importEntryContext) string {
+	if file.Origin.Override {
+		return fmt.Sprintf("$.spec.repositories[%d].overrides[%d]", meta.RepoIndex, file.Origin.Index)
 	}
-	return -1
+	return fmt.Sprintf("$.spec.files[%d]", file.Origin.Index)
 }
 
 // fetchFileContent fetches a file's content from GitHub via the Contents API.

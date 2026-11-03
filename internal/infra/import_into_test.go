@@ -2,6 +2,7 @@ package infra
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
@@ -776,5 +777,34 @@ func TestFieldDiffsToDiffGroups_OnlyNestedObjectsArePaths(t *testing.T) {
 		if g.Path != path {
 			t.Errorf("group %q: Path = %v, want %v", g.Header, g.Path, path)
 		}
+	}
+}
+
+// A change skipped by default is listed with its reason, can be switched to
+// write, and is skipped unless the user picks an action.
+func TestPrintImportPlan_DefaultSkipReason(t *testing.T) {
+	c := importer.Change{
+		Target:             "org/repo",
+		Path:               "policy/a.rego",
+		Type:               fileset.ChangeUpdate,
+		WriteMode:          importer.WriteSource,
+		SuggestedWriteMode: importer.WriteSource,
+		AvailableModes:     []importer.WriteMode{importer.WriteSource},
+		LocalTarget:        "templates/policy/a.rego",
+		WriteCurrent:       "a\n",
+		Desired:            "drift\n",
+		DefaultSkipReason:  "shared source of a directory",
+	}
+	if got := defaultActionForChange(c); got != importActionSkip {
+		t.Errorf("default action = %q, want skip", got)
+	}
+	if !isListedChange(c) || !slices.Contains(allowedActionsForChange(c), importActionWrite) {
+		t.Errorf("change should be listed and writable: actions %v", allowedActionsForChange(c))
+	}
+
+	var buf bytes.Buffer
+	printImportPlan(ui.NewStandardPrinterWith(&buf, &buf), &importer.Result{ManifestEdits: map[string][]byte{}, FileChanges: []importer.Change{c}})
+	if out := buf.String(); !strings.Contains(out, "skip: shared source of a directory (Tab to change)") {
+		t.Fatalf("expected the default skip reason in output:\n%s", out)
 	}
 }

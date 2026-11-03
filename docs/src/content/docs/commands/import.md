@@ -117,7 +117,7 @@ The confirmation needs a terminal, so in CI or from an AI agent pass `--auto-app
 gh infra import --into=repos/ --auto-approve
 ```
 
-The plan is still printed, then the changes are written with each file's default action, as if you confirmed without opening the diff viewer: `write` for a file used by one target, `patch` for a shared source, and `skip` for files that are skipped by default (for example `reconcile: create_only` files without patches, which are therefore not written). Without `--auto-approve` and without a terminal, import fails before writing anything and suggests the flag.
+The plan is still printed, then the changes are written with each file's default action, as if you confirmed without opening the diff viewer: `write` for a file used by one target, `patch` for a shared source, and `skip` for files that are skipped by default (for example `reconcile: create_only` files without patches, and files of a directory source shared by other FileSets, which are therefore not written). Without `--auto-approve` and without a terminal, import fails before writing anything and suggests the flag.
 
 ### `write` / `patch` / `skip`
 
@@ -140,6 +140,9 @@ The default action depends on the file shape:
 | Local source (single-use) | `write` | `write`, `patch`, `skip` |
 | Local source shared by multiple repos | `patch` | `write`, `patch`, `skip` |
 | Existing `patches:` entry | `patch` | `write`, `patch`, `skip` |
+| File of a directory source (single-use) | `write` | `write`, `skip` |
+| File of a directory source shared by multiple FileSets | `skip` | `write`, `skip` |
+| File of a directory source whose entry has `patches:` | skipped in plan | not shown in viewer |
 | Simple `<% .Repo.* %>` substitutions | `write`/`patch`/`skip` based on file shape | shown in viewer |
 | Files whose remote content cannot be safely written back to the template | skipped in plan | not shown in viewer |
 | `github://` source | skipped in plan | not shown in viewer |
