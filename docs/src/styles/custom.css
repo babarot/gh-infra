@@ -392,6 +392,19 @@ starlight-toc a[aria-current='true']:focus {
   display: none;
 }
 
+/* Expressive Code draws a terminal block's code without a top border and
+   top corners, expecting the title bar above it. Without the bar, give them
+   back, and move the copy button up to where it sits in a plain block. */
+.expressive-code .frame.is-terminal:not(.has-title) {
+  --button-spacing: 0.4rem;
+}
+
+.expressive-code .frame.is-terminal:not(.has-title) pre {
+  border-top: var(--ec-brdWd) solid var(--ec-brdCol);
+  border-top-left-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+  border-top-right-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+}
+
 /* A code block inside an aside drops its border and sits on the page
    background, so the aside stays the only box. */
 .starlight-aside .expressive-code {
