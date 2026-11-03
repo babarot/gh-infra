@@ -5,6 +5,8 @@ sidebar:
   order: 0
 ---
 
+import { FileTree } from '@astrojs/starlight/components';
+
 `RepositorySet` manages **multiple** repositories with shared defaults. Use this when you have many repos with identical settings and want to avoid repeating the same configuration in every file. Each repository in the set inherits from `defaults` and can override any value.
 
 ```yaml title="Example"
@@ -66,13 +68,13 @@ All settings available in [Repository](../repository/) — general settings, lab
 
 Suppose you manage 20 repositories that all share the same merge strategy, branch protection, and feature settings. With individual `Repository` files, you'd repeat those settings in every file:
 
-```
-repos/
-├── my-cli.yaml          # merge_strategy, branch_protection, features...
-├── dotfiles.yaml       # same merge_strategy, branch_protection, features...
-├── blog.yaml    # same merge_strategy, branch_protection, features...
-└── ... (17 more files with the same boilerplate)
-```
+<FileTree>
+- repos/
+  - my-cli.yaml merge_strategy, branch_protection, features...
+  - dotfiles.yaml same merge_strategy, branch_protection, features...
+  - blog.yaml same merge_strategy, branch_protection, features...
+  - … 17 more files with the same boilerplate
+</FileTree>
 
 When you need to change a shared setting — say, bump `required_reviews` from 1 to 2 — you have to edit all 20 files. Miss one, and your repos drift out of sync.
 

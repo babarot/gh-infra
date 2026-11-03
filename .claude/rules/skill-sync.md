@@ -23,10 +23,10 @@ When either side changes, check whether the other side needs updating.
 | `resources/repository/environments.md` | `repository-manifest` | `references/environments.md` |
 | `resources/repository/security.md` | `repository-manifest` | `references/security.md` |
 | `resources/repository/pages.md` | `repository-manifest` | `references/pages.md` |
-| `resources/repository-set/defaults.md`, `resources/repository-set/index.md` | `repository-manifest` | `references/repository-set.md` |
-| `resources/file/sources.md`, `resources/file/templating.md` | `file-manifest` | `references/sources-and-templating.md` |
+| `resources/repository-set/defaults.md`, `resources/repository-set/index.mdx` | `repository-manifest` | `references/repository-set.md` |
+| `resources/file/sources.mdx`, `resources/file/templating.md` | `file-manifest` | `references/sources-and-templating.md` |
 | `resources/file/delivery.md`, `resources/file/index.md` | `file-manifest` | `references/reconcile-and-delivery.md` |
-| `resources/fileset/index.md`, `resources/fileset/overrides.md` | `file-manifest` | `references/fileset.md` |
+| `resources/fileset/index.mdx`, `resources/fileset/overrides.md` | `file-manifest` | `references/fileset.md` |
 | `commands/import.md`, `internals/import-into.md` | `import-into` | `references/behavior.md`, `references/write-modes.md`, `references/template-safety.md` |
 | `commands/plan.md`, `commands/apply.md`, `commands/validate.md`, `commands/import.md` | `gh-infra` | `references/commands.md` |
 | `introduction/principles.md` | `gh-infra` | `SKILL.md` (Key characteristics); also `AGENTS.md` (Design Principles) |
