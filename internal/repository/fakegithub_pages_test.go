@@ -135,8 +135,11 @@ func (f *fakeGitHub) apiPages(method string, body []byte) ([]byte, bool, error) 
 			return nil, false, errUnknown
 		}
 		// A site without a custom domain is served from GitHub's, which
-		// needs no certificate of its own: GitHub may report none.
-		if next.HTTPSEnforced && !p.HTTPSEnforced && next.CNAME != "" && next.CertificateState != certificateApproved {
+		// needs no certificate of its own: GitHub may report none. Whether
+		// GitHub checks the domain before or after the PUT is not known, so
+		// the fake accepts only what both would.
+		hasCertificate := func(s *fakePages) bool { return s.CNAME == "" || s.CertificateState == certificateApproved }
+		if next.HTTPSEnforced && !p.HTTPSEnforced && (!hasCertificate(p) || !hasCertificate(&next)) {
 			return nil, false, fakeStatus(gh.ErrNotFound, "The certificate does not exist yet")
 		}
 		f.s.Pages = &next

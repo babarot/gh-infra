@@ -237,5 +237,16 @@ func (p *Processor) applyPages(ctx context.Context, c Change, repo *manifest.Rep
 	if len(put) == 0 {
 		return nil
 	}
+	// Whether GitHub checks https_enforced against the domain before or
+	// after a PUT that removes it is not known: remove it first.
+	if enforce, ok := put["https_enforced"].(bool); ok && enforce && put["cname"] == nil {
+		if _, removes := put["cname"]; removes {
+			delete(put, "https_enforced")
+			if err := send("PUT", put); err != nil {
+				return err
+			}
+			put = map[string]any{"https_enforced": true}
+		}
+	}
 	return send("PUT", put)
 }
