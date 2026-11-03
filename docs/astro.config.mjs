@@ -25,6 +25,7 @@ export default defineConfig({
       components: {
         Hero: './src/components/Hero.astro',
         PageTitle: './src/components/PageTitle.astro',
+        ThemeSelect: './src/components/ThemeSelect.astro',
       },
       customCss: [
         '@fontsource/geist-sans/400.css',
