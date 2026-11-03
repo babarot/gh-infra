@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.20.0](https://github.com/babarot/gh-infra/compare/v0.19.0...v0.20.0) - 2026-11-03
+### New Features
+- Manage GitHub Pages with spec.pages by @babarot in https://github.com/babarot/gh-infra/pull/317
+### Bug fixes
+- Apply FileSet overrides to directory entries by @babarot in https://github.com/babarot/gh-infra/pull/312
+- Write import --into inline content back to the right entry by @babarot in https://github.com/babarot/gh-infra/pull/313
+- Write import --into changes back to the entry as written by @babarot in https://github.com/babarot/gh-infra/pull/315
+- Retry the PR branch of a repository whose visibility the apply changed by @babarot in https://github.com/babarot/gh-infra/pull/316
+### Improvements
+- Color the confirm prompt with the terminal's magenta by @babarot in https://github.com/babarot/gh-infra/pull/319
+
 ## [v0.19.0](https://github.com/babarot/gh-infra/compare/v0.18.0...v0.19.0) - 2026-11-03
 ### New Features
 - Describe FileSet pull requests by the files they change by @babarot in https://github.com/babarot/gh-infra/pull/311
