@@ -110,7 +110,9 @@ body {
 
 /* ===== Header ===== */
 
-.header {
+/* The inner <div class="header"> of Starlight's Header component must not get
+   the border too, so only the outer <header> is selected. */
+header.header {
   border-bottom: 1px solid var(--gi-line);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
