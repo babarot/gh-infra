@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 
+	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/manifest"
 )
 
@@ -79,7 +81,11 @@ func (p *Processor) applyToRepo(ctx context.Context, repo string, changes []Chan
 	if opts.Via == manifest.ViaPullRequest {
 		prBranch := pullRequestBranch(opts)
 		statusFn("creating PR branch...")
-		if err := p.createBranchAt(ctx, repo, prBranch, headSHA); err != nil {
+		create := p.createBranchAt
+		if opts.VisibilityChanged[repo] {
+			create = p.createBranchAfterVisibilityChange
+		}
+		if err := create(ctx, repo, prBranch, headSHA); err != nil {
 			return "", opts.Via, false, fmt.Errorf("create PR branch: %w", err)
 		}
 		targetBranch = prBranch
@@ -544,6 +550,35 @@ func (p *Processor) createBranchAt(ctx context.Context, repo, branch, sha string
 		}
 	}
 	return nil
+}
+
+// GitHub applies a visibility change asynchronously, and while it does, it
+// can refuse a fine-grained personal access token creating a ref in the
+// repository with 403 "Resource not accessible by personal access token".
+// Seen right after private to public, gone a few seconds later.
+var (
+	visibilitySettleTimeout  = 30 * time.Second
+	visibilitySettleInterval = 2 * time.Second
+)
+
+// createBranchAfterVisibilityChange is createBranchAt for a repository whose
+// visibility this apply changed: it retries a 403 until the change settles.
+func (p *Processor) createBranchAfterVisibilityChange(ctx context.Context, repo, branch, sha string) error {
+	deadline := time.Now().Add(visibilitySettleTimeout)
+	for {
+		err := p.createBranchAt(ctx, repo, branch, sha)
+		if err == nil || !errors.Is(err, gh.ErrForbidden) {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("%w (retried for %s after the visibility change)", err, visibilitySettleTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(visibilitySettleInterval):
+		}
+	}
 }
 
 // openPR opens a pull request from head into base. The head branch must already exist.
