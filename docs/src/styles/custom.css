@@ -216,19 +216,21 @@ starlight-toc a[aria-current='true']:focus {
   box-shadow: inset 1px 0 0 var(--gi-fg);
 }
 
-/* ===== Content typography ===== */
+/* ===== Content typography =====
+   Rules for Markdown content skip .not-content, as Starlight's own do, so
+   they do not reach the landing page components. */
 
-.sl-markdown-content :is(h1, h2, h3, h4, h5) {
+.sl-markdown-content :is(h1, h2, h3, h4, h5):not(:where(.not-content *)) {
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--gi-fg);
 }
 
-.sl-markdown-content h2 {
+.sl-markdown-content h2:not(:where(.not-content *)) {
   margin-top: 3rem;
 }
 
-.sl-markdown-content h3 {
+.sl-markdown-content h3:not(:where(.not-content *)) {
   margin-top: 2rem;
 }
 
@@ -243,16 +245,16 @@ starlight-toc a[aria-current='true']:focus {
   text-decoration-color: var(--gi-fg);
 }
 
-.sl-markdown-content strong {
+.sl-markdown-content strong:not(:where(.not-content *)) {
   font-weight: 600;
   color: var(--gi-fg);
 }
 
-.sl-markdown-content li::marker {
+.sl-markdown-content li:not(:where(.not-content *))::marker {
   color: var(--gi-fg3);
 }
 
-.sl-markdown-content :not(pre) > code {
+.sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
   padding: 0.15em 0.4em;
   border: 1px solid var(--gi-line);
   border-radius: 5px;
@@ -272,12 +274,12 @@ starlight-toc a[aria-current='true']:focus {
 
 /* Tables */
 
-.sl-markdown-content table {
+.sl-markdown-content table:not(:where(.not-content *)) {
   font-size: 0.875rem;
   border-collapse: collapse;
 }
 
-.sl-markdown-content :is(th, td) {
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) {
   padding: 0.625rem 0.75rem 0.625rem 0;
   border: 0;
   border-bottom: 1px solid var(--gi-line);
@@ -285,14 +287,14 @@ starlight-toc a[aria-current='true']:focus {
   vertical-align: top;
 }
 
-.sl-markdown-content th {
+.sl-markdown-content th:not(:where(.not-content *)) {
   font-size: 0.78125rem;
   font-weight: 500;
   color: var(--gi-fg3);
   border-bottom-color: var(--gi-line2);
 }
 
-.sl-markdown-content td {
+.sl-markdown-content td:not(:where(.not-content *)) {
   color: var(--gi-fg2);
 }
 
@@ -302,7 +304,7 @@ starlight-toc a[aria-current='true']:focus {
 
 /* Embedded <details> */
 
-.sl-markdown-content details {
+.sl-markdown-content details:not(:where(.not-content *)) {
   border: 1px solid var(--gi-line);
   border-radius: 8px;
   background: var(--gi-bg2);
@@ -597,14 +599,22 @@ footer .meta {
   color: inherit;
 }
 
-/* Output highlighting. t-* is used by the components, hl-* by index.mdx. */
-.gi-win :is(.t-w, .hl-repo, .hl-cmd) { color: var(--gi-fg); }
-.gi-win :is(.t-dim, .hl-dim, .hl-prompt, .hl-comment) { color: var(--gi-fg3); }
-.gi-win :is(.t-key, .hl-key) { color: var(--gi-fg2); }
-.gi-win :is(.t-str, .hl-str, .hl-flag) { color: var(--gi-fg); }
-.gi-win :is(.t-chg, .hl-change, .hl-changed) { color: var(--gi-chg); }
-.gi-win :is(.t-add, .hl-add, .hl-new) { color: var(--gi-add); }
-.gi-win :is(.t-del, .hl-old) { color: var(--gi-del); }
+/* Output highlighting */
+.gi-win .t-w { color: var(--gi-fg); }
+.gi-win .t-dim { color: var(--gi-fg3); }
+.gi-win .t-key { color: var(--gi-fg2); }
+.gi-win .t-chg { color: var(--gi-chg); }
+.gi-win .t-add { color: var(--gi-add); }
+.gi-win .t-del { color: var(--gi-del); }
+
+/* A changed line in a file shown in a panel */
+.gi-win .ln-chg {
+  display: block;
+  margin-inline: -1.125rem;
+  padding-inline: 1.125rem;
+  background: color-mix(in srgb, var(--gi-chg) 6%, transparent);
+  box-shadow: inset 2px 0 0 var(--gi-chg);
+}
 
 /* ===== Landing page (splash) ===== */
 
@@ -643,34 +653,8 @@ footer .meta {
   margin-top: 1.75rem;
 }
 
-.landing-cta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  margin-top: 7rem;
-  padding-top: 2.5rem;
-  border-top: 1px solid var(--gi-line);
-}
-
-.landing-cta h2 {
-  margin: 0;
-  font-size: 1.375rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--gi-fg);
-}
-
-.landing-cta-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.625rem;
-}
-
 @media (max-width: 50rem) {
-  .landing-section,
-  .landing-cta {
+  .landing-section {
     margin-top: 4.5rem;
   }
 }

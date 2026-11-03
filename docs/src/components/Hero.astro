@@ -1,6 +1,6 @@
 ---
 // Splash page hero: title, tagline, actions and the install command on the
-// left, a plan output on the right. Replaces Starlight's Hero component.
+// left, a manifest and its plan on the right. Replaces Starlight's Hero.
 import InstallBox from './InstallBox.astro';
 import Window from './Window.astro';
 
@@ -10,13 +10,15 @@ const PAGE_TITLE_ID = '_top';
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, actions = [] } = data.hero || {};
 
-const plan = `  <span class="t-chg">~</span> <span class="t-w">babarot/my-project</span>  <span class="t-dim">2 to update</span>
-      <span class="t-chg">~</span> features
-          <span class="t-chg">~</span> wiki         true  <span class="t-dim">→</span> <span class="t-w">false</span>
-          <span class="t-chg">~</span> discussions  false <span class="t-dim">→</span> <span class="t-w">true</span>
-      <span class="t-chg">~</span> topics  [] <span class="t-dim">→</span> <span class="t-w">[go, cli]</span>
+const manifest = `<span class="t-key">spec:</span>
+  <span class="t-key">visibility:</span> <span class="t-w">public</span>
+  <span class="t-key">features:</span>
+<span class="ln-chg">    <span class="t-key">wiki:</span> <span class="t-w">false</span></span><span class="ln-chg">    <span class="t-key">discussions:</span> <span class="t-w">true</span></span><span class="ln-chg">  <span class="t-key">topics:</span> <span class="t-w">[go, cli]</span></span>`;
 
-Plan: <span class="t-add">+</span> 0 to create  <span class="t-chg">~</span> 2 to update  <span class="t-del">-</span> 0 to destroy`;
+const plan = `  <span class="t-chg">~</span> <span class="t-w">babarot/my-project</span>  <span class="t-dim">3 to update</span>
+      <span class="t-chg">~</span> features.wiki         true  <span class="t-dim">→</span> <span class="t-w">false</span>
+      <span class="t-chg">~</span> features.discussions  false <span class="t-dim">→</span> <span class="t-w">true</span>
+      <span class="t-chg">~</span> topics                [] <span class="t-dim">→</span> <span class="t-w">[go, cli]</span>`;
 ---
 
 <div class="gi-hero not-content">
@@ -36,7 +38,12 @@ Plan: <span class="t-add">+</span> 0 to create  <span class="t-chg">~</span> 2 t
     }
     <InstallBox />
   </div>
-  <Window title="gh infra plan ./repos/" html={plan} />
+  <Window>
+    <div class="gi-win-title">repos/my-project.yaml</div>
+    <pre class="gi-win-body"><code set:html={manifest} /></pre>
+    <div class="gi-win-title split">gh infra plan ./repos/</div>
+    <pre class="gi-win-body"><code set:html={plan} /></pre>
+  </Window>
 </div>
 
 <style>
@@ -75,6 +82,10 @@ Plan: <span class="t-add">+</span> 0 to create  <span class="t-chg">~</span> 2 t
     display: flex;
     flex-wrap: wrap;
     gap: 0.625rem;
+  }
+
+  .split {
+    border-top: 1px solid var(--gi-line);
   }
 
   @media (max-width: 50rem) {
