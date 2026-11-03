@@ -131,6 +131,22 @@ header.header {
   width: auto;
 }
 
+/* Search sits on the right with the GitHub link and the theme switch,
+   leaving the site title alone on the left. */
+@media (min-width: 50rem) {
+  div.header {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  div.header > div:nth-child(2) {
+    justify-content: flex-end;
+  }
+
+  site-search button[data-open-modal] {
+    width: 15rem;
+  }
+}
+
 site-search button[data-open-modal] {
   height: 2.125rem;
   border-color: var(--gi-line2);
