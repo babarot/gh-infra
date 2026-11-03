@@ -210,7 +210,7 @@ repositories:
 
 ### Maps — merged by key
 
-Maps like `features`, `merge_strategy`, `actions`, `security` and `pages` are merged. Only specified keys are overridden; unspecified keys retain the default value. `pages.source` is replaced as a whole.
+Maps like `features`, `merge_strategy`, `actions`, `security` and `pages` are merged. Only specified keys are overridden; unspecified keys retain the default value. `pages.source` is replaced as a whole, and an entry with `pages.build_type: workflow` does not inherit the defaults' `source`.
 
 ```yaml
 defaults:

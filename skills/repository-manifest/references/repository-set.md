@@ -47,6 +47,6 @@ Examples:
 - `features.pull_requests`: map merge by key (`enabled` and `creation` are independently overridable)
 - `actions.selected_actions`: map merge by key
 - `actions.selected_actions.patterns_allowed`: list replace
-- `pages`: map merge by key; `pages.source` is replaced as a whole. An entry cannot drop the defaults' `pages` (gh-infra never disables a site); `import --into` warns when GitHub has no site
+- `pages`: map merge by key; `pages.source` is replaced as a whole, and an entry with `build_type: workflow` drops the defaults' `source` (only legacy has one). An entry cannot drop the defaults' `pages` (gh-infra never disables a site); `import --into` warns when GitHub has no site
 
 If a repo entry omits a field, the default value remains active.

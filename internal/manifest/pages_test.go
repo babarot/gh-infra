@@ -53,6 +53,10 @@ func TestMergeSpecs_Pages(t *testing.T) {
 	if defaults.Spec.Pages.Source.Branch != "gh-pages" || defaults.Spec.Pages.CNAME != nil {
 		t.Error("the merge changed the defaults")
 	}
+	// A workflow site has no source: the defaults' is not inherited.
+	if got := mergeSpecs(defaults, RepositorySpec{Pages: &Pages{BuildType: Ptr("workflow")}}).Pages; got.Source != nil || *got.BuildType != "workflow" {
+		t.Errorf("a workflow entry inherits the defaults' source: %+v", got.Source)
+	}
 	if got := mergeSpecs(defaults, RepositorySpec{}).Pages; got != defaults.Spec.Pages {
 		t.Error("an entry without pages does not inherit the defaults'")
 	}

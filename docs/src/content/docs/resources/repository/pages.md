@@ -74,4 +74,4 @@ Every `plan` shows it until the certificate is issued; then `apply` enforces HTT
 
 ## Permissions
 
-Reading and changing the site needs the **Pages** repository permission of a fine-grained token (read for `plan`, write for `apply`), or the `repo` scope of a classic token. A site that cannot be read fails the repository at `plan`, and `import` leaves `pages` out with a warning.
+Reading the site needs the **Pages** repository permission (read) of a fine-grained token; enabling and changing it (`apply`) needs **Pages** and **Administration** (write). A classic token needs the `repo` scope, and the user must be an administrator or maintainer of the repository, or have the "manage GitHub Pages settings" permission. A site that cannot be read fails the repository at `plan`, and `import` leaves `pages` out with a warning.

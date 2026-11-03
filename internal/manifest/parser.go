@@ -720,6 +720,8 @@ func mergeSecurity(base, override *Security) *Security {
 }
 
 // mergePages merges by field; a source replaces the defaults' as a whole.
+// An entry that builds with a workflow does not inherit the defaults'
+// source, which only a legacy site has.
 func mergePages(base, override *Pages) *Pages {
 	if base == nil {
 		return override
@@ -727,6 +729,9 @@ func mergePages(base, override *Pages) *Pages {
 	result := *base
 	if override.BuildType != nil {
 		result.BuildType = override.BuildType
+		if *override.BuildType == PagesBuildTypeWorkflow {
+			result.Source = nil
+		}
 	}
 	if override.Source != nil {
 		result.Source = override.Source

@@ -1,6 +1,8 @@
 package importer
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -99,50 +101,63 @@ func pagesString(p *manifest.Pages) string {
 
 // A RepositorySet entry writes the Pages fields that differ from the
 // defaults; a domain the defaults set that GitHub does not have is removed
-// with "".
+// with "". The entry, merged over the defaults by the parser, is what GitHub
+// has and is valid.
 func TestMinimalOverride_Pages(t *testing.T) {
 	ptr := manifest.Ptr[string]
-	defaults := &manifest.Pages{BuildType: ptr("workflow"), CNAME: ptr("docs.example.com"), HTTPSEnforced: manifest.Ptr(true)}
+	workflowDefaults := &manifest.Pages{BuildType: ptr("workflow"), CNAME: ptr("docs.example.com"), HTTPSEnforced: manifest.Ptr(true)}
+	legacyDefaults := &manifest.Pages{BuildType: ptr("legacy"), Source: &manifest.PagesSource{Branch: "gh-pages", Path: "/"}, CNAME: ptr("docs.example.com"), HTTPSEnforced: manifest.Ptr(true)}
 	for _, tt := range []struct {
 		name     string
+		defaults *manifest.Pages
 		imported *manifest.Pages
 		want     *manifest.Pages
 	}{
-		{name: "the same", imported: defaults},
-		{name: "none on GitHub", imported: nil},
-		{name: "no domain", imported: &manifest.Pages{BuildType: ptr("workflow"), HTTPSEnforced: manifest.Ptr(true)},
+		{name: "the same", defaults: workflowDefaults, imported: workflowDefaults},
+		{name: "none on GitHub", defaults: workflowDefaults, imported: nil},
+		{name: "no domain", defaults: workflowDefaults, imported: &manifest.Pages{BuildType: ptr("workflow"), HTTPSEnforced: manifest.Ptr(true)},
 			want: &manifest.Pages{CNAME: ptr("")}},
-		{name: "from a branch", imported: &manifest.Pages{BuildType: ptr("legacy"), Source: &manifest.PagesSource{Branch: "gh-pages", Path: "/"}, CNAME: ptr("docs.example.com"), HTTPSEnforced: manifest.Ptr(true)},
+		{name: "from a branch", defaults: workflowDefaults, imported: legacyDefaults,
 			want: &manifest.Pages{BuildType: ptr("legacy"), Source: &manifest.PagesSource{Branch: "gh-pages", Path: "/"}}},
+		// The defaults' source is not inherited by a workflow entry.
+		{name: "to workflow over legacy defaults", defaults: legacyDefaults, imported: workflowDefaults,
+			want: &manifest.Pages{BuildType: ptr("workflow")}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := minimalPages(defaults, tt.imported)
+			got := minimalPages(tt.defaults, tt.imported)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("override = %s, want %s", pagesString(got), pagesString(tt.want))
 			}
-			// The entry merged over the defaults is what GitHub has.
-			if tt.imported != nil {
-				spec := manifest.RepositorySpec{Pages: defaults}
-				if got != nil {
-					merged := *defaults
-					if got.BuildType != nil {
-						merged.BuildType = got.BuildType
-					}
-					if got.Source != nil {
-						merged.Source = got.Source
-					}
-					if got.CNAME != nil {
-						merged.CNAME = got.CNAME
-					}
-					spec.Pages = &merged
-				}
-				if len(comparePages(spec.Pages, tt.imported)) > 0 {
-					t.Errorf("entry over the defaults %s differs from GitHub %s", pagesString(spec.Pages), pagesString(tt.imported))
-				}
+			if tt.imported == nil {
+				return
+			}
+			set := map[string]any{
+				"apiVersion": "gh-infra/v1", "kind": "RepositorySet",
+				"metadata":     map[string]any{"owner": "o"},
+				"defaults":     map[string]any{"spec": manifest.RepositorySpec{Pages: tt.defaults}},
+				"repositories": []any{map[string]any{"name": "r", "spec": manifest.RepositorySpec{Pages: got}}},
+			}
+			data, err := yaml.Marshal(set)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "set.yaml")
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			parsed, err := manifest.ParseAll(path)
+			if err != nil {
+				t.Fatalf("the entry does not parse: %v\n%s", err, data)
+			}
+			if err := parsed.Repositories[0].Validate(); err != nil {
+				t.Fatalf("the entry is invalid: %v\n%s", err, data)
+			}
+			if d := comparePages(parsed.Repositories[0].Spec.Pages, tt.imported); len(d) > 0 {
+				t.Errorf("the entry over the defaults differs from GitHub: %+v\n%s", d, data)
 			}
 		})
 	}
-	if w := missingDefaultsWarnings(manifest.RepositorySpec{Pages: defaults}, manifest.RepositorySpec{}); len(w) != 1 || w[0].Field != "pages" {
+	if w := missingDefaultsWarnings(manifest.RepositorySpec{Pages: workflowDefaults}, manifest.RepositorySpec{}); len(w) != 1 || w[0].Field != "pages" {
 		t.Errorf("warnings = %+v, want one for pages", w)
 	}
 }
