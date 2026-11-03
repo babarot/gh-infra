@@ -7,8 +7,7 @@ sidebar:
 
 `File` manages **files** in a **single** repository — CODEOWNERS, LICENSE, CI workflows, security policies, and any other files you want to keep in a declared state.
 
-:::tip[Example]
-```yaml
+```yaml title="Example"
 apiVersion: gh-infra/v1
 kind: File
 metadata:
@@ -44,7 +43,6 @@ spec:
   #   - <% .Action %> `<% .Path %>`: <% .Description %>
   #   <% end -%>
 ```
-:::
 
 ## Metadata
 

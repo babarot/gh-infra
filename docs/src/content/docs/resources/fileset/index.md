@@ -7,8 +7,7 @@ sidebar:
 
 `FileSet` distributes **files** to **multiple** repositories with shared defaults. Use this when you have many repos that should contain identical files and want to avoid repeating the same configuration in every file. Each repository in the set receives the same files and can override specific ones.
 
-:::tip[Example]
-```yaml
+```yaml title="Example"
 apiVersion: gh-infra/v1
 kind: FileSet
 metadata:
@@ -40,7 +39,6 @@ spec:
   via: push
   commit_message: "ci: sync shared files"
 ```
-:::
 
 ## Metadata
 

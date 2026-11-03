@@ -7,8 +7,7 @@ sidebar:
 
 `RepositorySet` manages **multiple** repositories with shared defaults. Use this when you have many repos with identical settings and want to avoid repeating the same configuration in every file. Each repository in the set inherits from `defaults` and can override any value.
 
-:::tip[Example]
-```yaml
+```yaml title="Example"
 apiVersion: gh-infra/v1
 kind: RepositorySet
 metadata:
@@ -40,7 +39,6 @@ repositories:
       description: "Personal blog and website"
       topics: [blog, hugo, markdown]
 ```
-:::
 
 ## Metadata
 

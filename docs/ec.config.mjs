@@ -88,7 +88,8 @@ export default defineEcConfig({
       editorActiveTabForeground: 'var(--gi-fg3)',
       editorActiveTabBorderColor: 'transparent',
       editorActiveTabIndicatorTopColor: 'transparent',
-      editorActiveTabIndicatorBottomColor: 'transparent',
+      // Draw the tab bar's bottom line under the title tab too.
+      editorActiveTabIndicatorBottomColor: 'var(--gi-line)',
       editorBackground: 'var(--gi-code)',
       terminalBackground: 'var(--gi-code)',
       terminalTitlebarBackground: 'var(--gi-code)',
