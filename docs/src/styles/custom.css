@@ -302,15 +302,16 @@ starlight-toc a[aria-current='true']:focus {
   background: none;
 }
 
-/* Embedded <details> */
+/* Embedded <details>. FileTree builds its directories from <details>, so it
+   is left out. */
 
-.sl-markdown-content details:not(:where(.not-content *)) {
+.sl-markdown-content details:not(:where(.not-content *, starlight-file-tree *)) {
   border: 1px solid var(--gi-line);
   border-radius: 8px;
   background: var(--gi-bg2);
 }
 
-.sl-markdown-content details > summary {
+.sl-markdown-content details:not(:where(.not-content *, starlight-file-tree *)) > summary {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -320,11 +321,11 @@ starlight-toc a[aria-current='true']:focus {
   list-style: none;
 }
 
-.sl-markdown-content details > summary::-webkit-details-marker {
+.sl-markdown-content details:not(:where(.not-content *, starlight-file-tree *)) > summary::-webkit-details-marker {
   display: none;
 }
 
-.sl-markdown-content details > summary::before {
+.sl-markdown-content details:not(:where(.not-content *, starlight-file-tree *)) > summary::before {
   content: '';
   flex: none;
   width: 6px;
@@ -334,15 +335,15 @@ starlight-toc a[aria-current='true']:focus {
   transform: rotate(-45deg);
 }
 
-.sl-markdown-content details[open] > summary::before {
+.sl-markdown-content details[open]:not(:where(.not-content *, starlight-file-tree *)) > summary::before {
   transform: rotate(45deg);
 }
 
-.sl-markdown-content details > :not(summary) {
+.sl-markdown-content details:not(:where(.not-content *, starlight-file-tree *)) > :not(summary) {
   margin-inline: 0.875rem;
 }
 
-.sl-markdown-content details > :last-child:not(summary) {
+.sl-markdown-content details:not(:where(.not-content *, starlight-file-tree *)) > :last-child:not(summary) {
   margin-bottom: 0.75rem;
 }
 
@@ -469,6 +470,41 @@ starlight-file-tree .comment {
 starlight-file-tree .highlight span.highlight {
   color: var(--gi-fg);
   background-color: var(--gi-accbg);
+}
+
+/* Line up the comments of sibling entries: a list with comments becomes a
+   two-column grid (name, comment) that every file row shares through
+   subgrid. Directory rows keep their own layout across both columns. */
+/* Margins do not collapse in a grid, so the spacing that block layout got
+   from collapsed margins is set explicitly. */
+starlight-file-tree ul {
+  margin-block: 0;
+}
+
+starlight-file-tree ul:has(> li > .tree-entry > .comment) {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 1.5rem;
+  row-gap: 0.125rem;
+}
+
+starlight-file-tree ul:has(> li > .tree-entry > .comment) > li {
+  grid-column: 1 / -1;
+  margin-block: 0;
+}
+
+starlight-file-tree ul:has(> li > .tree-entry > .comment) > li:not(.directory) {
+  display: grid;
+  grid-template-columns: subgrid;
+}
+
+starlight-file-tree ul:has(> li > .tree-entry > .comment) > li:not(.directory) > .tree-entry {
+  display: contents;
+}
+
+starlight-file-tree ul:has(> li > .tree-entry > .comment) > li:not(.directory) .comment {
+  padding-inline-start: 0;
+  margin-inline-start: 0;
 }
 
 /* Replace unknown file type icon (!) with a plain document icon */
