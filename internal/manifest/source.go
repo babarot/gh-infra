@@ -58,8 +58,11 @@ func (r *SourceResolver) ResolveFiles(ctx context.Context, files []FileEntry, ya
 				entries[i].Reconcile = entry.Reconcile
 				entries[i].Executable = entry.Executable
 				entries[i].Description = entry.Description
+				entries[i].Source = entry.Source
+				entries[i].Origin = entry.Origin
 				if isDir {
 					entries[i].DirScope = entry.Path
+					entries[i].Origin.Dir = true
 				}
 			}
 			resolved = append(resolved, entries...)
@@ -76,8 +79,11 @@ func (r *SourceResolver) ResolveFiles(ctx context.Context, files []FileEntry, ya
 				entries[i].Reconcile = entry.Reconcile
 				entries[i].Executable = entry.Executable
 				entries[i].Description = entry.Description
+				entries[i].Source = entry.Source
+				entries[i].Origin = entry.Origin
 				if isDir {
 					entries[i].DirScope = entry.Path
+					entries[i].Origin.Dir = true
 				}
 			}
 			resolved = append(resolved, entries...)

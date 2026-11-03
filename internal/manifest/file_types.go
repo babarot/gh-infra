@@ -97,11 +97,32 @@ type FileEntry struct {
 	Description    string            `yaml:"description,omitempty"` // for .Files in commit and PR messages
 	DirScope       string            `yaml:"-"`
 	OriginalSource string            `yaml:"-"` // local file path set during source resolution (import --into)
+	Origin         FileOrigin        `yaml:"-"` // where the entry is written in the manifest (import --into)
+	// BaseHasPatches is set on a file an override applies to when the
+	// entry of spec.files it overrides has patches: removing the
+	// override's patches would not remove them (import --into).
+	BaseHasPatches bool `yaml:"-"`
 
 	// Deprecated fields (still parsed for backward compatibility)
 	DeprecatedSyncMode  string   `yaml:"sync_mode,omitempty" deprecated:"reconcile:use \"reconcile\" instead"`
 	DeprecatedOnDrift   string   `yaml:"on_drift,omitempty"  deprecated:":and will be ignored"`
 	DeprecationWarnings []string `yaml:"-"`
+}
+
+// FileOrigin is where a file entry is written in the manifest, so that a
+// file can be written back after directory sources are expanded and
+// overrides applied.
+type FileOrigin struct {
+	Override bool // in the repository's overrides, not spec.files
+	Index    int  // position in that list as written, before expansion
+	Dir      bool // one of the files of a directory source
+}
+
+// setOrigins records the position of each entry in files as written.
+func setOrigins(files []FileEntry, override bool) {
+	for i := range files {
+		files[i].Origin = FileOrigin{Override: override, Index: i}
+	}
 }
 
 // UnmarshalYAML handles migration from deprecated fields.

@@ -342,6 +342,7 @@ func parseFile(ctx context.Context, data []byte, path string, resolver *SourceRe
 	deps := localDeps(fs.Spec.Files, filepath.Dir(path))
 
 	// Resolve source references (local files, directories, GitHub URLs)
+	setOrigins(fs.Spec.Files, false)
 	resolved, err := resolver.ResolveFiles(ctx, fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
@@ -372,6 +373,7 @@ func parseFileSet(ctx context.Context, data []byte, path string, resolver *Sourc
 	}
 
 	// Resolve source references (local files, directories, GitHub URLs)
+	setOrigins(fs.Spec.Files, false)
 	resolved, err := resolver.ResolveFiles(ctx, fs.Spec.Files, filepath.Dir(path))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("%s: %w", path, err)
@@ -388,6 +390,7 @@ func parseFileSet(ctx context.Context, data []byte, path string, resolver *Sourc
 		// Each override is resolved on its own, so one whose directory has
 		// no files is not lost without a word.
 		var resolvedOverrides []FileEntry
+		setOrigins(repo.Overrides, true)
 		for _, o := range repo.Overrides {
 			r, err := resolver.ResolveFiles(ctx, []FileEntry{o}, filepath.Dir(path))
 			if err != nil {

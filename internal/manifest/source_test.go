@@ -887,7 +887,7 @@ func TestResolveFiles_GitHubDirectoryKeepsDescription(t *testing.T) {
 	}}
 
 	result, err := r.ResolveFiles(context.Background(), []FileEntry{
-		{Path: ".regomark/policy", Source: "github://owner/repo/policy/", Description: "Policies"},
+		{Path: ".regomark/policy", Source: "github://owner/repo/policy/", Description: "Policies", Origin: FileOrigin{Index: 2}},
 	}, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -896,7 +896,7 @@ func TestResolveFiles_GitHubDirectoryKeepsDescription(t *testing.T) {
 		t.Fatalf("expected 2 entries, got %+v", result)
 	}
 	for i, e := range result {
-		if e.Description != "Policies" || e.DirScope != ".regomark/policy" {
+		if e.Description != "Policies" || e.DirScope != ".regomark/policy" || e.Source != "github://owner/repo/policy/" || e.Origin != (FileOrigin{Index: 2, Dir: true}) {
 			t.Errorf("result[%d] = %+v, want the entry's description and DirScope", i, e)
 		}
 	}

@@ -854,8 +854,9 @@ spec:
 	if fs.Spec.Files[0].Content != sourceContent {
 		t.Errorf("content = %q, want %q", fs.Spec.Files[0].Content, sourceContent)
 	}
-	if fs.Spec.Files[0].Source != "" {
-		t.Errorf("source should be cleared after resolution, got %q", fs.Spec.Files[0].Source)
+	// The source is kept, so import --into can tell where the content came from.
+	if fs.Spec.Files[0].Source == "" {
+		t.Error("source should be kept after resolution")
 	}
 }
 
@@ -1244,8 +1245,9 @@ spec:
 	if fs.Spec.Files[0].Content != sourceContent {
 		t.Errorf("content = %q, want %q", fs.Spec.Files[0].Content, sourceContent)
 	}
-	if fs.Spec.Files[0].Source != "" {
-		t.Errorf("source should be cleared after resolution, got %q", fs.Spec.Files[0].Source)
+	// The source is kept, so import --into can tell where the content came from.
+	if fs.Spec.Files[0].Source == "" {
+		t.Error("source should be kept after resolution")
 	}
 }
 

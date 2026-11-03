@@ -435,6 +435,9 @@ func allowedActionsForChange(c importer.Change) []string {
 }
 
 func defaultActionForChange(c importer.Change) string {
+	if c.DefaultSkipReason != "" {
+		return importActionSkip
+	}
 	if c.CreateOnly {
 		if c.HasExistingPatches && c.SupportsMode(importer.WritePatch) {
 			return importActionPatch
@@ -459,6 +462,9 @@ func defaultModeForChange(c importer.Change) importer.WriteMode {
 func planSkipReason(c importer.Change) string {
 	if c.Reason != "" {
 		return "skip: " + c.Reason
+	}
+	if c.DefaultSkipReason != "" {
+		return "skip: " + c.DefaultSkipReason + " (Tab to change)"
 	}
 	if c.CreateOnly && !c.HasExistingPatches {
 		return "skip: reconcile:create_only (Tab to change)"

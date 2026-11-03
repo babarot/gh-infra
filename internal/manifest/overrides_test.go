@@ -534,3 +534,125 @@ spec:
 		t.Errorf("unexpected error with remote sources skipped: %v", err)
 	}
 }
+
+// Each resolved file keeps where its entry is written, before directories
+// are expanded, and the source it came from.
+func TestParseFileSet_Origins(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{"base/a.rego": "a", "base/b.rego": "b", "alt/a.rego": "A2", "alt/c.rego": "c", "lic": "mit"})
+	path := filepath.Join(dir, "fs.yaml")
+	doc := `apiVersion: gh-infra/v1
+kind: FileSet
+metadata:
+  owner: org
+spec:
+  repositories:
+    - one
+    - name: two
+      overrides:
+        - path: policy
+          source: ./alt/
+        - path: LICENSE
+          content: two
+  files:
+    - path: policy
+      source: ./base/
+    - path: LICENSE
+      source: ./lic
+`
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ParseAll(path, fileOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs := result.FileSets[0]
+	type origin struct {
+		Path   string
+		Origin FileOrigin
+		Source string
+	}
+	collect := func(files []FileEntry) []origin {
+		var out []origin
+		for _, f := range files {
+			out = append(out, origin{f.Path, f.Origin, f.Source})
+		}
+		return out
+	}
+	if got, want := collect(filesFor(t, fs, fs.Spec.Repositories[0])), []origin{
+		{"policy/a.rego", FileOrigin{Index: 0, Dir: true}, "./base/"},
+		{"policy/b.rego", FileOrigin{Index: 0, Dir: true}, "./base/"},
+		{"LICENSE", FileOrigin{Index: 1}, "./lic"},
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("one:\n got %+v\nwant %+v", got, want)
+	}
+	if got, want := collect(filesFor(t, fs, fs.Spec.Repositories[1])), []origin{
+		{"policy/a.rego", FileOrigin{Override: true, Index: 0, Dir: true}, "./alt/"},
+		{"policy/c.rego", FileOrigin{Override: true, Index: 0, Dir: true}, "./alt/"},
+		// content of its own: written back to the override, not to ./lic
+		{"LICENSE", FileOrigin{Override: true, Index: 1}, ""},
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("two:\n got %+v\nwant %+v", got, want)
+	}
+	if got := filesFor(t, fs, fs.Spec.Repositories[1])[2].OriginalSource; got != "" {
+		t.Errorf("LICENSE override OriginalSource = %q, want none", got)
+	}
+}
+
+func TestParseFile_Origins(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{"base/a": "a", "base/b": "b"})
+	path := filepath.Join(dir, "file.yaml")
+	doc := `apiVersion: gh-infra/v1
+kind: File
+metadata:
+  owner: org
+  name: repo
+spec:
+  files:
+    - path: dir
+      source: ./base/
+    - path: note.txt
+      content: x
+`
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ParseAll(path, fileOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []FileOrigin
+	for _, f := range result.FileSets[0].Spec.Files {
+		got = append(got, f.Origin)
+	}
+	if want := []FileOrigin{{Index: 0, Dir: true}, {Index: 0, Dir: true}, {Index: 1}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("origins = %+v, want %+v", got, want)
+	}
+}
+
+func TestFilesFor_OriginsAndBasePatches(t *testing.T) {
+	fs := dirFileSet()
+	fs.Spec.Files[0].Patches = []string{"p"} // README.md
+	for i := range fs.Spec.Files {
+		fs.Spec.Files[i].Origin = FileOrigin{Index: i}
+	}
+	fs.Spec.Files[1].Origin = FileOrigin{Index: 1, Dir: true}
+	fs.Spec.Files[2].Origin = FileOrigin{Index: 1, Dir: true}
+	fs.Spec.Files[1].Source, fs.Spec.Files[2].Source = "./base/", "./base/"
+
+	got := filesFor(t, fs, FileSetRepository{Name: "r", Overrides: []FileEntry{
+		{Path: "policy", Description: "x", Origin: FileOrigin{Override: true, Index: 0}},
+		{Path: "README.md", Content: "own", Origin: FileOrigin{Override: true, Index: 1}},
+	}})
+	if got[1].Origin != (FileOrigin{Index: 1, Dir: true}) || got[1].Source != "./base/" {
+		t.Errorf("fields-only directory override: %+v, want the file's own origin and source", got[1])
+	}
+	if got[0].Origin != (FileOrigin{Override: true, Index: 1}) || !got[0].BaseHasPatches {
+		t.Errorf("file override: %+v, want the override's origin and BaseHasPatches", got[0])
+	}
+	if got[3].BaseHasPatches {
+		t.Errorf("LICENSE has no override, got BaseHasPatches")
+	}
+}

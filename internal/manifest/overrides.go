@@ -76,9 +76,10 @@ func (fs *FileSet) FilesFor(target FileSetRepository) ([]FileEntry, error) {
 		}
 		if o, ok := fields[f.DirScope]; ok && f.DirScope != "" {
 			merged := inheritFields(o, f)
-			// The override has no content or source; each file keeps its own.
-			merged.Path, merged.Content = f.Path, f.Content
-			merged.OriginalSource, merged.DirScope = f.OriginalSource, f.DirScope
+			// The override has no content or source; each file keeps its
+			// own, and is written back where the file is.
+			merged.Path, merged.Content, merged.Source = f.Path, f.Content, f.Source
+			merged.OriginalSource, merged.DirScope, merged.Origin = f.OriginalSource, f.DirScope, f.Origin
 			f = merged
 		}
 		result = append(result, f)
@@ -111,6 +112,7 @@ func inheritFields(o, base FileEntry) FileEntry {
 	if o.Patches == nil && base.Patches != nil {
 		o.Patches = base.Patches
 	}
+	o.BaseHasPatches = len(base.Patches) > 0
 	if o.Executable == nil && base.Executable != nil {
 		o.Executable = base.Executable
 	}
@@ -127,14 +129,16 @@ func inheritFile(o, base FileEntry) FileEntry {
 	if o.DirScope == "" {
 		o.DirScope = base.DirScope
 	}
+	// An override with its own content is not backed by the file's
+	// source, so it is not written back there.
 	if o.Content == "" {
 		o.Content = base.Content
-	}
-	if o.Source == "" {
-		o.Source = base.Source
-	}
-	if o.OriginalSource == "" {
-		o.OriginalSource = base.OriginalSource
+		if o.Source == "" {
+			o.Source = base.Source
+		}
+		if o.OriginalSource == "" {
+			o.OriginalSource = base.OriginalSource
+		}
 	}
 	return o
 }
