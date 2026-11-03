@@ -134,7 +134,9 @@ func (m *confirmDiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // promptAccent is the style for the confirm prompt indicator and title.
-var promptAccent = lipgloss.NewStyle().Foreground(lipgloss.Color("#7571F9")).Bold(true)
+// It uses an ANSI color, as the other styles do, so it follows the
+// terminal's color scheme.
+var promptAccent = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
 
 func (m *confirmDiffModel) View() tea.View {
 	var b strings.Builder
