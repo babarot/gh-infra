@@ -1,6 +1,8 @@
 ---
 // Panel for a demo GIF, with a light-theme variant.
 // Usage: <DemoTerminal /> or <DemoTerminal darkSrc="/demo-apply.gif" />
+// The default GIFs are recorded in the site's colors (docs/tapes/demo-site*.tape);
+// README uses demo.gif and demo-light.gif, recorded in the original colors.
 import Window from './Window.astro';
 
 interface Props {
@@ -12,8 +14,8 @@ interface Props {
 
 const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
 const { darkSrc, lightSrc, alt = 'gh-infra demo', title = '~/repos' } = Astro.props;
-const darkUrl = darkSrc || `${base}/demo.gif`;
-const lightUrl = lightSrc || `${base}/demo-light.gif`;
+const darkUrl = darkSrc || `${base}/demo-site.gif`;
+const lightUrl = lightSrc || `${base}/demo-site-light.gif`;
 const hasLight = !!lightSrc || !darkSrc;
 ---
 <Window title={title} class="demo-terminal not-content">

@@ -2,6 +2,8 @@
 #
 # Run with: mise run demo
 # Requirements: Docker
+#
+# demo-site-light.tape records the same steps in the docs site's colors; keep them in sync.
 
 Output demo-light.gif
 Output demo-light.mp4
