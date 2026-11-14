@@ -507,16 +507,20 @@ defaults:
       vulnerability_alerts: true
       automated_security_fixes: true
       private_vulnerability_reporting: false
+      secret_scanning: true
+      secret_scanning_push_protection: false
 repositories:
   - name: defaults-only
   - name: override-one
     spec:
       security:
         private_vulnerability_reporting: true
+        secret_scanning_push_protection: true
   - name: override-disable
     spec:
       security:
         automated_security_fixes: false
+        secret_scanning: false
 `
 	path := filepath.Join(dir, "security.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -531,7 +535,7 @@ repositories:
 		t.Fatalf("expected 3 repos, got %d", len(repos))
 	}
 
-	check := func(t *testing.T, name string, wantVA, wantASF, wantPVR bool) {
+	check := func(t *testing.T, name string, wantVA, wantASF, wantPVR, wantSS, wantSSPP bool) {
 		t.Helper()
 		var s *Security
 		for _, r := range repos {
@@ -552,11 +556,17 @@ repositories:
 		if s.PrivateVulnerabilityReporting == nil || *s.PrivateVulnerabilityReporting != wantPVR {
 			t.Errorf("%s: private_vulnerability_reporting = %v, want %v", name, s.PrivateVulnerabilityReporting, wantPVR)
 		}
+		if s.SecretScanning == nil || *s.SecretScanning != wantSS {
+			t.Errorf("%s: secret_scanning = %v, want %v", name, s.SecretScanning, wantSS)
+		}
+		if s.SecretScanningPushProtection == nil || *s.SecretScanningPushProtection != wantSSPP {
+			t.Errorf("%s: secret_scanning_push_protection = %v, want %v", name, s.SecretScanningPushProtection, wantSSPP)
+		}
 	}
 
-	check(t, "defaults-only", true, true, false)
-	check(t, "override-one", true, true, true)
-	check(t, "override-disable", true, false, false)
+	check(t, "defaults-only", true, true, false, true, false)
+	check(t, "override-one", true, true, true, true, true)
+	check(t, "override-disable", true, false, false, false, false)
 }
 
 func TestRepositorySet_ReleaseImmutabilityMerge(t *testing.T) {

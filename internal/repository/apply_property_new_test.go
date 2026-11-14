@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,6 +24,8 @@ func TestApplyPropertiesNewRepository(t *testing.T) {
 		spec          manifest.RepositorySpec
 		recon         *manifest.RepositoryReconcile
 		defaultLabels []fakeLabel
+		// noSecretScanning: the owner lacks GitHub Secret Protection.
+		noSecretScanning bool
 		// deferred is what the second plan may still show.
 		deferred func(Change) bool
 	}{
@@ -64,6 +67,18 @@ func TestApplyPropertiesNewRepository(t *testing.T) {
 			deferred: func(c Change) bool {
 				return strings.HasPrefix(c.Resource, manifest.ResourceBranchProtection) && c.Type == ChangeCreate
 			}},
+		// Push protection requires secret scanning: the create enables
+		// scanning first.
+		{name: "secret scanning", spec: manifest.RepositorySpec{
+			Visibility: ptr("public"),
+			Security:   &manifest.Security{SecretScanning: bptr(true), SecretScanningPushProtection: bptr(true)},
+		}},
+		// A new repository has both off, so nothing is sent: where GitHub
+		// does not offer them, it refuses even a disable.
+		{name: "secret scanning off where GitHub does not offer it", noSecretScanning: true, spec: manifest.RepositorySpec{
+			Visibility: ptr("private"),
+			Security:   &manifest.Security{SecretScanning: bptr(false), SecretScanningPushProtection: bptr(false)},
+		}},
 		{name: "archived", spec: manifest.RepositorySpec{
 			Archived: bptr(true), Labels: []manifest.Label{{Name: "feature", Color: "00ff00"}},
 		}},
@@ -76,6 +91,7 @@ func TestApplyPropertiesNewRepository(t *testing.T) {
 			}
 			fake := newMissingFakeGitHub("o", "r", labels)
 			fake.s.Org = propRulesState().Org
+			fake.s.NoSecretScanning = tt.noSecretScanning
 			p := NewProcessor(fake, manifest.NewResolver(fake))
 			repo := &manifest.Repository{
 				Metadata:  manifest.RepositoryMetadata{Owner: "o", Name: "r"},
@@ -119,5 +135,37 @@ func TestApplyPropertiesNewRepository(t *testing.T) {
 				t.Error("the next plan shows nothing, but the create leaves something to it")
 			}
 		})
+	}
+}
+
+// Whether GitHub offers secret scanning on a repository that is not public
+// is known only once it exists: the plan says so, and apply fails where it
+// does not.
+func TestCreateSecretScanningNotOffered(t *testing.T) {
+	ctx := context.Background()
+	fake := newMissingFakeGitHub("o", "r", nil)
+	fake.s.NoSecretScanning = true
+	p := NewProcessor(fake, manifest.NewResolver(fake))
+	repo := &manifest.Repository{
+		Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"},
+		Spec:     manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+	}
+	about := func(n string) bool { return strings.Contains(n, "secret scanning") }
+	if notes := CreateNotes(repo); !slices.ContainsFunc(notes, about) {
+		t.Errorf("create notes %v do not say that secret scanning may not be offered", notes)
+	}
+
+	changes, targets, err := p.Plan(ctx, []*manifest.Repository{repo}, PlanOptions{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := p.Apply(ctx, changes, targets, nil)
+	if !slices.ContainsFunc(results, func(r ApplyResult) bool { return r.Err != nil && strings.Contains(r.Err.Error(), "secret_scanning") }) {
+		t.Errorf("apply results %+v, want secret scanning failed", results)
+	}
+
+	repo.Spec.Visibility = manifest.Ptr(manifest.VisibilityPublic)
+	if notes := CreateNotes(repo); slices.ContainsFunc(notes, about) {
+		t.Errorf("create notes %v for a public repository, which has secret scanning", notes)
 	}
 }

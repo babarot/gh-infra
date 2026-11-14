@@ -251,8 +251,11 @@ func exportSecurity(r *CurrentState) *manifest.Security {
 		VulnerabilityAlerts:           readPtr(r, "security.vulnerability_alerts", r.Security.VulnerabilityAlerts),
 		AutomatedSecurityFixes:        readPtr(r, "security.automated_security_fixes", r.Security.AutomatedSecurityFixes),
 		PrivateVulnerabilityReporting: readPtr(r, "security.private_vulnerability_reporting", r.Security.PrivateVulnerabilityReporting),
+		// Left out when GitHub does not offer them, or they were not read.
+		SecretScanning:               r.Security.SecretScanning,
+		SecretScanningPushProtection: r.Security.SecretScanningPushProtection,
 	}
-	if s.VulnerabilityAlerts == nil && s.AutomatedSecurityFixes == nil && s.PrivateVulnerabilityReporting == nil {
+	if *s == (manifest.Security{}) {
 		return nil
 	}
 	return s

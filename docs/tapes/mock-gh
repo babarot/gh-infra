@@ -321,6 +321,15 @@ if [[ "$args" == *"/private-vulnerability-reporting"* ]]; then
   exit 0
 fi
 
+# Secret scanning and push protection, from the repository's
+# security_and_analysis, read as an admin: both off, so that import --into
+# leaves a manifest without them as it is.
+if [[ "$args" == *"security_and_analysis"* ]]; then
+  delay
+  echo '{"admin":true,"security_and_analysis":{"secret_scanning":{"status":"disabled"},"secret_scanning_push_protection":{"status":"disabled"}}}'
+  exit 0
+fi
+
 # ---------------------------------------------------------------------------
 # File contents API
 # ---------------------------------------------------------------------------

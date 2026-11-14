@@ -109,6 +109,10 @@ func keepUnreadSecurity(imported, local *manifest.Security, field string) *manif
 		s.AutomatedSecurityFixes = l.AutomatedSecurityFixes
 	case "private_vulnerability_reporting":
 		s.PrivateVulnerabilityReporting = l.PrivateVulnerabilityReporting
+	case "secret_scanning":
+		s.SecretScanning = l.SecretScanning
+	case "secret_scanning_push_protection":
+		s.SecretScanningPushProtection = l.SecretScanningPushProtection
 	}
 	return nilIfZero(s)
 }

@@ -109,6 +109,12 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 //     to be effectively true. Required by the GitHub API.
 //   - merge_strategy squash/merge commit title+message must be a valid pairing
 //     per the GitHub API.
+//   - security.secret_scanning_push_protection requires
+//     security.secret_scanning to be effectively true, and disabling secret
+//     scanning disables push protection: GitHub does not reject either, it
+//     does not save the first and makes the second change too.
+//   - security.secret_scanning and security.secret_scanning_push_protection
+//     cannot be enabled where GitHub does not offer them.
 func ValidateDependencies(desired *manifest.Repository, current *CurrentState) error {
 	if desired.Spec.Actions != nil && desired.Spec.Actions.ForkPRApproval != nil && effectiveVisibility(desired, current) == manifest.VisibilityPrivate {
 		return fmt.Errorf("actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or make the repository public/internal)")
@@ -118,6 +124,12 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 		return err
 	}
 	if err := validatePagesDependencies(desired, current); err != nil {
+		return err
+	}
+	if err := validateSecretScanningOffered(desired, current); err != nil {
+		return err
+	}
+	if err := validatePushProtection(desired, current); err != nil {
 		return err
 	}
 
@@ -137,6 +149,55 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 	}
 
 	return validateMergeCommitPairs(desired, current)
+}
+
+// validateSecretScanningOffered fails when the manifest enables secret
+// scanning or its push protection on an existing repository where GitHub
+// does not offer them (see fetchSecretScanning).
+func validateSecretScanningOffered(desired *manifest.Repository, current *CurrentState) error {
+	s := desired.Spec.Security
+	if s == nil || current.IsNew {
+		return nil
+	}
+	var field string
+	switch {
+	case derefBool(s.SecretScanning) && current.Security.SecretScanning == nil:
+		field = "secret_scanning"
+	case derefBool(s.SecretScanningPushProtection) && current.Security.SecretScanningPushProtection == nil:
+		field = "secret_scanning_push_protection"
+	default:
+		return nil
+	}
+	if current.Visibility != manifest.VisibilityPublic && effectiveVisibility(desired, current) == manifest.VisibilityPublic {
+		return fmt.Errorf("security.%s: GitHub does not offer it on %s while it is %s (apply the visibility change first, then set security.%s)", field, desired.Metadata.FullName(), current.Visibility, field)
+	}
+	return fmt.Errorf("security.%s: GitHub does not offer it on %s (a private repository needs GitHub Secret Protection, on GitHub Team or GitHub Enterprise Cloud)", field, desired.Metadata.FullName())
+}
+
+// validatePushProtection fails when the manifest leaves push protection
+// effectively enabled without secret scanning (see ValidateDependencies).
+func validatePushProtection(desired *manifest.Repository, current *CurrentState) error {
+	s := desired.Spec.Security
+	if s == nil {
+		return nil
+	}
+	scanning := derefBool(current.Security.SecretScanning)
+	if s.SecretScanning != nil {
+		scanning = *s.SecretScanning
+	}
+	pushProtection := derefBool(current.Security.SecretScanningPushProtection)
+	if s.SecretScanningPushProtection != nil {
+		pushProtection = *s.SecretScanningPushProtection
+	}
+	switch {
+	case !pushProtection || scanning:
+		return nil
+	case s.SecretScanningPushProtection != nil:
+		return fmt.Errorf("security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled (current state is disabled and the manifest does not enable it)")
+	case s.SecretScanning != nil:
+		return fmt.Errorf("security.secret_scanning: false also disables secret_scanning_push_protection on GitHub (set security.secret_scanning_push_protection: false as well)")
+	}
+	return nil
 }
 
 // validSquashCombinations lists all GitHub-accepted (title, message) pairs for
@@ -337,7 +398,9 @@ func diffNew(ctx context.Context, desired *manifest.Repository, empty *CurrentSt
 // with the name of a declared label is updated instead of created; and what
 // the creating run cannot apply, so a later plan does: branch protection,
 // since a new repository has no branch, and the deletion of default labels
-// the manifest leaves out, since which ones GitHub creates is not known.
+// the manifest leaves out, since which ones GitHub creates is not known; and
+// what the run may fail to apply: secret scanning on a repository that is
+// not public.
 func CreateNotes(desired *manifest.Repository) []string {
 	var notes []string
 	if len(desired.Spec.Labels) > 0 {
@@ -351,6 +414,11 @@ func CreateNotes(desired *manifest.Repository) []string {
 	}
 	notes = append(notes, environmentCreateNotes(desired)...)
 	notes = append(notes, pagesCreateNotes(desired)...)
+	// Whether GitHub offers secret scanning on a repository that is not
+	// public is not known before it exists.
+	if s := desired.Spec.Security; s != nil && derefBool(s.SecretScanning) && effectiveVisibility(desired, &CurrentState{IsNew: true}) != manifest.VisibilityPublic {
+		notes = append(notes, "secret scanning is enabled only if GitHub offers it on the repository, which is not public (it needs GitHub Secret Protection); otherwise apply fails")
+	}
 	return notes
 }
 
@@ -370,6 +438,19 @@ func diffSecurity(name string, desired *manifest.Repository, current *CurrentSta
 		appendChildChanged(cc, "vulnerability_alerts", s.VulnerabilityAlerts, current.Security.VulnerabilityAlerts)
 		appendChildChanged(cc, "automated_security_fixes", s.AutomatedSecurityFixes, current.Security.AutomatedSecurityFixes)
 		appendChildChanged(cc, "private_vulnerability_reporting", s.PrivateVulnerabilityReporting, current.Security.PrivateVulnerabilityReporting)
+		// Push protection requires secret scanning (see
+		// ValidateDependencies): scanning is enabled before push protection,
+		// and push protection disabled before scanning, which would disable
+		// it too. What GitHub does not offer on the repository is off.
+		scanning := derefBool(current.Security.SecretScanning)
+		pushProtection := derefBool(current.Security.SecretScanningPushProtection)
+		if derefBool(s.SecretScanning) {
+			appendChildChanged(cc, "secret_scanning", s.SecretScanning, scanning)
+			appendChildChanged(cc, "secret_scanning_push_protection", s.SecretScanningPushProtection, pushProtection)
+		} else {
+			appendChildChanged(cc, "secret_scanning_push_protection", s.SecretScanningPushProtection, pushProtection)
+			appendChildChanged(cc, "secret_scanning", s.SecretScanning, scanning)
+		}
 	})
 }
 

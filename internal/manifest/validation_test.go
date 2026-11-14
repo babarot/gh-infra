@@ -197,6 +197,35 @@ func TestValidateRepository(t *testing.T) {
 			},
 			wantErr: "name is required",
 		},
+		// Repository push protection requires secret scanning.
+		{
+			name: "push protection with secret scanning disabled fails",
+			repo: &Repository{
+				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
+				Spec: RepositorySpec{
+					Security: &Security{SecretScanning: Ptr(false), SecretScanningPushProtection: Ptr(true)},
+				},
+			},
+			wantErr: "security.secret_scanning_push_protection requires security.secret_scanning to be enabled",
+		},
+		{
+			name: "push protection with secret scanning omitted passes",
+			repo: &Repository{
+				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
+				Spec: RepositorySpec{
+					Security: &Security{SecretScanningPushProtection: Ptr(true)},
+				},
+			},
+		},
+		{
+			name: "push protection disabled with secret scanning disabled passes",
+			repo: &Repository{
+				Metadata: RepositoryMetadata{Name: "my-repo", Owner: "my-org"},
+				Spec: RepositorySpec{
+					Security: &Security{SecretScanning: Ptr(false), SecretScanningPushProtection: Ptr(false)},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

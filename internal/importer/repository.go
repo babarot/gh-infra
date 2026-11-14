@@ -459,6 +459,24 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		},
 	},
 	{
+		diffField: "security.secret_scanning",
+		parentKey: "security",
+		key:       "secret_scanning",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromSecurity(spec.Security, "secret_scanning")
+		},
+	},
+	{
+		diffField: "security.secret_scanning_push_protection",
+		parentKey: "security",
+		key:       "secret_scanning_push_protection",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromSecurity(spec.Security, "secret_scanning_push_protection")
+		},
+	},
+	{
 		diffField: "topics",
 		key:       "topics",
 		kind:      fieldStringSlice,
@@ -914,6 +932,10 @@ func boolPtrFromSecurity(s *manifest.Security, field string) *bool {
 		return s.AutomatedSecurityFixes
 	case "private_vulnerability_reporting":
 		return s.PrivateVulnerabilityReporting
+	case "secret_scanning":
+		return s.SecretScanning
+	case "secret_scanning_push_protection":
+		return s.SecretScanningPushProtection
 	default:
 		return nil
 	}
@@ -1136,6 +1158,8 @@ func compareSecurity(local, imported *manifest.Security) []FieldDiff {
 	diffs = appendBoolPtrDiff(diffs, "security.vulnerability_alerts", l.VulnerabilityAlerts, i.VulnerabilityAlerts)
 	diffs = appendBoolPtrDiff(diffs, "security.automated_security_fixes", l.AutomatedSecurityFixes, i.AutomatedSecurityFixes)
 	diffs = appendBoolPtrDiff(diffs, "security.private_vulnerability_reporting", l.PrivateVulnerabilityReporting, i.PrivateVulnerabilityReporting)
+	diffs = appendBoolPtrDiff(diffs, "security.secret_scanning", l.SecretScanning, i.SecretScanning)
+	diffs = appendBoolPtrDiff(diffs, "security.secret_scanning_push_protection", l.SecretScanningPushProtection, i.SecretScanningPushProtection)
 	return diffs
 }
 
@@ -2252,10 +2276,28 @@ func minimalSecurity(defaults, imported *manifest.Security) *manifest.Security {
 		s.PrivateVulnerabilityReporting = i.PrivateVulnerabilityReporting
 		any = true
 	}
+	if v := offeredOrOff(d.SecretScanning, i.SecretScanning); !boolPtrEqual(d.SecretScanning, v) {
+		s.SecretScanning = v
+		any = true
+	}
+	if v := offeredOrOff(d.SecretScanningPushProtection, i.SecretScanningPushProtection); !boolPtrEqual(d.SecretScanningPushProtection, v) {
+		s.SecretScanningPushProtection = v
+		any = true
+	}
 	if !any {
 		return nil
 	}
 	return &s
+}
+
+// offeredOrOff is imported, a secret scanning setting, or false when GitHub
+// does not offer it on the repository (nil) and the defaults set it: off, so
+// an entry overrides defaults that enable it.
+func offeredOrOff(defaults, imported *bool) *bool {
+	if imported == nil && defaults != nil {
+		return manifest.Ptr(false)
+	}
+	return imported
 }
 
 func pullRequestsEqual(a, b *manifest.PullRequests) bool {

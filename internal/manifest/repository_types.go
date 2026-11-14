@@ -218,6 +218,8 @@ type Security struct {
 	VulnerabilityAlerts           *bool `yaml:"vulnerability_alerts,omitempty"`
 	AutomatedSecurityFixes        *bool `yaml:"automated_security_fixes,omitempty"`
 	PrivateVulnerabilityReporting *bool `yaml:"private_vulnerability_reporting,omitempty"`
+	SecretScanning                *bool `yaml:"secret_scanning,omitempty"`
+	SecretScanningPushProtection  *bool `yaml:"secret_scanning_push_protection,omitempty"`
 }
 
 // Pages is the GitHub Pages site of a repository. gh-infra enables the site
