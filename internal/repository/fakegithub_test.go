@@ -48,6 +48,15 @@ type fakeState struct {
 	VulnerabilityAlerts           bool
 	AutomatedSecurityFixes        bool
 	PrivateVulnerabilityReporting bool
+	// Secret scanning and its push protection are in the repository's
+	// security_and_analysis, which GitHub returns only to admins (NotAdmin
+	// is a token that is not an admin's), and leaves out where it does not
+	// offer secret scanning: NoSecretScanning is an owner without GitHub
+	// Secret Protection, which matters for a repository that is not public.
+	SecretScanning               bool
+	SecretScanningPushProtection bool
+	NoSecretScanning             bool
+	NotAdmin                     bool
 
 	Actions         fakeActions
 	Workflow        fakeWorkflow
@@ -354,6 +363,7 @@ func (f *fakeGitHub) repoCmd(args []string) ([]byte, bool, error) {
 			Workflow:            fakeWorkflow{DefaultWorkflowPermissions: "read"},
 			Labels:              slices.Clone(f.defaultLabels),
 			Org:                 f.s.Org, // the owner's, not the repository's
+			NoSecretScanning:    f.s.NoSecretScanning,
 		}
 		f.s = newFakeGitHub(f.owner, f.name, f.s).s
 		// A new repository has no commit, so no branch yet.
@@ -561,6 +571,9 @@ func (f *fakeGitHub) apiRepo(method string, body []byte, rest []string) ([]byte,
 	switch method {
 	case "GET":
 		jq, _ := fakeFlag(rest, "--jq")
+		if jq == "{admin: .permissions.admin, security_and_analysis}" {
+			return mustJSON(map[string]any{"admin": !f.s.NotAdmin, "security_and_analysis": f.securityAndAnalysis()}), false, nil
+		}
 		all := mustJSONMap(*r)
 		var keys []string
 		switch jq {
@@ -602,6 +615,17 @@ func (f *fakeGitHub) apiRepo(method string, body []byte, rest []string) ([]byte,
 				return nil, false, fakeStatus(gh.ErrValidation, pair[0]+" and "+pair[1]+" must be sent together")
 			}
 		}
+		if sa, ok := fields["security_and_analysis"]; ok {
+			if len(fields) > 1 {
+				return nil, false, errUnknown
+			}
+			if err := f.patchSecurityAndAnalysis(sa); err != nil {
+				return nil, false, err
+			}
+			resp := mustJSONMap(*r)
+			resp["security_and_analysis"] = f.securityAndAnalysis()
+			return mustJSON(resp), true, nil
+		}
 		next := *r
 		for k, v := range fields {
 			if p, ok := repoBoolFields[k]; ok {
@@ -633,6 +657,74 @@ func (f *fakeGitHub) apiRepo(method string, body []byte, rest []string) ([]byte,
 		return mustJSON(*r), true, nil
 	}
 	return nil, false, errUnknown
+}
+
+// securityAndAnalysis is security_and_analysis as GitHub returns it, nil
+// when it does not.
+func (f *fakeGitHub) securityAndAnalysis() map[string]any {
+	if f.s.NotAdmin || !f.secretScanningOffered() {
+		return nil
+	}
+	status := func(enabled bool) map[string]string {
+		if enabled {
+			return map[string]string{"status": "enabled"}
+		}
+		return map[string]string{"status": "disabled"}
+	}
+	return map[string]any{
+		"dependabot_security_updates":           status(f.s.AutomatedSecurityFixes),
+		"secret_scanning":                       status(f.s.SecretScanning),
+		"secret_scanning_non_provider_patterns": status(false),
+		"secret_scanning_push_protection":       status(f.s.SecretScanningPushProtection),
+		"secret_scanning_validity_checks":       status(false),
+	}
+}
+
+// secretScanningOffered reports whether GitHub offers secret scanning on the
+// repository: free on a public one.
+func (f *fakeGitHub) secretScanningOffered() bool {
+	return f.s.Repo.Visibility == "public" || !f.s.NoSecretScanning
+}
+
+// patchSecurityAndAnalysis applies a PATCH of security_and_analysis with one
+// setting, as gh-infra sends them. Seen on GitHub (2026-11, a public
+// repository of a user): enabling push protection while secret scanning is
+// off answers 200 and saves nothing, and disabling secret scanning disables
+// push protection too.
+func (f *fakeGitHub) patchSecurityAndAnalysis(v any) error {
+	features, ok := v.(map[string]any)
+	if !ok || len(features) != 1 {
+		return errUnknown
+	}
+	for name, v := range features {
+		obj, ok := v.(map[string]any)
+		if !ok || len(obj) != 1 {
+			return errUnknown
+		}
+		var enabled bool
+		switch obj["status"] {
+		case "enabled":
+			enabled = true
+		case "disabled":
+		default:
+			return fakeStatus(gh.ErrValidation, name+".status must be enabled or disabled")
+		}
+		// Reported, not seen: where secret scanning is not available, GitHub
+		// refuses a change of it, a disable too.
+		if !f.secretScanningOffered() {
+			return fakeStatus(gh.ErrValidation, "Secret scanning is not available for this repository")
+		}
+		switch name {
+		case "secret_scanning":
+			f.s.SecretScanning = enabled
+			f.s.SecretScanningPushProtection = f.s.SecretScanningPushProtection && enabled
+		case "secret_scanning_push_protection":
+			f.s.SecretScanningPushProtection = enabled && f.s.SecretScanning
+		default:
+			return errUnknown
+		}
+	}
+	return nil
 }
 
 func (f *fakeGitHub) apiActions(sub, method string, body []byte) ([]byte, bool, error) {

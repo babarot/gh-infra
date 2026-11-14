@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -35,6 +36,7 @@ func TestImportUnreadableSettings(t *testing.T) {
 		alertsCmd     = "api repos/o/r/vulnerability-alerts"
 		fixesCmd      = "api repos/o/r/automated-security-fixes"
 		reportingCmd  = "api repos/o/r/private-vulnerability-reporting"
+		analysisCmd   = "api repos/o/r --jq {admin: .permissions.admin, security_and_analysis}"
 	)
 	forbidden := fakeStatus(gh.ErrForbidden, "Resource not accessible by personal access token")
 	notFound := fakeStatus(gh.ErrNotFound, "Not Found")
@@ -44,7 +46,8 @@ func TestImportUnreadableSettings(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
 		cmd    string
-		err    error // nil: a response that does not parse
+		err    error  // nil: out, or a response that does not parse
+		out    []byte // the response when err is nil
 		unread []string
 		// absent reports whether the exported manifest leaves the setting
 		// out.
@@ -107,6 +110,35 @@ func TestImportUnreadableSettings(t *testing.T) {
 			absent: func(s manifest.RepositorySpec) bool { return s.Security.AutomatedSecurityFixes == nil }},
 		{name: "private vulnerability reporting 403", cmd: reportingCmd, err: forbidden, unread: []string{"security.private_vulnerability_reporting"},
 			absent: func(s manifest.RepositorySpec) bool { return s.Security.PrivateVulnerabilityReporting == nil }},
+		// GitHub returns security_and_analysis only to admins (and
+		// organization owners and security managers).
+		{name: "secret scanning not returned to a non-admin", cmd: analysisCmd, out: []byte(`{"admin":false,"security_and_analysis":null}` + "\n"),
+			unread: []string{"security.secret_scanning", "security.secret_scanning_push_protection"},
+			absent: func(s manifest.RepositorySpec) bool {
+				return s.Security.SecretScanning == nil && s.Security.SecretScanningPushProtection == nil
+			}},
+		{name: "secret scanning status unknown", cmd: analysisCmd, out: []byte(`{"admin":true,"security_and_analysis":{"secret_scanning":{"status":"paused"},"secret_scanning_push_protection":{"status":"enabled"}}}`),
+			unread: []string{"security.secret_scanning", "security.secret_scanning_push_protection"},
+			absent: func(s manifest.RepositorySpec) bool {
+				return s.Security.SecretScanning == nil && s.Security.SecretScanningPushProtection == nil
+			}},
+		// On a public repository GitHub offers both, so to an admin it
+		// leaves out neither.
+		{name: "secret scanning not returned on a public repository", cmd: analysisCmd, out: []byte(`{"admin":true,"security_and_analysis":null}` + "\n"),
+			unread: []string{"security.secret_scanning", "security.secret_scanning_push_protection"},
+			absent: func(s manifest.RepositorySpec) bool {
+				return s.Security.SecretScanning == nil && s.Security.SecretScanningPushProtection == nil
+			}},
+		{name: "push protection not returned on a public repository", cmd: analysisCmd, out: []byte(`{"admin":true,"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`),
+			unread: []string{"security.secret_scanning", "security.secret_scanning_push_protection"},
+			absent: func(s manifest.RepositorySpec) bool {
+				return s.Security.SecretScanning == nil && s.Security.SecretScanningPushProtection == nil
+			}},
+		{name: "secret scanning unparsable", cmd: analysisCmd,
+			unread: []string{"security.secret_scanning", "security.secret_scanning_push_protection"},
+			absent: func(s manifest.RepositorySpec) bool {
+				return s.Security.SecretScanning == nil && s.Security.SecretScanningPushProtection == nil
+			}},
 		// GitHub documents a 404 of the vulnerability alerts as disabled.
 		{name: "vulnerability alerts 404", cmd: alertsCmd, err: notFound,
 			absent: func(s manifest.RepositorySpec) bool {
@@ -114,8 +146,8 @@ func TestImportUnreadableSettings(t *testing.T) {
 			}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			runner := &unreadableRunner{Runner: newFakeGitHub("o", "r", propEnvState()), cmd: tt.cmd, err: tt.err}
-			if tt.err == nil {
+			runner := &unreadableRunner{Runner: newFakeGitHub("o", "r", propEnvState()), cmd: tt.cmd, err: tt.err, out: tt.out}
+			if tt.err == nil && tt.out == nil {
 				runner.out = []byte("not json")
 			}
 			current, err := NewProcessor(runner, nil).FetchRepository(context.Background(), "o", "r", nil, nil)
@@ -145,6 +177,37 @@ func TestImportUnreadableSettings(t *testing.T) {
 			t.Errorf("the export leaves out what was read: %+v", spec)
 		}
 	})
+}
+
+// On a private repository GitHub does not offer secret scanning on, an admin
+// is returned no security_and_analysis, or one without push protection: what
+// is left out is off, not unread, and the export leaves it out.
+func TestImportSecretScanningNotOffered(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		out          string
+		wantScanning *bool
+	}{
+		{name: "secret scanning", out: `{"admin":true,"security_and_analysis":null}` + "\n"},
+		{name: "push protection", out: `{"admin":true,"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`, wantScanning: manifest.Ptr(true)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := propEnvState()
+			s.Repo.Visibility = "private"
+			runner := &unreadableRunner{Runner: newFakeGitHub("o", "r", s), cmd: "api repos/o/r --jq {admin: .permissions.admin, security_and_analysis}", out: []byte(tt.out)}
+			current, err := NewProcessor(runner, nil).FetchRepository(context.Background(), "o", "r", nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(current.Unread) > 0 {
+				t.Errorf("unread %v", current.Unread)
+			}
+			sec := ToManifest(context.Background(), current, nil).Spec.Security
+			if !reflect.DeepEqual(sec.SecretScanning, tt.wantScanning) || sec.SecretScanningPushProtection != nil {
+				t.Errorf("exported secret scanning %v, push protection %v; want %v, none", sec.SecretScanning, sec.SecretScanningPushProtection, tt.wantScanning)
+			}
+		})
+	}
 }
 
 // environment returns the environment name of spec, or a zero one.

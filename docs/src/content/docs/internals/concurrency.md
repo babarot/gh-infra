@@ -259,6 +259,7 @@ During `plan`, each repository triggers the following API calls:
 | `GET /repos/{owner}/{repo}/vulnerability-alerts` | 1 | Dependabot vulnerability alerts |
 | `GET /repos/{owner}/{repo}/automated-security-fixes` | 1 | Dependabot security updates |
 | `GET /repos/{owner}/{repo}/private-vulnerability-reporting` | 1 | Private vulnerability reporting |
+| `GET /repos/{owner}/{repo}` | 0–1 | Only if the manifest sets a secret scanning field |
 | `GET /repos/{owner}/{repo}/branches` | 1 | List protected branches |
 | `GET /repos/{owner}/{repo}/branches/{branch}/protection` | N | One per protected branch (fetched in parallel) |
 | `GET /repos/{owner}/{repo}/rulesets` | 1 | List rulesets (paginated) |

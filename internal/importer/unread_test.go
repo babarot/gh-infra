@@ -3,6 +3,7 @@ package importer
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -23,7 +24,10 @@ func fullState() *repository.CurrentState {
 	// The single settings differ from the defaults FetchRepository leaves
 	// them at when they cannot be read.
 	s.ReleaseImmutability = true
-	s.Security = repository.CurrentSecurity{VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true}
+	s.Security = repository.CurrentSecurity{
+		VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true,
+		SecretScanning: manifest.Ptr(true), SecretScanningPushProtection: manifest.Ptr(true),
+	}
 	s.MergeStrategy.AllowAutoMerge = true
 	s.Features.PullRequests = false
 	return s
@@ -48,6 +52,8 @@ var unreadCases = []struct {
 	{"security.vulnerability_alerts", func(s *repository.CurrentState) { s.Security.VulnerabilityAlerts = false }},
 	{"security.automated_security_fixes", func(s *repository.CurrentState) { s.Security.AutomatedSecurityFixes = false }},
 	{"security.private_vulnerability_reporting", func(s *repository.CurrentState) { s.Security.PrivateVulnerabilityReporting = false }},
+	{"security.secret_scanning", func(s *repository.CurrentState) { s.Security.SecretScanning = nil }},
+	{"security.secret_scanning_push_protection", func(s *repository.CurrentState) { s.Security.SecretScanningPushProtection = nil }},
 	{"merge_strategy.allow_auto_merge", func(s *repository.CurrentState) { s.MergeStrategy.AllowAutoMerge = false }},
 	{"merge_strategy.squash_merge_commit_title", func(s *repository.CurrentState) { s.MergeStrategy.SquashMergeCommitTitle = "" }},
 	{"features.pull_requests", func(s *repository.CurrentState) {
@@ -107,6 +113,87 @@ func TestImportIntoRepositoryKeepsUnread(t *testing.T) {
 				t.Errorf("read as none, %s should change the manifest", tt.key)
 			}
 		})
+	}
+}
+
+// Secret scanning that GitHub does not offer on the repository is off, not
+// unread: import --into keeps the manifest's false, and removes its true,
+// which plan would reject.
+func TestImportIntoSecretScanningNotOffered(t *testing.T) {
+	ctx := context.Background()
+	resolver := manifest.NewResolver(rtRunner{})
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			local := fullState()
+			local.Security.SecretScanning, local.Security.SecretScanningPushProtection = manifest.Ptr(enabled), manifest.Ptr(enabled)
+			path, data := writeYAML(t, repository.ToManifest(ctx, local, resolver))
+			parsed, err := manifest.ParseAll(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current := fullState()
+			current.Security.SecretScanning, current.Security.SecretScanningPushProtection = nil, nil
+
+			rp, err := DiffRepository(DiffInput{Repos: parsed.RepositoryDocs, Imported: repository.ToManifest(ctx, current, resolver), ManifestBytes: map[string][]byte{path: data}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if changed := len(rp.ManifestEdits) > 0; changed != enabled {
+				t.Errorf("manifest changed: %v, want %v (diffs %+v)", changed, enabled, rp.Diffs)
+			}
+			if len(rp.Warnings) > 0 {
+				t.Errorf("warnings %+v, want none", rp.Warnings)
+			}
+		})
+	}
+}
+
+// In a RepositorySet entry, secret scanning that GitHub does not offer is
+// written as false when the defaults enable it, so the entry plans cleanly.
+func TestImportIntoRepositorySetSecretScanningNotOffered(t *testing.T) {
+	ctx := context.Background()
+	resolver := manifest.NewResolver(rtRunner{})
+	set := map[string]any{
+		"apiVersion": manifest.APIVersion,
+		"kind":       manifest.KindRepositorySet,
+		"metadata":   map[string]any{"owner": "o"},
+		// The other security settings as on GitHub: only secret scanning
+		// differs from the defaults.
+		"defaults": map[string]any{"spec": map[string]any{"security": map[string]any{
+			"vulnerability_alerts": true, "automated_security_fixes": true, "private_vulnerability_reporting": true,
+			"secret_scanning": true, "secret_scanning_push_protection": true,
+		}}},
+		"repositories": []map[string]any{{"name": "r"}},
+	}
+	path, data := writeYAML(t, set)
+	parsed, err := manifest.ParseAll(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, data)
+	}
+	current := fullState()
+	current.Security.SecretScanning, current.Security.SecretScanningPushProtection = nil, nil
+
+	rp, err := DiffRepositorySet(DiffInput{Repos: parsed.RepositoryDocs, Imported: repository.ToManifest(ctx, current, resolver), ManifestBytes: map[string][]byte{path: data}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, ok := rp.ManifestEdits[path]
+	if !ok {
+		t.Fatal("import did not write the entry")
+	}
+	if err := os.WriteFile(path, edited, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reparsed, err := manifest.ParseAll(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, edited)
+	}
+	repo := reparsed.Repositories[0]
+	if s := repo.Spec.Security; s.SecretScanning == nil || *s.SecretScanning || s.SecretScanningPushProtection == nil || *s.SecretScanningPushProtection {
+		t.Errorf("entry security %+v, want secret scanning and push protection false\n%s", s, edited)
+	}
+	if changes := repository.Diff(ctx, repo, current, repository.DiffOptions{Resolver: resolver.For("o")}); len(changes) > 0 {
+		t.Errorf("plan after import changes %+v\n%s", changes, edited)
 	}
 }
 

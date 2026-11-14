@@ -209,14 +209,16 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		vulnerabilityAlerts           bool
 		automatedSecurityFixes        bool
 		privateVulnerabilityReporting bool
+		secretScanning                *bool
+		pushProtection                *bool
 	)
 
 	// fetchSetting runs a single-value fetch of what, which the manifest
 	// keys name. With a spec, a setting that cannot be read is an error (a
 	// 404 too, e.g. GHES without the feature: apply could not set it).
-	// Import leaves one that cannot be read (403, 404, 422, or a response
-	// that does not parse) unread rather than at its default. Other errors
-	// (5xx) propagate.
+	// Import leaves one that cannot be read (403, 404, 422, a response that
+	// does not parse, or a security_and_analysis that cannot be read) unread
+	// rather than at its default. Other errors (5xx) propagate.
 	fetchSetting := func(what string, keys []string, fetch func() error) func() error {
 		return func() error {
 			status("fetching " + what + "...")
@@ -224,7 +226,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 			if err == nil {
 				return nil
 			}
-			if !strict && (isIgnorableSubresourceError(err) || isParseError(err)) {
+			if !strict && (isIgnorableSubresourceError(err) || isParseError(err) || errors.Is(err, errSecurityAndAnalysisUnreadable)) {
 				for _, key := range keys {
 					_ = record(key, unreadSetting(err))
 				}
@@ -286,6 +288,16 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		}))
 	}
 
+	// Both are read when either is managed: plan checks one against the
+	// other (ValidateDependencies).
+	if want(manifest.RepositorySpec.ManagesSecretScanning) || want(manifest.RepositorySpec.ManagesSecretScanningPushProtection) {
+		g.Go(fetchSetting("secret scanning", []string{"security.secret_scanning", "security.secret_scanning_push_protection"}, func() error {
+			var err error
+			secretScanning, pushProtection, err = p.fetchSecretScanning(ctx, owner, name, repo.Visibility)
+			return err
+		}))
+	}
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
@@ -312,6 +324,8 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		VulnerabilityAlerts:           vulnerabilityAlerts,
 		AutomatedSecurityFixes:        automatedSecurityFixes,
 		PrivateVulnerabilityReporting: privateVulnerabilityReporting,
+		SecretScanning:                secretScanning,
+		SecretScanningPushProtection:  pushProtection,
 	}
 
 	return repo, nil
@@ -581,6 +595,59 @@ func (p *Processor) fetchPrivateVulnerabilityReporting(ctx context.Context, owne
 		return false, err
 	}
 	return raw.Enabled, nil
+}
+
+// errSecurityAndAnalysisUnreadable marks a security_and_analysis that cannot
+// be read: one GitHub does not return to the token, or a status gh-infra does
+// not know.
+var errSecurityAndAnalysisUnreadable = errors.New("cannot read security_and_analysis")
+
+// fetchSecretScanning returns whether secret scanning and its push
+// protection are enabled on the repository, each nil when GitHub does not
+// offer it there. GitHub returns the repository's security_and_analysis only
+// to admins (and organization owners and security managers), and on one that
+// is not public leaves out, even for an admin, what it does not offer there.
+// So a field left out is not offered only for an admin on a repository that
+// is not public; otherwise it cannot be read.
+func (p *Processor) fetchSecretScanning(ctx context.Context, owner, name, visibility string) (scanning, pushProtection *bool, err error) {
+	out, err := p.runner.Run(ctx,
+		"api", fmt.Sprintf("repos/%s/%s", owner, name),
+		"--jq", "{admin: .permissions.admin, security_and_analysis}",
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	var raw struct {
+		Admin               bool `json:"admin"`
+		SecurityAndAnalysis map[string]struct {
+			Status string `json:"status"`
+		} `json:"security_and_analysis"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, nil, err
+	}
+	enabled := func(field string) (*bool, error) {
+		f, ok := raw.SecurityAndAnalysis[field]
+		switch {
+		case !ok && !raw.Admin:
+			return nil, fmt.Errorf("%w: GitHub returns it only to repository admins, organization owners and security managers", errSecurityAndAnalysisUnreadable)
+		case !ok && visibility == manifest.VisibilityPublic:
+			return nil, fmt.Errorf("%w: GitHub did not return %s", errSecurityAndAnalysisUnreadable, field)
+		case !ok:
+			return nil, nil
+		case f.Status == "enabled" || f.Status == "disabled":
+			return manifest.Ptr(f.Status == "enabled"), nil
+		default:
+			return nil, fmt.Errorf("%w: %s has status %q", errSecurityAndAnalysisUnreadable, field, f.Status)
+		}
+	}
+	if scanning, err = enabled("secret_scanning"); err != nil {
+		return nil, nil, err
+	}
+	if pushProtection, err = enabled("secret_scanning_push_protection"); err != nil {
+		return nil, nil, err
+	}
+	return scanning, pushProtection, nil
 }
 
 func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string, strict bool) (map[string]*CurrentBranchProtection, error) {

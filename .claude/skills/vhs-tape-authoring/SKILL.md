@@ -158,6 +158,7 @@ $MOCK_DIR/{owner}/{repo}/
 | REST `/actions/permissions` | hardcoded | `enabled:true, allowed_actions:all` |
 | `/contents/{path}` (GET) | `contents/{path}` file | 404 (new file) |
 | REST `/vulnerability-alerts`, `/automated-security-fixes`, `/private-vulnerability-reporting` | hardcoded | alerts on, the other two off |
+| REST `repos/{owner}/{repo}` with `security_and_analysis` | hardcoded | secret scanning and push protection off, read as an admin |
 | `pr create`, `pr view`, POST `/pulls` | `pr-number` | pull request #42 |
 | REST GET `/branches/{branch}/protection` | hardcoded | 404 (not protected), as GitHub answers before apply protects it |
 | `label list` | `labels.json` | `[]` |

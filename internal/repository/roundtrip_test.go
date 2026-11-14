@@ -46,8 +46,11 @@ func roundTripState() *CurrentState {
 			SquashMergeCommitTitle: "COMMIT_OR_PR_TITLE", SquashMergeCommitMessage: "COMMIT_MESSAGES",
 		},
 		ReleaseImmutability: true,
-		Security:            CurrentSecurity{VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true},
-		Actions:             CurrentActions{Enabled: true, AllowedActions: "all", SHAPinningRequired: true, WorkflowPermissions: "read", CanApprovePullRequests: false, ForkPRApproval: "all_external_contributors"},
+		Security: CurrentSecurity{
+			VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true,
+			SecretScanning: manifest.Ptr(true), SecretScanningPushProtection: manifest.Ptr(true),
+		},
+		Actions: CurrentActions{Enabled: true, AllowedActions: "all", SHAPinningRequired: true, WorkflowPermissions: "read", CanApprovePullRequests: false, ForkPRApproval: "all_external_contributors"},
 	}
 }
 
@@ -73,7 +76,21 @@ func TestRoundTrip_ExportThenPlan(t *testing.T) {
 			s.Features.PullRequests = false
 			s.Features.PullRequestCreation = manifest.PullRequestCreationCollaboratorsOnly
 		}},
-		{"security off", func(s *CurrentState) { s.Security = CurrentSecurity{} }},
+		{"security off", func(s *CurrentState) {
+			s.Security = CurrentSecurity{SecretScanning: manifest.Ptr(false), SecretScanningPushProtection: manifest.Ptr(false)}
+		}},
+		{"push protection off", func(s *CurrentState) { s.Security.SecretScanningPushProtection = manifest.Ptr(false) }},
+		// GitHub does not offer them on the private repository: off.
+		{"secret scanning not offered", func(s *CurrentState) {
+			s.Visibility = "private"
+			s.Actions = CurrentActions{WorkflowPermissions: "read"}
+			s.Security.SecretScanning, s.Security.SecretScanningPushProtection = nil, nil
+		}},
+		{"push protection not offered", func(s *CurrentState) {
+			s.Visibility = "private"
+			s.Actions = CurrentActions{WorkflowPermissions: "read"}
+			s.Security.SecretScanningPushProtection = nil
+		}},
 		{"Actions disabled with allowed actions left", func(s *CurrentState) {
 			s.Visibility = "private"
 			s.Actions = CurrentActions{Enabled: false, AllowedActions: "all", WorkflowPermissions: "read"}

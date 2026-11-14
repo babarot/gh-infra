@@ -716,6 +716,12 @@ func mergeSecurity(base, override *Security) *Security {
 	if override.PrivateVulnerabilityReporting != nil {
 		result.PrivateVulnerabilityReporting = override.PrivateVulnerabilityReporting
 	}
+	if override.SecretScanning != nil {
+		result.SecretScanning = override.SecretScanning
+	}
+	if override.SecretScanningPushProtection != nil {
+		result.SecretScanningPushProtection = override.SecretScanningPushProtection
+	}
 	return &result
 }
 
