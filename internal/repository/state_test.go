@@ -952,3 +952,54 @@ func TestFormatTimeAgo(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchLabels(t *testing.T) {
+	const command = "label list --repo o/r --json name,color,description --limit 1000"
+	for _, strict := range []bool{false, true} {
+		for _, tt := range []struct {
+			name    string
+			output  string
+			err     error
+			want    map[string]*CurrentLabel
+			wantErr bool
+		}{
+			{name: "empty output", want: map[string]*CurrentLabel{}},
+			{name: "empty array", output: "[]", want: map[string]*CurrentLabel{}},
+			{name: "labels", output: `[{"name":"bug","color":"d73a4a","description":"A bug"}]`,
+				want: map[string]*CurrentLabel{"bug": {Name: "bug", Color: "d73a4a", Description: "A bug"}}},
+			{name: "invalid JSON", output: "[", wantErr: true},
+			{name: "command error", err: gh.ErrForbidden, wantErr: true},
+		} {
+			t.Run(fmt.Sprintf("%s/strict=%t", tt.name, strict), func(t *testing.T) {
+				mock := &gh.MockRunner{
+					Strict:    true,
+					Responses: map[string][]byte{command: []byte(tt.output)},
+				}
+				if tt.err != nil {
+					mock.Errors = map[string]error{command: tt.err}
+				}
+				labels, err := NewProcessor(mock, nil).fetchLabels(context.Background(), "o", "r", strict)
+				if tt.wantErr {
+					if err == nil {
+						t.Fatal("expected an error")
+					}
+					if labels != nil {
+						t.Errorf("unread labels = %v, want nil", labels)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if labels == nil || len(labels) != len(tt.want) {
+					t.Fatalf("labels = %v, want a non-nil map with %d entries", labels, len(tt.want))
+				}
+				for name, want := range tt.want {
+					if got := labels[name]; got == nil || *got != *want {
+						t.Errorf("labels[%q] = %+v, want %+v", name, got, want)
+					}
+				}
+			})
+		}
+	}
+}

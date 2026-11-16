@@ -1163,6 +1163,12 @@ func (p *Processor) fetchLabels(ctx context.Context, owner, name string, strict 
 		return nil, fetchError(strict, "labels", owner, name, err)
 	}
 
+	// gh label list prints nothing when the repository has no labels
+	// (https://github.com/cli/cli/issues/15066).
+	if len(out) == 0 {
+		return map[string]*CurrentLabel{}, nil
+	}
+
 	var labels []struct {
 		Name        string `json:"name"`
 		Color       string `json:"color"`

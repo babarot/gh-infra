@@ -154,6 +154,9 @@ func TestApplyProperties(t *testing.T) {
 			{Name: "Chore", Color: "ffffff", Description: ptr("tidy up")},
 			{Name: "new", Color: "00ff00", Description: ptr("added")},
 		}}},
+		{name: "labels on a repository without any", state: func(s *fakeState) {
+			s.Labels = nil
+		}, spec: manifest.RepositorySpec{Labels: []manifest.Label{{Name: "bug", Color: "d73a4a"}}}},
 		{name: "label description cleared", spec: manifest.RepositorySpec{Labels: []manifest.Label{
 			{Name: "bug", Color: "d73a4a", Description: ptr("")},
 		}}},
