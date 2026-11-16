@@ -773,6 +773,11 @@ func (f *fakeGitHub) labelCmd(args []string) ([]byte, bool, error) {
 		if j, _ := fakeFlag(args, "--json"); j != "name,color,description" {
 			return nil, false, errUnknown
 		}
+		// gh prints nothing, not [], when there are no labels
+		// (https://github.com/cli/cli/issues/15066).
+		if len(f.s.Labels) == 0 {
+			return nil, false, nil
+		}
 		return mustJSON(f.s.Labels), false, nil
 	case "create":
 		name := args[1]
