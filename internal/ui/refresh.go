@@ -796,9 +796,14 @@ func RunRefresh(heading RefreshHeading, tasks []RefreshTask) *RefreshTracker {
 		DefaultPrinter.BlankLine()
 	}
 	model.canceled = canceled
+	// The process handles SIGINT and SIGTERM itself (cmd/gh-infra/main.go)
+	// and stops the display through Interrupt. bubbletea's own handler would
+	// end Run before the model sees the interrupt, leaving the last frame
+	// without the canceled rows.
 	p := tea.NewProgram(
 		model,
 		tea.WithOutput(os.Stderr),
+		tea.WithoutSignalHandler(),
 	)
 
 	tracker := &RefreshTracker{
@@ -814,8 +819,11 @@ func RunRefresh(heading RefreshHeading, tasks []RefreshTask) *RefreshTracker {
 		// bubbletea v2 fails to consume during shutdown, causing escape
 		// sequences to leak into the shell. Remove when upstream is fixed.
 		// https://github.com/charmbracelet/bubbletea/issues/1590
-		drainStdinAfterBubbletea()
-
+		// The responses come only through a terminal on stdin; anything
+		// else (/dev/null, a pipe) has nothing to drain.
+		if term.IsTerminal(os.Stdin.Fd()) {
+			drainStdinAfterBubbletea()
+		}
 	}()
 
 	return tracker
