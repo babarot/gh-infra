@@ -50,11 +50,11 @@ func TestConfirmModels_CtrlCInterrupts(t *testing.T) {
 	} {
 		models := map[string]func() (tea.Model, func(tea.Model) bool){
 			"confirm": func() (tea.Model, func(tea.Model) bool) {
-				return &confirmModel{title: "Apply?"}, func(m tea.Model) bool { return m.(*confirmModel).confirmed }
+				return &confirmModel{title: "Apply?"}, func(m tea.Model) bool { cm, ok := m.(*confirmModel); return !ok || cm.confirmed }
 			},
 			"confirm with diff": func() (tea.Model, func(tea.Model) bool) {
 				m := newConfirmDiffModel("Apply?", []DiffEntry{{Path: "a"}})
-				return &m, func(m tea.Model) bool { return m.(*confirmDiffModel).confirmed }
+				return &m, func(m tea.Model) bool { cm, ok := m.(*confirmDiffModel); return !ok || cm.confirmed }
 			},
 		}
 		for kind, newModel := range models {
