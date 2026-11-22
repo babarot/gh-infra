@@ -95,10 +95,11 @@ func runImportInto(ctx context.Context, args []string, intoPath string, autoAppr
 	p := diff.Printer()
 
 	ok, err := confirmImport(p, diff, autoApprove)
+	// Ctrl+C at the prompt interrupts the run (ctx) without an error.
+	if interrupted(ctx, err) {
+		return interruptedExit(ctx)
+	}
 	if err != nil {
-		if interrupted(ctx, err) {
-			return interruptedExit(ctx)
-		}
 		return err
 	}
 	if !ok {

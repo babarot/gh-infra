@@ -74,7 +74,7 @@ Flags:
 
 Exit status: 1 if any change fails or any repository could not be fetched (those repos are skipped; the rest are still applied).
 
-Interrupt (Ctrl+C, SIGINT, SIGTERM; also without a terminal, e.g. a canceled CI job): while applying, no new changes start (some changes may be applied); before applying (planning, prompt), nothing is applied. Every command (plan, apply, import) then prints `Interrupted.` and exits 128 + signal: 130 for SIGINT and Ctrl+C, 143 for SIGTERM. A second Ctrl+C kills at once.
+Interrupt (Ctrl+C, SIGINT, SIGTERM; also without a terminal, e.g. a canceled CI job): while applying, no new changes start (some changes may be applied); before applying (planning, prompt), nothing is applied. Every command (plan, apply, import, validate) then prints `Interrupted.` and exits 128 + signal: 130 for SIGINT and Ctrl+C, 143 for SIGTERM. A second Ctrl+C kills at once.
 
 Interactive diff viewer:
 
