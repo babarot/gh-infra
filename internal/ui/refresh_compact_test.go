@@ -110,15 +110,18 @@ func TestCompact_ViewFitsTheTerminal(t *testing.T) {
 	for _, task := range manyTasks(10) {
 		first10 = append(first10, task.Name)
 	}
-	// Five running rows need 9 lines (rows 5, what is left, a blank line,
-	// the progress, the line under the frame); with a notice, 10. Below
-	// that the rows shrink, down to one, and then the blank line goes: a
-	// terminal of 5 lines still fits (4 without a notice).
-	for _, height := range []int{5, 6, 7, 8, 9, 10, 12, 40} {
+	// The view takes every line but the rows, a line for a notice, and the
+	// rows: 15 lines and the line under the frame for ten rows. Below that
+	// the rows shrink, down to one, and then the blank lines go; a terminal
+	// shorter than that keeps the top lines, the heading first.
+	for height := 1; height <= 40; height++ {
 		m := begun(t, compactModel(t, 40, height), first10...)
 		fits(t, m, height, fmt.Sprintf("height %d", height))
 		m = update(t, m, noticeMsg{text: "waiting for the rate limit"})
 		fits(t, m, height, fmt.Sprintf("height %d with a notice", height))
+		if height >= 2 && !strings.HasPrefix(viewLines(m)[0], "Fetching current state from GitHub API") {
+			t.Errorf("height %d: want the heading first, got %q", height, viewLines(m)[0])
+		}
 	}
 }
 
@@ -176,7 +179,7 @@ func TestCompact_FinishedRowsStayInTheView(t *testing.T) {
 // finishing and a notice coming and going: in the terminal, the heading
 // never moves.
 func TestCompact_HeadingNeverMoves(t *testing.T) {
-	for _, height := range []int{8, 12, 30} {
+	for _, height := range []int{3, 5, 8, 12, 30} {
 		m := compactModel(t, 16, height)
 		height0 := frameHeight(m.View().Content)
 		check := func(what string) {

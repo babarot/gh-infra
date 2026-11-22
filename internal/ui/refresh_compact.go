@@ -184,6 +184,11 @@ func (m refreshModel) compactView() string {
 			lines = append(lines, "")
 		}
 	}
+	// On a terminal too short for even the tight view, keep the top lines,
+	// the heading first: a frame taller than the terminal loses its top.
+	if m.height > 0 && len(lines) > m.height-1 {
+		lines = lines[:max(0, m.height-1)]
+	}
 	var b strings.Builder
 	for _, line := range lines {
 		fmt.Fprintf(&b, "%s\n", line)
