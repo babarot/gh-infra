@@ -25,6 +25,8 @@ func printed(t *testing.T, cmd tea.Cmd) []string {
 		return []string{"QUIT"}
 	case printedMsg:
 		return []string{"ACK"}
+	case drawnMsg:
+		return nil
 	}
 	if v := reflect.ValueOf(msg); v.Kind() == reflect.Slice {
 		var out []string
@@ -87,16 +89,19 @@ func TestCompact_SwitchesForManyRowsOrAShortTerminal(t *testing.T) {
 	fits(t, m, 15, "10 rows, full view")
 }
 
-func TestCompact_StartsWithAStaticTitle(t *testing.T) {
-	m := frozen(newRefreshModel(manyTasks(11)))
-	m.heading = RefreshHeading{Title: "Fetching current state from GitHub API"}
-	if !m.startCompact() {
-		t.Error("compact from the start with a title: RunRefresh prints the title before the display")
+// The heading is the compact view's first line from the start; nothing is
+// printed before the display.
+func TestCompact_HeadingIsTheFirstLine(t *testing.T) {
+	m := compactModel(t, 11, 30)
+	if !m.compact {
+		t.Fatal("11 rows: want compact")
 	}
-	m = frozen(newRefreshModel(manyTasks(3)))
-	m.heading = RefreshHeading{Title: "Fetching current state from GitHub API"}
-	if m.startCompact() {
-		t.Error("3 rows: the title stays in the view")
+	lines := viewLines(m)
+	if !strings.HasPrefix(lines[0], "Fetching current state from GitHub API") || !strings.Contains(lines[0], "0/11 repositories") {
+		t.Errorf("first line: want the title with the progress, got %q", lines[0])
+	}
+	if !strings.Contains(strings.Join(lines, "\n"), "ctrl+c to cancel") {
+		t.Errorf("want the hint under the rows:\n%s", strings.Join(lines, "\n"))
 	}
 }
 
@@ -126,39 +131,124 @@ func TestCompact_ResizeSwitchesOneWay(t *testing.T) {
 	if !m.compact {
 		t.Fatal("after shrinking to 6 lines: want compact")
 	}
-	if got := printed(t, cmd); len(got) == 0 || !strings.Contains(got[0], "Fetching current state from GitHub API") {
-		t.Errorf("switching prints the heading's title above the view, got %q", got)
+	if got := printed(t, cmd); len(got) != 0 {
+		t.Errorf("switching prints nothing; the heading stays in the view, got %q", got)
 	}
 	fits(t, m, 6, "after shrinking to 6 lines")
 	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 40})
 	if !m.compact {
-		t.Error("growing back: the printed lines cannot be taken back, so the view stays compact")
+		t.Error("growing back: the view stays compact")
 	}
 }
 
-func TestCompact_FinishedRowsArePrintedAbove(t *testing.T) {
-	m := begun(t, compactModel(t, 12, 20), "o/r01", "o/r02", "o/r03")
+// While the rows run, nothing is printed above the view: finished rows with
+// something to show stay in it, under the heading.
+func TestCompact_FinishedRowsStayInTheView(t *testing.T) {
+	m := begun(t, compactModel(t, 12, 30), "o/r01", "o/r02", "o/r03")
 	m = later(m, 1500*time.Millisecond)
 
 	m, cmd := updateCmd(t, m, taskDoneMsg{name: "o/r02", labeled: true, mark: MarkChange, label: "2 changes"})
-	if got := printed(t, cmd); len(got) != 2 || !strings.Contains(got[0], "~ o/r02   1.5s  2 changes") || got[1] != "ACK" {
-		t.Errorf("a row with changes is printed above, got %q", got)
+	if got := printed(t, cmd); len(got) != 0 {
+		t.Errorf("nothing is printed while the rows run, got %q", got)
 	}
-	m = update(t, m, printedMsg{})
-
 	m, cmd = updateCmd(t, m, taskDoneMsg{name: "o/r01", labeled: true, mark: MarkNone, label: "up to date"})
 	if got := printed(t, cmd); len(got) != 0 {
-		t.Errorf("a row with nothing to change is only counted, got %q", got)
+		t.Errorf("nothing is printed while the rows run, got %q", got)
 	}
-
 	m, cmd = updateCmd(t, m, taskErrorMsg{name: "o/r03", err: fmt.Errorf("HTTP 403")})
-	if got := printed(t, cmd); len(got) != 2 || !strings.Contains(got[0], "✗ o/r03") {
-		t.Errorf("an error is printed above, got %q", got)
+	if got := printed(t, cmd); len(got) != 0 {
+		t.Errorf("nothing is printed while the rows run, got %q", got)
 	}
-	m = update(t, m, printedMsg{})
 
-	if got := viewLines(m); !strings.Contains(strings.Join(got, "\n"), "9 queued · 1 up to date") {
-		t.Errorf("the view counts what is left:\n%s", strings.Join(got, "\n"))
+	view := strings.Join(viewLines(m), "\n")
+	for _, want := range []string{"~ o/r02   1.5s  2 changes", "✗ o/r03", "9 queued · 1 up to date"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("want %q in the view:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "o/r01") {
+		t.Errorf("a row with nothing to change is only counted:\n%s", view)
+	}
+}
+
+// The heading stays the first line and the frame keeps its height from the
+// first frame to the last one before the end, through rows starting and
+// finishing and a notice coming and going: in the terminal, the heading
+// never moves.
+func TestCompact_HeadingNeverMoves(t *testing.T) {
+	for _, height := range []int{8, 12, 30} {
+		m := compactModel(t, 16, height)
+		height0 := frameHeight(m.View().Content)
+		check := func(what string) {
+			t.Helper()
+			view := m.View().Content
+			if h := frameHeight(view); h != height0 {
+				t.Errorf("height %d, %s: frame of %d lines, want %d:\n%s", height, what, h, height0, view)
+			}
+			if h := frameHeight(view); h > height {
+				t.Errorf("height %d, %s: frame of %d lines on a %d-line terminal", height, what, h, height)
+			}
+			if first := viewLines(m)[0]; !strings.HasPrefix(first, "Fetching current state from GitHub API") {
+				t.Errorf("height %d, %s: first line %q, want the heading", height, what, first)
+			}
+		}
+		check("start")
+		tasks := manyTasks(16)
+		for _, task := range tasks {
+			m = begun(t, m, task.Name)
+			check("started " + task.Name)
+		}
+		for i, task := range tasks[:15] {
+			if i == 4 {
+				m = update(t, m, noticeMsg{text: "Waiting for the GitHub API rate limit until 10:42:00 ..."})
+				check("notice")
+			}
+			if i == 9 {
+				m = update(t, m, noticeMsg{text: ""})
+				check("notice gone")
+			}
+			mark, label := MarkNone, "up to date"
+			if i%3 == 0 {
+				mark, label = MarkChange, "1 change"
+			}
+			m = update(t, m, taskDoneMsg{name: task.Name, labeled: true, mark: mark, label: label})
+			check("done " + task.Name)
+		}
+	}
+}
+
+// When the rows outnumber the view, it shows the latest finished ones; the
+// end prints every one of them.
+func TestCompact_ShowsTheLatestFinishedRows(t *testing.T) {
+	m := compactModel(t, 30, 40)
+	tasks := manyTasks(30)
+	for _, task := range tasks {
+		m = begun(t, m, task.Name)
+	}
+	for _, task := range tasks[:12] {
+		m = update(t, m, taskDoneMsg{name: task.Name, labeled: true, mark: MarkChange, label: "1 change"})
+	}
+	view := strings.Join(viewLines(m), "\n")
+	// 10 rows: the 5 running rows that started first, and the 5 latest finished.
+	if strings.Contains(view, "o/r07 ") || !strings.Contains(view, "o/r08 ") || !strings.Contains(view, "o/r12 ") {
+		t.Errorf("want o/r08 to o/r12 finished in the view, not o/r07:\n%s", view)
+	}
+	if !strings.Contains(view, "o/r13 ") || strings.Contains(view, "o/r18 ") || !strings.Contains(view, "+13 more") {
+		t.Errorf("want five running rows and the rest counted:\n%s", view)
+	}
+
+	var cmd tea.Cmd
+	for _, task := range tasks[12:] {
+		m, cmd = updateCmd(t, m, taskDoneMsg{name: task.Name, labeled: true, mark: MarkNone, label: "up to date"})
+	}
+	got := printed(t, cmd)
+	if len(got) != 14 || !strings.Contains(got[0], "Fetched 30 repositories") || !strings.HasSuffix(got[0], "\n}") || got[13] != "ACK" {
+		t.Fatalf("want the outcome with a blank line, the 12 rows and ACK; got %q", got)
+	}
+	for i, line := range got[1:13] {
+		if want := fmt.Sprintf("o/r%02d", i+1); !strings.Contains(line, want) {
+			t.Errorf("line %d: want %s, in the order they finished; got %q", i, want, line)
+		}
 	}
 }
 
@@ -174,18 +264,16 @@ func TestCompact_LastRowIsPrintedBeforeTheDisplayEnds(t *testing.T) {
 		m, cmd = updateCmd(t, m, taskDoneMsg{name: task.Name, labeled: true, mark: mark, label: label})
 	}
 	got := printed(t, cmd)
-	if len(got) != 2 || !strings.Contains(got[0], "~ o/r11") || got[1] != "ACK" {
-		t.Errorf("want the last row printed; got %q", got)
+	if len(got) != 3 || !strings.Contains(got[0], "✓ Fetched 11 repositories in 0.0s") || !strings.Contains(got[1], "~ o/r11") || got[2] != "ACK" {
+		t.Errorf("want the outcome, a blank line and the row with a change printed; got %q", got)
 	}
 	m, cmd = updateCmd(t, m, printedMsg{})
 	if got := printed(t, cmd); len(got) != 1 || got[0] != "QUIT" {
 		t.Errorf("once printed, want the end of the display; got %q", got)
 	}
 	view := strings.Join(viewLines(later(m, 2*time.Second)), "\n")
-	for _, want := range []string{"✓ 10 up to date", "✓ Fetched 11 repositories in 0.0s"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("final view: want %q in\n%s", want, view)
-		}
+	if view != "  ✓ 10 up to date" {
+		t.Errorf("final view: want only what was up to date, got\n%s", view)
 	}
 	if strings.Contains(view, "ctrl+c") {
 		t.Errorf("final view: no hint once finished\n%s", view)
@@ -208,37 +296,34 @@ func TestCompact_RunningRows(t *testing.T) {
 	if strings.Contains(view, "o/r06") || !strings.Contains(view, "+2 more · 13 queued") {
 		t.Errorf("want five running rows and the rest counted:\n%s", view)
 	}
-	if !strings.Contains(view, "0/20 repositories") || !strings.Contains(view, "ctrl+c to cancel") {
-		t.Errorf("want the progress with the hint as the last line:\n%s", view)
+	lines := viewLines(m)
+	if !strings.Contains(lines[0], "0/20 repositories") {
+		t.Errorf("want the progress on the first line:\n%s", view)
+	}
+	if !strings.Contains(view, "+2 more · 13 queued · ctrl+c to cancel") {
+		t.Errorf("want the hint on the line that counts what is left:\n%s", view)
 	}
 }
 
-// Commands from separate Updates run concurrently in bubbletea, so prints
-// are sent one batch at a time, each a tea.Sequence ending with printedMsg:
-// the next batch, and the end of the display, wait for it.
+// Commands from separate Updates run concurrently in bubbletea, so the end
+// prints its lines as one tea.Sequence ending with printedMsg, and the end
+// of the display waits for it.
 func TestCompact_PrintsInOrderAndQuitsAfterThem(t *testing.T) {
-	m := begun(t, compactModel(t, 11, 20), "o/r01", "o/r02")
-	m, first := updateCmd(t, m, taskDoneMsg{name: "o/r01", labeled: true, mark: MarkChange, label: "1 change"})
-	if got := fmt.Sprintf("%T", first()); got != "tea.sequenceMsg" {
-		t.Fatalf("a batch must run in order (tea.Sequence), got %s", got)
+	m := compactModel(t, 11, 20)
+	var cmd tea.Cmd
+	for _, task := range manyTasks(11) {
+		m, cmd = updateCmd(t, begun(t, m, task.Name), taskDoneMsg{name: task.Name, labeled: true, mark: MarkChange, label: "1 change"})
 	}
-
-	// o/r02 finishes while the first batch is still being printed.
-	m, second := updateCmd(t, m, taskDoneMsg{name: "o/r02", labeled: true, mark: MarkChange, label: "1 change"})
-	if second != nil {
-		t.Fatalf("a second batch must wait for the first, got %q", printed(t, second))
+	if got := fmt.Sprintf("%T", cmd()); got != "tea.sequenceMsg" {
+		t.Fatalf("the end must print in order (tea.Sequence), got %s", got)
 	}
-	for _, task := range manyTasks(11)[2:] {
-		m = update(t, begun(t, m, task.Name), taskDoneMsg{name: task.Name, labeled: true, mark: MarkNone, label: "up to date"})
-	}
-
-	m, next := updateCmd(t, m, printedMsg{})
-	if got := printed(t, next); len(got) != 2 || !strings.Contains(got[0], "o/r02") || got[1] != "ACK" {
-		t.Fatalf("after the first batch, want o/r02 printed (not the end yet); got %q", got)
+	m, again := updateCmd(t, m, noticeMsg{text: "late"})
+	if again != nil {
+		t.Fatalf("nothing more is printed while the end prints, got %q", printed(t, again))
 	}
 	_, last := updateCmd(t, m, printedMsg{})
 	if got := printed(t, last); len(got) != 1 || got[0] != "QUIT" {
-		t.Errorf("after the last batch, want the end of the display; got %q", got)
+		t.Errorf("after the end is printed, want the end of the display; got %q", got)
 	}
 }
 
@@ -254,10 +339,13 @@ func TestCompact_StopPrintsTheRunningRows(t *testing.T) {
 
 	m, cmd := updateCmd(t, m, interruptMsg{})
 	got := printed(t, cmd)
-	if len(got) != 12 || got[11] != "ACK" {
-		t.Fatalf("want the 11 canceled rows printed; got %q", got)
+	if len(got) != 13 || got[12] != "ACK" {
+		t.Fatalf("want the outcome and the 11 canceled rows printed; got %q", got)
 	}
-	for i, line := range got[:11] {
+	if !strings.Contains(got[0], "Fetching current state from GitHub API (canceled)") || !strings.HasSuffix(got[0], "\n}") {
+		t.Errorf("want the canceled heading with a blank line first; got %q", got[0])
+	}
+	for i, line := range got[1:12] {
 		if !strings.Contains(line, names[i]+" (canceled)") {
 			t.Errorf("line %d: want %s canceled, got %q", i, names[i], line)
 		}
@@ -267,11 +355,8 @@ func TestCompact_StopPrintsTheRunningRows(t *testing.T) {
 		t.Errorf("then the end of the display; got %q", got)
 	}
 	view := strings.Join(viewLines(m), "\n")
-	if strings.Contains(view, "o/r") {
-		t.Errorf("the printed rows leave the view:\n%s", view)
-	}
-	if !strings.Contains(view, "Fetching current state from GitHub API (canceled)") {
-		t.Errorf("the last line says it was canceled:\n%s", view)
+	if strings.Contains(view, "o/r") || strings.Contains(view, "Fetching") {
+		t.Errorf("the printed lines leave the view:\n%s", view)
 	}
 }
 
@@ -285,8 +370,8 @@ func TestCompact_SecondCtrlCWhileStopping(t *testing.T) {
 	key := tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 
 	m, cmd := updateCmd(t, m, key)
-	if got := printed(t, cmd); len(got) != 3 || got[2] != "ACK" {
-		t.Fatalf("first Ctrl+C: want the two running rows printed, got %q", got)
+	if got := printed(t, cmd); len(got) != 4 || got[3] != "ACK" {
+		t.Fatalf("first Ctrl+C: want the outcome and the two running rows printed, got %q", got)
 	}
 	m, cmd = updateCmd(t, m, key) // would panic on a second close
 	if cmd != nil {

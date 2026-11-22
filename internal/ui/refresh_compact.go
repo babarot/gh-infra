@@ -4,29 +4,40 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
 
 // When there are many rows, or they do not fit the terminal, the spinner
-// switches to its compact view, which keeps a fixed height. A view taller
-// than the terminal cannot be redrawn by bubbletea's inline renderer: its
-// top lines scroll away and leave broken copies behind.
+// switches to its compact view, which never grows taller than the terminal.
+// A view taller than the terminal cannot be redrawn by bubbletea's inline
+// renderer: its top lines scroll away and leave broken copies behind.
 //
-// In the compact view, each finished row with something to show (a change,
-// a result, an error) is printed above the view with tea.Println, in the
-// order the rows finish; printed lines stay in the scrollback and never move
-// again. Rows with nothing to change are only counted. The view holds the
-// running rows (at most maxRunningRows), what is left, and the progress.
+// The compact view keeps its heading (the title and the progress) as its
+// first line, where it never moves: nothing is printed above the view while
+// the rows run, and the view claims the height it can grow to in its first
+// frame, so the terminal scrolls once, before anything has run. Under the
+// heading it shows the latest finished rows with something to show (a
+// change, a result, an error) and the running rows, at most
+// maxCompactRows; rows with nothing to change are only counted. The last
+// line counts what is left, with the gh gauge and how to stop.
 //
-// The switch is one way: printed lines cannot be taken back, so the view
-// stays compact when the terminal grows.
+// When every row has finished, or the display is stopped, the outcome of
+// the heading and every finished row with something to show are printed
+// above with tea.Println, in the order the rows finished, so all of them
+// stay in the scrollback.
+//
+// The switch is one way: the view stays compact when the terminal grows.
 
 const (
 	// compactAt is the number of rows from which the view is compact.
 	compactAt = 11
 	// maxRunningRows is how many running rows the compact view shows at most.
 	maxRunningRows = 5
+	// maxCompactRows is how many rows, finished and running, the compact
+	// view shows at most.
+	maxCompactRows = 10
 )
 
 // wantCompact reports whether the view should be compact: many rows, or a
@@ -45,42 +56,47 @@ func frameHeight(view string) int {
 	return strings.Count(view, "\n") + 1
 }
 
-// startCompact makes a new model compact when it should be from the start,
-// and reports whether its title is to be printed before the display.
-func (m *refreshModel) startCompact() bool {
+// startCompact makes a new model compact when it should be from the start.
+func (m *refreshModel) startCompact() {
 	m.compact = m.wantCompact()
-	return m.compact && m.heading.Title != ""
 }
 
 // settle switches to the compact view when it is wanted, queues what the
-// compact view no longer holds (the heading's title when switching, and the
-// finished rows not printed yet), and returns the command that prints it, or
-// ends the display once every row has finished and all is printed.
+// compact view leaves for the end once every row has finished, and returns
+// the command that prints it, or ends the display when all is printed.
 func (m *refreshModel) settle() tea.Cmd {
 	if !m.compact && m.wantCompact() {
 		m.compact = true
-		if m.heading.Title != "" {
-			m.queue = append(m.queue, m.heading.Title+"\n")
-		}
 	}
-	if m.compact {
-		maxName := m.maxNameWidth()
-		for _, i := range m.finished {
-			item := &m.items[i]
-			if item.printed || !shownAbove(*item) {
-				continue
-			}
-			item.printed = true
-			m.queue = append(m.queue, m.rowLine(*item, maxName))
-		}
+	if m.compact && m.remaining <= 0 {
+		m.endCompact()
 	}
 	return m.flush()
 }
 
-// stopCompact queues the rows that were running when the display was
-// stopped, so each one's name is kept above the view; the compact view
-// shows only a few of them.
-func (m *refreshModel) stopCompact() {
+// endCompact queues, once, what the compact view printed nowhere: the
+// heading's outcome, then every finished row with something to show in the
+// order the rows finished, then (when stopped) the rows that were running,
+// as they started.
+func (m *refreshModel) endCompact() {
+	if m.ended {
+		return
+	}
+	m.ended = true
+	if m.heading.Title != "" {
+		// tea.Println drops an empty line; the line break makes the blank
+		// line under the outcome.
+		m.queue = append(m.queue, m.headingLine()+"\n")
+	}
+	maxName := m.maxNameWidth()
+	for _, i := range m.finished {
+		item := &m.items[i]
+		if item.printed || !shownAbove(*item) {
+			continue
+		}
+		item.printed = true
+		m.queue = append(m.queue, m.rowLine(*item, maxName))
+	}
 	var rows []refreshItem
 	for i := range m.items {
 		item := &m.items[i]
@@ -90,7 +106,6 @@ func (m *refreshModel) stopCompact() {
 		}
 	}
 	slices.SortStableFunc(rows, func(a, b refreshItem) int { return a.begin.Compare(b.begin) })
-	maxName := m.maxNameWidth()
 	for _, item := range rows {
 		m.queue = append(m.queue, m.rowLine(item, maxName))
 	}
@@ -98,6 +113,13 @@ func (m *refreshModel) stopCompact() {
 
 // printedMsg reports that a batch of queued lines has been printed.
 type printedMsg struct{}
+
+// drawnMsg reports that the view has had time to be drawn (endFrameWait).
+type drawnMsg struct{}
+
+// endFrameWait is how long the end waits before printing: a few frames at
+// bubbletea's default 60 fps.
+const endFrameWait = 50 * time.Millisecond
 
 // flush prints the queued lines, or ends the display once there is nothing
 // left to print and every row has finished (or the display was stopped).
@@ -112,7 +134,16 @@ func (m *refreshModel) flush() tea.Cmd {
 		return nil
 	}
 	if len(m.queue) > 0 {
-		cmds := make([]tea.Cmd, 0, len(m.queue)+1)
+		cmds := make([]tea.Cmd, 0, len(m.queue)+2)
+		// The queue is what the compact view prints at its end, with the
+		// view now a line or two. bubbletea inserts printed lines above the
+		// last frame it drew; were that still the full-height frame, the
+		// lines could push it past the bottom and scroll the terminal for
+		// nothing. Wait for the short frame to be drawn first.
+		cmds = append(cmds, func() tea.Msg {
+			time.Sleep(endFrameWait)
+			return drawnMsg{}
+		})
 		for _, line := range m.queue {
 			cmds = append(cmds, tea.Println(line))
 		}
@@ -127,8 +158,9 @@ func (m *refreshModel) flush() tea.Cmd {
 	return nil
 }
 
-// shownAbove reports whether a finished row is printed above the compact
-// view: every result but nothing to change, which is only counted.
+// shownAbove reports whether a finished row is shown in the compact view
+// and printed at its end: every result but nothing to change, which is only
+// counted.
 func shownAbove(item refreshItem) bool {
 	return item.status != taskDone || item.mark != MarkNone
 }
@@ -138,18 +170,35 @@ func (m *refreshModel) finish(i int) {
 	m.finished = append(m.finished, i)
 }
 
-// compactView is the view while it is compact: the running rows, what is
-// left, and the progress (or the outcome once finished).
+// compactView is the view while it is compact: the heading, the latest
+// finished rows and the running rows, the notice and what is left, filled
+// up to the height the view can grow to. Once ended, what was not printed:
+// how many rows were up to date (or, when stopped, were left).
 func (m refreshModel) compactView() string {
+	var lines []string
+	if m.ended {
+		lines = m.endLines()
+	} else {
+		lines = m.compactLines()
+		for len(lines) < m.compactHeight() {
+			lines = append(lines, "")
+		}
+	}
+	var b strings.Builder
+	for _, line := range lines {
+		fmt.Fprintf(&b, "%s\n", line)
+	}
+	return b.String()
+}
+
+// compactLines are the compact view's lines while the rows run.
+func (m refreshModel) compactLines() []string {
 	maxName := m.maxNameWidth()
-	var running []refreshItem
+	var running, shown []refreshItem
 	upToDate, queued := 0, 0
 	for _, item := range m.items {
 		switch {
-		case item.printed:
-			// Already above the view (finished rows, and running rows once stopped).
-		case item.status == taskRunning && item.started,
-			item.status == taskCanceled && item.started:
+		case item.status == taskRunning && item.started:
 			running = append(running, item)
 		case item.status == taskRunning:
 			queued++
@@ -157,89 +206,129 @@ func (m refreshModel) compactView() string {
 			upToDate++
 		}
 	}
+	for _, i := range m.finished {
+		if shownAbove(m.items[i]) {
+			shown = append(shown, m.items[i])
+		}
+	}
 	// Longest running first, as the rows started.
 	slices.SortStableFunc(running, func(a, b refreshItem) int { return a.begin.Compare(b.begin) })
 
-	var b strings.Builder
-	shown := min(len(running), m.runningRows())
-	for _, item := range running[:shown] {
-		fmt.Fprintf(&b, "%s\n", m.rowLine(item, maxName))
+	room := m.compactRows()
+	nRunning := min(len(running), maxRunningRows, room)
+	shown = shown[max(0, len(shown)-(room-nRunning)):]
+
+	var lines []string
+	if m.heading.Title != "" {
+		lines = append(lines, m.compactHeading())
+		if !m.tight() {
+			lines = append(lines, "")
+		}
+	}
+	for _, item := range shown {
+		lines = append(lines, m.rowLine(item, maxName))
+	}
+	for _, item := range running[:nRunning] {
+		lines = append(lines, m.rowLine(item, maxName))
+	}
+	if len(shown)+nRunning > 0 && !m.tight() {
+		lines = append(lines, "")
+	}
+	if m.notice != "" {
+		lines = append(lines, "  "+Yellow.Render(m.notice))
 	}
 
-	var left []string
-	if more := len(running) - shown; more > 0 {
-		left = append(left, fmt.Sprintf("+%d more", more))
+	var parts []string
+	if more := len(running) - nRunning; more > 0 {
+		parts = append(parts, Dim.Render(fmt.Sprintf("+%d more", more)))
 	}
+	if queued > 0 {
+		parts = append(parts, Dim.Render(fmt.Sprintf("%d queued", queued)))
+	}
+	if upToDate > 0 {
+		parts = append(parts, Dim.Render(fmt.Sprintf("%d up to date", upToDate)))
+	}
+	parts = append(parts, m.gauge()...)
+	parts = append(parts, Dim.Render("ctrl+c to cancel"))
+	return append(lines, "  "+strings.Join(parts, Dim.Render(" · ")))
+}
+
+// endLines are the compact view's last lines, under what endCompact printed.
+func (m refreshModel) endLines() []string {
+	upToDate, queued := 0, 0
+	for _, item := range m.items {
+		switch {
+		case item.status == taskDone && item.mark == MarkNone:
+			upToDate++
+		case item.status == taskCanceled && !item.started:
+			queued++
+		}
+	}
+	if !m.stopped {
+		if upToDate == 0 {
+			return nil
+		}
+		return []string{fmt.Sprintf("  %s %s", Green.Render(IconSuccess), Dim.Render(fmt.Sprintf("%d up to date", upToDate)))}
+	}
+	var left []string
 	if queued > 0 {
 		left = append(left, fmt.Sprintf("%d queued", queued))
 	}
 	if upToDate > 0 {
 		left = append(left, fmt.Sprintf("%d up to date", upToDate))
 	}
-	switch {
-	case m.remaining <= 0 && !m.stopped:
-		if upToDate > 0 {
-			fmt.Fprintf(&b, "  %s %s\n", Green.Render(IconSuccess), Dim.Render(fmt.Sprintf("%d up to date", upToDate)))
-		}
-	case len(left) > 0:
-		fmt.Fprintf(&b, "  %s\n", Dim.Render(strings.Join(left, " · ")))
+	if len(left) == 0 {
+		return nil
 	}
-	if m.notice != "" {
-		fmt.Fprintf(&b, "  %s\n", Dim.Render(m.notice))
-	}
-	if !m.tight() {
-		b.WriteString("\n")
-	}
-	fmt.Fprintf(&b, "%s\n", m.compactProgress())
-	return b.String()
+	return []string{"  " + Dim.Render(strings.Join(left, " · "))}
 }
 
-// runningRows is how many running rows fit the compact view: at most
-// maxRunningRows, fewer on a short terminal, at least one.
-func (m refreshModel) runningRows() int {
+// compactHeading is the compact view's first line: the title with the
+// progress, as the full view's heading without the gh gauge, which is on
+// the last line.
+func (m refreshModel) compactHeading() string {
+	finished, total := m.progress()
+	return fmt.Sprintf("%s  %s  %s  %s", m.heading.Title, progressBar(finished, total, progressBarWidth), m.progressCount(finished, total), Dim.Render(formatSeconds(m.now().Sub(m.start))))
+}
+
+// compactRows is how many rows the compact view shows: at most
+// maxCompactRows, fewer on a short terminal, at least one.
+func (m refreshModel) compactRows() int {
 	if m.height <= 0 {
-		return maxRunningRows
+		return maxCompactRows
 	}
-	return max(1, min(maxRunningRows, m.height-m.fixedLines()))
+	return max(1, min(maxCompactRows, m.height-m.fixedLines()))
 }
 
-// fixedLines counts the compact view's lines besides the running rows: what
-// is left, the notice, the blank line before the progress (left out when
-// tight), the progress, and the line under the frame (frameHeight).
+// compactHeight is the height the compact view can grow to, which it takes
+// from its first frame: every line but the rows, a line for a notice
+// whether one is shown or not, and as many rows as there are, up to
+// compactRows.
+func (m refreshModel) compactHeight() int {
+	return m.fixedLines() - 1 + min(len(m.items), m.compactRows())
+}
+
+// fixedLines counts the compact view's lines besides the rows: the heading
+// and the blank line under it, the blank line under the rows (both left out
+// when tight), a notice, what is left, and the line under the frame
+// (frameHeight).
 func (m refreshModel) fixedLines() int {
-	n := 3 // what is left, the progress, the line under the frame
-	if m.notice != "" {
+	n := 3 // a notice, what is left, the line under the frame
+	if m.heading.Title != "" {
 		n++
 	}
 	if !m.tight() {
-		n++
+		n += 2
 	}
 	return n
 }
 
-// tight reports whether the terminal is too short for a running row and
-// every other line of the compact view; the blank line is then left out.
+// tight reports whether the terminal is too short for a row and every
+// other line of the compact view; the blank lines are then left out.
 func (m refreshModel) tight() bool {
-	n := 5 // a running row, what is left, the blank line, the progress, the line under the frame
-	if m.notice != "" {
-		n++
+	n := 7 // the heading, two blank lines, a row, a notice, what is left, the line under the frame
+	if m.heading.Title == "" {
+		n--
 	}
 	return m.height > 0 && m.height < n
-}
-
-// compactProgress is the last line of the compact view: the progress with
-// the gh gauge and the Ctrl+C hint while running, then the outcome. The
-// title itself was printed above when the view became compact.
-func (m refreshModel) compactProgress() string {
-	if m.stopped || m.remaining <= 0 || m.heading.Title == "" {
-		if m.heading.Title == "" {
-			return ""
-		}
-		return m.headingLine()
-	}
-	finished, total := m.progress()
-	line := fmt.Sprintf("  %s  %s  %s", progressBar(finished, total, progressBarWidth), m.progressCount(finished, total), Dim.Render(formatSeconds(m.now().Sub(m.start))))
-	more := m.gauge()
-	more = append(more, Dim.Render("ctrl+c to cancel"))
-	return line + Dim.Render("  · ") + strings.Join(more, Dim.Render(" · "))
 }

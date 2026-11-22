@@ -105,7 +105,7 @@ type refreshItem struct {
 	started bool
 	begin   time.Time // when the first message came
 	end     time.Time
-	printed bool // printed above the compact view
+	printed bool // printed above the compact view at its end
 	// total is the number of steps (RefreshTask.Total); the others count
 	// the steps that ended, by how.
 	total, applied, failed, skipped int
@@ -127,9 +127,10 @@ type refreshModel struct {
 	lastReport time.Time
 	height     int  // terminal height; 0 when unknown
 	compact    bool // many rows: see compactView. Once set, it stays set
-	// finished lists the rows in the order they finished, for printing them
-	// above the compact view in that order.
+	// finished lists the rows in the order they finished, for showing and
+	// printing them in that order in the compact view.
 	finished []int
+	ended    bool     // the compact view queued what it prints at its end
 	queue    []string // lines waiting to be printed above the view (flush)
 	printing bool     // a batch of queue is being printed
 }
@@ -293,6 +294,9 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case drawnMsg:
+		return m, nil
+
 	case printedMsg:
 		m.printing = false
 		return m, m.flush()
@@ -427,7 +431,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			close(m.canceled)
 			callInterruptHandler()
 			if m.compact {
-				m.stopCompact()
+				m.endCompact()
 			}
 			return m, m.flush()
 		}
@@ -440,7 +444,7 @@ func (m refreshModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cancelRunning()
 		m.stopped = true
 		if m.compact {
-			m.stopCompact()
+			m.endCompact()
 		}
 		return m, m.flush()
 
@@ -787,14 +791,7 @@ func RunRefresh(heading RefreshHeading, tasks []RefreshTask) *RefreshTracker {
 	canceled := make(chan struct{})
 	model := newRefreshModel(tasks)
 	model.heading = heading
-	// Compact from the start: print the title as a static line before the
-	// display starts. A tea.Println sent before the first frame is drawn
-	// lands at the top of the screen, and that frame then erases what is
-	// below it; the switch during a run prints through tea.Println.
-	if model.startCompact() {
-		DefaultPrinter.Phase(heading.Title)
-		DefaultPrinter.BlankLine()
-	}
+	model.startCompact()
 	model.canceled = canceled
 	// The process handles SIGINT and SIGTERM itself (cmd/gh-infra/main.go)
 	// and stops the display through Interrupt. bubbletea's own handler would
