@@ -35,8 +35,8 @@ jobs:
           [ -s plan.md ] || exit 0   # the plan failed before writing anything
           gh pr comment ${{ github.event.pull_request.number }} \
             --body-file plan.md --edit-last --create-if-none
-      - if: steps.plan.outputs.code == '1'
-        run: exit 1   # the plan itself failed
+      - if: steps.plan.outputs.code != '' && steps.plan.outputs.code != '2'
+        run: exit 1   # the plan itself failed or was interrupted
 ```
 
 ## Apply on merge (only what the push changed)
@@ -95,7 +95,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue create --title "Drift detected by gh-infra" --body-file plan.md
-      - if: steps.plan.outputs.code == '1'
+      - if: steps.plan.outputs.code != '' && steps.plan.outputs.code != '2'
         run: exit 1
 ```
 

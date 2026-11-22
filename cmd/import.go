@@ -55,8 +55,7 @@ func runImport(ctx context.Context, args []string) error {
 	err = infra.Import(ctx, runner, args)
 	if err != nil {
 		if interrupted(ctx, err) {
-			printCancelled()
-			return nil
+			return interruptedExit(ctx)
 		}
 		return err
 	}
@@ -71,8 +70,7 @@ func runImportInto(ctx context.Context, args []string, intoPath string, autoAppr
 	diff, err := infra.ImportInto(ctx, runner, args, intoPath)
 	if err != nil {
 		if interrupted(ctx, err) {
-			printCancelled()
-			return nil
+			return interruptedExit(ctx)
 		}
 		return err
 	}
@@ -99,8 +97,7 @@ func runImportInto(ctx context.Context, args []string, intoPath string, autoAppr
 	ok, err := confirmImport(p, diff, autoApprove)
 	if err != nil {
 		if interrupted(ctx, err) {
-			printCancelled()
-			return nil
+			return interruptedExit(ctx)
 		}
 		return err
 	}
@@ -120,8 +117,7 @@ func runImportInto(ctx context.Context, args []string, intoPath string, autoAppr
 		p.Summary(written.Summary())
 	}
 	if ctx.Err() != nil {
-		printCancelled()
-		return &ExitError{Code: 1}
+		return interruptedExit(ctx)
 	}
 	return nil
 }

@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,7 +9,6 @@ import (
 
 	"github.com/babarot/gh-infra/internal/gh"
 	"github.com/babarot/gh-infra/internal/logger"
-	"github.com/babarot/gh-infra/internal/ui"
 )
 
 var (
@@ -79,16 +76,4 @@ func NewRootCmd(version, revision string) *cobra.Command {
 	)
 
 	return root
-}
-
-// interrupted reports whether the command was interrupted by a signal or
-// Ctrl+C. ctx is the command's context, which both cancel. It is checked
-// first, since a gh process killed by the cancel can fail with an error of
-// its own instead of context.Canceled.
-func interrupted(ctx context.Context, err error) bool {
-	return ctx.Err() != nil || errors.Is(err, context.Canceled)
-}
-
-func printCancelled() {
-	fmt.Fprintf(os.Stderr, "\n%s\n", ui.Dim.Render("Interrupted."))
 }

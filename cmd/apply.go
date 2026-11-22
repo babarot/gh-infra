@@ -81,8 +81,7 @@ func runApply(ctx context.Context, paths []string, opts applyCommandOptions) err
 	})
 	if err != nil {
 		if interrupted(ctx, err) {
-			printCancelled()
-			return nil
+			return interruptedExit(ctx)
 		}
 		if errors.Is(err, infra.ErrNoResources) {
 			return nil
@@ -109,8 +108,7 @@ func runApply(ctx context.Context, paths []string, opts applyCommandOptions) err
 		confirmed, err := p.ConfirmWithDiff(result.ConfirmTitle(), diffEntries)
 		if err != nil {
 			if interrupted(ctx, err) {
-				printCancelled()
-				return nil
+				return interruptedExit(ctx)
 			}
 			return err
 		}
@@ -127,8 +125,7 @@ func runApply(ctx context.Context, paths []string, opts applyCommandOptions) err
 	})
 	if err != nil && interrupted(ctx, err) {
 		// Some changes may be applied already, so this is not a success.
-		printCancelled()
-		return &ExitError{Code: 1}
+		return interruptedExit(ctx)
 	}
 	if jsonOutput {
 		if werr := result.ApplyDocument(outcome).Write(os.Stdout); werr != nil {

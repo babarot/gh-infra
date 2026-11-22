@@ -126,18 +126,15 @@ func shellQuote(s string) string {
 
 // finishPlan prints the machine-readable document and turns the outcome into
 // the command's exit status. With --detailed-exitcode: 0 no changes, 1 error
-// (including an interrupted plan and no manifests found), 2 changes. With the
+// (including no manifests found), 2 changes. With the
 // deprecated --ci: 1 for changes or errors. Otherwise 1 only for errors.
-// An error always wins over changes.
+// An error always wins over changes. An interrupted plan exits 130 (SIGINT
+// or Ctrl+C) or 143 (SIGTERM), with any of them.
 func finishPlan(ctx context.Context, result *infra.PlanResult, err error, opts planCommandOptions) error {
 	if err != nil {
 		switch {
 		case interrupted(ctx, err):
-			printCancelled()
-			if opts.DetailedExitCode {
-				return &ExitError{Code: 1}
-			}
-			return nil
+			return interruptedExit(ctx)
 		case errors.Is(err, infra.ErrNoResources):
 			// Already reported; an empty path is not "no changes".
 			if opts.DetailedExitCode {
