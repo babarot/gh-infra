@@ -3,9 +3,9 @@
 [![Tests](https://github.com/babarot/gh-infra/actions/workflows/build.yaml/badge.svg)](https://github.com/babarot/gh-infra/actions/workflows/build.yaml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/babarot/c8e4b1de0846824230d86cb2d86f38cf/raw/gh-infra-coverage.json)](https://github.com/babarot/gh-infra/actions/workflows/build.yaml)
 
-Declarative GitHub infrastructure management via YAML. Like Terraform, but for GitHub — no state file required.
+Declarative GitHub infrastructure management via YAML. Like Terraform, but for GitHub, and with no state file.
 
-<a href="https://babarot.github.io/gh-infra/">
+<a href="https://babarot.me/gh-infra/">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="./docs/public/demo-light.gif" />
     <img src="./docs/public/demo.gif" alt="gh-infra demo showing plan and apply workflow" />
@@ -16,16 +16,16 @@ Declarative GitHub infrastructure management via YAML. Like Terraform, but for G
 gh infra plan    # Show what would change
 gh infra apply   # Apply the changes
 ```
-📖 **[babarot.github.io/gh-infra](https://babarot.github.io/gh-infra/introduction/getting-started/)** — Full YAML reference, usage patterns, and guides.
+📖 **[babarot.me/gh-infra](https://babarot.me/gh-infra/introduction/getting-started/)**: full YAML reference, usage patterns, and guides.
 
 ## Why
 
-The [Terraform GitHub Provider](https://registry.terraform.io/providers/integrations/github/latest/docs) covers most GitHub-as-Code use cases, but it's overkill for personal or small-team use — provider installation, HCL, state files, and state locking add real overhead before you can change a single setting.
+The [Terraform GitHub Provider](https://registry.terraform.io/providers/integrations/github/latest/docs) covers most GitHub-as-Code use cases, but it's overkill for personal or small-team use: provider installation, HCL, state files, and state locking add real overhead before you can change a single setting.
 
 gh-infra takes a different approach:
 
 - **YAML instead of HCL.** Declare what your repos should look like in plain YAML.
-- **No state file.** GitHub itself is the source of truth. Every `plan` fetches the live state and diffs directly — there's nothing to store, lock, or lose.
+- **No state file.** GitHub itself is the source of truth. Every `plan` fetches the live state and diffs directly, so there's nothing to store, lock, or lose.
 - **`plan` before `apply`.** See exactly what will change before it happens. Most alternatives (Probot Settings, GHaC) apply immediately with no preview.
 - **One file, many repos.** A single `RepositorySet` can enforce consistent settings across dozens of repositories. No more clicking through the UI one repo at a time.
 - **Just `gh` and a token.** No GitHub App, no server, no extra infrastructure. If you can run `gh`, you can run `gh infra`.
@@ -90,7 +90,7 @@ gh infra apply
 
 ### 4. Run it in CI
 
-Plan each pull request and post the plan as a comment, apply on merge, and check for drift on a schedule. With `--changed-since`, only the repositories a change affects are planned and applied. See [CI/CD Integration](https://babarot.github.io/gh-infra/patterns/ci-cd/) for the workflows.
+Plan each pull request and post the plan as a comment, apply on merge, and check for drift on a schedule. With `--changed-since`, only the repositories a change affects are planned and applied. See [CI/CD Integration](https://babarot.me/gh-infra/patterns/ci-cd/) for the workflows.
 
 ## Commands
 
@@ -115,7 +115,7 @@ YAML files that are not gh-infra manifests (e.g., GitHub Actions workflows, dock
 
 ## Documentation
 
-For full documentation — YAML reference, usage patterns, and guides — visit **[babarot.github.io/gh-infra](https://babarot.github.io/gh-infra/introduction/getting-started/)**.
+For full documentation (YAML reference, usage patterns, and guides), visit **[babarot.me/gh-infra](https://babarot.me/gh-infra/introduction/getting-started/)**.
 
 ## License
 
