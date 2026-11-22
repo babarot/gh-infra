@@ -18,7 +18,11 @@ func newValidateCmd() *cobra.Command {
 		Use:   "validate [path...]",
 		Short: "Validate YAML syntax and schema",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runValidate(args, failOnUnknown)
+			err := runValidate(cmd.Context(), args, failOnUnknown)
+			if interrupted(cmd.Context(), err) {
+				return interruptedExit(cmd.Context())
+			}
+			return err
 		},
 	}
 
@@ -27,7 +31,7 @@ func newValidateCmd() *cobra.Command {
 	return cmd
 }
 
-func runValidate(args []string, failOnUnknown bool) error {
+func runValidate(ctx context.Context, args []string, failOnUnknown bool) error {
 	paths, err := manifest.ResolvePaths(args)
 	if err != nil {
 		return err
@@ -48,6 +52,7 @@ func runValidate(args []string, failOnUnknown bool) error {
 		result, err := manifest.ParseAll(path, manifest.ParseOptions{
 			FailOnUnknown: failOnUnknown,
 			Resolver:      sourceResolver,
+			Context:       ctx,
 		})
 		if err != nil {
 			return err

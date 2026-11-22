@@ -49,12 +49,12 @@ jobs:
           [ -s plan.md ] || exit 0   # the plan failed before writing anything
           gh pr comment ${{ github.event.pull_request.number }} \
             --body-file plan.md --edit-last --create-if-none
-      - if: steps.plan.outputs.code == '1'
-        run: exit 1   # the plan itself failed
+      - if: steps.plan.outputs.code != '' && steps.plan.outputs.code != '2'
+        run: exit 1   # the plan itself failed or was interrupted
 ```
 
 - The comment is the [Markdown output](../../commands/markdown-output/) of `plan`. `--edit-last --create-if-none` keeps one comment per pull request and updates it on every push. It edits the last comment that github-actions[bot] wrote on the pull request, so another workflow commenting with the same token would be overwritten.
-- The check fails only when the plan fails (exit `1`). Changes (exit `2`) are shown in the comment, not as a failed check. See [Exit status](#exit-status).
+- The check fails only when the plan fails or is interrupted (any exit but `0` and `2`). Changes (exit `2`) are shown in the comment, not as a failed check. See [Exit status](#exit-status).
 - When the pull request changes no manifest, the comment says `Plan: no manifests changed since origin/main` and no API calls are made. To skip the workflow for such pull requests, add `paths:` with the manifest directories and every directory the manifests read through `source:` or `patches:` (for example `templates/**`). A workflow filtered by `paths:` cannot be a required check, since it does not run on other pull requests.
 - The job does not run for pull requests from forks, so it cannot be a required check for them either. Do not switch to `pull_request_target` to get around this: it would run the fork's manifests with your token.
 - `plan` only reads from GitHub, but reading the settings the manifests manage needs the read permissions listed in [Authentication](#authentication).
@@ -120,12 +120,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue create --title "Drift detected by gh-infra" --body-file plan.md
-      - if: steps.plan.outputs.code == '1'
+      - if: steps.plan.outputs.code != '' && steps.plan.outputs.code != '2'
         run: exit 1
 ```
 
 - It plans every manifest, without `--changed-since`, so it finds changes made through the GitHub UI and changes a failed apply left behind.
-- Exit `2` (drift) opens an issue with the plan; replace that step with your own notification (Slack, email, and so on). Exit `1` (the plan failed) fails the workflow.
+- Exit `2` (drift) opens an issue with the plan; replace that step with your own notification (Slack, email, and so on). Any other exit but `0` (the plan failed or was interrupted) fails the workflow.
 
 ## Importing Changes Made on GitHub
 
@@ -174,13 +174,14 @@ With `--detailed-exitcode`, `plan` exits with:
 | `0` | No changes, or `--changed-since` found nothing that changed |
 | `1` | The plan failed: an error, a repository that could not be fetched (for example a rate limit), a bad ref, or paths with no manifests |
 | `2` | Changes were found |
+| `130`, `143` | The plan was interrupted by SIGINT (`130`, also Ctrl+C) or SIGTERM (`143`) |
 
-An error wins over changes. A step that runs `plan --detailed-exitcode` fails on both `1` and `2`, so capture the code to treat them differently:
+An error wins over changes. A step that runs `plan --detailed-exitcode` fails on every code but `0`, so capture the code to treat them differently, and treat every code but `0` and `2` as a failure:
 
 ```yaml
       - id: plan
         run: gh infra plan ./repos/ ./files/ --detailed-exitcode || echo "code=$?" >> "$GITHUB_OUTPUT"
-      - if: steps.plan.outputs.code == '1'
+      - if: steps.plan.outputs.code != '' && steps.plan.outputs.code != '2'
         run: exit 1
 ```
 

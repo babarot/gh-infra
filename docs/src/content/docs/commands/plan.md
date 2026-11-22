@@ -60,8 +60,9 @@ The block is exactly what each repository would show on its own. Some of what `a
 | Code | Meaning |
 |------|---------|
 | `0` | Plan computed for every repository (with `--detailed-exitcode`: and no changes) |
-| `1` | An error, or the current state of one or more repositories could not be fetched. With `--detailed-exitcode`, also an interrupted plan and paths with no manifests |
+| `1` | An error, or the current state of one or more repositories could not be fetched. With `--detailed-exitcode`, also paths with no manifests |
 | `2` | Changes detected (`--detailed-exitcode` only) |
+| `130`, `143` | Interrupted by SIGINT (`130`, also Ctrl+C) or SIGTERM (`143`), with or without `--detailed-exitcode` |
 
 An error wins over changes: a plan with changes that also skipped a repository exits with `1`. Without `--detailed-exitcode`, changes alone exit with `0`.
 

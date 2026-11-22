@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/babarot/gh-infra/internal/gh"
@@ -38,13 +39,14 @@ func TestFinishPlan_ExitCodes(t *testing.T) {
 		{"detailed: json changes", changes, nil, jsonDetailed, 2},
 		{"detailed: failed targets win over changes", failed, nil, detailed, 1},
 		{"detailed: error", nil, other, detailed, 1},
-		{"detailed: interrupted", nil, context.Canceled, detailed, 1},
+		{"detailed: interrupted", nil, context.Canceled, detailed, 130},
 		{"detailed: error already shown", nil, reported, detailed, 1},
 		{"none: error already shown", nil, reported, none, 1},
 		{"detailed: no resources", nil, fmt.Errorf("wrap: %w", infra.ErrNoResources), detailed, 1},
 		{"ci: changes", changes, nil, ci, 1},
 		{"ci: no changes", noChanges, nil, ci, 0},
-		{"ci: interrupted", nil, context.Canceled, ci, 0},
+		{"ci: interrupted", nil, context.Canceled, ci, 130},
+		{"none: interrupted", nil, context.Canceled, none, 130},
 		{"ci: no resources", nil, infra.ErrNoResources, ci, 0},
 		{"both: changes", changes, nil, both, 2},
 		{"none: changes", changes, nil, none, 0},
@@ -93,17 +95,25 @@ func TestInterrupted(t *testing.T) {
 // An interrupt is told by the context, not by the error: a gh process killed
 // by the cancel fails with an error of its own.
 func TestFinishPlan_InterruptedByContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	canceled := func(cause error) context.Context {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(cause)
+		return ctx
+	}
 	killed := errors.New("parse files.yaml: signal: killed")
 
 	for _, tt := range []struct {
+		ctx  context.Context
 		opts planCommandOptions
 		want int
 	}{
-		{planCommandOptions{}, 0},
-		{planCommandOptions{DetailedExitCode: true}, 1},
+		{canceled(nil), planCommandOptions{}, 130},
+		{canceled(nil), planCommandOptions{DetailedExitCode: true}, 130},
+		{canceled(&InterruptError{Signal: syscall.SIGINT}), planCommandOptions{DetailedExitCode: true}, 130},
+		{canceled(&InterruptError{Signal: syscall.SIGTERM}), planCommandOptions{}, 143},
+		{canceled(&InterruptError{Signal: syscall.SIGTERM}), planCommandOptions{DetailedExitCode: true}, 143},
 	} {
+		ctx := tt.ctx
 		r, w, err := os.Pipe()
 		if err != nil {
 			t.Fatal(err)

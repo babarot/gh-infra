@@ -26,7 +26,14 @@ func (m *confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.confirmed = true
 			m.done = true
 			return m, tea.Quit
-		case "n", "N", "esc", "ctrl+c":
+		case "n", "N", "esc":
+			m.confirmed = false
+			m.done = true
+			return m, tea.Quit
+		case "ctrl+c":
+			// Not an answer: the run is interrupted, as with Ctrl+C in the
+			// spinner, and the command exits as for SIGINT.
+			callInterruptHandler()
 			m.confirmed = false
 			m.done = true
 			return m, tea.Quit
@@ -108,7 +115,14 @@ func (m *confirmDiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.confirmed = true
 			m.done = true
 			return m, tea.Quit
-		case "n", "N", "esc", "ctrl+c":
+		case "n", "N", "esc":
+			m.confirmed = false
+			m.done = true
+			return m, tea.Quit
+		case "ctrl+c":
+			// Not an answer: the run is interrupted, as with Ctrl+C in the
+			// spinner, and the command exits as for SIGINT.
+			callInterruptHandler()
 			m.confirmed = false
 			m.done = true
 			return m, tea.Quit

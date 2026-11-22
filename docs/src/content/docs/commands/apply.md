@@ -41,7 +41,7 @@ YAML files that are not gh-infra manifests are silently skipped. Use `--fail-on-
 
 `apply` exits with `1` if any change fails, or if the current state of a repository could not be fetched. Repositories that could not be fetched are left out of the plan and are not applied; the other repositories are still applied.
 
-Ctrl+C, SIGINT or SIGTERM stops the run. While changes are being applied, `apply` stops starting new ones, prints `Interrupted.` and exits with `1`, since some changes may be applied already. Interrupted before that (while planning or at the prompt), nothing is applied and it exits with `0`. A second Ctrl+C ends the process at once.
+Ctrl+C, SIGINT or SIGTERM stops the run. While changes are being applied, `apply` stops starting new ones, so some changes may be applied already. Interrupted before that (while planning or at the prompt), nothing is applied. Either way it prints `Interrupted.` and exits with `130` for SIGINT and Ctrl+C, or `143` for SIGTERM, as a shell reports a process the signal ended (128 plus the signal number). A second Ctrl+C ends the process at once.
 
 ## Interactive Diff Viewer
 

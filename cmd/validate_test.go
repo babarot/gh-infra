@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func TestRunValidate_RejectsSharedPRBranchAcrossPaths(t *testing.T) {
 		paths = append(paths, path)
 	}
 
-	err := runValidate(paths, false)
+	err := runValidate(context.Background(), paths, false)
 
 	if err == nil || !strings.Contains(err.Error(), `from branch "gh-infra/sync-org-repo"`) {
 		t.Fatalf("expected shared PR branch error, got %v", err)
@@ -46,7 +47,7 @@ func TestRunValidate_RejectsBadMessageTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := runValidate([]string{path}, false)
+	err := runValidate(context.Background(), []string{path}, false)
 
 	if err == nil || !strings.Contains(err.Error(), "commit_message for org/repo") {
 		t.Fatalf("expected a commit_message template error, got %v", err)
@@ -69,7 +70,7 @@ func TestRunValidate_ChecksFilesAndDescriptions(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			err := runValidate([]string{path}, false)
+			err := runValidate(context.Background(), []string{path}, false)
 			if tt.want == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -90,7 +91,7 @@ func TestRunValidate_RejectsOverrideMatchingNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := runValidate([]string{path}, false)
+	err := runValidate(context.Background(), []string{path}, false)
 
 	if err == nil || !strings.Contains(err.Error(), "override b.txt for repo matches no entry in files") {
 		t.Fatalf("expected an override error, got %v", err)
