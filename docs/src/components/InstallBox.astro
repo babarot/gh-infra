@@ -64,6 +64,17 @@ const command = 'gh extension install babarot/gh-infra';
     cursor: pointer;
   }
 
+  /* Like the code blocks, no copy button on touch screens. */
+  @media (hover: none) {
+    .install-copy {
+      display: none;
+    }
+
+    .install-box {
+      padding-right: 0.75rem;
+    }
+  }
+
   .install-copy:hover {
     color: var(--gi-fg);
     background: var(--gi-accbg);
