@@ -45,10 +45,15 @@ func drainStdinAfterBubbletea() {
 	fd := int(f.Fd())
 	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 
+	// Stop when stdin is not a terminal (the flush fails) or is closed:
+	// poll reports such a descriptor as ready every time, so the loop
+	// would never end.
 	for {
-		_ = unix.IoctlSetInt(fd, unix.TCFLSH, 0) // flush read queue
+		if err := unix.IoctlSetInt(fd, unix.TCFLSH, 0); err != nil { // flush read queue
+			return
+		}
 		n, _ := unix.Poll(fds, 200)
-		if n <= 0 {
+		if n <= 0 || fds[0].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 {
 			return
 		}
 	}
