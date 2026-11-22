@@ -11,7 +11,7 @@
     "@astrojs/starlight": "^0.42.6",
     "@fontsource/geist-mono": "^5.3.0",
     "@fontsource/geist-sans": "^5.3.0",
-    "astro": "^7.3.8",
+    "astro": "^7.4.7",
     "astro-mermaid": "^2.0.1",
     "mermaid": "^11.17.2",
     "sharp": "^0.35.5"
