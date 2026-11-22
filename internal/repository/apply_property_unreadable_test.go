@@ -192,6 +192,18 @@ func TestPlanSecretScanningRejected(t *testing.T) {
 		{name: "not offered while private, made public", state: notOffered,
 			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
 			wantErr: "security.secret_scanning: GitHub does not offer it on o/r while it is private (apply the visibility change first"},
+		// Whether GitHub offers it once the repository is not public depends
+		// on GitHub Secret Protection: whether it is kept on, or turned on,
+		// is known only after the visibility change.
+		{name: "on, made private",
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Security: &manifest.Security{SecretScanning: manifest.Ptr(true), SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security: whether GitHub offers secret scanning on o/r once it is private is not known (leave security.secret_scanning and security.secret_scanning_push_protection out for the visibility change"},
+		{name: "turned on, made private", state: func(s *fakeState) { s.SecretScanning, s.SecretScanningPushProtection = false, false },
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+			wantErr: "security: whether GitHub offers secret scanning on o/r once it is private is not known"},
+		{name: "push protection on, made internal",
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("internal"), Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security: whether GitHub offers secret scanning on o/r once it is internal is not known"},
 		{name: "push protection without secret scanning", state: func(s *fakeState) { s.SecretScanning, s.SecretScanningPushProtection = false, false },
 			spec:    manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
 			wantErr: "security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled"},

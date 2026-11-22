@@ -153,11 +153,17 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 
 // validateSecretScanningOffered fails when the manifest enables secret
 // scanning or its push protection on an existing repository where GitHub
-// does not offer them (see fetchSecretScanning).
+// does not offer them (see fetchSecretScanning), or may not once a
+// visibility change makes it not public: that depends on GitHub Secret
+// Protection, which plan cannot see, so the visibility change goes first.
 func validateSecretScanningOffered(desired *manifest.Repository, current *CurrentState) error {
 	s := desired.Spec.Security
 	if s == nil || current.IsNew {
 		return nil
+	}
+	name, to := desired.Metadata.FullName(), effectiveVisibility(desired, current)
+	if madeNotPublic(desired, current) && (derefBool(s.SecretScanning) || derefBool(s.SecretScanningPushProtection)) {
+		return fmt.Errorf("security: whether GitHub offers secret scanning on %s once it is %s is not known (leave security.secret_scanning and security.secret_scanning_push_protection out for the visibility change, then set them again)", name, to)
 	}
 	var field string
 	switch {
@@ -168,10 +174,16 @@ func validateSecretScanningOffered(desired *manifest.Repository, current *Curren
 	default:
 		return nil
 	}
-	if current.Visibility != manifest.VisibilityPublic && effectiveVisibility(desired, current) == manifest.VisibilityPublic {
-		return fmt.Errorf("security.%s: GitHub does not offer it on %s while it is %s (apply the visibility change first, then set security.%s)", field, desired.Metadata.FullName(), current.Visibility, field)
+	if to == manifest.VisibilityPublic {
+		return fmt.Errorf("security.%s: GitHub does not offer it on %s while it is %s (apply the visibility change first, then set security.%s)", field, name, current.Visibility, field)
 	}
-	return fmt.Errorf("security.%s: GitHub does not offer it on %s (a private repository needs GitHub Secret Protection, on GitHub Team or GitHub Enterprise Cloud)", field, desired.Metadata.FullName())
+	return fmt.Errorf("security.%s: GitHub does not offer it on %s (a private repository needs GitHub Secret Protection, on GitHub Team or GitHub Enterprise Cloud)", field, name)
+}
+
+// madeNotPublic reports whether the plan makes a public repository private
+// or internal.
+func madeNotPublic(desired *manifest.Repository, current *CurrentState) bool {
+	return current.Visibility == manifest.VisibilityPublic && effectiveVisibility(desired, current) != manifest.VisibilityPublic
 }
 
 // validatePushProtection fails when the manifest leaves push protection
@@ -344,6 +356,13 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	if unarchive {
 		changes = append(changes, archived...)
 	}
+	// A repository made not public may lose secret scanning, and GitHub
+	// refuses a change of it, even a disable, where it does not offer it:
+	// security goes before the visibility change then.
+	security := diffSecurity(name, desired, current)
+	if madeNotPublic(desired, current) {
+		changes = append(changes, security...)
+	}
 	changes = append(changes, diffRepoSettings(name, desired, current)...)
 	changes = append(changes, diffFeatures(name, desired, current)...)
 	changes = append(changes, diffMergeStrategy(name, desired, current)...)
@@ -358,7 +377,9 @@ func Diff(ctx context.Context, desired *manifest.Repository, current *CurrentSta
 	changes = append(changes, diffLabels(name, desired, current, manifest.LabelsReconcileMode(desired.Reconcile, desired.Spec.LabelSync))...)
 	changes = append(changes, diffMilestones(name, desired, current)...)
 	changes = append(changes, diffActions(name, desired, current)...)
-	changes = append(changes, diffSecurity(name, desired, current)...)
+	if !madeNotPublic(desired, current) {
+		changes = append(changes, security...)
+	}
 	if !unarchive {
 		changes = append(changes, archived...)
 	}
@@ -415,9 +436,15 @@ func CreateNotes(desired *manifest.Repository) []string {
 	notes = append(notes, environmentCreateNotes(desired)...)
 	notes = append(notes, pagesCreateNotes(desired)...)
 	// Whether GitHub offers secret scanning on a repository that is not
-	// public is not known before it exists.
-	if s := desired.Spec.Security; s != nil && derefBool(s.SecretScanning) && effectiveVisibility(desired, &CurrentState{IsNew: true}) != manifest.VisibilityPublic {
-		notes = append(notes, "secret scanning is enabled only if GitHub offers it on the repository, which is not public (it needs GitHub Secret Protection); otherwise apply fails")
+	// public, and whether the owner's security configuration turns it on,
+	// is not known before it exists.
+	if s := desired.Spec.Security; s != nil && effectiveVisibility(desired, &CurrentState{IsNew: true}) != manifest.VisibilityPublic {
+		if derefBool(s.SecretScanning) {
+			notes = append(notes, "secret scanning is enabled only if GitHub offers it on the repository, which is not public (it needs GitHub Secret Protection); otherwise apply fails")
+		}
+		if (s.SecretScanning != nil && !*s.SecretScanning) || (s.SecretScanningPushProtection != nil && !*s.SecretScanningPushProtection) {
+			notes = append(notes, "secret scanning is taken to start off on a repository that is not public, so disabling it is not sent; if the owner's security configuration turns it on, the next plan shows it")
+		}
 	}
 	return notes
 }

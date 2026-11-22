@@ -363,17 +363,25 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 	}
 
 	// Secret scanning last: GitHub may not offer it on a repository that is
-	// not public (see CreateNotes). A new repository has both off, so only
-	// what the manifest enables is sent, scanning first, as push protection
-	// requires it.
+	// not public (see CreateNotes). A new public repository has both on, so
+	// what the manifest sets is sent; one that is not public is taken to
+	// have both off, so only what it enables is sent, as GitHub refuses
+	// even a disable where it does not offer them. Push protection requires
+	// secret scanning: scanning is enabled first, and disabled last.
 	if s := repo.Spec.Security; s != nil {
-		if derefBool(s.SecretScanning) {
-			if err := p.applySecretScanning(ctx, owner, name, "secret_scanning", true); err != nil {
-				return err
-			}
+		public := effectiveVisibility(repo, &CurrentState{IsNew: true}) == manifest.VisibilityPublic
+		settings := []struct {
+			field string
+			value *bool
+		}{{"secret_scanning", s.SecretScanning}, {"secret_scanning_push_protection", s.SecretScanningPushProtection}}
+		if !derefBool(s.SecretScanning) {
+			slices.Reverse(settings)
 		}
-		if derefBool(s.SecretScanningPushProtection) {
-			if err := p.applySecretScanning(ctx, owner, name, "secret_scanning_push_protection", true); err != nil {
+		for _, st := range settings {
+			if st.value == nil || !*st.value && !public {
+				continue
+			}
+			if err := p.applySecretScanning(ctx, owner, name, st.field, *st.value); err != nil {
 				return err
 			}
 		}

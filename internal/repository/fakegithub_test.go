@@ -359,11 +359,15 @@ func (f *fakeGitHub) repoCmd(args []string) ([]byte, bool, error) {
 				PullRequestCreationPolicy: "all",
 			},
 			VulnerabilityAlerts: false,
-			Actions:             fakeActions{Enabled: true, AllowedActions: "all"},
-			Workflow:            fakeWorkflow{DefaultWorkflowPermissions: "read"},
-			Labels:              slices.Clone(f.defaultLabels),
-			Org:                 f.s.Org, // the owner's, not the repository's
-			NoSecretScanning:    f.s.NoSecretScanning,
+			// Seen on GitHub (2026-11, a public repository of a user): a new
+			// public repository has secret scanning and push protection on.
+			SecretScanning:               visibility == "public",
+			SecretScanningPushProtection: visibility == "public",
+			Actions:                      fakeActions{Enabled: true, AllowedActions: "all"},
+			Workflow:                     fakeWorkflow{DefaultWorkflowPermissions: "read"},
+			Labels:                       slices.Clone(f.defaultLabels),
+			Org:                          f.s.Org, // the owner's, not the repository's
+			NoSecretScanning:             f.s.NoSecretScanning,
 		}
 		f.s = newFakeGitHub(f.owner, f.name, f.s).s
 		// A new repository has no commit, so no branch yet.

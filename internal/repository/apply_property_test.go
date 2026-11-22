@@ -134,6 +134,13 @@ func TestApplyProperties(t *testing.T) {
 			s.SecretScanningPushProtection = false
 		}, spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: bptr(true)}}},
 		{name: "push protection turned off", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: bptr(false)}}},
+		// Turned off before the visibility change, where GitHub would refuse
+		// even a disable.
+		{name: "secret scanning turned off, made private", state: func(s *fakeState) {
+			s.NoSecretScanning = true
+		}, spec: manifest.RepositorySpec{Visibility: ptr("private"), Security: &manifest.Security{
+			SecretScanning: bptr(false), SecretScanningPushProtection: bptr(false),
+		}}},
 		{name: "actions permissions", spec: manifest.RepositorySpec{Actions: &manifest.Actions{
 			Enabled: bptr(true), AllowedActions: ptr("all"), SHAPinningRequired: bptr(false),
 			WorkflowPermissions: ptr("write"), CanApprovePullRequests: bptr(true), ForkPRApproval: ptr("all_external_contributors"),

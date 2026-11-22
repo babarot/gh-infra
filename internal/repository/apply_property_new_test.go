@@ -79,6 +79,15 @@ func TestApplyPropertiesNewRepository(t *testing.T) {
 			Visibility: ptr("private"),
 			Security:   &manifest.Security{SecretScanning: bptr(false), SecretScanningPushProtection: bptr(false)},
 		}},
+		// A new public repository has both on, so turning them off is sent.
+		{name: "secret scanning off on a public repository", spec: manifest.RepositorySpec{
+			Visibility: ptr("public"),
+			Security:   &manifest.Security{SecretScanning: bptr(false), SecretScanningPushProtection: bptr(false)},
+		}},
+		{name: "push protection off on a public repository", spec: manifest.RepositorySpec{
+			Visibility: ptr("public"),
+			Security:   &manifest.Security{SecretScanningPushProtection: bptr(false)},
+		}},
 		{name: "archived", spec: manifest.RepositorySpec{
 			Archived: bptr(true), Labels: []manifest.Label{{Name: "feature", Color: "00ff00"}},
 		}},
@@ -162,6 +171,14 @@ func TestCreateSecretScanningNotOffered(t *testing.T) {
 	results := p.Apply(ctx, changes, targets, nil)
 	if !slices.ContainsFunc(results, func(r ApplyResult) bool { return r.Err != nil && strings.Contains(r.Err.Error(), "secret_scanning") }) {
 		t.Errorf("apply results %+v, want secret scanning failed", results)
+	}
+
+	// A disable is not sent where GitHub may not offer secret scanning, so
+	// an owner's security configuration that turns it on shows in the next
+	// plan.
+	repo.Spec.Security.SecretScanning = manifest.Ptr(false)
+	if notes := CreateNotes(repo); !slices.ContainsFunc(notes, func(n string) bool { return strings.Contains(n, "disabling it is not sent") }) {
+		t.Errorf("create notes %v do not say that disabling secret scanning is not sent", notes)
 	}
 
 	repo.Spec.Visibility = manifest.Ptr(manifest.VisibilityPublic)
