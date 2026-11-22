@@ -405,6 +405,14 @@ starlight-toc a[aria-current='true']:focus {
   border-top-right-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
 }
 
+/* On touch screens Expressive Code shows the copy button all the time and at
+   full size. Nobody copies commands on a phone, so drop it there. */
+@media (hover: none) {
+  .expressive-code .copy {
+    display: none;
+  }
+}
+
 /* A code block inside an aside drops its border and sits on the page
    background, so the aside stays the only box. */
 .starlight-aside .expressive-code {
