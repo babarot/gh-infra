@@ -76,7 +76,7 @@ func TestLabel_MarshalYAML_KeepsEveryField(t *testing.T) {
 		switch f.Kind() {
 		case reflect.String:
 			f.SetString("x")
-		case reflect.Ptr:
+		case reflect.Pointer:
 			f.Set(reflect.New(f.Type().Elem()))
 			if f.Elem().Kind() == reflect.String {
 				f.Elem().SetString("x")
