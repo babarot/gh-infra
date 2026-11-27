@@ -2114,6 +2114,26 @@ repositories:
 	}
 }
 
+// A hex color that YAML would resolve as a number is written quoted.
+func TestDiffRepositorySet_QuotesLabelColor(t *testing.T) {
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+repositories:
+  - name: repo
+`
+	imported := manifest.RepositorySpec{
+		Labels: []manifest.Label{{Name: "a", Color: "5319e7"}, {Name: "b", Color: "008672"}},
+	}
+	_, updated := importSetEntry(t, content, imported)
+	for _, want := range []string{`color: "5319e7"`, `color: "008672"`} {
+		if !strings.Contains(updated, want) {
+			t.Errorf("missing %s in:\n%s", want, updated)
+		}
+	}
+}
+
 func TestDiffRepositorySet_PartialDefaultsWarns(t *testing.T) {
 	content := `apiVersion: gh-infra/v1
 kind: RepositorySet

@@ -1,6 +1,9 @@
 package manifest
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 const (
 	// Visibility values for repository visibility.
@@ -653,6 +656,24 @@ type Label struct {
 	Name        string  `yaml:"name"        validate:"required"`
 	Description *string `yaml:"description,omitempty"` // omitted leaves it as it is; "" clears
 	Color       string  `yaml:"color"       validate:"required"`
+}
+
+// MarshalYAML always double-quotes color. A hex color such as "5319e7" or
+// "008672" is otherwise written as a plain scalar, which other YAML tools
+// (for example yq) read as a number and rewrite.
+func (l Label) MarshalYAML() (any, error) {
+	return struct {
+		Name        string       `yaml:"name"`
+		Description *string      `yaml:"description,omitempty"`
+		Color       quotedString `yaml:"color"`
+	}{Name: l.Name, Description: l.Description, Color: quotedString(l.Color)}, nil
+}
+
+// quotedString is a string always marshaled as a double-quoted YAML scalar.
+type quotedString string
+
+func (s quotedString) MarshalYAML() ([]byte, error) {
+	return []byte(strconv.Quote(string(s))), nil
 }
 
 // LabelSyncMode returns the effective label sync mode.
