@@ -35,6 +35,7 @@ func propState() fakeState {
 		},
 		ImmutableReleases:   true,
 		VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: false,
+		SecretScanning: true, SecretScanningPushProtection: true,
 		Actions:         fakeActions{Enabled: true, AllowedActions: "selected", SHAPinningRequired: true},
 		Workflow:        fakeWorkflow{DefaultWorkflowPermissions: "read", CanApprovePullRequestReviews: false},
 		SelectedActions: fakeSelectedActions{GithubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"actions/*"}},
@@ -120,6 +121,25 @@ func TestApplyProperties(t *testing.T) {
 			s.VulnerabilityAlerts, s.AutomatedSecurityFixes = false, false
 		}, spec: manifest.RepositorySpec{Security: &manifest.Security{
 			VulnerabilityAlerts: bptr(true), AutomatedSecurityFixes: bptr(true),
+		}}},
+		{name: "secret scanning turned on", state: func(s *fakeState) {
+			s.SecretScanning, s.SecretScanningPushProtection = false, false
+		}, spec: manifest.RepositorySpec{Security: &manifest.Security{
+			SecretScanning: bptr(true), SecretScanningPushProtection: bptr(true),
+		}}},
+		{name: "secret scanning turned off", spec: manifest.RepositorySpec{Security: &manifest.Security{
+			SecretScanning: bptr(false), SecretScanningPushProtection: bptr(false),
+		}}},
+		{name: "push protection turned on", state: func(s *fakeState) {
+			s.SecretScanningPushProtection = false
+		}, spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: bptr(true)}}},
+		{name: "push protection turned off", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: bptr(false)}}},
+		// Turned off before the visibility change, where GitHub would refuse
+		// even a disable.
+		{name: "secret scanning turned off, made private", state: func(s *fakeState) {
+			s.NoSecretScanning = true
+		}, spec: manifest.RepositorySpec{Visibility: ptr("private"), Security: &manifest.Security{
+			SecretScanning: bptr(false), SecretScanningPushProtection: bptr(false),
 		}}},
 		{name: "actions permissions", spec: manifest.RepositorySpec{Actions: &manifest.Actions{
 			Enabled: bptr(true), AllowedActions: ptr("all"), SHAPinningRequired: bptr(false),
@@ -330,6 +350,8 @@ func flattenState(s fakeState) map[string]string {
 	out["vulnerability_alerts"] = fmt.Sprint(s.VulnerabilityAlerts)
 	out["automated_security_fixes"] = fmt.Sprint(s.AutomatedSecurityFixes)
 	out["private_vulnerability_reporting"] = fmt.Sprint(s.PrivateVulnerabilityReporting)
+	out["secret_scanning"] = fmt.Sprint(s.SecretScanning)
+	out["secret_scanning_push_protection"] = fmt.Sprint(s.SecretScanningPushProtection)
 	for prefix, v := range map[string]any{"actions.": s.Actions, "workflow.": s.Workflow, "selected_actions.": s.SelectedActions} {
 		for k, x := range mustJSONMap(v) {
 			out[prefix+k] = fmt.Sprint(x)
@@ -416,6 +438,8 @@ var repositoryFieldPaths = map[string][]string{
 	"Repository:vulnerability_alerts":               {"vulnerability_alerts", "automated_security_fixes"}, // turning alerts off turns updates off
 	"Repository:automated_security_fixes":           {"automated_security_fixes"},
 	"Repository:private_vulnerability_reporting":    {"private_vulnerability_reporting"},
+	"Repository:secret_scanning":                    {"secret_scanning"},
+	"Repository:secret_scanning_push_protection":    {"secret_scanning_push_protection"},
 	"Repository:issues":                             {"repo.has_issues"},
 	"Repository:projects":                           {"repo.has_projects"},
 	"Repository:wiki":                               {"repo.has_wiki"},

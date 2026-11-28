@@ -362,6 +362,31 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 		}
 	}
 
+	// Secret scanning last: GitHub may not offer it on a repository that is
+	// not public (see CreateNotes). A new public repository has both on, so
+	// what the manifest sets is sent; one that is not public is taken to
+	// have both off, so only what it enables is sent, as GitHub refuses
+	// even a disable where it does not offer them. Push protection requires
+	// secret scanning: scanning is enabled first, and disabled last.
+	if s := repo.Spec.Security; s != nil {
+		public := effectiveVisibility(repo, &CurrentState{IsNew: true}) == manifest.VisibilityPublic
+		settings := []struct {
+			field string
+			value *bool
+		}{{"secret_scanning", s.SecretScanning}, {"secret_scanning_push_protection", s.SecretScanningPushProtection}}
+		if !derefBool(s.SecretScanning) {
+			slices.Reverse(settings)
+		}
+		for _, st := range settings {
+			if st.value == nil || !*st.value && !public {
+				continue
+			}
+			if err := p.applySecretScanning(ctx, owner, name, st.field, *st.value); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -588,6 +613,13 @@ func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manife
 		}
 		return p.applyPrivateVulnerabilityReporting(ctx, owner, name, enabled)
 
+	case "secret_scanning", "secret_scanning_push_protection":
+		enabled, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
+		return p.applySecretScanning(ctx, owner, name, c.Field, enabled)
+
 	case "issues":
 		v, ok := c.NewValue.(bool)
 		if !ok {
@@ -753,6 +785,52 @@ func (p *Processor) applyPrivateVulnerabilityReporting(ctx context.Context, owne
 	}
 	_, err := p.runner.Run(ctx, "api", endpoint, "--method", "DELETE")
 	return wrapError(err, fullName, "private_vulnerability_reporting")
+}
+
+// applySecretScanning enables or disables field of the repository's
+// security_and_analysis (secret_scanning, secret_scanning_push_protection).
+func (p *Processor) applySecretScanning(ctx context.Context, owner, name, field string, enabled bool) error {
+	fullName := owner + "/" + name
+	status := "disabled"
+	if enabled {
+		status = "enabled"
+	}
+	body, err := json.Marshal(map[string]any{
+		"security_and_analysis": map[string]any{field: map[string]string{"status": status}},
+	})
+	if err != nil {
+		return err
+	}
+	out, err := p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s", fullName),
+		"--method", "PATCH",
+		"--header", "Content-Type: application/json",
+		"--input", "-",
+	)
+	if err != nil {
+		return wrapError(err, fullName, field)
+	}
+	// As verifyPatchResponse does for the other settings of the PATCH:
+	// GitHub may return 200 without saving the setting.
+	var resp struct {
+		SecurityAndAnalysis map[string]struct {
+			Status string `json:"status"`
+		} `json:"security_and_analysis"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		logger.Debug("cannot parse PATCH response, skipping verification", "repo", fullName, "err", err)
+		return nil
+	}
+	// GitHub leaves out what it does not offer on the repository, which is
+	// off.
+	got, ok := resp.SecurityAndAnalysis[field]
+	switch {
+	case !ok && enabled:
+		return wrapError(fmt.Errorf("applied %s=%s but GitHub does not report %s (setting may not be supported for this repository configuration)", field, status, field), fullName, field)
+	case ok && got.Status != status:
+		return wrapError(fmt.Errorf("applied %s=%s but GitHub reports %s=%s (setting may not be supported for this repository configuration)", field, status, field, got.Status), fullName, field)
+	}
+	return nil
 }
 
 func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *manifest.Repository) error {

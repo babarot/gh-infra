@@ -56,6 +56,7 @@ func TestFetchRepository(t *testing.T) {
 			"api repos/myorg/myrepo/vulnerability-alerts":                                          []byte(``),
 			"api repos/myorg/myrepo/automated-security-fixes":                                      []byte(`{"enabled": false, "paused": false}`),
 			"api repos/myorg/myrepo/private-vulnerability-reporting":                               []byte(`{"enabled": false}`),
+			"api repos/myorg/myrepo --jq {admin: .permissions.admin, security_and_analysis}":       []byte(`{"admin": true, "security_and_analysis": {"secret_scanning": {"status": "enabled"}, "secret_scanning_push_protection": {"status": "disabled"}}}`),
 			"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte(``),
 			"api repos/myorg/myrepo/environments --paginate --slurp":                               []byte(`[{"total_count":0,"environments":[]}]`),
 			"secret list --repo myorg/myrepo --json name --jq .[].name":                            []byte("SECRET1\nSECRET2"),
@@ -359,6 +360,7 @@ func TestCurrentState_FullName(t *testing.T) {
 }
 
 func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
+	const analysisCmd = "api repos/myorg/myrepo --jq {admin: .permissions.admin, security_and_analysis}"
 	// Base responses required for fetchRepoSettings to succeed
 	baseResponses := map[string][]byte{
 		"repo view myorg/myrepo --json description,homepageUrl,visibility,isArchived,repositoryTopics,hasIssuesEnabled,hasProjectsEnabled,hasWikiEnabled,hasDiscussionsEnabled,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,defaultBranchRef": []byte(`{
@@ -383,9 +385,10 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 			"merge_commit_title": "MERGE_MESSAGE",
 			"merge_commit_message": "PR_BODY"
 		}`),
-		"api repos/myorg/myrepo/immutable-releases":                                            []byte(`{"enabled": false}`),
-		"api repos/myorg/myrepo/automated-security-fixes":                                      []byte(`{"enabled": false, "paused": false}`),
-		"api repos/myorg/myrepo/private-vulnerability-reporting":                               []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/immutable-releases":              []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/automated-security-fixes":        []byte(`{"enabled": false, "paused": false}`),
+		"api repos/myorg/myrepo/private-vulnerability-reporting": []byte(`{"enabled": false}`),
+		analysisCmd: []byte(`{"admin": true, "security_and_analysis": {"secret_scanning": {"status": "disabled"}, "secret_scanning_push_protection": {"status": "disabled"}}}`),
 		"api repos/myorg/myrepo/branches?protected=true&per_page=100 --paginate --jq .[].name": []byte(``),
 		"api repos/myorg/myrepo/environments --paginate --slurp":                               []byte(`[{"total_count":0,"environments":[]}]`),
 	}
@@ -625,6 +628,43 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "fetch private vulnerability reporting") {
 			t.Errorf("expected 'fetch private vulnerability reporting' in error, got: %v", err)
+		}
+	})
+
+	t.Run("secret scanning and push protection enabled", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		maps.Copy(responses, baseResponses)
+		responses[analysisCmd] = []byte(`{"admin": true, "security_and_analysis": {"secret_scanning": {"status": "enabled"}, "secret_scanning_push_protection": {"status": "enabled"}}}`)
+
+		mock := &gh.MockRunner{Responses: responses}
+		p := NewProcessor(mock, nil)
+		state, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !derefBool(state.Security.SecretScanning) || !derefBool(state.Security.SecretScanningPushProtection) {
+			t.Errorf("expected SecretScanning and SecretScanningPushProtection = true, got %+v", state.Security)
+		}
+	})
+
+	t.Run("secret scanning 500 propagates error", func(t *testing.T) {
+		responses := make(map[string][]byte)
+		maps.Copy(responses, baseResponses)
+		delete(responses, analysisCmd)
+
+		mock := &gh.MockRunner{
+			Responses: responses,
+			Errors: map[string]error{
+				analysisCmd: fmt.Errorf("internal server error"),
+			},
+		}
+		p := NewProcessor(mock, nil)
+		_, err := p.FetchRepository(context.Background(), "myorg", "myrepo", nil, nil)
+		if err == nil {
+			t.Fatal("expected error for 500, got nil")
+		}
+		if !strings.Contains(err.Error(), "fetch secret scanning") {
+			t.Errorf("expected 'fetch secret scanning' in error, got: %v", err)
 		}
 	})
 }

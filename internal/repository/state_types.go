@@ -103,6 +103,10 @@ type CurrentSecurity struct {
 	VulnerabilityAlerts           bool
 	AutomatedSecurityFixes        bool
 	PrivateVulnerabilityReporting bool
+	// SecretScanning and SecretScanningPushProtection are nil when GitHub
+	// does not offer them on the repository, or they were not read.
+	SecretScanning               *bool
+	SecretScanningPushProtection *bool
 }
 
 type CurrentFeatures struct {

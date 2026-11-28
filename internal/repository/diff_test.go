@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -539,6 +540,18 @@ func TestDiff_Security(t *testing.T) {
 			setCur:    func(c *CurrentState) { c.Security.PrivateVulnerabilityReporting = false },
 			field:     "private_vulnerability_reporting",
 		},
+		{
+			name:      "secret_scanning",
+			setDesire: func(s *manifest.Security) { s.SecretScanning = manifest.Ptr(true) },
+			setCur:    func(c *CurrentState) { c.Security.SecretScanning = manifest.Ptr(false) },
+			field:     "secret_scanning",
+		},
+		{
+			name:      "secret_scanning_push_protection",
+			setDesire: func(s *manifest.Security) { s.SecretScanningPushProtection = manifest.Ptr(true) },
+			setCur:    func(c *CurrentState) { c.Security.SecretScanningPushProtection = manifest.Ptr(false) },
+			field:     "secret_scanning_push_protection",
+		},
 	}
 
 	for _, f := range fields {
@@ -586,6 +599,37 @@ func TestDiff_Security(t *testing.T) {
 			t.Errorf("expected 3 children, got %d", got)
 		}
 	})
+
+	// GitHub saves push protection only with secret scanning, and disabling
+	// secret scanning disables push protection: scanning is enabled first,
+	// and push protection disabled first.
+	for _, tt := range []struct {
+		name    string
+		enabled bool
+		want    []string
+	}{
+		{"secret scanning enabled", true, []string{"secret_scanning", "secret_scanning_push_protection"}},
+		{"secret scanning disabled", false, []string{"secret_scanning_push_protection", "secret_scanning"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			d := baseDesired()
+			d.Spec.Security = &manifest.Security{SecretScanning: manifest.Ptr(tt.enabled), SecretScanningPushProtection: manifest.Ptr(tt.enabled)}
+			c := baseState()
+			c.Security.SecretScanning, c.Security.SecretScanningPushProtection = manifest.Ptr(!tt.enabled), manifest.Ptr(!tt.enabled)
+
+			changes := diffSecurity("org/repo", d, c)
+			if len(changes) != 1 {
+				t.Fatalf("expected 1 parent change, got %d", len(changes))
+			}
+			var got []string
+			for _, child := range changes[0].Children {
+				got = append(got, child.Field)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("children = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestDiff_Features_BoolNoChange(t *testing.T) {

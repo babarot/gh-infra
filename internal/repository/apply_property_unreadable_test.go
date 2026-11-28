@@ -60,6 +60,7 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		repoCmd       = "api repos/o/r --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}"
 		immutableCmd  = "api repos/o/r/immutable-releases"
 		alertsCmd     = "api repos/o/r/vulnerability-alerts"
+		analysisCmd   = "api repos/o/r --jq {admin: .permissions.admin, security_and_analysis}"
 	)
 	notFound := fakeStatus(gh.ErrNotFound, "Not Found")
 	invalid := fakeStatus(gh.ErrValidation, "Validation Failed")
@@ -79,6 +80,7 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		recon   *manifest.RepositoryReconcile
 		cmd     string
 		err     error
+		out     []byte // with no err: the response, garbage when nil
 		wantErr bool
 	}{
 		{name: "secrets 404", spec: manifest.RepositorySpec{Secrets: []manifest.Secret{{Name: "TOKEN", Value: "x"}}}, cmd: secretsCmd, err: notFound, wantErr: true},
@@ -117,11 +119,27 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		{name: "commit message settings 404", spec: manifest.RepositorySpec{MergeStrategy: &manifest.MergeStrategy{AllowAutoMerge: manifest.Ptr(false)}}, cmd: repoCmd, err: notFound, wantErr: true},
 		// GitHub documents a 404 of the vulnerability alerts as disabled.
 		{name: "vulnerability alerts 404", spec: manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: manifest.Ptr(false)}}, cmd: alertsCmd, err: notFound},
+		// GitHub returns security_and_analysis only to admins (and
+		// organization owners and security managers).
+		{name: "secret scanning not returned to a non-admin", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(false)}},
+			cmd: analysisCmd, out: []byte(`{"admin":false,"security_and_analysis":null}` + "\n"), wantErr: true},
+		// On a public repository GitHub offers both, so to an admin it
+		// leaves out neither.
+		{name: "secret scanning not returned on a public repository", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(false)}},
+			cmd: analysisCmd, out: []byte(`{"admin":true,"security_and_analysis":null}` + "\n"), wantErr: true},
+		{name: "push protection not returned on a public repository", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+			cmd: analysisCmd, out: []byte(`{"admin":true,"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`), wantErr: true},
+		{name: "secret scanning status unknown", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+			cmd: analysisCmd, out: []byte(`{"admin":true,"security_and_analysis":{"secret_scanning":{"status":"paused"},"secret_scanning_push_protection":{"status":"enabled"}}}`), wantErr: true},
+		// Both are read: plan checks one against the other.
+		{name: "push protection status unknown, secret scanning managed", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+			cmd: analysisCmd, out: []byte(`{"admin":true,"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"paused"}}}`), wantErr: true},
+		{name: "secret scanning unparsable", spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}}, cmd: analysisCmd, wantErr: true},
 		{name: "fork PR approval 422, not set", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{})}, cmd: forkPRCmd, err: invalid},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			runner := &unreadableRunner{Runner: newFakeGitHub("o", "r", propState()), cmd: tt.cmd, err: tt.err}
-			if tt.err == nil {
+			runner := &unreadableRunner{Runner: newFakeGitHub("o", "r", propState()), cmd: tt.cmd, err: tt.err, out: tt.out}
+			if tt.err == nil && tt.out == nil {
 				runner.out = garbage
 			}
 			p := NewProcessor(runner, manifest.NewResolver(runner))
@@ -143,6 +161,79 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 				t.Errorf("reported, but planned %s", formatChanges(changes))
 			case !tt.wantErr && reported != nil:
 				t.Errorf("reported %v for what plans nothing", reported)
+			}
+		})
+	}
+}
+
+// Plan rejects what GitHub would not do. Where it does not offer secret
+// scanning (a private repository whose owner lacks GitHub Secret
+// Protection), it returns no security_and_analysis to an admin: both are off
+// and cannot be enabled. It saves no push protection without secret
+// scanning, and disabling secret scanning disables push protection too; it
+// answers 200 to both.
+func TestPlanSecretScanningRejected(t *testing.T) {
+	notOffered := func(s *fakeState) { s.Repo.Visibility, s.NoSecretScanning = "private", true }
+	for _, tt := range []struct {
+		name    string
+		state   func(*fakeState)
+		missing bool // the repository does not exist yet
+		spec    manifest.RepositorySpec
+		wantErr string
+	}{
+		{name: "secret scanning not offered", state: notOffered,
+			spec:    manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+			wantErr: "security.secret_scanning: GitHub does not offer it on o/r (a private repository needs GitHub Secret Protection"},
+		{name: "push protection not offered", state: notOffered,
+			spec:    manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security.secret_scanning_push_protection: GitHub does not offer it on o/r"},
+		{name: "not offered, disabled", state: notOffered,
+			spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(false), SecretScanningPushProtection: manifest.Ptr(false)}}},
+		{name: "not offered while private, made public", state: notOffered,
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+			wantErr: "security.secret_scanning: GitHub does not offer it on o/r while it is private (apply the visibility change first"},
+		// Whether GitHub offers it once the repository is not public depends
+		// on GitHub Secret Protection: whether it is kept on, or turned on,
+		// is known only after the visibility change.
+		{name: "on, made private",
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Security: &manifest.Security{SecretScanning: manifest.Ptr(true), SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security: whether GitHub offers secret scanning on o/r once it is private is not known (leave security.secret_scanning and security.secret_scanning_push_protection out for the visibility change"},
+		{name: "turned on, made private", state: func(s *fakeState) { s.SecretScanning, s.SecretScanningPushProtection = false, false },
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}},
+			wantErr: "security: whether GitHub offers secret scanning on o/r once it is private is not known"},
+		{name: "push protection on, made internal",
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("internal"), Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security: whether GitHub offers secret scanning on o/r once it is internal is not known"},
+		{name: "push protection without secret scanning", state: func(s *fakeState) { s.SecretScanning, s.SecretScanningPushProtection = false, false },
+			spec:    manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled"},
+		{name: "push protection without secret scanning, new repository", missing: true,
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled"},
+		{name: "secret scanning disabled under push protection",
+			spec:    manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(false)}},
+			wantErr: "security.secret_scanning: false also disables secret_scanning_push_protection on GitHub (set security.secret_scanning_push_protection: false as well)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newMissingFakeGitHub("o", "r", nil)
+			if !tt.missing {
+				s := propState()
+				if tt.state != nil {
+					tt.state(&s)
+				}
+				fake = newFakeGitHub("o", "r", s)
+			}
+			p := NewProcessor(fake, manifest.NewResolver(fake))
+			repo := &manifest.Repository{Metadata: manifest.RepositoryMetadata{Owner: "o", Name: "r"}, Spec: tt.spec}
+			changes, _, err := p.Plan(context.Background(), []*manifest.Repository{repo}, PlanOptions{}, nil)
+			if tt.wantErr == "" {
+				if err != nil || len(changes) > 0 {
+					t.Errorf("plan = %s, %v; want no changes", formatChanges(changes), err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("plan error = %v, want %q", err, tt.wantErr)
 			}
 		})
 	}

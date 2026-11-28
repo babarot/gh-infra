@@ -279,12 +279,83 @@ func TestApplySecurityFields(t *testing.T) {
 	}
 }
 
+// Secret scanning and its push protection are set through the repository's
+// security_and_analysis, one PATCH per planned change.
+func TestApplySecretScanningFields(t *testing.T) {
+	for _, tt := range []struct {
+		field    string
+		newValue bool
+		wantBody string
+	}{
+		{"secret_scanning", true, `{"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`},
+		{"secret_scanning", false, `{"security_and_analysis":{"secret_scanning":{"status":"disabled"}}}`},
+		{"secret_scanning_push_protection", true, `{"security_and_analysis":{"secret_scanning_push_protection":{"status":"enabled"}}}`},
+		{"secret_scanning_push_protection", false, `{"security_and_analysis":{"secret_scanning_push_protection":{"status":"disabled"}}}`},
+	} {
+		t.Run(fmt.Sprintf("%s=%t", tt.field, tt.newValue), func(t *testing.T) {
+			mock := &gh.MockRunner{}
+			proc := NewProcessor(mock, nil)
+			changes := []Change{{Type: ChangeUpdate, Resource: "Repository", Name: "myorg/myrepo", Field: tt.field, NewValue: tt.newValue}}
+
+			results := proc.Apply(context.Background(), changes, []*manifest.Repository{newTestRepo("myorg", "myrepo")}, noopProgressReporter{})
+			if results[0].Err != nil {
+				t.Fatalf("unexpected error: %v", results[0].Err)
+			}
+			if got, want := strings.Join(mock.Called[0], " "), "api repos/myorg/myrepo --method PATCH --header Content-Type: application/json --input -"; got != want {
+				t.Errorf("args: got %q, want %q", got, want)
+			}
+			if got := string(mock.CalledStdin[0]); got != tt.wantBody {
+				t.Errorf("body: got %s, want %s", got, tt.wantBody)
+			}
+		})
+	}
+}
+
+// GitHub may answer 200 without saving the setting; the PATCH response
+// shows it, and apply reports it as failed. It saves no push protection
+// while secret scanning is off (plan rejects that change, see
+// TestPlanSecretScanningRejected), and leaves out what it does not offer.
+func TestApplySecretScanningNotSaved(t *testing.T) {
+	const patchCmd = "api repos/o/r --method PATCH --header Content-Type: application/json --input -"
+	s := propState()
+	s.SecretScanning, s.SecretScanningPushProtection = false, false
+	for _, tt := range []struct {
+		name    string
+		runner  gh.Runner
+		field   string
+		enable  bool
+		wantErr string
+	}{
+		{name: "push protection without secret scanning", runner: newFakeGitHub("o", "r", s), field: "secret_scanning_push_protection", enable: true,
+			wantErr: "applied secret_scanning_push_protection=enabled but GitHub reports secret_scanning_push_protection=disabled"},
+		{name: "enabled, not reported", runner: &gh.MockRunner{Responses: map[string][]byte{patchCmd: []byte(`{"name":"r"}`)}}, field: "secret_scanning", enable: true,
+			wantErr: "applied secret_scanning=enabled but GitHub does not report secret_scanning"},
+		{name: "disabled, not reported", runner: &gh.MockRunner{Responses: map[string][]byte{patchCmd: []byte(`{"name":"r"}`)}}, field: "secret_scanning"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			changes := []Change{{Type: ChangeUpdate, Resource: "Repository", Name: "o/r", Field: tt.field, NewValue: tt.enable}}
+			err := NewProcessor(tt.runner, nil).Apply(context.Background(), changes, []*manifest.Repository{newTestRepo("o", "r")}, noopProgressReporter{})[0].Err
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("err = %v, want none", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("err = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestApplyRepoSetting_BoolTypeAssertionError(t *testing.T) {
 	boolFields := []string{
 		"release_immutability",
 		"vulnerability_alerts",
 		"automated_security_fixes",
 		"private_vulnerability_reporting",
+		"secret_scanning",
+		"secret_scanning_push_protection",
 		"issues",
 		"projects",
 		"wiki",

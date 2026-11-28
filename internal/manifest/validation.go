@@ -117,6 +117,11 @@ func (r *Repository) Validate() error {
 			}
 		}
 	}
+	// Security: repository push protection requires secret scanning.
+	if s := r.Spec.Security; s != nil && s.SecretScanningPushProtection != nil && *s.SecretScanningPushProtection &&
+		s.SecretScanning != nil && !*s.SecretScanning {
+		return fmt.Errorf("%s: security.secret_scanning_push_protection requires security.secret_scanning to be enabled", name)
+	}
 	if err := validatePages(name, r.Spec.Pages); err != nil {
 		return err
 	}

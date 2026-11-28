@@ -19,11 +19,12 @@ func scopeResponses(visibility string) map[string][]byte {
 		"api repos/myorg/myrepo/environments --paginate --slurp": []byte(`[{"total_count":0,"environments":[]}]`),
 		repoViewKey: []byte(`{"visibility":"` + visibility + `"}`),
 		"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}": []byte(`{}`),
-		"api repos/myorg/myrepo/immutable-releases":              []byte(`{"enabled": false}`),
-		"api repos/myorg/myrepo/automated-security-fixes":        []byte(`{"enabled": false}`),
-		"api repos/myorg/myrepo/private-vulnerability-reporting": []byte(`{"enabled": false}`),
-		"api repos/myorg/myrepo/pages":                           []byte(`{"build_type": "legacy", "source": {"branch": "gh-pages", "path": "/"}}`),
-		"api repos/myorg/myrepo/branches/gh-pages":               []byte(`{"name": "gh-pages"}`),
+		"api repos/myorg/myrepo/immutable-releases":                                      []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/automated-security-fixes":                                []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo/private-vulnerability-reporting":                         []byte(`{"enabled": false}`),
+		"api repos/myorg/myrepo --jq {admin: .permissions.admin, security_and_analysis}": []byte(`{"admin": true, "security_and_analysis": {"secret_scanning": {"status": "enabled"}, "secret_scanning_push_protection": {"status": "disabled"}}}`),
+		"api repos/myorg/myrepo/pages":                                                   []byte(`{"build_type": "legacy", "source": {"branch": "gh-pages", "path": "/"}}`),
+		"api repos/myorg/myrepo/branches/gh-pages":                                       []byte(`{"name": "gh-pages"}`),
 		// A managed list or Actions setting whose response does not parse
 		// is an error, so these answer with what GitHub does for none.
 		"label list --repo myorg/myrepo --json name,color,description --limit 1000": []byte(`[]`),
@@ -84,6 +85,8 @@ func fetchedGroups(called [][]string) []string {
 			add("automated_security_fixes")
 		case strings.Contains(c, "private-vulnerability-reporting"):
 			add("private_vulnerability_reporting")
+		case strings.Contains(c, "security_and_analysis"):
+			add("secret_scanning")
 		case strings.HasSuffix(c, "/pages"):
 			add("pages")
 		case strings.Contains(c, "/branches/"):
@@ -116,6 +119,8 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 			[]string{"automated_security_fixes", "vulnerability_alerts"}},
 		{"vulnerability alerts", manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: yes}}, []string{"vulnerability_alerts"}},
 		{"private vulnerability reporting", manifest.RepositorySpec{Security: &manifest.Security{PrivateVulnerabilityReporting: yes}}, []string{"private_vulnerability_reporting"}},
+		{"secret scanning", manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: yes}}, []string{"secret_scanning"}},
+		{"push protection", manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: yes}}, []string{"secret_scanning"}},
 		{"release immutability", manifest.RepositorySpec{ReleaseImmutability: yes}, []string{"release_immutability"}},
 		{"pages", manifest.RepositorySpec{Pages: &manifest.Pages{BuildType: manifest.Ptr("workflow")}}, []string{"pages"}},
 		{"pages built from a branch", manifest.RepositorySpec{Pages: &manifest.Pages{
@@ -171,8 +176,8 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		if _, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if got := fetchedGroups(mock.Called); len(got) != 14 {
-			t.Errorf("fetched %v, want all 14 groups", got)
+		if got := fetchedGroups(mock.Called); len(got) != 15 {
+			t.Errorf("fetched %v, want all 15 groups", got)
 		}
 	})
 }
