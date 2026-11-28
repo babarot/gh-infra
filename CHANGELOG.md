@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.21.0](https://github.com/babarot/gh-infra/compare/v0.20.0...v0.21.0) - 2026-11-28
+### New Features
+- Manage secret scanning and push protection with spec.security by @wpfleger96 in https://github.com/babarot/gh-infra/pull/321
+### Bug fixes
+- Work around empty gh label list output for repositories with no labels by @mono0x in https://github.com/babarot/gh-infra/pull/322
+- Fix the spinner's ending on a signal or a non-terminal stdin by @babarot in https://github.com/babarot/gh-infra/pull/325
+- Quote label colors in import output by @yagihash in https://github.com/babarot/gh-infra/pull/329
+- Reject a pull request branch over GitHub's ref limit by @yagihash in https://github.com/babarot/gh-infra/pull/330
+- Require both secret scanning fields for a new repository by @babarot in https://github.com/babarot/gh-infra/pull/331
+### Improvements
+- Exit with 128 plus the signal number when interrupted by @babarot in https://github.com/babarot/gh-infra/pull/326
+- Keep the compact view's heading in place while the rows run by @babarot in https://github.com/babarot/gh-infra/pull/328
+
 ## [v0.20.0](https://github.com/babarot/gh-infra/compare/v0.19.0...v0.20.0) - 2026-11-03
 ### New Features
 - Manage GitHub Pages with spec.pages by @babarot in https://github.com/babarot/gh-infra/pull/317
