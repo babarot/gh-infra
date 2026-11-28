@@ -1,6 +1,10 @@
 package manifest
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+)
 
 const (
 	// Visibility values for repository visibility.
@@ -655,6 +659,46 @@ type Label struct {
 	Name        string  `yaml:"name"        validate:"required"`
 	Description *string `yaml:"description,omitempty"` // omitted leaves it as it is; "" clears
 	Color       string  `yaml:"color"       validate:"required"`
+}
+
+// MarshalYAML keeps values that other YAML tools (for example yq) would read
+// as numbers a string: color is always double-quoted, name and description
+// only when they look like a number. A hex color such as "5319e7" or "008672"
+// is otherwise written as a plain scalar and gets rewritten.
+//
+// Add a field to Label and to the struct below together; TestLabel_MarshalYAML_KeepsEveryField
+// fails if one is missing.
+func (l Label) MarshalYAML() (any, error) {
+	out := struct {
+		Name        scalarString  `yaml:"name"`
+		Description *scalarString `yaml:"description,omitempty"`
+		Color       quotedString  `yaml:"color"`
+	}{Name: scalarString(l.Name), Color: quotedString(l.Color)}
+	if l.Description != nil {
+		d := scalarString(*l.Description)
+		out.Description = &d
+	}
+	return out, nil
+}
+
+// quotedString is a string always marshaled as a double-quoted YAML scalar.
+type quotedString string
+
+func (s quotedString) MarshalYAML() ([]byte, error) {
+	return []byte(strconv.Quote(string(s))), nil
+}
+
+// scalarString is a string that is double-quoted only when a plain scalar
+// would resolve as a number (5319e7, 008672, 1_000, 0x1f, ...).
+type scalarString string
+
+var numberLike = regexp.MustCompile(`^[-+]?(0[xob][0-9a-fA-F_]+|[0-9.][0-9_.]*([eE][-+]?[0-9]+)?)$`)
+
+func (s scalarString) MarshalYAML() (any, error) {
+	if numberLike.MatchString(string(s)) {
+		return quotedString(s), nil
+	}
+	return string(s), nil
 }
 
 // LabelSyncMode returns the effective label sync mode.
