@@ -1,22 +1,29 @@
 name: Docs
 
+# The docs at babarot.me/gh-infra are published when a release is made, from
+# the commit released: Release calls this workflow after tagpr makes the
+# release. Published from main, they would describe fields and behavior that
+# the release people install does not have yet, and the CI examples install
+# that release. A tag push cannot start this workflow instead: tagpr pushes
+# the tag with the workflow's own token, and such a push starts no workflow.
+#
+# Running it by hand on main publishes main, together with whatever main has
+# that is not released yet; use it for a fix that cannot wait for a release.
+# The github-pages environment refuses any other branch. A release is
+# published again by re-running the docs job of its Release run.
+#
+# On a pull request it only builds, so a change that breaks the build is
+# caught before it reaches a release.
 on:
-  push:
-    branches: [main]
+  pull_request:
     paths:
       - "docs/**"
       - "mise.toml"
       - ".github/workflows/docs.yaml"
+  workflow_call:
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
+permissions: {}
 
 jobs:
   build:
@@ -36,14 +43,19 @@ jobs:
         env:
           SITE_URL: https://babarot.me
           BASE_PATH: /gh-infra
-      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:
           path: docs/dist
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

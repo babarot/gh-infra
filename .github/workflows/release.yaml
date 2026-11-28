@@ -83,3 +83,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           NUR_GITHUB_TOKEN: ${{ secrets.NUR_GITHUB_TOKEN }}
+
+  # The docs describe the release people install, so they are published with
+  # it, from the commit released (see docs.yaml)
+  docs:
+    if: needs.tagpr.outputs.tag != ''
+    needs: tagpr
+    uses: ./.github/workflows/docs.yaml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
