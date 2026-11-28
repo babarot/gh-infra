@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "test": "node --test 'src/**/*.test.mjs'"
   },
   "dependencies": {
     "@astrojs/markdown-satteri": "^0.4.10",
@@ -20,5 +21,8 @@
   "overrides": {
     "katex": "^0.18.11",
     "postcss-selector-parser": "^7.1.6"
+  },
+  "devDependencies": {
+    "satteri": "^0.10.5"
   }
 }

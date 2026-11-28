@@ -51,6 +51,11 @@ description = "Serve the docs site with hot reload"
 dir = "docs"
 run = "npm run dev"
 
+[tasks."docs:test"]
+description = "Test the docs site's build plugins"
+dir = "docs"
+run = "npm test"
+
 [tasks."docs:build"]
 description = "Build the docs site into docs/dist"
 dir = "docs"
