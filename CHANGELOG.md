@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.21.1](https://github.com/babarot/gh-infra/compare/v0.21.0...v0.21.1) - 2026-11-28
+### Bug fixes
+- Tell a GitHub App token from one without access for secret scanning by @yagihash in https://github.com/babarot/gh-infra/pull/333
+
 ## [v0.21.0](https://github.com/babarot/gh-infra/compare/v0.20.0...v0.21.0) - 2026-11-28
 ### New Features
 - Manage secret scanning and push protection with spec.security by @wpfleger96 in https://github.com/babarot/gh-infra/pull/321
