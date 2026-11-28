@@ -37,6 +37,7 @@ spec:
 - `secret_scanning_push_protection: true` with `secret_scanning: false` fails `validate`.
 - If `secret_scanning` is omitted, `secret_scanning_push_protection: true` succeeds only when secret scanning is already enabled on GitHub.
 - If `secret_scanning_push_protection` is omitted, `secret_scanning: false` fails while push protection is enabled on GitHub: set `secret_scanning_push_protection: false` as well.
+- For a repository that the run creates, how it starts is not known (GitHub creates a public repository of a user with both enabled, and an organization's security configuration may set them either way), so set both fields: `secret_scanning_push_protection: true` needs `secret_scanning: true`, and `secret_scanning: false` needs `secret_scanning_push_protection: false`.
 
 `apply` enables secret scanning before push protection, and disables push protection before secret scanning.
 

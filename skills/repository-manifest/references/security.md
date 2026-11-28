@@ -31,7 +31,7 @@ Validation traps:
 - Apply order: when both are set true in one manifest, `vulnerability_alerts` is sent before `automated_security_fixes` (guaranteed by `diffSecurity` child order and `applyAllSettings` for new repos).
 - `secret_scanning_push_protection` requires `secret_scanning` to be effectively true. GitHub answers 200 either way: it does not save push protection while scanning is off, and disabling scanning also disables push protection. So:
   - `secret_scanning_push_protection: true` + `secret_scanning: false` → `validate` fails.
-  - `secret_scanning_push_protection: true` alone → plan succeeds only if remote scanning is on (new repository: fails, as nothing is read yet).
+  - `secret_scanning_push_protection: true` alone → plan succeeds only if remote scanning is on (new repository: always fails, as how it starts is not known; the same goes for the next case, so a new repository sets both fields).
   - `secret_scanning: false` alone while remote push protection is on → plan fails; add `secret_scanning_push_protection: false`.
   - Apply enables `secret_scanning` first and disables `secret_scanning_push_protection` first (`diffSecurity` child order). A new repository gets them after the Actions settings (`applyAllSettings`): a public one every value set, `false` included, as GitHub creates it with both on; one that is not public only the `true` values, as it is taken to have both off.
 - Both fields are read from one `GET /repos/{owner}/{repo}` (`security_and_analysis` and `.permissions.admin`) whenever either is managed. GitHub returns `security_and_analysis` only to repo admins, org owners and security managers, and on a repo that is not public leaves out what it does not offer:

@@ -186,6 +186,19 @@ func madeNotPublic(desired *manifest.Repository, current *CurrentState) bool {
 	return current.Visibility == manifest.VisibilityPublic && effectiveVisibility(desired, current) != manifest.VisibilityPublic
 }
 
+// currentSecretScanning returns whether secret scanning and its push
+// protection are on before apply. How a new repository starts is not known:
+// GitHub creates a public one of a user with both on, and an organization's
+// security configuration may set them either way. So it counts as the state
+// that fails the check: scanning off and push protection on, and the
+// manifest sets both.
+func currentSecretScanning(current *CurrentState) (scanning, pushProtection bool) {
+	if current.IsNew {
+		return false, true
+	}
+	return derefBool(current.Security.SecretScanning), derefBool(current.Security.SecretScanningPushProtection)
+}
+
 // validatePushProtection fails when the manifest leaves push protection
 // effectively enabled without secret scanning (see ValidateDependencies).
 func validatePushProtection(desired *manifest.Repository, current *CurrentState) error {
@@ -193,11 +206,10 @@ func validatePushProtection(desired *manifest.Repository, current *CurrentState)
 	if s == nil {
 		return nil
 	}
-	scanning := derefBool(current.Security.SecretScanning)
+	scanning, pushProtection := currentSecretScanning(current)
 	if s.SecretScanning != nil {
 		scanning = *s.SecretScanning
 	}
-	pushProtection := derefBool(current.Security.SecretScanningPushProtection)
 	if s.SecretScanningPushProtection != nil {
 		pushProtection = *s.SecretScanningPushProtection
 	}
