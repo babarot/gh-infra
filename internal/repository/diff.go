@@ -107,6 +107,8 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 //   - actions.fork_pr_approval is unsupported for private repositories.
 //   - security.automated_security_fixes requires security.vulnerability_alerts
 //     to be effectively true. Required by the GitHub API.
+//   - security.secret_scanning_push_protection requires security.secret_scanning
+//     to be effectively true.
 //   - merge_strategy squash/merge commit title+message must be a valid pairing
 //     per the GitHub API.
 func ValidateDependencies(desired *manifest.Repository, current *CurrentState) error {
@@ -133,6 +135,16 @@ func ValidateDependencies(desired *manifest.Repository, current *CurrentState) e
 		}
 		if !effectiveAlerts {
 			return fmt.Errorf("security.automated_security_fixes: true requires security.vulnerability_alerts to be enabled (current state is disabled and the manifest does not enable it)")
+		}
+	}
+
+	if s != nil && s.SecretScanningPushProtection != nil && *s.SecretScanningPushProtection {
+		effective := current.Security.SecretScanning
+		if s.SecretScanning != nil {
+			effective = *s.SecretScanning
+		}
+		if !effective {
+			return fmt.Errorf("security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled (current state is disabled and the manifest does not enable it)")
 		}
 	}
 
@@ -370,6 +382,8 @@ func diffSecurity(name string, desired *manifest.Repository, current *CurrentSta
 		appendChildChanged(cc, "vulnerability_alerts", s.VulnerabilityAlerts, current.Security.VulnerabilityAlerts)
 		appendChildChanged(cc, "automated_security_fixes", s.AutomatedSecurityFixes, current.Security.AutomatedSecurityFixes)
 		appendChildChanged(cc, "private_vulnerability_reporting", s.PrivateVulnerabilityReporting, current.Security.PrivateVulnerabilityReporting)
+		appendChildChanged(cc, "secret_scanning", s.SecretScanning, current.Security.SecretScanning)
+		appendChildChanged(cc, "secret_scanning_push_protection", s.SecretScanningPushProtection, current.Security.SecretScanningPushProtection)
 	})
 }
 

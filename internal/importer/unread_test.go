@@ -23,7 +23,7 @@ func fullState() *repository.CurrentState {
 	// The single settings differ from the defaults FetchRepository leaves
 	// them at when they cannot be read.
 	s.ReleaseImmutability = true
-	s.Security = repository.CurrentSecurity{VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true}
+	s.Security = repository.CurrentSecurity{VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true, SecretScanning: true, SecretScanningPushProtection: true}
 	s.MergeStrategy.AllowAutoMerge = true
 	s.Features.PullRequests = false
 	return s
@@ -47,6 +47,8 @@ var unreadCases = []struct {
 	{"release_immutability", func(s *repository.CurrentState) { s.ReleaseImmutability = false }},
 	{"security.vulnerability_alerts", func(s *repository.CurrentState) { s.Security.VulnerabilityAlerts = false }},
 	{"security.automated_security_fixes", func(s *repository.CurrentState) { s.Security.AutomatedSecurityFixes = false }},
+	{"security.secret_scanning", func(s *repository.CurrentState) { s.Security.SecretScanning = false }},
+	{"security.secret_scanning_push_protection", func(s *repository.CurrentState) { s.Security.SecretScanningPushProtection = false }},
 	{"security.private_vulnerability_reporting", func(s *repository.CurrentState) { s.Security.PrivateVulnerabilityReporting = false }},
 	{"merge_strategy.allow_auto_merge", func(s *repository.CurrentState) { s.MergeStrategy.AllowAutoMerge = false }},
 	{"merge_strategy.squash_merge_commit_title", func(s *repository.CurrentState) { s.MergeStrategy.SquashMergeCommitTitle = "" }},

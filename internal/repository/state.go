@@ -209,6 +209,7 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		vulnerabilityAlerts           bool
 		automatedSecurityFixes        bool
 		privateVulnerabilityReporting bool
+		secretScanning                secretScanningSettings
 	)
 
 	// fetchSetting runs a single-value fetch of what, which the manifest
@@ -286,6 +287,14 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		}))
 	}
 
+	if want(manifest.RepositorySpec.ManagesSecretScanning) {
+		g.Go(fetchSetting("secret scanning", []string{"security.secret_scanning", "security.secret_scanning_push_protection"}, func() error {
+			v, err := p.fetchSecretScanning(ctx, owner, name)
+			secretScanning = v
+			return err
+		}))
+	}
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
@@ -312,6 +321,8 @@ func (p *Processor) FetchRepository(ctx context.Context, owner, name string, des
 		VulnerabilityAlerts:           vulnerabilityAlerts,
 		AutomatedSecurityFixes:        automatedSecurityFixes,
 		PrivateVulnerabilityReporting: privateVulnerabilityReporting,
+		SecretScanning:                secretScanning.SecretScanning,
+		SecretScanningPushProtection:  secretScanning.PushProtection,
 	}
 
 	return repo, nil
@@ -1506,6 +1517,7 @@ var permissionFor = map[string]string{
 	"release immutability":     "Administration",
 	"vulnerability alerts":     "Administration",
 	"automated security fixes": "Administration",
+	"secret scanning":          "Administration",
 	"actions settings":         "Administration",
 	"pages":                    "Pages",
 }
@@ -1532,4 +1544,45 @@ func isIgnorableSubresourceError(err error) bool {
 	return errors.Is(err, gh.ErrNotFound) ||
 		errors.Is(err, gh.ErrForbidden) ||
 		errors.Is(err, gh.ErrValidation)
+}
+
+type secretScanningSettings struct {
+	SecretScanning bool
+	PushProtection bool
+}
+
+// fetchSecretScanning returns the secret scanning and push protection
+// settings from the security_and_analysis object of the repository. GitHub
+// returns that object only to users who can administer the repository, so
+// its absence is an error rather than "disabled": comparing it as disabled
+// would plan to enable settings that may already be on.
+func (p *Processor) fetchSecretScanning(ctx context.Context, owner, name string) (secretScanningSettings, error) {
+	out, err := p.runner.Run(ctx,
+		"api", fmt.Sprintf("repos/%s/%s", owner, name),
+		"--jq", "{security_and_analysis}",
+	)
+	if err != nil {
+		return secretScanningSettings{}, err
+	}
+	var raw struct {
+		SecurityAndAnalysis *struct {
+			SecretScanning *struct {
+				Status string `json:"status"`
+			} `json:"secret_scanning"`
+			PushProtection *struct {
+				Status string `json:"status"`
+			} `json:"secret_scanning_push_protection"`
+		} `json:"security_and_analysis"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return secretScanningSettings{}, err
+	}
+	sa := raw.SecurityAndAnalysis
+	if sa == nil || sa.SecretScanning == nil || sa.PushProtection == nil {
+		return secretScanningSettings{}, fmt.Errorf("security_and_analysis is not returned for %s/%s (needs admin access, and GitHub Secret Protection for a private repository): %w", owner, name, gh.ErrForbidden)
+	}
+	return secretScanningSettings{
+		SecretScanning: sa.SecretScanning.Status == "enabled",
+		PushProtection: sa.PushProtection.Status == "enabled",
+	}, nil
 }

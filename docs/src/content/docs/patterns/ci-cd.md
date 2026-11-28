@@ -213,7 +213,7 @@ Store it as a secret (for example `GH_INFRA_TOKEN`) and pass it as `GH_TOKEN`.
 | Manifest manages | `plan` reads with | `apply` writes with |
 |---|---|---|
 | description, homepage, visibility, archived, topics, features, merge strategy | Metadata (Contents: read for merge commit messages, auto-merge and pull requests) | Administration: write |
-| branch protection, Actions settings, release immutability, vulnerability alerts, automated security fixes | Administration: read | Administration: write |
+| branch protection, Actions settings, release immutability, vulnerability alerts, automated security fixes, secret scanning and push protection | Administration: read | Administration: write |
 | rulesets, private vulnerability reporting | Metadata | Administration: write |
 | labels, milestones | Issues: read | Issues: write |
 | secrets | Secrets: read | Secrets: write |

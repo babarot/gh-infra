@@ -103,6 +103,8 @@ type CurrentSecurity struct {
 	VulnerabilityAlerts           bool
 	AutomatedSecurityFixes        bool
 	PrivateVulnerabilityReporting bool
+	SecretScanning                bool
+	SecretScanningPushProtection  bool
 }
 
 type CurrentFeatures struct {

@@ -19,6 +19,7 @@ func scopeResponses(visibility string) map[string][]byte {
 		"api repos/myorg/myrepo/environments --paginate --slurp": []byte(`[{"total_count":0,"environments":[]}]`),
 		repoViewKey: []byte(`{"visibility":"` + visibility + `"}`),
 		"api repos/myorg/myrepo --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}": []byte(`{}`),
+		"api repos/myorg/myrepo --jq {security_and_analysis}":    []byte(`{"security_and_analysis":{"secret_scanning":{"status":"disabled"},"secret_scanning_push_protection":{"status":"disabled"}}}`),
 		"api repos/myorg/myrepo/immutable-releases":              []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/automated-security-fixes":        []byte(`{"enabled": false}`),
 		"api repos/myorg/myrepo/private-vulnerability-reporting": []byte(`{"enabled": false}`),
@@ -74,6 +75,8 @@ func fetchedGroups(called [][]string) []string {
 			add("milestones")
 		case strings.Contains(c, "/actions/permissions"):
 			add("actions")
+		case strings.Contains(c, "security_and_analysis"):
+			add("secret_scanning")
 		case strings.Contains(c, "allow_auto_merge"):
 			add("commit_message_settings")
 		case strings.Contains(c, "immutable-releases"):
@@ -116,6 +119,8 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 			[]string{"automated_security_fixes", "vulnerability_alerts"}},
 		{"vulnerability alerts", manifest.RepositorySpec{Security: &manifest.Security{VulnerabilityAlerts: yes}}, []string{"vulnerability_alerts"}},
 		{"private vulnerability reporting", manifest.RepositorySpec{Security: &manifest.Security{PrivateVulnerabilityReporting: yes}}, []string{"private_vulnerability_reporting"}},
+		{"secret scanning", manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: yes}}, []string{"secret_scanning"}},
+		{"push protection needs scanning", manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: yes}}, []string{"secret_scanning"}},
 		{"release immutability", manifest.RepositorySpec{ReleaseImmutability: yes}, []string{"release_immutability"}},
 		{"pages", manifest.RepositorySpec{Pages: &manifest.Pages{BuildType: manifest.Ptr("workflow")}}, []string{"pages"}},
 		{"pages built from a branch", manifest.RepositorySpec{Pages: &manifest.Pages{
@@ -171,8 +176,8 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		if _, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if got := fetchedGroups(mock.Called); len(got) != 14 {
-			t.Errorf("fetched %v, want all 14 groups", got)
+		if got := fetchedGroups(mock.Called); len(got) != 15 {
+			t.Errorf("fetched %v, want all 15 groups", got)
 		}
 	})
 }

@@ -53,6 +53,8 @@ func (r *importRunner) Run(ctx context.Context, args ...string) ([]byte, error) 
 		return []byte(`[{"total_count":0,"environments":[]}]`), nil
 	case strings.Contains(cmd, "/rulesets") || strings.Contains(cmd, "/milestones"):
 		return []byte("[]"), nil
+	case strings.HasSuffix(cmd, "--jq {security_and_analysis}"):
+		return []byte(`{"security_and_analysis":{"secret_scanning":{"status":"disabled"},"secret_scanning_push_protection":{"status":"disabled"}}}`), nil
 	case strings.Contains(cmd, "--jq {"):
 		return []byte("{}"), nil
 	case strings.Contains(cmd, "--jq"):

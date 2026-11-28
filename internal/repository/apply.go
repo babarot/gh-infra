@@ -336,6 +336,17 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 				return err
 			}
 		}
+		// Secret scanning goes first: push protection requires it.
+		if s.SecretScanning != nil {
+			if err := p.applySecurityAndAnalysis(ctx, owner, name, "secret_scanning", *s.SecretScanning); err != nil {
+				return err
+			}
+		}
+		if s.SecretScanningPushProtection != nil {
+			if err := p.applySecurityAndAnalysis(ctx, owner, name, "secret_scanning_push_protection", *s.SecretScanningPushProtection); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Actions (permissions, workflow defaults, selected actions, fork PR)
@@ -588,6 +599,13 @@ func (p *Processor) applyRepoSetting(ctx context.Context, c Change, repo *manife
 		}
 		return p.applyPrivateVulnerabilityReporting(ctx, owner, name, enabled)
 
+	case "secret_scanning", "secret_scanning_push_protection":
+		enabled, ok := c.NewValue.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type for %s: %T", c.Field, c.NewValue)
+		}
+		return p.applySecurityAndAnalysis(ctx, owner, name, c.Field, enabled)
+
 	case "issues":
 		v, ok := c.NewValue.(bool)
 		if !ok {
@@ -753,6 +771,52 @@ func (p *Processor) applyPrivateVulnerabilityReporting(ctx context.Context, owne
 	}
 	_, err := p.runner.Run(ctx, "api", endpoint, "--method", "DELETE")
 	return wrapError(err, fullName, "private_vulnerability_reporting")
+}
+
+// applySecurityAndAnalysis sets one security_and_analysis feature
+// (secret_scanning or secret_scanning_push_protection) with a repos PATCH.
+// GitHub answers 200 and keeps the old status for a feature the repository
+// cannot have (for example on a private repository without GitHub Secret
+// Protection), so the response is checked against what was sent.
+func (p *Processor) applySecurityAndAnalysis(ctx context.Context, owner, name, feature string, enable bool) error {
+	fullName := owner + "/" + name
+	status := "disabled"
+	if enable {
+		status = "enabled"
+	}
+	body, err := json.Marshal(map[string]any{
+		"security_and_analysis": map[string]any{feature: map[string]any{"status": status}},
+	})
+	if err != nil {
+		return err
+	}
+	out, err := p.runner.RunWithStdin(ctx, body,
+		"api", fmt.Sprintf("repos/%s", fullName),
+		"--method", "PATCH",
+		"--header", "Content-Type: application/json",
+		"--input", "-",
+	)
+	if err != nil {
+		return wrapError(err, fullName, feature)
+	}
+	var resp struct {
+		SecurityAndAnalysis map[string]struct {
+			Status string `json:"status"`
+		} `json:"security_and_analysis"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		logger.Debug("cannot parse PATCH response, skipping verification", "repo", fullName, "err", err)
+		return nil
+	}
+	// A response that leaves the feature out did not save it either.
+	got := resp.SecurityAndAnalysis[feature].Status
+	if got != status {
+		if got == "" {
+			got = "no status"
+		}
+		return wrapError(fmt.Errorf("applied %s=%s but GitHub reports %s (setting may not be supported for this repository configuration)", feature, status, got), fullName, feature)
+	}
+	return nil
 }
 
 func (p *Processor) applyBranchProtection(ctx context.Context, c Change, repo *manifest.Repository) error {

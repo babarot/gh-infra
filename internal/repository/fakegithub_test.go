@@ -48,6 +48,11 @@ type fakeState struct {
 	VulnerabilityAlerts           bool
 	AutomatedSecurityFixes        bool
 	PrivateVulnerabilityReporting bool
+	// SecretScanning and PushProtection are the statuses of
+	// security_and_analysis.secret_scanning and
+	// .secret_scanning_push_protection ("enabled" or "disabled").
+	SecretScanning string
+	PushProtection string
 
 	Actions         fakeActions
 	Workflow        fakeWorkflow
@@ -350,10 +355,13 @@ func (f *fakeGitHub) repoCmd(args []string) ([]byte, bool, error) {
 				PullRequestCreationPolicy: "all",
 			},
 			VulnerabilityAlerts: false,
-			Actions:             fakeActions{Enabled: true, AllowedActions: "all"},
-			Workflow:            fakeWorkflow{DefaultWorkflowPermissions: "read"},
-			Labels:              slices.Clone(f.defaultLabels),
-			Org:                 f.s.Org, // the owner's, not the repository's
+			// GitHub turns both on for a new public repository.
+			SecretScanning: fakeStatusFor(visibility == "public"),
+			PushProtection: fakeStatusFor(visibility == "public"),
+			Actions:        fakeActions{Enabled: true, AllowedActions: "all"},
+			Workflow:       fakeWorkflow{DefaultWorkflowPermissions: "read"},
+			Labels:         slices.Clone(f.defaultLabels),
+			Org:            f.s.Org, // the owner's, not the repository's
 		}
 		f.s = newFakeGitHub(f.owner, f.name, f.s).s
 		// A new repository has no commit, so no branch yet.
@@ -566,6 +574,11 @@ func (f *fakeGitHub) apiRepo(method string, body []byte, rest []string) ([]byte,
 		switch jq {
 		case "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}":
 			keys = []string{"squash_merge_commit_title", "squash_merge_commit_message", "merge_commit_title", "merge_commit_message", "allow_auto_merge", "has_pull_requests", "pull_request_creation_policy"}
+		case "{security_and_analysis}":
+			return mustJSON(map[string]any{"security_and_analysis": map[string]any{
+				"secret_scanning":                 map[string]any{"status": f.s.SecretScanning},
+				"secret_scanning_push_protection": map[string]any{"status": f.s.PushProtection},
+			}}), false, nil
 		case "{squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message}":
 			keys = []string{"squash_merge_commit_title", "squash_merge_commit_message", "merge_commit_title", "merge_commit_message"}
 		default:
@@ -604,6 +617,12 @@ func (f *fakeGitHub) apiRepo(method string, body []byte, rest []string) ([]byte,
 		}
 		next := *r
 		for k, v := range fields {
+			if k == "security_and_analysis" {
+				if err := f.patchSecurityAndAnalysis(v); err != nil {
+					return nil, false, err
+				}
+				continue
+			}
 			if p, ok := repoBoolFields[k]; ok {
 				b, ok := v.(bool)
 				if s, isStr := v.(string); isStr {
@@ -630,7 +649,12 @@ func (f *fakeGitHub) apiRepo(method string, body []byte, rest []string) ([]byte,
 			return nil, false, errUnknown
 		}
 		*r = next
-		return mustJSON(*r), true, nil
+		out := mustJSONMap(*r)
+		out["security_and_analysis"] = map[string]any{
+			"secret_scanning":                 map[string]any{"status": f.s.SecretScanning},
+			"secret_scanning_push_protection": map[string]any{"status": f.s.PushProtection},
+		}
+		return mustJSON(out), true, nil
 	}
 	return nil, false, errUnknown
 }
@@ -961,4 +985,67 @@ func fakeSortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func fakeStatusFor(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
+}
+
+// patchSecurityAndAnalysis applies a security_and_analysis object from a
+// repos PATCH. GitHub behaviors reproduced:
+//   - push protection cannot be enabled while secret scanning is disabled
+//     (422);
+//   - disabling secret scanning disables push protection with it;
+//   - a public repository always has secret scanning, so disabling it is
+//     answered 200 and ignored (the setting stays enabled; this is what
+//     verification after the PATCH is for).
+func (f *fakeGitHub) patchSecurityAndAnalysis(v any) error {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return fakeStatus(gh.ErrValidation, "security_and_analysis is not an object")
+	}
+	status := func(key string) (string, bool, error) {
+		raw, ok := obj[key]
+		if !ok {
+			return "", false, nil
+		}
+		m, ok := raw.(map[string]any)
+		s, _ := m["status"].(string)
+		if !ok || (s != "enabled" && s != "disabled") {
+			return "", false, fakeStatus(gh.ErrValidation, key+".status must be enabled or disabled")
+		}
+		return s, true, nil
+	}
+	for k := range obj {
+		if k != "secret_scanning" && k != "secret_scanning_push_protection" {
+			return errUnknown
+		}
+	}
+	ss, hasSS, err := status("secret_scanning")
+	if err != nil {
+		return err
+	}
+	pp, hasPP, err := status("secret_scanning_push_protection")
+	if err != nil {
+		return err
+	}
+	public := f.s.Repo.Visibility == "public"
+	if hasSS {
+		if !public || ss != "disabled" {
+			f.s.SecretScanning = ss
+			if ss == "disabled" {
+				f.s.PushProtection = "disabled"
+			}
+		}
+	}
+	if hasPP {
+		if pp == "enabled" && f.s.SecretScanning != "enabled" {
+			return fakeStatus(gh.ErrValidation, "secret scanning must be enabled to enable push protection")
+		}
+		f.s.PushProtection = pp
+	}
+	return nil
 }

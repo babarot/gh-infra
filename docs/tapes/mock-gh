@@ -8,6 +8,7 @@
 #   $MOCK_DIR/{owner}/{repo}/
 #     view.json                  — gh repo view --json response
 #     commit-settings.json       — squash/merge commit title/message (optional)
+#     security-and-analysis.json — secret scanning and push protection (optional)
 #     contents/{path}            — raw file content (base64-encoded on the fly)
 #     pr-number                  — number of the pull request gh-infra opens (default 42)
 #     labels.json                — gh label list --json name,color,description response
@@ -177,6 +178,18 @@ fi
 # ---------------------------------------------------------------------------
 # Repository REST API
 # ---------------------------------------------------------------------------
+
+# Secret scanning and push protection (security_and_analysis), both off
+if [[ "$args" == *"--jq"*"security_and_analysis"* ]]; then
+  delay
+  read_data "$repo" "security-and-analysis.json" '{
+  "security_and_analysis": {
+    "secret_scanning": {"status": "disabled"},
+    "secret_scanning_push_protection": {"status": "disabled"}
+  }
+}'
+  exit 0
+fi
 
 # Commit message settings
 if [[ "$args" == *"--jq"*"squash_merge_commit_title"* ]]; then

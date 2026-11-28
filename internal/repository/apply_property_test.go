@@ -35,6 +35,7 @@ func propState() fakeState {
 		},
 		ImmutableReleases:   true,
 		VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: false,
+		SecretScanning: "enabled", PushProtection: "disabled",
 		Actions:         fakeActions{Enabled: true, AllowedActions: "selected", SHAPinningRequired: true},
 		Workflow:        fakeWorkflow{DefaultWorkflowPermissions: "read", CanApprovePullRequestReviews: false},
 		SelectedActions: fakeSelectedActions{GithubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"actions/*"}},
@@ -112,6 +113,19 @@ func TestApplyProperties(t *testing.T) {
 		}}},
 		{name: "security", spec: manifest.RepositorySpec{Security: &manifest.Security{
 			AutomatedSecurityFixes: bptr(false), PrivateVulnerabilityReporting: bptr(true),
+		}}},
+		{name: "push protection on", spec: manifest.RepositorySpec{Security: &manifest.Security{
+			SecretScanningPushProtection: bptr(true),
+		}}},
+		{name: "secret scanning and push protection on", state: func(s *fakeState) {
+			s.Repo.Visibility, s.SecretScanning, s.PushProtection = "private", "disabled", "disabled"
+		}, spec: manifest.RepositorySpec{Security: &manifest.Security{
+			SecretScanning: bptr(true), SecretScanningPushProtection: bptr(true),
+		}}},
+		{name: "secret scanning and push protection off", state: func(s *fakeState) {
+			s.Repo.Visibility, s.SecretScanning, s.PushProtection = "private", "enabled", "enabled"
+		}, spec: manifest.RepositorySpec{Security: &manifest.Security{
+			SecretScanning: bptr(false), SecretScanningPushProtection: bptr(false),
 		}}},
 		{name: "vulnerability alerts off", spec: manifest.RepositorySpec{Security: &manifest.Security{
 			VulnerabilityAlerts: bptr(false), AutomatedSecurityFixes: bptr(false),
@@ -330,6 +344,8 @@ func flattenState(s fakeState) map[string]string {
 	out["vulnerability_alerts"] = fmt.Sprint(s.VulnerabilityAlerts)
 	out["automated_security_fixes"] = fmt.Sprint(s.AutomatedSecurityFixes)
 	out["private_vulnerability_reporting"] = fmt.Sprint(s.PrivateVulnerabilityReporting)
+	out["secret_scanning"] = s.SecretScanning
+	out["secret_scanning_push_protection"] = s.PushProtection
 	for prefix, v := range map[string]any{"actions.": s.Actions, "workflow.": s.Workflow, "selected_actions.": s.SelectedActions} {
 		for k, x := range mustJSONMap(v) {
 			out[prefix+k] = fmt.Sprint(x)
@@ -416,6 +432,8 @@ var repositoryFieldPaths = map[string][]string{
 	"Repository:vulnerability_alerts":               {"vulnerability_alerts", "automated_security_fixes"}, // turning alerts off turns updates off
 	"Repository:automated_security_fixes":           {"automated_security_fixes"},
 	"Repository:private_vulnerability_reporting":    {"private_vulnerability_reporting"},
+	"Repository:secret_scanning":                    {"secret_scanning", "secret_scanning_push_protection"}, // turning scanning off turns push protection off
+	"Repository:secret_scanning_push_protection":    {"secret_scanning_push_protection"},
 	"Repository:issues":                             {"repo.has_issues"},
 	"Repository:projects":                           {"repo.has_projects"},
 	"Repository:wiki":                               {"repo.has_wiki"},

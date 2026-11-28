@@ -41,7 +41,7 @@ Use the three unless the user wants less. Drift detection is also the safety net
 
 - plan/apply read only what a manifest sets, so grant only the permissions for that (fine-grained PAT or GitHub App token, stored as e.g. `GH_INFRA_TOKEN`, passed as `GH_TOKEN`):
   - repository settings (description, topics, features, merge strategy, visibility): plan needs Metadata (+ Contents: read for merge commit messages / auto-merge / pull requests), apply needs Administration: write
-  - branch protection, Actions settings, release immutability, vulnerability alerts, automated security fixes: Administration read (plan) / write (apply)
+  - branch protection, Actions settings, release immutability, vulnerability alerts, automated security fixes, secret scanning and push protection: Administration read (plan) / write (apply)
   - rulesets, private vulnerability reporting: plan with Metadata, apply needs Administration: write
   - labels, milestones: Issues; secrets: Secrets; variables: Variables; File/FileSet: Contents (+ Pull requests for `via: pull_request`)
 - a managed setting the token cannot read fails that repository in plan (`cannot read secrets of org/repo (the token needs the Secrets permission)`); it is not compared as empty. On GitHub Free private repos, managed rulesets fail with GitHub's "Upgrade to GitHub Pro" message

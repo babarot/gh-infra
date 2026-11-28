@@ -46,7 +46,7 @@ func roundTripState() *CurrentState {
 			SquashMergeCommitTitle: "COMMIT_OR_PR_TITLE", SquashMergeCommitMessage: "COMMIT_MESSAGES",
 		},
 		ReleaseImmutability: true,
-		Security:            CurrentSecurity{VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true},
+		Security:            CurrentSecurity{VulnerabilityAlerts: true, AutomatedSecurityFixes: true, PrivateVulnerabilityReporting: true, SecretScanning: true, SecretScanningPushProtection: true},
 		Actions:             CurrentActions{Enabled: true, AllowedActions: "all", SHAPinningRequired: true, WorkflowPermissions: "read", CanApprovePullRequests: false, ForkPRApproval: "all_external_contributors"},
 	}
 }

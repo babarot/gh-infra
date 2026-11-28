@@ -507,16 +507,19 @@ defaults:
       vulnerability_alerts: true
       automated_security_fixes: true
       private_vulnerability_reporting: false
+      secret_scanning: true
 repositories:
   - name: defaults-only
   - name: override-one
     spec:
       security:
         private_vulnerability_reporting: true
+        secret_scanning_push_protection: true
   - name: override-disable
     spec:
       security:
         automated_security_fixes: false
+        secret_scanning: false
 `
 	path := filepath.Join(dir, "security.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -552,6 +555,27 @@ repositories:
 		if s.PrivateVulnerabilityReporting == nil || *s.PrivateVulnerabilityReporting != wantPVR {
 			t.Errorf("%s: private_vulnerability_reporting = %v, want %v", name, s.PrivateVulnerabilityReporting, wantPVR)
 		}
+	}
+
+	pp := func(name string) *bool {
+		for _, r := range repos {
+			if r.Metadata.Name == name {
+				return r.Spec.Security.SecretScanningPushProtection
+			}
+		}
+		return nil
+	}
+	for _, r := range repos {
+		want := r.Metadata.Name != "override-disable" // that one overrides the defaults' true
+		if ss := r.Spec.Security.SecretScanning; ss == nil || *ss != want {
+			t.Errorf("%s: secret_scanning = %v, want %v", r.Metadata.Name, ss, want)
+		}
+	}
+	if v := pp("override-one"); v == nil || !*v {
+		t.Errorf("override-one: secret_scanning_push_protection = %v, want true", v)
+	}
+	if v := pp("defaults-only"); v != nil {
+		t.Errorf("defaults-only: secret_scanning_push_protection = %v, want unset", *v)
 	}
 
 	check(t, "defaults-only", true, true, false)

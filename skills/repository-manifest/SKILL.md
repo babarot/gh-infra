@@ -42,7 +42,7 @@ Read these references as needed:
 - Rulesets and branch protection: [references/protection.md](./references/protection.md)
 - Secrets and variables: [references/secrets-variables.md](./references/secrets-variables.md)
 - Deployment environments: [references/environments.md](./references/environments.md)
-- Security (Dependabot, vulnerability alerts): [references/security.md](./references/security.md)
+- Security (Dependabot, vulnerability alerts, secret scanning, push protection): [references/security.md](./references/security.md)
 - GitHub Pages (build type, source, domain, HTTPS): [references/pages.md](./references/pages.md)
 
 ## RepositorySet

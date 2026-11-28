@@ -285,6 +285,8 @@ func TestApplyRepoSetting_BoolTypeAssertionError(t *testing.T) {
 		"vulnerability_alerts",
 		"automated_security_fixes",
 		"private_vulnerability_reporting",
+		"secret_scanning",
+		"secret_scanning_push_protection",
 		"issues",
 		"projects",
 		"wiki",
@@ -2601,4 +2603,43 @@ func TestApply_ReportsEachChange(t *testing.T) {
 	if want := []StepOutcome{StepApplied, StepFailed}; !slices.Equal(rec.steps, want) {
 		t.Errorf("steps = %v, want %v", rec.steps, want)
 	}
+}
+
+func TestApplySecurityAndAnalysis(t *testing.T) {
+	apply := func(t *testing.T, field string, enable bool, resp string) (*gh.MockRunner, error) {
+		t.Helper()
+		mock := &gh.MockRunner{Responses: map[string][]byte{
+			"api repos/myorg/myrepo --method PATCH --header Content-Type: application/json --input -": []byte(resp),
+		}}
+		results := NewProcessor(mock, nil).Apply(context.Background(), []Change{{
+			Type: ChangeUpdate, Resource: "Repository", Name: "myorg/myrepo", Field: field, NewValue: enable,
+		}}, []*manifest.Repository{newTestRepo("myorg", "myrepo")}, noopProgressReporter{})
+		return mock, results[0].Err
+	}
+
+	t.Run("sends the status of one feature", func(t *testing.T) {
+		mock, err := apply(t, "secret_scanning_push_protection", true,
+			`{"security_and_analysis":{"secret_scanning_push_protection":{"status":"enabled"}}}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := string(mock.CalledStdin[0]), `{"security_and_analysis":{"secret_scanning_push_protection":{"status":"enabled"}}}`; got != want {
+			t.Errorf("body = %s, want %s", got, want)
+		}
+	})
+
+	t.Run("a response without the feature is an error", func(t *testing.T) {
+		_, err := apply(t, "secret_scanning", true, `{"security_and_analysis":{}}`)
+		if err == nil || !strings.Contains(err.Error(), "no status") {
+			t.Errorf("err = %v, want one that says no status", err)
+		}
+	})
+
+	t.Run("a status GitHub did not keep is an error", func(t *testing.T) {
+		_, err := apply(t, "secret_scanning", false,
+			`{"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}`)
+		if err == nil || !strings.Contains(err.Error(), "GitHub reports enabled") {
+			t.Errorf("err = %v, want one that says GitHub reports enabled", err)
+		}
+	})
 }

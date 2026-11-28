@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/babarot/gh-infra/internal/gh"
+	"github.com/babarot/gh-infra/internal/manifest"
 )
 
 func TestNewProcessor(t *testing.T) {
@@ -588,6 +589,31 @@ func TestFetchRepoSettings_FetchErrorHandling(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "fetch automated security fixes") {
 			t.Errorf("expected 'fetch automated security fixes' in error, got: %v", err)
+		}
+	})
+
+	t.Run("secret scanning", func(t *testing.T) {
+		const cmd = "api repos/myorg/myrepo --jq {security_and_analysis}"
+		spec := &manifest.Repository{Spec: manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(true)}}}
+		fetch := func(resp string) (*CurrentState, error) {
+			responses := make(map[string][]byte)
+			maps.Copy(responses, baseResponses)
+			responses[cmd] = []byte(resp)
+			return NewProcessor(&gh.MockRunner{Responses: responses}, nil).FetchRepository(context.Background(), "myorg", "myrepo", spec, nil)
+		}
+
+		state, err := fetch(`{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"disabled"}}}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !state.Security.SecretScanning || state.Security.SecretScanningPushProtection {
+			t.Errorf("Security = %+v, want secret scanning on and push protection off", state.Security)
+		}
+
+		// Without admin access GitHub leaves security_and_analysis out; that
+		// is not "disabled".
+		if _, err := fetch(`{"security_and_analysis":null}`); err == nil || !strings.Contains(err.Error(), "security_and_analysis") {
+			t.Errorf("err = %v, want one about security_and_analysis", err)
 		}
 	})
 

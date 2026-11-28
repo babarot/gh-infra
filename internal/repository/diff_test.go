@@ -539,6 +539,18 @@ func TestDiff_Security(t *testing.T) {
 			setCur:    func(c *CurrentState) { c.Security.PrivateVulnerabilityReporting = false },
 			field:     "private_vulnerability_reporting",
 		},
+		{
+			name:      "secret_scanning",
+			setDesire: func(s *manifest.Security) { s.SecretScanning = manifest.Ptr(true) },
+			setCur:    func(c *CurrentState) { c.Security.SecretScanning = false },
+			field:     "secret_scanning",
+		},
+		{
+			name:      "secret_scanning_push_protection",
+			setDesire: func(s *manifest.Security) { s.SecretScanningPushProtection = manifest.Ptr(true) },
+			setCur:    func(c *CurrentState) { c.Security.SecretScanningPushProtection = false },
+			field:     "secret_scanning_push_protection",
+		},
 	}
 
 	for _, f := range fields {
@@ -575,6 +587,8 @@ func TestDiff_Security(t *testing.T) {
 			VulnerabilityAlerts:           manifest.Ptr(true),
 			AutomatedSecurityFixes:        manifest.Ptr(true),
 			PrivateVulnerabilityReporting: manifest.Ptr(true),
+			SecretScanning:                manifest.Ptr(true),
+			SecretScanningPushProtection:  manifest.Ptr(true),
 		}
 		c := baseState()
 
@@ -582,8 +596,8 @@ func TestDiff_Security(t *testing.T) {
 		if len(changes) != 1 {
 			t.Fatalf("expected 1 parent change, got %d", len(changes))
 		}
-		if got := len(changes[0].Details); got != 3 {
-			t.Errorf("expected 3 children, got %d", got)
+		if got := len(changes[0].Details); got != 5 {
+			t.Errorf("expected 5 children, got %d", got)
 		}
 	})
 }
@@ -2799,4 +2813,32 @@ func fields(changes []Change) []string {
 		out = append(out, c.Field)
 	}
 	return out
+}
+
+func TestValidateDependencies_PushProtectionNeedsSecretScanning(t *testing.T) {
+	yes, no := manifest.Ptr(true), manifest.Ptr(false)
+	for _, tt := range []struct {
+		name      string
+		spec      manifest.Security
+		current   bool // current secret_scanning
+		wantErrIn string
+	}{
+		{"both on in the manifest", manifest.Security{SecretScanning: yes, SecretScanningPushProtection: yes}, false, ""},
+		{"scanning omitted and on", manifest.Security{SecretScanningPushProtection: yes}, true, ""},
+		{"scanning omitted and off", manifest.Security{SecretScanningPushProtection: yes}, false, "secret_scanning_push_protection"},
+		{"scanning off in the manifest", manifest.Security{SecretScanning: no, SecretScanningPushProtection: yes}, true, "secret_scanning_push_protection"},
+		{"protection off needs nothing", manifest.Security{SecretScanning: no, SecretScanningPushProtection: no}, true, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := tt.spec
+			d := &manifest.Repository{Spec: manifest.RepositorySpec{Security: &spec}}
+			err := ValidateDependencies(d, &CurrentState{Security: CurrentSecurity{SecretScanning: tt.current}})
+			switch {
+			case tt.wantErrIn == "" && err != nil:
+				t.Errorf("unexpected error: %v", err)
+			case tt.wantErrIn != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrIn)):
+				t.Errorf("error = %v, want one containing %q", err, tt.wantErrIn)
+			}
+		})
+	}
 }
