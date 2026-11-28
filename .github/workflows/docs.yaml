@@ -43,6 +43,7 @@ jobs:
           version: 2026.9.18
       - run: mise run docs:install
       - run: mise run docs:test
+      - run: mise run docs:check
       - run: mise run docs:build
         env:
           SITE_URL: https://babarot.me

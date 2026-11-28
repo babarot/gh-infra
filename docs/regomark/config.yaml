@@ -1,0 +1,9 @@
+# regomark checks the docs' notes that name a release, such as
+# :::caution[Changed in v0.15.1], with the policies in policy/. Run it with
+# mise run docs:check. It is separate from .regomark.yaml at the root, which
+# checks docs/adr with the policies shared across babarot's repositories.
+documents:
+  - "docs/src/content/docs/**/*.md"
+  - "CHANGELOG.md"
+policy: docs/regomark/policy
+entrypoint: docs
