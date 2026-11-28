@@ -5,6 +5,8 @@
 [tools]
 node = "22"
 golangci-lint = "2.15.0"
+"github:babarot/regomark" = "0.5.0"
+"aqua:open-policy-agent/opa" = "1.22.0"
 
 [tasks.build]
 description = "Build ./gh-infra"
@@ -55,6 +57,14 @@ run = "npm run dev"
 description = "Test the docs site's build plugins"
 dir = "docs"
 run = "npm test"
+
+[tasks."docs:check"]
+description = "Check the docs' notes that name a release with regomark, after testing its policies"
+run = '''
+opa check --strict docs/regomark/policy
+opa test docs/regomark/policy
+regomark check --config docs/regomark/config.yaml
+'''
 
 [tasks."docs:build"]
 description = "Build the docs site into docs/dist"
