@@ -677,16 +677,17 @@ func (p *Processor) fetchSecretScanning(ctx context.Context, owner, name, visibi
 }
 
 // canAdminister reports whether the token can read what only an admin can:
-// the vulnerability alerts setting, which is 204 when enabled and 404 when
-// disabled, and 403 for a token without the Administration permission. It
-// stands in for permissions.admin, which a GitHub App installation token
-// always reports as false.
+// the Actions permissions of the repository, which are 200 for an admin and
+// 403 for a token without access. It stands in for permissions.admin, which a
+// GitHub App installation token always reports as false. Not the
+// vulnerability alerts, which are 404 for a token without access as well as
+// when they are disabled; a 404 here is no admin's either.
 func (p *Processor) canAdminister(ctx context.Context, owner, name string) (bool, error) {
-	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/vulnerability-alerts", owner, name))
+	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/actions/permissions", owner, name))
 	switch {
-	case err == nil, errors.Is(err, gh.ErrNotFound):
+	case err == nil:
 		return true, nil
-	case errors.Is(err, gh.ErrForbidden):
+	case errors.Is(err, gh.ErrForbidden), errors.Is(err, gh.ErrNotFound):
 		return false, nil
 	}
 	return false, err

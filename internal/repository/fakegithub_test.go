@@ -488,12 +488,9 @@ func (f *fakeGitHub) api(body []byte, args []string) ([]byte, bool, error) {
 		})
 	case sub == "vulnerability-alerts":
 		if method == "GET" {
-			// Only an admin can read it: 403 for any other token.
-			if f.s.NotAdmin {
-				return nil, false, fakeStatus(gh.ErrForbidden, "Resource not accessible by integration")
-			}
-			// 204 when enabled, 404 when disabled.
-			if !f.s.VulnerabilityAlerts {
+			// 204 when enabled; 404 when disabled, and for a token that is
+			// not an admin's too (observed).
+			if f.s.NotAdmin || !f.s.VulnerabilityAlerts {
 				return nil, false, fakeStatus(gh.ErrNotFound, "vulnerability alerts are disabled")
 			}
 			return nil, false, nil
@@ -745,6 +742,10 @@ func (f *fakeGitHub) apiActions(sub, method string, body []byte) ([]byte, bool, 
 	case "":
 		switch method {
 		case "GET":
+			// Only an admin can read it: 403 for any other token (observed).
+			if f.s.NotAdmin {
+				return nil, false, fakeStatus(gh.ErrForbidden, "Resource not accessible by integration")
+			}
 			out := map[string]any{"enabled": f.s.Actions.Enabled}
 			// GitHub does not report allowed_actions while Actions is disabled.
 			if f.s.Actions.Enabled {
