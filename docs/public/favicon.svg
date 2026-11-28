@@ -20,5 +20,5 @@
   <polygon points="19.34,14.71 24.92,17.93 19.34,21.15 13.76,17.93" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
   <polygon points="13.21,18.88 18.79,22.10 18.79,28.55 13.21,25.33" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
   <polygon points="25.47,18.88 25.47,25.33 19.89,28.55 19.89,22.10" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/></g>
-  <path d="M19.34 6.65L25.77 10.36L25.77 17.78L19.34 21.50L12.91 17.78L12.91 10.36ZM19.34 8.26L23.67 10.76L19.34 13.26L15.01 10.76ZM14.31 11.98L18.64 14.48L18.64 19.48L14.31 16.98ZM24.37 11.98L24.37 16.98L20.04 19.48L20.04 14.48Z" fill="currentColor" fill-rule="evenodd" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+  <path d="M19.34 6.99L25.47 10.53L25.47 17.61L19.34 21.15L13.21 17.61L13.21 10.53ZM19.34 8.26L23.82 10.85L19.34 13.44L14.86 10.85ZM14.31 11.80L18.79 14.39L18.79 19.56L14.31 16.98ZM24.37 11.80L24.37 16.98L19.89 19.56L19.89 14.39Z" fill="currentColor" fill-rule="evenodd" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
 </svg>
