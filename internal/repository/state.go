@@ -609,6 +609,12 @@ var errSecurityAndAnalysisUnreadable = errors.New("cannot read security_and_anal
 // is not public leaves out, even for an admin, what it does not offer there.
 // So a field left out is not offered only for an admin on a repository that
 // is not public; otherwise it cannot be read.
+//
+// A GitHub App installation token reports permissions.admin as false even
+// with the Administration permission, so that alone does not tell it from a
+// token without access. For a field left out of a repository that is not
+// public, the token is asked for what only an admin can read
+// (canAdminister).
 func (p *Processor) fetchSecretScanning(ctx context.Context, owner, name, visibility string) (scanning, pushProtection *bool, err error) {
 	out, err := p.runner.Run(ctx,
 		"api", fmt.Sprintf("repos/%s/%s", owner, name),
@@ -626,14 +632,34 @@ func (p *Processor) fetchSecretScanning(ctx context.Context, owner, name, visibi
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, nil, err
 	}
+	notAdmin := fmt.Errorf("%w: GitHub returns it only to repository admins, organization owners and security managers", errSecurityAndAnalysisUnreadable)
+	// admin is asked once, and only for a field that is left out of a
+	// repository that is not public.
+	var asked, admin bool
+	isAdmin := func() (bool, error) {
+		if raw.Admin || asked {
+			return raw.Admin || admin, nil
+		}
+		var err error
+		admin, err = p.canAdminister(ctx, owner, name)
+		asked = err == nil
+		return admin, err
+	}
 	enabled := func(field string) (*bool, error) {
 		f, ok := raw.SecurityAndAnalysis[field]
 		switch {
-		case !ok && !raw.Admin:
-			return nil, fmt.Errorf("%w: GitHub returns it only to repository admins, organization owners and security managers", errSecurityAndAnalysisUnreadable)
+		case !ok && visibility == manifest.VisibilityPublic && !raw.Admin:
+			return nil, notAdmin
 		case !ok && visibility == manifest.VisibilityPublic:
 			return nil, fmt.Errorf("%w: GitHub did not return %s", errSecurityAndAnalysisUnreadable, field)
 		case !ok:
+			admin, err := isAdmin()
+			if err != nil {
+				return nil, err
+			}
+			if !admin {
+				return nil, notAdmin
+			}
 			return nil, nil
 		case f.Status == "enabled" || f.Status == "disabled":
 			return manifest.Ptr(f.Status == "enabled"), nil
@@ -648,6 +674,22 @@ func (p *Processor) fetchSecretScanning(ctx context.Context, owner, name, visibi
 		return nil, nil, err
 	}
 	return scanning, pushProtection, nil
+}
+
+// canAdminister reports whether the token can read what only an admin can:
+// the vulnerability alerts setting, which is 204 when enabled and 404 when
+// disabled, and 403 for a token without the Administration permission. It
+// stands in for permissions.admin, which a GitHub App installation token
+// always reports as false.
+func (p *Processor) canAdminister(ctx context.Context, owner, name string) (bool, error) {
+	_, err := p.runner.Run(ctx, "api", fmt.Sprintf("repos/%s/%s/vulnerability-alerts", owner, name))
+	switch {
+	case err == nil, errors.Is(err, gh.ErrNotFound):
+		return true, nil
+	case errors.Is(err, gh.ErrForbidden):
+		return false, nil
+	}
+	return false, err
 }
 
 func (p *Processor) fetchBranchProtection(ctx context.Context, owner, name string, strict bool) (map[string]*CurrentBranchProtection, error) {
