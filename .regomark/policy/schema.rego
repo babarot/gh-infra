@@ -6,7 +6,7 @@ package adr
 
 import rego.v1
 
-schema_version := 2
+schema_version := 3
 
 rule_ids := {
 	"file-name",

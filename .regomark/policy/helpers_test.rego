@@ -54,7 +54,7 @@ with_status_blocks(n, status, extra) := document(
 
 # The one place that sets input, so that each test states only its documents
 # (and, for the policies that read them, the judgments).
-input_of(docs, judgments) := {"schema_version": 2, "root": ".", "documents": docs, "judgments": judgments}
+input_of(docs, judgments) := {"schema_version": 3, "root": ".", "documents": docs, "judgments": judgments}
 
 deny_of(docs) := deny_with(docs, [])
 
