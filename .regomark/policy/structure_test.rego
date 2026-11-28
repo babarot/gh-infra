@@ -5,7 +5,7 @@ import rego.v1
 import data.adr
 
 test_schema if {
-	adr.schema_version == 2
+	adr.schema_version == 3
 	adr.rule_ids == {
 		"file-name",
 		"title",
