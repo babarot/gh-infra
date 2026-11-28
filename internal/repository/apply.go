@@ -360,6 +360,11 @@ func (p *Processor) applyAllSettings(ctx context.Context, repo *manifest.Reposit
 				return err
 			}
 		}
+		if a.ForkPRWorkflows != nil {
+			if err := p.applyActionsForkPRWorkflows(ctx, owner, name, a, visibility); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Secret scanning last: GitHub may not offer it on a repository that is
@@ -1268,6 +1273,8 @@ func (p *Processor) applyActions(ctx context.Context, c Change, repo *manifest.R
 		return p.applyActionsWorkflow(ctx, owner, name, a)
 	case c.Field == "fork_pr_approval":
 		return p.applyActionsForkPR(ctx, owner, name, a, repo.Spec.Visibility)
+	case strings.HasPrefix(c.Field, "fork_pr_workflows."):
+		return p.applyActionsForkPRWorkflows(ctx, owner, name, a, repo.Spec.Visibility)
 	case strings.HasPrefix(c.Field, "selected_actions."):
 		return p.applyActionsSelectedActions(ctx, owner, name, a)
 	}
@@ -1398,6 +1405,70 @@ func (p *Processor) applyActionsForkPR(ctx context.Context, owner, name string, 
 		"--input", "-",
 	)
 	return wrapError(err, owner+"/"+name, "actions.fork_pr_approval")
+}
+
+// applyActionsForkPRWorkflows sets the fork PR workflow settings of a private
+// or internal repository. The PUT replaces all four, so the current ones are
+// read and sent back with only what the manifest sets changed. GitHub answers
+// 200 and keeps a value it does not accept (for example one that depends on
+// run_workflows_from_fork_pull_requests), so they are read again and
+// compared with what the manifest sets.
+func (p *Processor) applyActionsForkPRWorkflows(ctx context.Context, owner, name string, a *manifest.Actions, visibility *string) error {
+	f := a.ForkPRWorkflows
+	if f == nil {
+		return nil
+	}
+	if visibility != nil && *visibility == manifest.VisibilityPublic {
+		return fmt.Errorf("actions.fork_pr_workflows is not supported for public repositories")
+	}
+	fullName := owner + "/" + name
+	endpoint := forkPRWorkflowsEndpoint("repos/" + fullName)
+	cur, err := p.fetchForkPRWorkflows(ctx, "repos/"+fullName)
+	if err != nil {
+		return wrapError(err, fullName, "actions.fork_pr_workflows")
+	}
+	want := *cur
+	set := func(dst *bool, v *bool) {
+		if v != nil {
+			*dst = *v
+		}
+	}
+	set(&want.RunWorkflowsFromForkPullRequests, f.RunWorkflowsFromForkPullRequests)
+	set(&want.SendWriteTokensToWorkflows, f.SendWriteTokensToWorkflows)
+	set(&want.SendSecretsAndVariables, f.SendSecretsAndVariables)
+	set(&want.RequireApprovalForForkPRWorkflows, f.RequireApprovalForForkPRWorkflows)
+	if !want.RunWorkflowsFromForkPullRequests {
+		// GitHub saves the others as false while it is false.
+		want = CurrentForkPRWorkflows{}
+	}
+	if want == *cur {
+		return nil
+	}
+	body, err := json.Marshal(map[string]bool{
+		"run_workflows_from_fork_pull_requests":  want.RunWorkflowsFromForkPullRequests,
+		"send_write_tokens_to_workflows":         want.SendWriteTokensToWorkflows,
+		"send_secrets_and_variables":             want.SendSecretsAndVariables,
+		"require_approval_for_fork_pr_workflows": want.RequireApprovalForForkPRWorkflows,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := p.runner.RunWithStdin(ctx, body,
+		"api", endpoint,
+		"--method", "PUT",
+		"--header", "Content-Type: application/json",
+		"--input", "-",
+	); err != nil {
+		return wrapError(err, fullName, "actions.fork_pr_workflows")
+	}
+	got, err := p.fetchForkPRWorkflows(ctx, "repos/"+fullName)
+	if err != nil {
+		return wrapError(err, fullName, "actions.fork_pr_workflows")
+	}
+	if *got != want {
+		return wrapError(fmt.Errorf("applied %+v but GitHub reports %+v (a setting may depend on another, or not be supported for this repository configuration)", want, *got), fullName, "actions.fork_pr_workflows")
+	}
+	return nil
 }
 
 func wrapError(err error, repo, field string) error {

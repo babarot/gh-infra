@@ -105,6 +105,7 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 //
 // Currently checks:
 //   - actions.fork_pr_approval is unsupported for private repositories.
+//   - actions.fork_pr_workflows is unsupported for public repositories.
 //   - security.automated_security_fixes requires security.vulnerability_alerts
 //     to be effectively true. Required by the GitHub API.
 //   - merge_strategy squash/merge commit title+message must be a valid pairing
@@ -118,6 +119,14 @@ func (dc diffContext) group(field string, childFn func(cc *[]Change)) []Change {
 func ValidateDependencies(desired *manifest.Repository, current *CurrentState) error {
 	if desired.Spec.Actions != nil && desired.Spec.Actions.ForkPRApproval != nil && effectiveVisibility(desired, current) == manifest.VisibilityPrivate {
 		return fmt.Errorf("actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or make the repository public/internal)")
+	}
+
+	if desired.Spec.Actions != nil && desired.Spec.Actions.ForkPRWorkflows != nil && effectiveVisibility(desired, current) == manifest.VisibilityPublic {
+		return fmt.Errorf("actions.fork_pr_workflows is not supported for public repositories (remove actions.fork_pr_workflows, use actions.fork_pr_approval, or make the repository private or internal)")
+	}
+
+	if err := validateForkPRWorkflowsDependencies(desired, current); err != nil {
+		return err
 	}
 
 	if err := validateEnvironmentDependencies(desired, current); err != nil {
@@ -220,6 +229,41 @@ func validatePushProtection(desired *manifest.Repository, current *CurrentState)
 		return fmt.Errorf("security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled (current state is disabled and the manifest does not enable it)")
 	case s.SecretScanning != nil:
 		return fmt.Errorf("security.secret_scanning: false also disables secret_scanning_push_protection on GitHub (set security.secret_scanning_push_protection: false as well)")
+	}
+	return nil
+}
+
+// validateForkPRWorkflowsDependencies checks that fork_pr_workflows does not
+// set a field GitHub would save as false: while run_workflows_from_fork_pull_requests
+// is false (the manifest's value, else the current one) it saves the other
+// three as false, so the plan would show the change again after every apply.
+// Nothing is known of the current value for a repository that is not private
+// or internal yet, or does not exist.
+func validateForkPRWorkflowsDependencies(desired *manifest.Repository, current *CurrentState) error {
+	if desired.Spec.Actions == nil || desired.Spec.Actions.ForkPRWorkflows == nil {
+		return nil
+	}
+	f := desired.Spec.Actions.ForkPRWorkflows
+	run := false
+	switch {
+	case f.RunWorkflowsFromForkPullRequests != nil:
+		run = *f.RunWorkflowsFromForkPullRequests
+	case current.IsNew || current.Actions.ForkPRWorkflows == nil:
+		return nil
+	default:
+		run = current.Actions.ForkPRWorkflows.RunWorkflowsFromForkPullRequests
+	}
+	if run {
+		return nil
+	}
+	for field, v := range map[string]*bool{
+		"send_write_tokens_to_workflows":         f.SendWriteTokensToWorkflows,
+		"send_secrets_and_variables":             f.SendSecretsAndVariables,
+		"require_approval_for_fork_pr_workflows": f.RequireApprovalForForkPRWorkflows,
+	} {
+		if v != nil && *v {
+			return fmt.Errorf("actions.fork_pr_workflows.%s: true requires actions.fork_pr_workflows.run_workflows_from_fork_pull_requests to be enabled (it is disabled, and GitHub saves %s as false while it is)", field, field)
+		}
 	}
 	return nil
 }
@@ -1308,6 +1352,28 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 		}
 
 		appendChildChanged(cc, "fork_pr_approval", a.ForkPRApproval, current.Actions.ForkPRApproval)
+
+		if f := a.ForkPRWorkflows; f != nil {
+			fields := []struct {
+				field string
+				want  *bool
+				have  func(CurrentForkPRWorkflows) bool
+			}{
+				{"fork_pr_workflows.run_workflows_from_fork_pull_requests", f.RunWorkflowsFromForkPullRequests, func(c CurrentForkPRWorkflows) bool { return c.RunWorkflowsFromForkPullRequests }},
+				{"fork_pr_workflows.send_write_tokens_to_workflows", f.SendWriteTokensToWorkflows, func(c CurrentForkPRWorkflows) bool { return c.SendWriteTokensToWorkflows }},
+				{"fork_pr_workflows.send_secrets_and_variables", f.SendSecretsAndVariables, func(c CurrentForkPRWorkflows) bool { return c.SendSecretsAndVariables }},
+				{"fork_pr_workflows.require_approval_for_fork_pr_workflows", f.RequireApprovalForForkPRWorkflows, func(c CurrentForkPRWorkflows) bool { return c.RequireApprovalForForkPRWorkflows }},
+			}
+			for _, fl := range fields {
+				// GitHub has none while the repository is public, and the
+				// plan makes it private or internal: plan what is set.
+				if current.Actions.ForkPRWorkflows == nil {
+					appendIfSet(cc, fl.field, fl.want)
+					continue
+				}
+				appendChildChanged(cc, fl.field, fl.want, fl.have(*current.Actions.ForkPRWorkflows))
+			}
+		}
 	})
 }
 

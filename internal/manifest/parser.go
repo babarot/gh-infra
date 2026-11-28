@@ -780,6 +780,9 @@ func mergeActions(base, override *Actions) *Actions {
 	if override.SelectedActions != nil {
 		result.SelectedActions = mergeSelectedActions(result.SelectedActions, override.SelectedActions)
 	}
+	if override.ForkPRWorkflows != nil {
+		result.ForkPRWorkflows = mergeForkPRWorkflows(result.ForkPRWorkflows, override.ForkPRWorkflows)
+	}
 	return &result
 }
 
@@ -954,6 +957,30 @@ func mergeSelectedActions(base, override *SelectedActions) *SelectedActions {
 	}
 	if override.PatternsAllowed != nil { // [] clears the defaults' patterns
 		result.PatternsAllowed = override.PatternsAllowed
+	}
+	return &result
+}
+
+// mergeForkPRWorkflows merges by field.
+func mergeForkPRWorkflows(base, override *ForkPRWorkflows) *ForkPRWorkflows {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	result := *base
+	if override.RunWorkflowsFromForkPullRequests != nil {
+		result.RunWorkflowsFromForkPullRequests = override.RunWorkflowsFromForkPullRequests
+	}
+	if override.SendWriteTokensToWorkflows != nil {
+		result.SendWriteTokensToWorkflows = override.SendWriteTokensToWorkflows
+	}
+	if override.SendSecretsAndVariables != nil {
+		result.SendSecretsAndVariables = override.SendSecretsAndVariables
+	}
+	if override.RequireApprovalForForkPRWorkflows != nil {
+		result.RequireApprovalForForkPRWorkflows = override.RequireApprovalForForkPRWorkflows
 	}
 	return &result
 }

@@ -31,6 +31,7 @@ func TestImportUnreadableSettings(t *testing.T) {
 		workflowCmd   = "api repos/o/r/actions/permissions/workflow"
 		selectedCmd   = "api repos/o/r/actions/permissions/selected-actions"
 		forkPRCmd     = "api repos/o/r/actions/permissions/fork-pr-contributor-approval"
+		forkWFCmd     = "api repos/o/r/actions/permissions/fork-pr-workflows-private-repos"
 		repoCmd       = "api repos/o/r --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}"
 		immutableCmd  = "api repos/o/r/immutable-releases"
 		alertsCmd     = "api repos/o/r/vulnerability-alerts"
@@ -89,6 +90,11 @@ func TestImportUnreadableSettings(t *testing.T) {
 		// of the Actions settings are written.
 		{name: "fork PR approval 422", cmd: forkPRCmd, err: invalid,
 			absent: func(s manifest.RepositorySpec) bool { return s.Actions != nil && s.Actions.ForkPRApproval == nil }},
+		{name: "fork PR workflows 403", cmd: forkWFCmd, err: forbidden, unread: []string{"actions"},
+			absent: func(s manifest.RepositorySpec) bool { return s.Actions == nil }},
+		// A public repository does not have the fork PR workflow settings.
+		{name: "fork PR workflows 422", cmd: forkWFCmd, err: invalid,
+			absent: func(s manifest.RepositorySpec) bool { return s.Actions != nil && s.Actions.ForkPRWorkflows == nil }},
 		// The settings read one by one are left out rather than written at
 		// their defaults.
 		{name: "commit message settings 403", cmd: repoCmd, err: forbidden, unread: []string{

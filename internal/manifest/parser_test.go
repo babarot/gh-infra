@@ -3069,3 +3069,49 @@ spec:
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+func TestRepositorySet_ForkPRWorkflowsMerge(t *testing.T) {
+	dir := t.TempDir()
+	content := `apiVersion: gh-infra/v1
+kind: RepositorySet
+metadata:
+  owner: org
+defaults:
+  spec:
+    visibility: private
+    actions:
+      enabled: true
+      fork_pr_workflows:
+        run_workflows_from_fork_pull_requests: true
+        send_secrets_and_variables: false
+repositories:
+  - name: defaults-only
+  - name: override-one
+    spec:
+      actions:
+        fork_pr_workflows:
+          send_secrets_and_variables: true
+`
+	path := filepath.Join(dir, "fork.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	repos, err := ParsePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, wantSecrets := range map[string]bool{"defaults-only": false, "override-one": true} {
+		for _, r := range repos {
+			if r.Metadata.Name != name {
+				continue
+			}
+			f := r.Spec.Actions.ForkPRWorkflows
+			if f == nil || f.RunWorkflowsFromForkPullRequests == nil || !*f.RunWorkflowsFromForkPullRequests {
+				t.Errorf("%s: run_workflows_from_fork_pull_requests = %+v, want true from the defaults", name, f)
+			}
+			if f == nil || f.SendSecretsAndVariables == nil || *f.SendSecretsAndVariables != wantSecrets {
+				t.Errorf("%s: send_secrets_and_variables = %+v, want %v", name, f, wantSecrets)
+			}
+		}
+	}
+}

@@ -1530,7 +1530,58 @@ func (p *Processor) fetchActionsSettings(ctx context.Context, owner, name string
 		}
 	}
 
+	// 5. Fork PR workflows. GitHub answers 422 on public repositories, which
+	// do not have them, as it does for fork PR approval on private ones. Only
+	// read when the manifest manages them, or for import.
+	if setsForkPRWorkflows := managed != nil && managed.ForkPRWorkflows != nil; spec == nil || setsForkPRWorkflows {
+		madeNotPublic := spec != nil && spec.Visibility != nil && *spec.Visibility != manifest.VisibilityPublic
+		wf, err := p.fetchForkPRWorkflows(ctx, fullName)
+		switch {
+		case err == nil:
+			result.ForkPRWorkflows = wf
+		case spec == nil && (errors.Is(err, gh.ErrNotFound) || errors.Is(err, gh.ErrValidation)):
+			// Import: the repository does not have them (a public one does not).
+		case errors.Is(err, gh.ErrValidation) && madeNotPublic:
+			// The manifest makes the repository private or internal, which
+			// apply does first, so what the public repository has does not matter.
+		case !isParseError(err) && !missing(err) && !errors.Is(err, gh.ErrValidation):
+			return result, fmt.Errorf("fetch actions fork-pr-workflows for %s/%s: %w", owner, name, err)
+		default:
+			if err := unreadable("fork-pr-workflows", setsForkPRWorkflows, err); err != nil {
+				return result, err
+			}
+		}
+	}
+
 	return result, nil
+}
+
+// forkPRWorkflowsEndpoint is where GitHub has the fork PR workflow settings
+// of a private or internal repository; fullName is repos/{owner}/{repo}.
+func forkPRWorkflowsEndpoint(fullName string) string {
+	return fullName + "/actions/permissions/fork-pr-workflows-private-repos"
+}
+
+func (p *Processor) fetchForkPRWorkflows(ctx context.Context, fullName string) (*CurrentForkPRWorkflows, error) {
+	out, err := p.runner.Run(ctx, "api", forkPRWorkflowsEndpoint(fullName))
+	if err != nil {
+		return nil, err
+	}
+	var raw struct {
+		Run             bool `json:"run_workflows_from_fork_pull_requests"`
+		SendWriteTokens bool `json:"send_write_tokens_to_workflows"`
+		SendSecrets     bool `json:"send_secrets_and_variables"`
+		RequireApproval bool `json:"require_approval_for_fork_pr_workflows"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+	return &CurrentForkPRWorkflows{
+		RunWorkflowsFromForkPullRequests:  raw.Run,
+		SendWriteTokensToWorkflows:        raw.SendWriteTokens,
+		SendSecretsAndVariables:           raw.SendSecrets,
+		RequireApprovalForForkPRWorkflows: raw.RequireApproval,
+	}, nil
 }
 
 // unreadError marks a setting import could not read: FetchRepository records

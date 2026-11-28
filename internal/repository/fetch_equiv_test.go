@@ -55,6 +55,7 @@ var richRepository = substringRunner{rules: [][2]string{
 	{"actions/permissions/workflow", `{"default_workflow_permissions":"write","can_approve_pull_request_reviews":true}`},
 	{"actions/permissions/selected-actions", `{"github_owned_allowed":true,"verified_allowed":true,"patterns_allowed":["a/*"]}`},
 	{"actions/permissions/fork-pr-contributor-approval", `{"approval_policy":"all_external_contributors"}`},
+	{"actions/permissions/fork-pr-workflows-private-repos", `{"run_workflows_from_fork_pull_requests":true,"send_write_tokens_to_workflows":false,"send_secrets_and_variables":true,"require_approval_for_fork_pr_workflows":false}`},
 	{"actions/permissions", `{"enabled":true,"allowed_actions":"selected","sha_pinning_required":true}`},
 }}
 
@@ -85,6 +86,7 @@ func TestFetchRepository_PrunedStateGivesSameDiff(t *testing.T) {
 		{"secrets", manifest.RepositorySpec{Secrets: []manifest.Secret{{Name: "S2", Value: "v"}}}},
 		{"variables", manifest.RepositorySpec{Variables: []manifest.Variable{{Name: "V", Value: "2"}}}},
 		{"milestones", manifest.RepositorySpec{Milestones: []manifest.Milestone{{Title: "v1", State: manifest.Ptr("closed")}}}},
+		{"fork PR workflows", manifest.RepositorySpec{Actions: &manifest.Actions{Enabled: yes, ForkPRWorkflows: &manifest.ForkPRWorkflows{SendSecretsAndVariables: no, RequireApprovalForForkPRWorkflows: yes}}}},
 		{"actions", manifest.RepositorySpec{Actions: &manifest.Actions{Enabled: yes, AllowedActions: manifest.Ptr("all")}}},
 		{"branch protection", manifest.RepositorySpec{BranchProtection: []manifest.BranchProtection{{Pattern: "main", RequiredReviews: manifest.Ptr(1)}}}},
 		{"branch protection []", manifest.RepositorySpec{BranchProtectionSet: true}},

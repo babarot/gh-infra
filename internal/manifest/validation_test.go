@@ -979,3 +979,37 @@ func TestParseResultValidate_PRBranchLength(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateActions_ForkPRWorkflows(t *testing.T) {
+	yes, no := Ptr(true), Ptr(false)
+	for _, tt := range []struct {
+		name    string
+		spec    RepositorySpec
+		wantErr string
+	}{
+		{"private", RepositorySpec{Visibility: Ptr(VisibilityPrivate), Actions: &Actions{Enabled: yes,
+			ForkPRWorkflows: &ForkPRWorkflows{RunWorkflowsFromForkPullRequests: yes, SendSecretsAndVariables: yes}}}, ""},
+		{"visibility not set", RepositorySpec{Actions: &Actions{Enabled: yes,
+			ForkPRWorkflows: &ForkPRWorkflows{RunWorkflowsFromForkPullRequests: yes}}}, ""},
+		{"public", RepositorySpec{Visibility: Ptr(VisibilityPublic), Actions: &Actions{Enabled: yes,
+			ForkPRWorkflows: &ForkPRWorkflows{RunWorkflowsFromForkPullRequests: yes}}}, "actions.fork_pr_workflows is not supported for public repositories"},
+		{"enabled is required", RepositorySpec{Actions: &Actions{
+			ForkPRWorkflows: &ForkPRWorkflows{RunWorkflowsFromForkPullRequests: yes}}}, "actions.enabled is required"},
+		// GitHub saves the others as false while the first is false.
+		{"others set while run is off", RepositorySpec{Actions: &Actions{Enabled: yes,
+			ForkPRWorkflows: &ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no, SendWriteTokensToWorkflows: yes}}}, "cannot be true while run_workflows_from_fork_pull_requests is false"},
+		{"all off", RepositorySpec{Actions: &Actions{Enabled: yes,
+			ForkPRWorkflows: &ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no, SendWriteTokensToWorkflows: no, SendSecretsAndVariables: no, RequireApprovalForForkPRWorkflows: no}}}, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &Repository{APIVersion: APIVersion, Kind: KindRepository, Metadata: RepositoryMetadata{Owner: "org", Name: "repo"}, Spec: tt.spec}
+			err := repo.Validate()
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Errorf("unexpected error: %v", err)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Errorf("error = %v, want one containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}

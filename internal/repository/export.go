@@ -211,6 +211,14 @@ func ToManifest(ctx context.Context, r *CurrentState, resolver *manifest.Resolve
 		if r.Actions.ForkPRApproval != "" {
 			actions.ForkPRApproval = manifest.Ptr(r.Actions.ForkPRApproval)
 		}
+		if w := r.Actions.ForkPRWorkflows; w != nil {
+			actions.ForkPRWorkflows = &manifest.ForkPRWorkflows{
+				RunWorkflowsFromForkPullRequests:  manifest.Ptr(w.RunWorkflowsFromForkPullRequests),
+				SendWriteTokensToWorkflows:        manifest.Ptr(w.SendWriteTokensToWorkflows),
+				SendSecretsAndVariables:           manifest.Ptr(w.SendSecretsAndVariables),
+				RequireApprovalForForkPRWorkflows: manifest.Ptr(w.RequireApprovalForForkPRWorkflows),
+			}
+		}
 		repo.Spec.Actions = actions
 	}
 

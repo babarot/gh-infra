@@ -353,6 +353,17 @@ type Actions struct {
 	CanApprovePullRequests *bool            `yaml:"can_approve_pull_requests,omitempty"`
 	SelectedActions        *SelectedActions `yaml:"selected_actions,omitempty"`
 	ForkPRApproval         *string          `yaml:"fork_pr_approval,omitempty"        validate:"omitempty,oneof=first_time_contributors_new_to_github first_time_contributors all_external_contributors"`
+	ForkPRWorkflows        *ForkPRWorkflows `yaml:"fork_pr_workflows,omitempty"`
+}
+
+// ForkPRWorkflows is how workflows run for pull requests from forks of a
+// private or internal repository: GitHub has it there, and has
+// fork_pr_approval on a public one. The fields are those of the API.
+type ForkPRWorkflows struct {
+	RunWorkflowsFromForkPullRequests  *bool `yaml:"run_workflows_from_fork_pull_requests,omitempty"`
+	SendWriteTokensToWorkflows        *bool `yaml:"send_write_tokens_to_workflows,omitempty"`
+	SendSecretsAndVariables           *bool `yaml:"send_secrets_and_variables,omitempty"`
+	RequireApprovalForForkPRWorkflows *bool `yaml:"require_approval_for_fork_pr_workflows,omitempty"`
 }
 
 // Disabled reports whether Actions is explicitly turned off. GitHub then

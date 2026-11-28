@@ -91,6 +91,11 @@ func TestRoundTrip_ExportThenPlan(t *testing.T) {
 			s.Actions = CurrentActions{WorkflowPermissions: "read"}
 			s.Security.SecretScanningPushProtection = nil
 		}},
+		{"fork PR workflows", func(s *CurrentState) {
+			s.Visibility = "private"
+			s.Actions.ForkPRApproval = ""
+			s.Actions.ForkPRWorkflows = &CurrentForkPRWorkflows{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}
+		}},
 		{"Actions disabled with allowed actions left", func(s *CurrentState) {
 			s.Visibility = "private"
 			s.Actions = CurrentActions{Enabled: false, AllowedActions: "all", WorkflowPermissions: "read"}
