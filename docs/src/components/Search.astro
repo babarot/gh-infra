@@ -1,0 +1,606 @@
+---
+// Site search, replacing Starlight's. It queries the Pagefind index through
+// its JavaScript API (pagefind.js) and draws the results itself instead of
+// mounting Pagefind's default UI, so the panel can follow the site's look.
+//
+// Wide screens: a panel in the upper middle of the page with key hints.
+// ↑↓ select, Enter opens, Esc closes. Ctrl/⌘+K or / opens it.
+// Narrow screens: a full-screen sheet with a rounded field, a Cancel button
+// and larger rows, each page headed by its title.
+//
+// The index exists only in a build (`npm run build && npm run preview`);
+// `astro dev` shows a note instead.
+import project from 'virtual:starlight/project-context';
+
+const label = Astro.locals.t('search.label');
+const dataAttributes: DOMStringMap = {};
+if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash'] = '';
+---
+
+<gi-search {...dataAttributes}>
+  <button type="button" class="gi-search-open" data-open-modal disabled aria-label={label} aria-keyshortcuts="Control+K">
+    <svg class="gi-search-icon" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+    <span class="gi-search-open-label" aria-hidden="true">{label}</span>
+    <kbd class="gi-search-open-kbd" aria-hidden="true" style="display: none"><span>Ctrl</span>K</kbd>
+  </button>
+
+  <dialog class="gi-sr" aria-label={label}>
+    <div class="gi-sr-panel">
+      <div class="gi-sr-field">
+        <label class="gi-sr-input-wrap">
+          <svg class="gi-search-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+          <input class="gi-sr-input" type="search" placeholder="Search docs" enterkeyhint="search" autocomplete="off" spellcheck="false" aria-label={label} />
+          <button type="button" class="gi-sr-clear" aria-label="Clear" hidden>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+          </button>
+          <kbd class="gi-sr-kbd gi-sr-esc">Esc</kbd>
+        </label>
+        <button type="button" class="gi-sr-cancel" data-close-modal>Cancel</button>
+      </div>
+
+      <div class="gi-sr-body">
+        <p class="gi-sr-note">Search page titles, headings and text</p>
+        <ul class="gi-sr-list" hidden></ul>
+      </div>
+
+      <div class="gi-sr-foot">
+        <span><kbd class="gi-sr-kbd">↑</kbd><kbd class="gi-sr-kbd">↓</kbd> select</span>
+        <span><kbd class="gi-sr-kbd">Enter</kbd> open</span>
+        <span><kbd class="gi-sr-kbd">Esc</kbd> close</span>
+      </div>
+    </div>
+  </dialog>
+</gi-search>
+
+{/* Inlined so the shortcut shows the right key before the page paints. */}
+<script is:inline>
+  (() => {
+    const kbd = document.querySelector('.gi-search-open-kbd');
+    if (!(kbd instanceof HTMLElement)) return;
+    if (/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+      kbd.firstElementChild.textContent = '⌘';
+      kbd.parentElement?.setAttribute('aria-keyshortcuts', 'Meta+K');
+    }
+    kbd.style.display = '';
+  })();
+</script>
+
+<script>
+  import { pagefindUserConfig } from 'virtual:starlight/pagefind-config';
+
+  type Row = { url: string; title: string; excerpt: string };
+  type Hit = Row & { subs: Row[] };
+
+  const MAX_PAGES = 8;
+  const MAX_SUBS = 3;
+  const bundle = import.meta.env.BASE_URL.replace(/\/$/, '') + '/pagefind/';
+
+  // The index is read once and shared; when it is missing (astro dev), the
+  // next open checks again.
+  let pagefind: any = null;
+  let loading: Promise<boolean> | null = null;
+  function loadPagefind(): Promise<boolean> {
+    if (pagefind) return Promise.resolve(true);
+    loading ??= (async () => {
+      try {
+        // A dev server answers a missing file with the page's HTML, so only
+        // JavaScript counts as the index.
+        const res = await fetch(`${bundle}pagefind.js`, { method: 'HEAD' });
+        if (!res.ok || !(res.headers.get('content-type') ?? '').includes('javascript')) return false;
+        pagefind = await import(/* @vite-ignore */ `${bundle}pagefind.js`);
+        const ranking = (pagefindUserConfig as { ranking?: unknown }).ranking;
+        await pagefind.options?.({ excerptLength: 22, ...(ranking ? { ranking } : {}) });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        loading = null;
+      }
+    })();
+    return loading;
+  }
+
+  class GiSearch extends HTMLElement {
+    dialog = this.querySelector('dialog')!;
+    input = this.querySelector<HTMLInputElement>('.gi-sr-input')!;
+    clear = this.querySelector<HTMLButtonElement>('.gi-sr-clear')!;
+    note = this.querySelector<HTMLElement>('.gi-sr-note')!;
+    list = this.querySelector<HTMLUListElement>('.gi-sr-list')!;
+    rows: HTMLAnchorElement[] = [];
+    selected = 0;
+    seq = 0;
+    formatURL: (url: string) => string;
+
+    constructor() {
+      super();
+      const strip = this.dataset.stripTrailingSlash !== undefined;
+      this.formatURL = strip ? (p) => p.replace(/(.)\/(#.*)?$/, '$1$2') : (p) => p;
+
+      const openBtn = this.querySelector<HTMLButtonElement>('[data-open-modal]')!;
+      openBtn.addEventListener('click', () => this.open());
+      openBtn.disabled = false;
+      this.querySelector('[data-close-modal]')!.addEventListener('click', () => this.close());
+
+      // A click on the backdrop lands on the dialog itself, outside the panel.
+      this.dialog.addEventListener('mousedown', (e) => {
+        if (e.target === this.dialog) this.close();
+      });
+      this.dialog.addEventListener('close', () => {
+        document.documentElement.toggleAttribute('data-search-modal-open', false);
+      });
+
+      this.input.addEventListener('input', () => this.run());
+      this.clear.addEventListener('click', () => {
+        this.input.value = '';
+        this.run();
+        this.input.focus();
+      });
+      this.input.addEventListener('keydown', (e) => this.onInputKey(e));
+
+      // A followed link closes the panel; a modified click opens a new tab
+      // and keeps it.
+      this.list.addEventListener('click', (e) => {
+        const a = (e.target as HTMLElement).closest('a');
+        if (a && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) this.close();
+      });
+      this.list.addEventListener('mousemove', (e) => {
+        const a = (e.target as HTMLElement).closest('a');
+        const i = a ? this.rows.indexOf(a) : -1;
+        if (i >= 0 && i !== this.selected) this.select(i, false);
+      });
+
+      window.addEventListener('keydown', (e) => {
+        const t = e.target as HTMLElement | null;
+        const typing = !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+        if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing && !this.dialog.open)) {
+          e.preventDefault();
+          this.dialog.open ? this.close() : this.open();
+        }
+      });
+    }
+
+    open() {
+      this.dialog.showModal();
+      document.documentElement.toggleAttribute('data-search-modal-open', true);
+      this.input.focus();
+      this.input.select();
+      loadPagefind().then(() => this.run());
+    }
+
+    close() {
+      this.dialog.close();
+    }
+
+    onInputKey(e: KeyboardEvent) {
+      // Keys that drive an IME conversion stay with the input. Safari reports
+      // keyCode 229 without isComposing.
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (!this.rows.length) return;
+        e.preventDefault();
+        const d = e.key === 'ArrowDown' ? 1 : -1;
+        this.select(Math.min(Math.max(this.selected + d, 0), this.rows.length - 1), true);
+      } else if (e.key === 'Enter') {
+        const row = this.rows[this.selected];
+        if (!row) return;
+        e.preventDefault();
+        if (e.metaKey || e.ctrlKey) {
+          window.open(row.href, '_blank', 'noopener');
+          return;
+        }
+        this.close();
+        location.href = row.href;
+      }
+    }
+
+    select(i: number, scroll: boolean) {
+      this.rows[this.selected]?.classList.remove('is-selected');
+      this.selected = i;
+      const row = this.rows[i];
+      if (!row) return;
+      row.classList.add('is-selected');
+      if (scroll) row.scrollIntoView({ block: 'nearest' });
+    }
+
+    showNote(text: string) {
+      this.note.textContent = text;
+      this.note.hidden = false;
+      this.list.hidden = true;
+      this.list.replaceChildren();
+      this.rows = [];
+    }
+
+    async run() {
+      const my = ++this.seq;
+      const q = this.input.value.trim();
+      this.clear.hidden = !this.input.value;
+      if (!pagefind) {
+        if (!(await loadPagefind())) {
+          if (my === this.seq) {
+            this.showNote('No search index in the dev server. Run npm run build && npm run preview to search.');
+          }
+          return;
+        }
+      }
+      if (my !== this.seq) return;
+      if (!q) return this.showNote('Search page titles, headings and text');
+
+      const res = await pagefind.search(q);
+      const data = await Promise.all(res.results.slice(0, MAX_PAGES).map((r: any) => r.data()));
+      if (my !== this.seq) return;
+      if (!data.length) return this.showNote(`No results for “${q}”`);
+
+      const hits: Hit[] = data.map((d: any) => {
+        const title = d.meta?.title ?? d.url;
+        return {
+          url: this.formatURL(d.url),
+          title,
+          excerpt: d.excerpt,
+          subs: (d.sub_results ?? [])
+            .filter((s: any) => s.url !== d.url && s.title !== title)
+            .slice(0, MAX_SUBS)
+            .map((s: any) => ({ url: this.formatURL(s.url), title: s.title, excerpt: s.excerpt })),
+        };
+      });
+      this.render(hits);
+    }
+
+    render(hits: Hit[]) {
+      const items = hits.map((h) => {
+        const li = document.createElement('li');
+        li.className = 'gi-sr-group';
+        const head = document.createElement('p');
+        head.className = 'gi-sr-group-title';
+        head.textContent = h.title;
+        li.append(head, this.row(h, false), ...h.subs.map((s) => this.row(s, true)));
+        return li;
+      });
+      this.list.replaceChildren(...items);
+      this.rows = [...this.list.querySelectorAll<HTMLAnchorElement>('a.gi-sr-hit')];
+      this.note.hidden = true;
+      this.list.hidden = false;
+      this.list.scrollTop = 0;
+      this.selected = 0;
+      this.select(0, false);
+    }
+
+    row(r: Row, sub: boolean) {
+      const a = document.createElement('a');
+      a.className = sub ? 'gi-sr-hit is-sub' : 'gi-sr-hit';
+      a.href = r.url;
+      const title = document.createElement('span');
+      title.className = 'gi-sr-hit-title';
+      title.textContent = r.title;
+      // Pagefind escapes the page text and adds only <mark> around matches.
+      const excerpt = document.createElement('span');
+      excerpt.className = 'gi-sr-hit-excerpt';
+      excerpt.innerHTML = r.excerpt;
+      a.append(title, excerpt);
+      return a;
+    }
+  }
+  customElements.define('gi-search', GiSearch);
+</script>
+
+<style>
+  gi-search {
+    display: contents;
+  }
+
+  /* ===== Open button ===== */
+
+  .gi-search-open {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.5rem;
+    padding: 0 0.25rem;
+    border: 0;
+    background: transparent;
+    color: var(--gi-fg2);
+    cursor: pointer;
+  }
+  .gi-search-open .gi-search-icon {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  .gi-search-open-label,
+  .gi-search-open-kbd {
+    display: none !important;
+  }
+
+  @media (min-width: 50rem) {
+    .gi-search-open {
+      width: 15rem;
+      max-width: 20rem;
+      height: 2.125rem;
+      padding: 0 0.5rem 0 0.75rem;
+      border: 1px solid var(--gi-line2);
+      border-radius: 999px;
+      background: var(--gi-bg2);
+      color: var(--gi-fg3);
+      font-size: 0.84375rem;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .gi-search-open:hover {
+      border-color: var(--gi-fg3);
+      color: var(--gi-fg2);
+    }
+    .gi-search-open .gi-search-icon {
+      width: 14px;
+      height: 14px;
+    }
+    .gi-search-open-label {
+      display: block !important;
+      flex: 1;
+      text-align: start;
+    }
+    .gi-search-open-kbd {
+      display: flex !important;
+      gap: 0.15em;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--gi-fg3);
+      font-family: var(--__sl-font);
+      font-size: 0.6875rem;
+    }
+  }
+
+  /* ===== Dialog ===== */
+
+  .gi-sr {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border: 0;
+    background: var(--gi-bg);
+    color: var(--gi-fg);
+  }
+  .gi-sr[open] {
+    display: flex;
+  }
+  .gi-sr::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+  }
+  .gi-sr-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .gi-sr-field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .gi-sr-input-wrap {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--gi-line2);
+    border-radius: 999px;
+    background: var(--gi-bg2);
+    color: var(--gi-fg3);
+  }
+  .gi-sr-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--gi-fg);
+    font: inherit;
+    /* 16px keeps iOS Safari from zooming into the field. */
+    font-size: 16px;
+  }
+  .gi-sr-input::placeholder {
+    color: var(--gi-fg3);
+  }
+  .gi-sr-input::-webkit-search-cancel-button {
+    display: none;
+  }
+  .gi-sr-clear {
+    display: grid;
+    place-items: center;
+    padding: 2px;
+    border: 0;
+    background: none;
+    color: var(--gi-fg3);
+    cursor: pointer;
+  }
+  .gi-sr-clear[hidden] {
+    display: none;
+  }
+  .gi-sr-cancel {
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    color: var(--gi-fg2);
+    font: inherit;
+    font-size: 0.9375rem;
+    cursor: pointer;
+  }
+
+  .gi-sr-kbd {
+    padding: 1px 6px;
+    border: 1px solid var(--gi-line2);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--gi-fg3);
+    font-family: var(--__sl-font);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .gi-sr-esc,
+  .gi-sr-foot {
+    display: none;
+  }
+
+  .gi-sr-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 16px 24px;
+    scrollbar-width: thin;
+  }
+  .gi-sr-note {
+    margin: 0;
+    padding: 8px 4px;
+    color: var(--gi-fg3);
+    font-size: 0.84375rem;
+    line-height: 1.7;
+  }
+  .gi-sr-note[hidden],
+  .gi-sr-list[hidden] {
+    display: none;
+  }
+  .gi-sr-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .gi-sr-group + .gi-sr-group {
+    margin-top: 14px;
+  }
+  .gi-sr-group-title {
+    margin: 0 0 4px 12px;
+    color: var(--gi-fg3);
+    font-size: 0.78125rem;
+  }
+</style>
+
+{/* Rows are created by the script, so their rules are global (scoped to the dialog). */}
+<style is:global>
+  [data-search-modal-open] {
+    overflow: hidden;
+  }
+
+  .gi-sr .gi-sr-hit {
+    display: block;
+    padding: 9px 12px;
+    border-radius: 10px;
+    color: inherit;
+    text-decoration: none;
+  }
+  .gi-sr .gi-sr-hit.is-selected {
+    background: var(--gi-accbg);
+  }
+  .gi-sr .gi-sr-hit-title {
+    display: block;
+    color: var(--gi-fg);
+    font-size: 15px;
+  }
+  .gi-sr .gi-sr-hit:not(.is-sub) .gi-sr-hit-title {
+    font-weight: 500;
+  }
+  .gi-sr .gi-sr-hit-excerpt {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 2px;
+    color: var(--gi-fg3);
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  .gi-sr .gi-sr-hit-excerpt mark {
+    padding: 0 1px;
+    border-radius: 3px;
+    background: var(--gi-line2);
+    color: var(--gi-fg);
+  }
+
+  /* ===== Wide screens: a panel in the upper middle =====
+     dialog.gi-sr outranks the scoped full-screen rules above, which have the
+     same specificity as .gi-sr and would otherwise win or lose by CSS order. */
+  @media (min-width: 50rem) {
+    dialog.gi-sr {
+      margin: 12vh auto auto;
+      width: calc(100% - 32px);
+      max-width: 620px;
+      /* A modal dialog is fixed with inset: 0, so height: auto would
+         stretch it to max-height; fit-content keeps it to its rows. */
+      height: fit-content;
+      max-height: 70vh;
+      border: 1px solid var(--gi-line2);
+      border-radius: 14px;
+      background: var(--gi-bg2);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    }
+    :root[data-theme='light'] dialog.gi-sr {
+      background: var(--gi-bg);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+    }
+    :root[data-theme='light'] .gi-sr::backdrop {
+      background: rgba(0, 0, 0, 0.3);
+    }
+    .gi-sr .gi-sr-field {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--gi-line);
+    }
+    .gi-sr .gi-sr-input-wrap {
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: none;
+    }
+    .gi-sr .gi-sr-cancel,
+    .gi-sr .gi-sr-clear {
+      display: none;
+    }
+    .gi-sr .gi-sr-esc {
+      display: inline;
+    }
+    .gi-sr .gi-sr-body {
+      padding: 8px;
+    }
+    .gi-sr .gi-sr-note {
+      padding: 28px 16px;
+      text-align: center;
+    }
+    .gi-sr .gi-sr-group + .gi-sr-group {
+      margin-top: 4px;
+    }
+    .gi-sr .gi-sr-group-title {
+      display: none;
+    }
+    .gi-sr .gi-sr-hit {
+      border-radius: 8px;
+    }
+    .gi-sr .gi-sr-hit-title {
+      font-size: 14px;
+    }
+    .gi-sr .gi-sr-hit-excerpt {
+      font-size: 12.5px;
+    }
+    /* Headings inside a page sit one step in, joined by a thin line. */
+    .gi-sr .gi-sr-hit.is-sub {
+      margin-left: 14px;
+      padding-left: 14px;
+      border-left: 1px solid var(--gi-line2);
+      border-radius: 0 8px 8px 0;
+    }
+    .gi-sr .gi-sr-foot {
+      display: flex;
+      gap: 16px;
+      padding: 9px 16px;
+      border-top: 1px solid var(--gi-line);
+      color: var(--gi-fg3);
+      font-size: 12px;
+    }
+    .gi-sr .gi-sr-foot .gi-sr-kbd {
+      margin-right: 4px;
+    }
+  }
+</style>

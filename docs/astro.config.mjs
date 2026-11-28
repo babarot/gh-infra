@@ -25,6 +25,7 @@ export default defineConfig({
       components: {
         Hero: './src/components/Hero.astro',
         PageTitle: './src/components/PageTitle.astro',
+        Search: './src/components/Search.astro',
         ThemeSelect: './src/components/ThemeSelect.astro',
       },
       customCss: [
