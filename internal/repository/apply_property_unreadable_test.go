@@ -207,9 +207,17 @@ func TestPlanSecretScanningRejected(t *testing.T) {
 		{name: "push protection without secret scanning", state: func(s *fakeState) { s.SecretScanning, s.SecretScanningPushProtection = false, false },
 			spec:    manifest.RepositorySpec{Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
 			wantErr: "security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled"},
+		// How a new repository starts is not known (an organization's
+		// security configuration may set it): the manifest sets both.
 		{name: "push protection without secret scanning, new repository", missing: true,
 			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
 			wantErr: "security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled"},
+		{name: "push protection without secret scanning, new private repository", missing: true,
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Security: &manifest.Security{SecretScanningPushProtection: manifest.Ptr(true)}},
+			wantErr: "security.secret_scanning_push_protection: true requires security.secret_scanning to be enabled"},
+		{name: "secret scanning disabled under push protection, new repository", missing: true,
+			spec:    manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Security: &manifest.Security{SecretScanning: manifest.Ptr(false)}},
+			wantErr: "security.secret_scanning: false also disables secret_scanning_push_protection on GitHub (set security.secret_scanning_push_protection: false as well)"},
 		{name: "secret scanning disabled under push protection",
 			spec:    manifest.RepositorySpec{Security: &manifest.Security{SecretScanning: manifest.Ptr(false)}},
 			wantErr: "security.secret_scanning: false also disables secret_scanning_push_protection on GitHub (set security.secret_scanning_push_protection: false as well)"},
