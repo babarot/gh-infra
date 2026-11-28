@@ -1,11 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <style>
-    .tile { fill: #171717; }
-    @media (prefers-color-scheme: dark) { .tile { fill: #ededed; } }
+    svg { color: #171717; }
+    @media (prefers-color-scheme: dark) { svg { color: #ededed; } }
   </style>
-  <mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
-    <rect width="32" height="32" fill="#fff"/>
-    <path d="M7 10h4l5.5 6M7 22h4l5.5-6M7 16h18" fill="none" stroke="#000" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-  </mask>
-  <rect class="tile" x="2" y="2" width="28" height="28" rx="7" mask="url(#m)"/>
+  <defs>
+    <mask id="km1" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32"><rect width="32" height="32" fill="#fff"/>
+  <polygon points="12.66,1.23 20.44,5.72 20.44,14.71 12.66,19.20 4.88,14.71 4.88,5.72" fill="#000" stroke="#000" stroke-width="0.4" stroke-linejoin="round"/></mask>
+    <mask id="km2" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32"><rect width="32" height="32" fill="#fff"/>
+  <polygon points="19.34,12.80 27.12,17.29 27.12,26.28 19.34,30.77 11.56,26.28 11.56,17.29" fill="#000" stroke="#000" stroke-width="0.4" stroke-linejoin="round"/></mask>
+    <mask id="km3" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32"><rect width="32" height="32" fill="#fff"/>
+  <polygon points="19.34,5.09 27.12,9.58 27.12,18.56 19.34,23.06 11.56,18.56 11.56,9.58" fill="#000" stroke="#000" stroke-width="0.4" stroke-linejoin="round"/></mask></defs>
+  <g mask="url(#km3)"><g mask="url(#km2)"><g mask="url(#km1)">
+  <polygon points="12.66,10.85 18.24,14.07 12.66,17.29 7.08,14.07" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+  <polygon points="6.53,15.02 12.11,18.25 12.11,24.69 6.53,21.47" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+  <polygon points="18.79,15.02 18.79,21.47 13.21,24.69 13.21,18.25" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/></g>
+  <polygon points="12.66,3.14 18.24,6.36 12.66,9.58 7.08,6.36" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+  <polygon points="6.53,7.31 12.11,10.53 12.11,16.98 6.53,13.75" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+  <polygon points="18.79,7.31 18.79,13.75 13.21,16.98 13.21,10.53" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/></g>
+  <polygon points="19.34,14.71 24.92,17.93 19.34,21.15 13.76,17.93" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+  <polygon points="13.21,18.88 18.79,22.10 18.79,28.55 13.21,25.33" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+  <polygon points="25.47,18.88 25.47,25.33 19.89,28.55 19.89,22.10" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/></g>
+  <path d="M19.34 6.99L25.47 10.53L25.47 17.61L19.34 21.15L13.21 17.61L13.21 10.53ZM19.34 8.26L23.82 10.85L19.34 13.44L14.86 10.85ZM14.31 11.80L18.79 14.39L18.79 19.56L14.31 16.98ZM24.37 11.80L24.37 16.98L19.89 19.56L19.89 14.39Z" fill="currentColor" fill-rule="evenodd" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
 </svg>
