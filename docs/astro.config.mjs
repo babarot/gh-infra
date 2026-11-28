@@ -1,10 +1,16 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
+import { satteri } from '@astrojs/markdown-satteri';
+import sincePlugin from './src/plugins/since.mjs';
 
 export default defineConfig({
   site: process.env.SITE_URL || 'http://localhost:4321',
   base: process.env.BASE_PATH || '/',
+  markdown: {
+    // Marks the rows of field and flag tables with the release they arrived in.
+    processor: satteri({ mdastPlugins: [sincePlugin()] }),
+  },
   integrations: [
     // Node and edge colors are overridden in custom.css to match the site.
     mermaid({ mermaidConfig: { fontFamily: "'Geist Sans', sans-serif" } }),

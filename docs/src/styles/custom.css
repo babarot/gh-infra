@@ -316,6 +316,27 @@ starlight-toc a[aria-current='true']:focus {
   background: none;
 }
 
+/* The release a field or flag arrived in, added by src/plugins/since.mjs. Unreleased
+   is told apart in the changes color, since it does not work in any release
+   people can install yet. */
+.sl-markdown-content .gi-since {
+  display: inline-block;
+  margin-inline-start: 0.375rem;
+  padding: 0 0.375rem;
+  border: 1px solid var(--gi-line2);
+  border-radius: 999px;
+  color: var(--gi-fg3);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: 0.0625rem;
+}
+
+.sl-markdown-content .gi-since.is-unreleased {
+  border-color: color-mix(in srgb, var(--gi-chg) 45%, transparent);
+  color: var(--gi-chg);
+}
+
 /* Embedded <details>. FileTree builds its directories from <details>, so it
    is left out. */
 
