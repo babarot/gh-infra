@@ -2882,8 +2882,9 @@ func TestDiffActions_ForkPRWorkflows(t *testing.T) {
 			t.Errorf("planned %v, want %s and %s", got, run, secrets)
 		}
 	})
-	t.Run("turning run off plans what GitHub turns off with it", func(t *testing.T) {
-		got := collectChildFields(diffActions("o/r", desired(manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no}),
+	t.Run("turning run off plans what the manifest turns off with it", func(t *testing.T) {
+		got := collectChildFields(diffActions("o/r", desired(manifest.ForkPRWorkflows{
+			RunWorkflowsFromForkPullRequests: no, SendWriteTokensToWorkflows: no, SendSecretsAndVariables: no, RequireApprovalForForkPRWorkflows: no}),
 			current(&CurrentForkPRWorkflows{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, RequireApprovalForForkPRWorkflows: true})))
 		for _, f := range []string{run, secrets, "fork_pr_workflows.require_approval_for_fork_pr_workflows"} {
 			if !got[f] {
@@ -2928,6 +2929,20 @@ func TestValidateDependencies_ForkPRWorkflows(t *testing.T) {
 			current: CurrentState{Visibility: "private", Actions: CurrentActions{ForkPRWorkflows: &CurrentForkPRWorkflows{}}}},
 		{name: "run is off in the manifest, another is turned off", spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no, SendSecretsAndVariables: no},
 			current: CurrentState{Visibility: "private", Actions: CurrentActions{ForkPRWorkflows: &CurrentForkPRWorkflows{}}}},
+		// Turning run off turns the others off on GitHub: one the manifest
+		// leaves out that is on (or may be) is to be said, not turned off
+		// unasked.
+		{name: "run is turned off, one left out is on", spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no, SendSecretsAndVariables: no},
+			current: CurrentState{Visibility: "private", Actions: CurrentActions{ForkPRWorkflows: &CurrentForkPRWorkflows{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPRWorkflows: true}}},
+			wantErr: "turns require_approval_for_fork_pr_workflows off"},
+		{name: "run is turned off, the ones left out are off", spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no},
+			current: CurrentState{Visibility: "private", Actions: CurrentActions{ForkPRWorkflows: &CurrentForkPRWorkflows{RunWorkflowsFromForkPullRequests: true}}}},
+		{name: "run is turned off, all set", spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no, SendWriteTokensToWorkflows: no, SendSecretsAndVariables: no, RequireApprovalForForkPRWorkflows: no},
+			current: CurrentState{Visibility: "private", Actions: CurrentActions{ForkPRWorkflows: &CurrentForkPRWorkflows{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}}}},
+		{name: "run is turned off, none from GitHub", visibility: manifest.Ptr("private"), spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no},
+			current: CurrentState{Visibility: "public"}, wantErr: "turns send_write_tokens_to_workflows off"},
+		{name: "run is turned off, new repository", visibility: manifest.Ptr("private"), spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no},
+			current: CurrentState{IsNew: true}, wantErr: "which is not known"},
 		// What GitHub has is not known before the repository is private or
 		// internal: apply would find run disabled and send nothing.
 		{name: "none from GitHub, run not set", visibility: manifest.Ptr("private"), spec: manifest.ForkPRWorkflows{SendSecretsAndVariables: yes},

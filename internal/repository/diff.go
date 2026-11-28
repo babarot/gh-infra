@@ -260,6 +260,32 @@ func validateForkPRWorkflowsDependencies(desired *manifest.Repository, current *
 	if run {
 		return nil
 	}
+	if f.RunWorkflowsFromForkPullRequests != nil {
+		// Turning it off turns the others off with it. A field the manifest
+		// leaves out is not to change, so it has to be off already: say so
+		// rather than turn it off unasked, which no later plan would show
+		// when run is turned on again.
+		cur := current.Actions.ForkPRWorkflows
+		for _, o := range []struct {
+			field string
+			v     *bool
+			have  func(CurrentForkPRWorkflows) bool
+		}{
+			{"send_write_tokens_to_workflows", f.SendWriteTokensToWorkflows, func(c CurrentForkPRWorkflows) bool { return c.SendWriteTokensToWorkflows }},
+			{"send_secrets_and_variables", f.SendSecretsAndVariables, func(c CurrentForkPRWorkflows) bool { return c.SendSecretsAndVariables }},
+			{"require_approval_for_fork_pr_workflows", f.RequireApprovalForForkPRWorkflows, func(c CurrentForkPRWorkflows) bool { return c.RequireApprovalForForkPRWorkflows }},
+		} {
+			if o.v != nil {
+				continue
+			}
+			if unknown {
+				return fmt.Errorf("actions.fork_pr_workflows.run_workflows_from_fork_pull_requests: false also turns %s off on GitHub, which is not known for %s yet (set actions.fork_pr_workflows.%s: false as well)", o.field, desired.Metadata.Name, o.field)
+			}
+			if o.have(*cur) {
+				return fmt.Errorf("actions.fork_pr_workflows.run_workflows_from_fork_pull_requests: false also turns %s off on GitHub, where it is on (set actions.fork_pr_workflows.%s: false as well)", o.field, o.field)
+			}
+		}
+	}
 	for field, v := range map[string]*bool{
 		"send_write_tokens_to_workflows":         f.SendWriteTokensToWorkflows,
 		"send_secrets_and_variables":             f.SendSecretsAndVariables,
@@ -1373,21 +1399,14 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 				{"fork_pr_workflows.require_approval_for_fork_pr_workflows", f.RequireApprovalForForkPRWorkflows, func(c CurrentForkPRWorkflows) bool { return c.RequireApprovalForForkPRWorkflows }},
 			}
 			cur := current.Actions.ForkPRWorkflows
-			// GitHub saves the other three as false once run is turned off,
-			// so a field the manifest leaves out that is on changes too.
-			runOff := cur != nil && cur.RunWorkflowsFromForkPullRequests && f.RunWorkflowsFromForkPullRequests != nil && !*f.RunWorkflowsFromForkPullRequests
-			for i, fl := range fields {
+			for _, fl := range fields {
 				// GitHub has none while the repository is public, and the
 				// plan makes it private or internal: plan what is set.
 				if cur == nil {
 					appendIfSet(cc, fl.field, fl.want)
 					continue
 				}
-				want := fl.want
-				if want == nil && runOff && i > 0 && fl.have(*cur) {
-					want = manifest.Ptr(false)
-				}
-				appendChildChanged(cc, fl.field, want, fl.have(*cur))
+				appendChildChanged(cc, fl.field, fl.want, fl.have(*cur))
 			}
 		}
 	})

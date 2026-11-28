@@ -30,7 +30,7 @@ spec:
 - If any `actions.*` field other than `enabled` is set, `enabled` must also be set
 - `selected_actions` requires `allowed_actions: selected`
 - `fork_pr_workflows` is for private / internal repos only: `validate` rejects it with `visibility: public`; `plan` fails a repo that is public. `fork_pr_approval` is the reverse. In a RepositorySet put it in the private entries, not in defaults (a public entry inheriting it fails)
-- `fork_pr_workflows`: GitHub saves `send_write_tokens_to_workflows`, `send_secrets_and_variables` and `require_approval_for_fork_pr_workflows` as `false` while `run_workflows_from_fork_pull_requests` is `false` (answering 204), so `true` for them there never converges: `validate` rejects it when the manifest sets both, `plan` when the effective run (manifest, else GitHub) is `false`, or, for a new repo or one made private in the same plan, when the manifest does not set run to `true`. Turning run off plans the other fields that are on as `false` too
+- `fork_pr_workflows`: GitHub saves `send_write_tokens_to_workflows`, `send_secrets_and_variables` and `require_approval_for_fork_pr_workflows` as `false` while `run_workflows_from_fork_pull_requests` is `false` (answering 204), so `true` for them there never converges: `validate` rejects it when the manifest sets both, `plan` when the effective run (manifest, else GitHub) is `false`, or, for a new repo or one made private in the same plan, when the manifest does not set run to `true`. Turning run off also fails `plan` when the manifest leaves out one of the other three that is `true`, or that GitHub has nothing to read for yet (new repo, or made private in the same plan): set it to `false` too, since a field left out is never changed unasked
 
 ## Important Fields
 

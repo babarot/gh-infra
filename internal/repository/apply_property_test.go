@@ -171,7 +171,10 @@ func TestApplyProperties(t *testing.T) {
 			s.Repo.Visibility = "internal"
 			s.ForkPRWorkflows = fakeForkPRWorkflows{Run: true, SendWriteTokens: true, SendSecrets: true, RequireApproval: true}
 		}, spec: manifest.RepositorySpec{Actions: &manifest.Actions{
-			Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: bptr(false)},
+			Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{
+				RunWorkflowsFromForkPullRequests: bptr(false), SendWriteTokensToWorkflows: bptr(false),
+				SendSecretsAndVariables: bptr(false), RequireApprovalForForkPRWorkflows: bptr(false),
+			},
 		}}},
 		// A public repository has none (422); apply makes it private first.
 		{name: "made private with fork PR workflows", spec: manifest.RepositorySpec{
