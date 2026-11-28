@@ -38,7 +38,7 @@ This was considered and rejected because:
 2. **Multi-user and CI/CD workflows** would need state sharing or regeneration, re-creating the coordination problems of remote state backends.
 3. **The problem scope is narrow** -- only a handful of collection-typed fields (branch protection, rulesets, and potentially secrets/variables) need deletion semantics. A per-field solution is simpler than a whole-system state layer.
 
-## Rejected Decision
+## Decision
 
 ### Use `null` as an explicit deletion marker
 
@@ -173,7 +173,7 @@ if len(c.Children) > 0 && c.Type != ChangeDelete && ...
 
 This ensures delete children are not dispatched as individual API calls.
 
-## Expected Consequences If Adopted
+## Consequences
 
 ### What would become easier
 
