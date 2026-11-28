@@ -28,7 +28,7 @@ ADR-003's product-level requirement was carried forward during this iteration:
 
 The implementation attempted to preserve gh-infra's stateless design, avoid a YAML library fork, and keep parser knowledge of individual repository fields low.
 
-## Rejected Decision
+## Decision
 
 Use a `Deletable[T]` manifest wrapper for fields where `null` means remote resource deletion.
 
@@ -218,7 +218,7 @@ Rejected because current gh-infra use cases are specifically deletion semantics.
 
 Rejected as too broad. A generic engine could collect null paths such as `$.repositories[2].spec.rulesets` and apply them to decoded structs. That requires general YAML-path-to-Go-value mapping, slice indexing, pointer handling, and nested struct traversal. gh-infra already knows where `RepositorySpec` nodes live, so a spec-level helper is simpler and better scoped.
 
-## Expected Consequences If Adopted
+## Consequences
 
 ### Positive
 
