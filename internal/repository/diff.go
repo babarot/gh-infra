@@ -238,18 +238,22 @@ func validatePushProtection(desired *manifest.Repository, current *CurrentState)
 // is false (the manifest's value, else the current one) it saves the other
 // three as false, so the plan would show the change again after every apply.
 // Nothing is known of the current value for a repository that is not private
-// or internal yet, or does not exist.
+// or internal yet, or does not exist: the manifest has to enable it then.
 func validateForkPRWorkflowsDependencies(desired *manifest.Repository, current *CurrentState) error {
 	if desired.Spec.Actions == nil || desired.Spec.Actions.ForkPRWorkflows == nil {
 		return nil
 	}
 	f := desired.Spec.Actions.ForkPRWorkflows
 	run := false
+	unknown := current.IsNew || current.Actions.ForkPRWorkflows == nil
 	switch {
 	case f.RunWorkflowsFromForkPullRequests != nil:
 		run = *f.RunWorkflowsFromForkPullRequests
-	case current.IsNew || current.Actions.ForkPRWorkflows == nil:
-		return nil
+	case unknown:
+		// Nothing is known of what GitHub will have (a new repository, or
+		// one that is public now), so a field set to true needs the manifest
+		// to enable run_workflows_from_fork_pull_requests: apply would
+		// find it disabled and send nothing.
 	default:
 		run = current.Actions.ForkPRWorkflows.RunWorkflowsFromForkPullRequests
 	}
@@ -261,9 +265,13 @@ func validateForkPRWorkflowsDependencies(desired *manifest.Repository, current *
 		"send_secrets_and_variables":             f.SendSecretsAndVariables,
 		"require_approval_for_fork_pr_workflows": f.RequireApprovalForForkPRWorkflows,
 	} {
-		if v != nil && *v {
-			return fmt.Errorf("actions.fork_pr_workflows.%s: true requires actions.fork_pr_workflows.run_workflows_from_fork_pull_requests to be enabled (it is disabled, and GitHub saves %s as false while it is)", field, field)
+		if v == nil || !*v {
+			continue
 		}
+		if unknown && f.RunWorkflowsFromForkPullRequests == nil {
+			return fmt.Errorf("actions.fork_pr_workflows.%s: true requires actions.fork_pr_workflows.run_workflows_from_fork_pull_requests: true in the manifest (GitHub has no fork PR workflow settings for %s yet, and saves %s as false while it is disabled)", field, desired.Metadata.Name, field)
+		}
+		return fmt.Errorf("actions.fork_pr_workflows.%s: true requires actions.fork_pr_workflows.run_workflows_from_fork_pull_requests to be enabled (it is disabled, and GitHub saves %s as false while it is)", field, field)
 	}
 	return nil
 }
@@ -1364,14 +1372,22 @@ func diffActions(name string, desired *manifest.Repository, current *CurrentStat
 				{"fork_pr_workflows.send_secrets_and_variables", f.SendSecretsAndVariables, func(c CurrentForkPRWorkflows) bool { return c.SendSecretsAndVariables }},
 				{"fork_pr_workflows.require_approval_for_fork_pr_workflows", f.RequireApprovalForForkPRWorkflows, func(c CurrentForkPRWorkflows) bool { return c.RequireApprovalForForkPRWorkflows }},
 			}
-			for _, fl := range fields {
+			cur := current.Actions.ForkPRWorkflows
+			// GitHub saves the other three as false once run is turned off,
+			// so a field the manifest leaves out that is on changes too.
+			runOff := cur != nil && cur.RunWorkflowsFromForkPullRequests && f.RunWorkflowsFromForkPullRequests != nil && !*f.RunWorkflowsFromForkPullRequests
+			for i, fl := range fields {
 				// GitHub has none while the repository is public, and the
 				// plan makes it private or internal: plan what is set.
-				if current.Actions.ForkPRWorkflows == nil {
+				if cur == nil {
 					appendIfSet(cc, fl.field, fl.want)
 					continue
 				}
-				appendChildChanged(cc, fl.field, fl.want, fl.have(*current.Actions.ForkPRWorkflows))
+				want := fl.want
+				if want == nil && runOff && i > 0 && fl.have(*cur) {
+					want = manifest.Ptr(false)
+				}
+				appendChildChanged(cc, fl.field, want, fl.have(*cur))
 			}
 		}
 	})

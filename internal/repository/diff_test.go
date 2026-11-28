@@ -2882,6 +2882,18 @@ func TestDiffActions_ForkPRWorkflows(t *testing.T) {
 			t.Errorf("planned %v, want %s and %s", got, run, secrets)
 		}
 	})
+	t.Run("turning run off plans what GitHub turns off with it", func(t *testing.T) {
+		got := collectChildFields(diffActions("o/r", desired(manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no}),
+			current(&CurrentForkPRWorkflows{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, RequireApprovalForForkPRWorkflows: true})))
+		for _, f := range []string{run, secrets, "fork_pr_workflows.require_approval_for_fork_pr_workflows"} {
+			if !got[f] {
+				t.Errorf("%s not planned, got %v", f, got)
+			}
+		}
+		if got["fork_pr_workflows.send_write_tokens_to_workflows"] {
+			t.Errorf("send_write_tokens_to_workflows is off already, got %v", got)
+		}
+	})
 	t.Run("no change", func(t *testing.T) {
 		if changes := diffActions("o/r", desired(manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no}),
 			current(&CurrentForkPRWorkflows{})); len(changes) != 0 {
@@ -2917,9 +2929,13 @@ func TestValidateDependencies_ForkPRWorkflows(t *testing.T) {
 		{name: "run is off in the manifest, another is turned off", spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: no, SendSecretsAndVariables: no},
 			current: CurrentState{Visibility: "private", Actions: CurrentActions{ForkPRWorkflows: &CurrentForkPRWorkflows{}}}},
 		// What GitHub has is not known before the repository is private or
-		// internal.
-		{name: "none from GitHub", visibility: manifest.Ptr("private"), spec: manifest.ForkPRWorkflows{SendSecretsAndVariables: yes},
+		// internal: apply would find run disabled and send nothing.
+		{name: "none from GitHub, run not set", visibility: manifest.Ptr("private"), spec: manifest.ForkPRWorkflows{SendSecretsAndVariables: yes},
+			current: CurrentState{Visibility: "public"}, wantErr: "run_workflows_from_fork_pull_requests: true in the manifest"},
+		{name: "none from GitHub, run on", visibility: manifest.Ptr("private"), spec: manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: yes, SendSecretsAndVariables: yes},
 			current: CurrentState{Visibility: "public"}},
+		{name: "new repository, run not set", visibility: manifest.Ptr("private"), spec: manifest.ForkPRWorkflows{RequireApprovalForForkPRWorkflows: yes},
+			current: CurrentState{IsNew: true}, wantErr: "run_workflows_from_fork_pull_requests: true in the manifest"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			d := baseDesired()

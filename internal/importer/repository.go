@@ -2255,7 +2255,8 @@ func minimalActions(defaults, imported *manifest.Actions) *manifest.Actions {
 		a.ForkPRApproval = i.ForkPRApproval
 		any = true
 	}
-	if !reflect.DeepEqual(d.ForkPRWorkflows, i.ForkPRWorkflows) {
+	// A public repository has none: nothing can be written for it.
+	if i.ForkPRWorkflows != nil && !reflect.DeepEqual(d.ForkPRWorkflows, i.ForkPRWorkflows) {
 		a.ForkPRWorkflows = i.ForkPRWorkflows
 		any = true
 	}

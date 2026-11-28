@@ -2726,6 +2726,17 @@ func TestApplyForkPRWorkflows(t *testing.T) {
 		}
 	})
 
+	t.Run("a field GitHub would drop is not left unsaid", func(t *testing.T) {
+		mock := &gh.MockRunner{Responses: map[string][]byte{get: []byte(`{}`)}}
+		err := apply(mock, "private", manifest.ForkPRWorkflows{SendSecretsAndVariables: manifest.Ptr(true)})
+		if err == nil || !strings.Contains(err.Error(), "send_secrets_and_variables: true cannot be applied") {
+			t.Errorf("err = %v, want one that says it cannot be applied", err)
+		}
+		if got := sentBodies(mock); len(got) != 0 {
+			t.Errorf("sent %q, want no PUT", got)
+		}
+	})
+
 	t.Run("not on a public repository", func(t *testing.T) {
 		err := apply(&gh.MockRunner{}, "public", manifest.ForkPRWorkflows{SendSecretsAndVariables: manifest.Ptr(true)})
 		if err == nil || !strings.Contains(err.Error(), "not supported for public repositories") {

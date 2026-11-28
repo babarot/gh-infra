@@ -136,7 +136,9 @@ spec:
 
 The fields are those of the GitHub API. Fields the manifest leaves out are left as they are; `apply` reads the current ones and sends all four, because GitHub requires `run_workflows_from_fork_pull_requests` in every request.
 
-GitHub saves the last three as `false` while `run_workflows_from_fork_pull_requests` is `false`, and answers 204 to a request that sets them. Setting one of them to `true` there would show the same change after every `apply`, so it is an error: `validate` rejects it when the manifest sets both, and `plan` when it sets one and the repository has `run_workflows_from_fork_pull_requests: false` (or the manifest sets it to `false`).
+GitHub saves the last three as `false` while `run_workflows_from_fork_pull_requests` is `false`, and answers 204 to a request that sets them. Setting one of them to `true` there would show the same change after every `apply`, so it is an error: `validate` rejects it when the manifest sets both, and `plan` when it sets one and the repository has `run_workflows_from_fork_pull_requests: false` (or the manifest sets it to `false`). For a repository that does not exist yet, or that the same plan makes private or internal, GitHub has nothing to read, so the manifest has to set `run_workflows_from_fork_pull_requests: true` for `plan` to accept another field set to `true`.
+
+Turning `run_workflows_from_fork_pull_requests` off turns the other three off with it, so `plan` lists those that are on as changing to `false`, though the manifest leaves them out.
 
 `fork_pr_workflows` is not available on public repositories, as `fork_pr_approval` is not on private ones. `validate` rejects it when the manifest sets `visibility: public`, and `plan` fails for a repository that is public. In a `RepositorySet`, put it in the entries of the private and internal repositories, not in the defaults: a public repository inheriting it fails.
 

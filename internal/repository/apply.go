@@ -1438,7 +1438,18 @@ func (p *Processor) applyActionsForkPRWorkflows(ctx context.Context, owner, name
 	set(&want.SendSecretsAndVariables, f.SendSecretsAndVariables)
 	set(&want.RequireApprovalForForkPRWorkflows, f.RequireApprovalForForkPRWorkflows)
 	if !want.RunWorkflowsFromForkPullRequests {
-		// GitHub saves the others as false while it is false.
+		// GitHub saves the others as false while it is false: a field the
+		// manifest sets to true would be dropped without a word (plan checks
+		// this where it can).
+		for field, v := range map[string]*bool{
+			"send_write_tokens_to_workflows":         f.SendWriteTokensToWorkflows,
+			"send_secrets_and_variables":             f.SendSecretsAndVariables,
+			"require_approval_for_fork_pr_workflows": f.RequireApprovalForForkPRWorkflows,
+		} {
+			if v != nil && *v {
+				return wrapError(fmt.Errorf("%s: true cannot be applied while run_workflows_from_fork_pull_requests is false (GitHub saves it as false)", field), fullName, "actions.fork_pr_workflows")
+			}
+		}
 		want = CurrentForkPRWorkflows{}
 	}
 	if want == *cur {
