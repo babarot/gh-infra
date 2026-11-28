@@ -1,14 +1,19 @@
 ---
-// Splash page hero: title, tagline, actions and the install command on the
-// left, a manifest and its plan on the right. Replaces Starlight's Hero.
+// Splash page hero: the logo and site name, the hero title as a lead, the
+// tagline, actions and the install command on the left, a manifest and its plan
+// on the right. Replaces Starlight's Hero.
 import InstallBox from './InstallBox.astro';
 import Window from './Window.astro';
+import markSvg from '../assets/logo-light.svg?raw';
 
 // Starlight links "back to top" to this id (PAGE_TITLE_ID, not exported).
 const PAGE_TITLE_ID = '_top';
 
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, actions = [] } = data.hero || {};
+
+// Inline the mark so it takes the theme's text color (currentColor) in both themes.
+const mark = markSvg.replace(/\s*color="[^"]*"/, '').replace(/<!--[\s\S]*?-->\s*/, '');
 
 const manifest = `<span class="t-key">spec:</span>
   <span class="t-key">visibility:</span> <span class="t-w">public</span>
@@ -23,7 +28,11 @@ const plan = `  <span class="t-chg">~</span> <span class="t-w">babarot/my-projec
 
 <div class="gi-hero not-content">
   <div class="copy">
-    <h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+    <h1 id={PAGE_TITLE_ID} data-page-title class="lockup">
+      <span class="mark" set:html={mark} />
+      <span>{data.title}</span>
+    </h1>
+    <p class="lead" set:html={title} />
     {tagline && <p class="tagline" set:html={tagline} />}
     {
       actions.length > 0 && (
@@ -53,6 +62,38 @@ const plan = `  <span class="t-chg">~</span> <span class="t-w">babarot/my-projec
     gap: 3.5rem;
     align-items: center;
     padding-block: 4rem 1rem;
+  }
+
+  .mark {
+    display: flex;
+    flex: none;
+  }
+
+  .mark :global(svg) {
+    width: 100%;
+    height: 100%;
+  }
+
+  h1.lockup {
+    display: flex;
+    align-items: center;
+    gap: 0.25em;
+    margin-bottom: 0.75rem;
+    font-size: clamp(2.5rem, 1.6rem + 3vw, 3.25rem);
+  }
+
+  h1.lockup .mark {
+    width: 1.1em;
+    height: 1.1em;
+  }
+
+  .lead {
+    margin: 0 0 1rem;
+    font-size: 1.375rem;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+    font-weight: 500;
+    color: var(--gi-fg);
   }
 
   h1 {
