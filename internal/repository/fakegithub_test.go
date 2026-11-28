@@ -57,6 +57,10 @@ type fakeState struct {
 	SecretScanningPushProtection bool
 	NoSecretScanning             bool
 	NotAdmin                     bool
+	// AppToken is a token with the Administration permission whose
+	// permissions.admin GitHub reports as false: a GitHub App installation
+	// token.
+	AppToken bool
 
 	Actions         fakeActions
 	Workflow        fakeWorkflow
@@ -484,8 +488,9 @@ func (f *fakeGitHub) api(body []byte, args []string) ([]byte, bool, error) {
 		})
 	case sub == "vulnerability-alerts":
 		if method == "GET" {
-			// 204 when enabled, 404 when disabled.
-			if !f.s.VulnerabilityAlerts {
+			// 204 when enabled; 404 when disabled, and for a token that is
+			// not an admin's too (observed).
+			if f.s.NotAdmin || !f.s.VulnerabilityAlerts {
 				return nil, false, fakeStatus(gh.ErrNotFound, "vulnerability alerts are disabled")
 			}
 			return nil, false, nil
@@ -576,7 +581,7 @@ func (f *fakeGitHub) apiRepo(method string, body []byte, rest []string) ([]byte,
 	case "GET":
 		jq, _ := fakeFlag(rest, "--jq")
 		if jq == "{admin: .permissions.admin, security_and_analysis}" {
-			return mustJSON(map[string]any{"admin": !f.s.NotAdmin, "security_and_analysis": f.securityAndAnalysis()}), false, nil
+			return mustJSON(map[string]any{"admin": !f.s.NotAdmin && !f.s.AppToken, "security_and_analysis": f.securityAndAnalysis()}), false, nil
 		}
 		all := mustJSONMap(*r)
 		var keys []string
@@ -737,6 +742,10 @@ func (f *fakeGitHub) apiActions(sub, method string, body []byte) ([]byte, bool, 
 	case "":
 		switch method {
 		case "GET":
+			// Only an admin can read it: 403 for any other token (observed).
+			if f.s.NotAdmin {
+				return nil, false, fakeStatus(gh.ErrForbidden, "Resource not accessible by integration")
+			}
 			out := map[string]any{"enabled": f.s.Actions.Enabled}
 			// GitHub does not report allowed_actions while Actions is disabled.
 			if f.s.Actions.Enabled {
