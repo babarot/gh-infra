@@ -46,6 +46,8 @@ Without `branch`, the branch is `gh-infra/sync-<owner>-<name>`: `<name>` is the 
 
 Each apply resets the branch to the default branch before committing, so two `pull_request` resources that would use the same branch on the same repository are rejected by `validate`, `plan`, and `apply`. This happens when both set the same `branch`, or neither sets one and they share a name: two `File` manifests for one repository, or unnamed `FileSet`s that list the same repositories. Set a distinct `branch`, or a distinct `metadata.name` on a `FileSet`.
 
+GitHub refuses a ref over 255 bytes, which leaves 244 bytes for the branch name after `refs/heads/`, so `validate`, `plan`, and `apply` reject a `pull_request` resource whose branch is longer. An unnamed `FileSet` with many repositories reaches this through its default branch; set `metadata.name` or `branch` to shorten it.
+
 ## Related fields
 
 | Field | Used by | Default | Description |
