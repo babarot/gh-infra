@@ -165,32 +165,6 @@ header.header {
   div.header > div:nth-child(2) {
     justify-content: flex-end;
   }
-
-  site-search button[data-open-modal] {
-    width: 15rem;
-  }
-}
-
-site-search button[data-open-modal] {
-  height: 2.125rem;
-  border-color: var(--gi-line2);
-  border-radius: 8px;
-  background-color: var(--gi-bg2);
-  color: var(--gi-fg3);
-  font-size: 0.84375rem;
-  max-width: 20rem;
-}
-
-site-search button[data-open-modal]:hover {
-  border-color: var(--gi-fg3);
-  color: var(--gi-fg2);
-}
-
-site-search button > kbd {
-  border: 1px solid var(--gi-line2);
-  background-color: transparent;
-  color: var(--gi-fg3);
-  font-family: var(--__sl-font-mono);
 }
 
 /* ===== Sidebar ===== */
