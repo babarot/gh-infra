@@ -57,6 +57,7 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		workflowCmd   = "api repos/o/r/actions/permissions/workflow"
 		selectedCmd   = "api repos/o/r/actions/permissions/selected-actions"
 		forkPRCmd     = "api repos/o/r/actions/permissions/fork-pr-contributor-approval"
+		forkWFCmd     = "api repos/o/r/actions/permissions/fork-pr-workflows-private-repos"
 		repoCmd       = "api repos/o/r --jq {squash_merge_commit_title,squash_merge_commit_message,merge_commit_title,merge_commit_message,allow_auto_merge,has_pull_requests,pull_request_creation_policy}"
 		immutableCmd  = "api repos/o/r/immutable-releases"
 		alertsCmd     = "api repos/o/r/vulnerability-alerts"
@@ -64,6 +65,7 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 	)
 	notFound := fakeStatus(gh.ErrNotFound, "Not Found")
 	invalid := fakeStatus(gh.ErrValidation, "Validation Failed")
+	forbidden := fakeStatus(gh.ErrForbidden, "Resource not accessible by personal access token")
 	garbage := []byte("not json")
 	authoritative := &manifest.RepositoryReconcile{
 		Labels:   manifest.Ptr(manifest.CollectionReconcileAuthoritative),
@@ -112,6 +114,12 @@ func TestPlanUnreadableManagedSettings(t *testing.T) {
 		{name: "fork PR approval 422", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: invalid, wantErr: true},
 		{name: "fork PR approval 404", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: notFound, wantErr: true},
 		{name: "fork PR approval 422, made public", spec: manifest.RepositorySpec{Visibility: manifest.Ptr("public"), Actions: enabled(manifest.Actions{ForkPRApproval: manifest.Ptr("first_time_contributors")})}, cmd: forkPRCmd, err: invalid},
+		// GitHub answers 422 on a public repository, which does not have
+		// fork_pr_workflows.
+		{name: "fork PR workflows 403", spec: manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Actions: enabled(manifest.Actions{ForkPRWorkflows: &manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: manifest.Ptr(true)}})}, cmd: forkWFCmd, err: forbidden, wantErr: true},
+		{name: "fork PR workflows unparsable", spec: manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Actions: enabled(manifest.Actions{ForkPRWorkflows: &manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: manifest.Ptr(true)}})}, cmd: forkWFCmd, wantErr: true},
+		{name: "fork PR workflows 422, public", spec: manifest.RepositorySpec{Actions: enabled(manifest.Actions{ForkPRWorkflows: &manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: manifest.Ptr(true)}})}, cmd: forkWFCmd, err: invalid, wantErr: true},
+		{name: "fork PR workflows 422, made private", spec: manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Actions: enabled(manifest.Actions{ForkPRWorkflows: &manifest.ForkPRWorkflows{RunWorkflowsFromForkPullRequests: manifest.Ptr(true)}})}, cmd: forkWFCmd, err: invalid},
 		// A single setting that cannot be read is not compared at its
 		// default: a 404 (GHES without the feature) could not be applied.
 		{name: "release immutability 404", spec: manifest.RepositorySpec{ReleaseImmutability: manifest.Ptr(true)}, cmd: immutableCmd, err: notFound, wantErr: true},

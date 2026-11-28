@@ -27,13 +27,14 @@ func scopeResponses(visibility string) map[string][]byte {
 		"api repos/myorg/myrepo/branches/gh-pages":                                       []byte(`{"name": "gh-pages"}`),
 		// A managed list or Actions setting whose response does not parse
 		// is an error, so these answer with what GitHub does for none.
-		"label list --repo myorg/myrepo --json name,color,description --limit 1000": []byte(`[]`),
-		"variable list --repo myorg/myrepo --json name,value":                       []byte(`[]`),
-		"api repos/myorg/myrepo/milestones?state=all&per_page=100 --paginate":       []byte(`[]`),
-		"api repos/myorg/myrepo/rulesets --paginate":                                []byte(`[]`),
-		"api repos/myorg/myrepo/actions/permissions":                                []byte(`{"enabled": true, "allowed_actions": "all"}`),
-		"api repos/myorg/myrepo/actions/permissions/workflow":                       []byte(`{"default_workflow_permissions": "read"}`),
-		"api repos/myorg/myrepo/actions/permissions/fork-pr-contributor-approval":   []byte(`{"approval_policy": "first_time_contributors"}`),
+		"label list --repo myorg/myrepo --json name,color,description --limit 1000":  []byte(`[]`),
+		"variable list --repo myorg/myrepo --json name,value":                        []byte(`[]`),
+		"api repos/myorg/myrepo/milestones?state=all&per_page=100 --paginate":        []byte(`[]`),
+		"api repos/myorg/myrepo/rulesets --paginate":                                 []byte(`[]`),
+		"api repos/myorg/myrepo/actions/permissions":                                 []byte(`{"enabled": true, "allowed_actions": "all"}`),
+		"api repos/myorg/myrepo/actions/permissions/workflow":                        []byte(`{"default_workflow_permissions": "read"}`),
+		"api repos/myorg/myrepo/actions/permissions/fork-pr-contributor-approval":    []byte(`{"approval_policy": "first_time_contributors"}`),
+		"api repos/myorg/myrepo/actions/permissions/fork-pr-workflows-private-repos": []byte(`{"run_workflows_from_fork_pull_requests": false}`),
 	}
 }
 
@@ -73,6 +74,8 @@ func fetchedGroups(called [][]string) []string {
 			add("labels")
 		case strings.Contains(c, "/milestones"):
 			add("milestones")
+		case strings.Contains(c, "fork-pr-workflows-private-repos"):
+			add("fork_pr_workflows")
 		case strings.Contains(c, "/actions/permissions"):
 			add("actions")
 		case strings.Contains(c, "allow_auto_merge"):
@@ -111,6 +114,7 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		{"empty secrets only opt out", manifest.RepositorySpec{Secrets: []manifest.Secret{}, SecretsSet: true}, nil},
 		{"secrets", manifest.RepositorySpec{Secrets: []manifest.Secret{{Name: "S", Value: "v"}}}, []string{"secrets"}},
 		{"actions", manifest.RepositorySpec{Actions: &manifest.Actions{Enabled: yes}}, []string{"actions"}},
+		{"fork PR workflows", manifest.RepositorySpec{Visibility: manifest.Ptr("private"), Actions: &manifest.Actions{Enabled: yes, ForkPRWorkflows: &manifest.ForkPRWorkflows{SendSecretsAndVariables: yes}}}, []string{"actions", "fork_pr_workflows"}},
 		{"merge commits", manifest.RepositorySpec{MergeStrategy: &manifest.MergeStrategy{AllowMergeCommit: yes}}, nil},
 		{"auto merge", manifest.RepositorySpec{MergeStrategy: &manifest.MergeStrategy{AllowAutoMerge: yes}}, []string{"commit_message_settings"}},
 		{"pull requests", manifest.RepositorySpec{Features: &manifest.Features{PullRequests: &manifest.PullRequests{Enabled: yes}}}, []string{"commit_message_settings"}},
@@ -176,8 +180,8 @@ func TestFetchRepository_FetchesOnlyManagedSettings(t *testing.T) {
 		if _, err := NewProcessor(mock, nil).FetchRepository(context.Background(), "myorg", "myrepo", nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if got := fetchedGroups(mock.Called); len(got) != 15 {
-			t.Errorf("fetched %v, want all 15 groups", got)
+		if got := fetchedGroups(mock.Called); len(got) != 16 {
+			t.Errorf("fetched %v, want all 16 groups", got)
 		}
 	})
 }

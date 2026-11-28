@@ -152,6 +152,38 @@ func TestApplyProperties(t *testing.T) {
 		}, spec: manifest.RepositorySpec{Visibility: ptr("public"), Actions: &manifest.Actions{
 			Enabled: bptr(true), ForkPRApproval: ptr("all_external_contributors"),
 		}}},
+		// GitHub has them for a repository that is not public, with the first
+		// required in every PUT and the others saved as false while it is.
+		{name: "fork PR workflows", state: func(s *fakeState) {
+			s.Repo.Visibility = "private"
+		}, spec: manifest.RepositorySpec{Actions: &manifest.Actions{
+			Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{
+				RunWorkflowsFromForkPullRequests: bptr(true), SendSecretsAndVariables: bptr(true),
+			},
+		}}},
+		{name: "fork PR workflows, one field", state: func(s *fakeState) {
+			s.Repo.Visibility = "private"
+			s.ForkPRWorkflows = fakeForkPRWorkflows{Run: true, SendSecrets: true}
+		}, spec: manifest.RepositorySpec{Actions: &manifest.Actions{
+			Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{RequireApprovalForForkPRWorkflows: bptr(true)},
+		}}},
+		{name: "fork PR workflows turned off", state: func(s *fakeState) {
+			s.Repo.Visibility = "internal"
+			s.ForkPRWorkflows = fakeForkPRWorkflows{Run: true, SendWriteTokens: true, SendSecrets: true, RequireApproval: true}
+		}, spec: manifest.RepositorySpec{Actions: &manifest.Actions{
+			Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{
+				RunWorkflowsFromForkPullRequests: bptr(false), SendWriteTokensToWorkflows: bptr(false),
+				SendSecretsAndVariables: bptr(false), RequireApprovalForForkPRWorkflows: bptr(false),
+			},
+		}}},
+		// A public repository has none (422); apply makes it private first.
+		{name: "made private with fork PR workflows", spec: manifest.RepositorySpec{
+			Visibility: ptr("private"), Actions: &manifest.Actions{
+				Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{
+					RunWorkflowsFromForkPullRequests: bptr(true), SendWriteTokensToWorkflows: bptr(true),
+				},
+			},
+		}},
 		{name: "selected actions", spec: manifest.RepositorySpec{Actions: &manifest.Actions{
 			Enabled: bptr(true), AllowedActions: ptr("selected"),
 			SelectedActions: &manifest.SelectedActions{VerifiedAllowed: bptr(true), PatternsAllowed: []string{"actions/*", "docker/*"}},
@@ -358,6 +390,9 @@ func flattenState(s fakeState) map[string]string {
 		}
 	}
 	out["fork_pr_approval"] = s.ForkPRApproval
+	for k, v := range mustJSONMap(s.ForkPRWorkflows) {
+		out["fork_pr_workflows."+k] = fmt.Sprint(v)
+	}
 	// Labels are keyed by lowercase name, as GitHub matches them; a case-only
 	// rename is a change of name.
 	for _, l := range s.Labels {
@@ -429,41 +464,46 @@ func (s pathSet) covers(path string) bool {
 // state it may change. A field listed with more than one path changes them
 // together on GitHub.
 var repositoryFieldPaths = map[string][]string{
-	"Repository:description":                        {"repo.description"},
-	"Repository:homepage":                           {"repo.homepage"},
-	"Repository:visibility":                         {"repo.visibility"},
-	"Repository:archived":                           {"repo.archived"},
-	"Repository:topics":                             {"repo.topics"},
-	"Repository:release_immutability":               {"immutable_releases"},
-	"Repository:vulnerability_alerts":               {"vulnerability_alerts", "automated_security_fixes"}, // turning alerts off turns updates off
-	"Repository:automated_security_fixes":           {"automated_security_fixes"},
-	"Repository:private_vulnerability_reporting":    {"private_vulnerability_reporting"},
-	"Repository:secret_scanning":                    {"secret_scanning"},
-	"Repository:secret_scanning_push_protection":    {"secret_scanning_push_protection"},
-	"Repository:issues":                             {"repo.has_issues"},
-	"Repository:projects":                           {"repo.has_projects"},
-	"Repository:wiki":                               {"repo.has_wiki"},
-	"Repository:discussions":                        {"repo.has_discussions"},
-	"Repository:pull_requests":                      {"repo.has_pull_requests"},
-	"Repository:pull_requests.creation":             {"repo.pull_request_creation_policy"},
-	"Repository:allow_merge_commit":                 {"repo.allow_merge_commit"},
-	"Repository:allow_squash_merge":                 {"repo.allow_squash_merge"},
-	"Repository:allow_rebase_merge":                 {"repo.allow_rebase_merge"},
-	"Repository:allow_auto_merge":                   {"repo.allow_auto_merge"},
-	"Repository:auto_delete_head_branches":          {"repo.delete_branch_on_merge"},
-	"Repository:merge_commit_title":                 {"repo.merge_commit_title"},
-	"Repository:merge_commit_message":               {"repo.merge_commit_message"},
-	"Repository:squash_merge_commit_title":          {"repo.squash_merge_commit_title"},
-	"Repository:squash_merge_commit_message":        {"repo.squash_merge_commit_message"},
-	"Actions:enabled":                               {"actions.enabled"},
-	"Actions:allowed_actions":                       {"actions.allowed_actions"},
-	"Actions:sha_pinning_required":                  {"actions.sha_pinning_required"},
-	"Actions:workflow_permissions":                  {"workflow.default_workflow_permissions"},
-	"Actions:can_approve_pull_requests":             {"workflow.can_approve_pull_request_reviews"},
-	"Actions:fork_pr_approval":                      {"fork_pr_approval"},
-	"Actions:selected_actions.github_owned_allowed": {"selected_actions.github_owned_allowed"},
-	"Actions:selected_actions.verified_allowed":     {"selected_actions.verified_allowed"},
-	"Actions:selected_actions.patterns_allowed":     {"selected_actions.patterns_allowed"},
+	"Repository:description":                     {"repo.description"},
+	"Repository:homepage":                        {"repo.homepage"},
+	"Repository:visibility":                      {"repo.visibility"},
+	"Repository:archived":                        {"repo.archived"},
+	"Repository:topics":                          {"repo.topics"},
+	"Repository:release_immutability":            {"immutable_releases"},
+	"Repository:vulnerability_alerts":            {"vulnerability_alerts", "automated_security_fixes"}, // turning alerts off turns updates off
+	"Repository:automated_security_fixes":        {"automated_security_fixes"},
+	"Repository:private_vulnerability_reporting": {"private_vulnerability_reporting"},
+	"Repository:secret_scanning":                 {"secret_scanning"},
+	"Repository:secret_scanning_push_protection": {"secret_scanning_push_protection"},
+	"Repository:issues":                          {"repo.has_issues"},
+	"Repository:projects":                        {"repo.has_projects"},
+	"Repository:wiki":                            {"repo.has_wiki"},
+	"Repository:discussions":                     {"repo.has_discussions"},
+	"Repository:pull_requests":                   {"repo.has_pull_requests"},
+	"Repository:pull_requests.creation":          {"repo.pull_request_creation_policy"},
+	"Repository:allow_merge_commit":              {"repo.allow_merge_commit"},
+	"Repository:allow_squash_merge":              {"repo.allow_squash_merge"},
+	"Repository:allow_rebase_merge":              {"repo.allow_rebase_merge"},
+	"Repository:allow_auto_merge":                {"repo.allow_auto_merge"},
+	"Repository:auto_delete_head_branches":       {"repo.delete_branch_on_merge"},
+	"Repository:merge_commit_title":              {"repo.merge_commit_title"},
+	"Repository:merge_commit_message":            {"repo.merge_commit_message"},
+	"Repository:squash_merge_commit_title":       {"repo.squash_merge_commit_title"},
+	"Repository:squash_merge_commit_message":     {"repo.squash_merge_commit_message"},
+	"Actions:enabled":                            {"actions.enabled"},
+	"Actions:allowed_actions":                    {"actions.allowed_actions"},
+	"Actions:sha_pinning_required":               {"actions.sha_pinning_required"},
+	"Actions:workflow_permissions":               {"workflow.default_workflow_permissions"},
+	"Actions:can_approve_pull_requests":          {"workflow.can_approve_pull_request_reviews"},
+	"Actions:fork_pr_approval":                   {"fork_pr_approval"},
+	// Turning the first off turns the others off with it.
+	"Actions:fork_pr_workflows.run_workflows_from_fork_pull_requests":  {"fork_pr_workflows.run_workflows_from_fork_pull_requests", "fork_pr_workflows.send_write_tokens_to_workflows", "fork_pr_workflows.send_secrets_and_variables", "fork_pr_workflows.require_approval_for_fork_pr_workflows"},
+	"Actions:fork_pr_workflows.send_write_tokens_to_workflows":         {"fork_pr_workflows.send_write_tokens_to_workflows"},
+	"Actions:fork_pr_workflows.send_secrets_and_variables":             {"fork_pr_workflows.send_secrets_and_variables"},
+	"Actions:fork_pr_workflows.require_approval_for_fork_pr_workflows": {"fork_pr_workflows.require_approval_for_fork_pr_workflows"},
+	"Actions:selected_actions.github_owned_allowed":                    {"selected_actions.github_owned_allowed"},
+	"Actions:selected_actions.verified_allowed":                        {"selected_actions.verified_allowed"},
+	"Actions:selected_actions.patterns_allowed":                        {"selected_actions.patterns_allowed"},
 }
 
 // allowedPaths lists the state the planned changes may change. A planned

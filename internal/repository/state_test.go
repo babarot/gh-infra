@@ -845,8 +845,9 @@ func TestFetchActionsSettings(t *testing.T) {
 			"api repos/myorg/myrepo/actions/permissions": []byte(
 				`{"enabled":true,"allowed_actions":"all","sha_pinning_required":true}`,
 			),
-			"api repos/myorg/myrepo/actions/permissions/workflow":                     []byte(`{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}`),
-			"api repos/myorg/myrepo/actions/permissions/fork-pr-contributor-approval": []byte(`{"approval_policy":"first_time_contributors"}`),
+			"api repos/myorg/myrepo/actions/permissions/workflow":                        []byte(`{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}`),
+			"api repos/myorg/myrepo/actions/permissions/fork-pr-contributor-approval":    []byte(`{"approval_policy":"first_time_contributors"}`),
+			"api repos/myorg/myrepo/actions/permissions/fork-pr-workflows-private-repos": []byte(`{"run_workflows_from_fork_pull_requests":true,"send_write_tokens_to_workflows":false,"send_secrets_and_variables":true,"require_approval_for_fork_pr_workflows":false}`),
 		},
 	}
 
@@ -854,6 +855,9 @@ func TestFetchActionsSettings(t *testing.T) {
 	actions, err := p.fetchActionsSettings(context.Background(), "myorg", "myrepo", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if w := actions.ForkPRWorkflows; w == nil || !w.RunWorkflowsFromForkPullRequests || w.SendWriteTokensToWorkflows || !w.SendSecretsAndVariables || w.RequireApprovalForForkPRWorkflows {
+		t.Errorf("ForkPRWorkflows = %+v, want run and send_secrets_and_variables only", w)
 	}
 	if !actions.Enabled {
 		t.Error("expected Enabled = true")

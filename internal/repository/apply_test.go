@@ -2673,3 +2673,74 @@ func TestApply_ReportsEachChange(t *testing.T) {
 		t.Errorf("steps = %v, want %v", rec.steps, want)
 	}
 }
+
+// sentBodies returns the bodies the runner was given on stdin.
+func sentBodies(m *gh.MockRunner) []string {
+	var out []string
+	for _, b := range m.CalledStdin {
+		if len(b) > 0 {
+			out = append(out, string(b))
+		}
+	}
+	return out
+}
+
+func TestApplyForkPRWorkflows(t *testing.T) {
+	const get = "api repos/myorg/myrepo/actions/permissions/fork-pr-workflows-private-repos"
+	apply := func(mock *gh.MockRunner, vis string, f manifest.ForkPRWorkflows) error {
+		repo := newTestRepo("myorg", "myrepo")
+		repo.Spec.Visibility = &vis
+		repo.Spec.Actions = &manifest.Actions{Enabled: manifest.Ptr(true), ForkPRWorkflows: &f}
+		results := NewProcessor(mock, nil).Apply(context.Background(), []Change{{
+			Type: ChangeUpdate, Resource: "Actions", Name: "myorg/myrepo",
+			Field: "fork_pr_workflows.send_secrets_and_variables", NewValue: true,
+		}}, []*manifest.Repository{repo}, noopProgressReporter{})
+		return results[0].Err
+	}
+
+	t.Run("sends all four, the current ones with the manifest's changed", func(t *testing.T) {
+		mock := &gh.MockRunner{Responses: map[string][]byte{
+			get: []byte(`{"run_workflows_from_fork_pull_requests":true,"send_write_tokens_to_workflows":true,"send_secrets_and_variables":false,"require_approval_for_fork_pr_workflows":false}`),
+		}}
+		// The second read is what GitHub saved.
+		err := apply(mock, "private", manifest.ForkPRWorkflows{SendSecretsAndVariables: manifest.Ptr(true)})
+		// The mock answers the same to both reads: the change is not seen.
+		if err == nil || !strings.Contains(err.Error(), "GitHub reports") {
+			t.Fatalf("err = %v, want a report that GitHub did not keep it", err)
+		}
+		want := `{"require_approval_for_fork_pr_workflows":false,"run_workflows_from_fork_pull_requests":true,"send_secrets_and_variables":true,"send_write_tokens_to_workflows":true}`
+		if got := sentBodies(mock); len(got) != 1 || got[0] != want {
+			t.Errorf("PUT bodies = %q, want [%s]", got, want)
+		}
+	})
+
+	t.Run("nothing to send when the settings already are", func(t *testing.T) {
+		mock := &gh.MockRunner{Responses: map[string][]byte{
+			get: []byte(`{"run_workflows_from_fork_pull_requests":true,"send_secrets_and_variables":true}`),
+		}}
+		if err := apply(mock, "private", manifest.ForkPRWorkflows{SendSecretsAndVariables: manifest.Ptr(true)}); err != nil {
+			t.Fatal(err)
+		}
+		if got := sentBodies(mock); len(got) != 0 {
+			t.Errorf("sent %q, want no PUT", got)
+		}
+	})
+
+	t.Run("a field GitHub would drop is not left unsaid", func(t *testing.T) {
+		mock := &gh.MockRunner{Responses: map[string][]byte{get: []byte(`{}`)}}
+		err := apply(mock, "private", manifest.ForkPRWorkflows{SendSecretsAndVariables: manifest.Ptr(true)})
+		if err == nil || !strings.Contains(err.Error(), "send_secrets_and_variables: true cannot be applied") {
+			t.Errorf("err = %v, want one that says it cannot be applied", err)
+		}
+		if got := sentBodies(mock); len(got) != 0 {
+			t.Errorf("sent %q, want no PUT", got)
+		}
+	})
+
+	t.Run("not on a public repository", func(t *testing.T) {
+		err := apply(&gh.MockRunner{}, "public", manifest.ForkPRWorkflows{SendSecretsAndVariables: manifest.Ptr(true)})
+		if err == nil || !strings.Contains(err.Error(), "not supported for public repositories") {
+			t.Errorf("err = %v, want one that says public repositories are not supported", err)
+		}
+	})
+}

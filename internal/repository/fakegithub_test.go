@@ -68,6 +68,9 @@ type fakeState struct {
 	// ForkPRApproval is stored even for a private repository; GitHub does
 	// not report it there.
 	ForkPRApproval string
+	// ForkPRWorkflows are the fork PR workflow settings, which GitHub has for
+	// a repository that is not public only.
+	ForkPRWorkflows fakeForkPRWorkflows
 
 	Labels     []fakeLabel
 	Secrets    map[string]string // name -> value; GitHub returns names only
@@ -125,6 +128,13 @@ type fakeActions struct {
 type fakeWorkflow struct {
 	DefaultWorkflowPermissions   string `json:"default_workflow_permissions"`
 	CanApprovePullRequestReviews bool   `json:"can_approve_pull_request_reviews"`
+}
+
+type fakeForkPRWorkflows struct {
+	Run             bool `json:"run_workflows_from_fork_pull_requests"`
+	SendWriteTokens bool `json:"send_write_tokens_to_workflows"`
+	SendSecrets     bool `json:"send_secrets_and_variables"`
+	RequireApproval bool `json:"require_approval_for_fork_pr_workflows"`
 }
 
 type fakeSelectedActions struct {
@@ -808,6 +818,43 @@ func (f *fakeGitHub) apiActions(sub, method string, body []byte) ([]byte, bool, 
 				return nil, false, errUnknown
 			}
 			f.s.SelectedActions = p
+			return nil, true, nil
+		}
+	case "/fork-pr-workflows-private-repos":
+		if f.s.Repo.Visibility == "public" {
+			return nil, false, fakeStatus(gh.ErrValidation, "Fork PR workflow settings is not allowed for public repositories.")
+		}
+		switch method {
+		case "GET":
+			return mustJSON(f.s.ForkPRWorkflows), false, nil
+		case "PUT":
+			var p map[string]bool
+			if err := json.Unmarshal(body, &p); err != nil {
+				return nil, false, errUnknown
+			}
+			// Observed: run_workflows_from_fork_pull_requests is required,
+			// the other keys are optional and a key left out keeps its value.
+			run, ok := p["run_workflows_from_fork_pull_requests"]
+			if !ok {
+				return nil, false, fakeStatus(gh.ErrValidation, "object is missing required key: run_workflows_from_fork_pull_requests")
+			}
+			next := f.s.ForkPRWorkflows
+			next.Run = run
+			if v, ok := p["send_write_tokens_to_workflows"]; ok {
+				next.SendWriteTokens = v
+			}
+			if v, ok := p["send_secrets_and_variables"]; ok {
+				next.SendSecrets = v
+			}
+			if v, ok := p["require_approval_for_fork_pr_workflows"]; ok {
+				next.RequireApproval = v
+			}
+			// Observed: while it is false GitHub answers 204 and saves the
+			// other three as false.
+			if !next.Run {
+				next = fakeForkPRWorkflows{}
+			}
+			f.s.ForkPRWorkflows = next
 			return nil, true, nil
 		}
 	case "/fork-pr-contributor-approval":

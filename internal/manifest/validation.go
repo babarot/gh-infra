@@ -101,12 +101,22 @@ func (r *Repository) Validate() error {
 		if a.ForkPRApproval != nil && r.Spec.Visibility != nil && *r.Spec.Visibility == VisibilityPrivate {
 			return fmt.Errorf("%s: actions.fork_pr_approval is not supported for private repositories (remove actions.fork_pr_approval or set visibility to public/internal)", name)
 		}
+		if a.ForkPRWorkflows != nil && r.Spec.Visibility != nil && *r.Spec.Visibility == VisibilityPublic {
+			return fmt.Errorf("%s: actions.fork_pr_workflows is not supported for public repositories (remove actions.fork_pr_workflows, use actions.fork_pr_approval, or set visibility to private/internal)", name)
+		}
+		// GitHub saves the other three as false while the first is false.
+		if f := a.ForkPRWorkflows; f != nil && f.RunWorkflowsFromForkPullRequests != nil && !*f.RunWorkflowsFromForkPullRequests &&
+			((f.SendWriteTokensToWorkflows != nil && *f.SendWriteTokensToWorkflows) ||
+				(f.SendSecretsAndVariables != nil && *f.SendSecretsAndVariables) ||
+				(f.RequireApprovalForForkPRWorkflows != nil && *f.RequireApprovalForForkPRWorkflows)) {
+			return fmt.Errorf("%s: actions.fork_pr_workflows: send_write_tokens_to_workflows, send_secrets_and_variables and require_approval_for_fork_pr_workflows cannot be true while run_workflows_from_fork_pull_requests is false (GitHub saves them as false)", name)
+		}
 		// GitHub API requires "enabled" in every PUT to /actions/permissions.
 		// To avoid silently changing the enabled state, require it whenever
 		// any other actions field is specified.
 		if a.Enabled == nil {
 			hasOtherField := a.AllowedActions != nil || a.SHAPinningRequired != nil || a.WorkflowPermissions != nil ||
-				a.CanApprovePullRequests != nil || a.SelectedActions != nil || a.ForkPRApproval != nil
+				a.CanApprovePullRequests != nil || a.SelectedActions != nil || a.ForkPRApproval != nil || a.ForkPRWorkflows != nil
 			if hasOtherField {
 				return fmt.Errorf("%s: actions.enabled is required when other actions fields are specified (add \"enabled: true\" or \"enabled: false\")", name)
 			}

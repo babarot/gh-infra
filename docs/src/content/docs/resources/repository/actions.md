@@ -4,7 +4,7 @@ sidebar:
   order: 8
 ---
 
-Manage GitHub Actions permissions, SHA pinning, workflow defaults, allowed actions, and fork PR approval policies.
+Manage GitHub Actions permissions, SHA pinning, workflow defaults, allowed actions, and fork PR approval policies and workflow settings.
 
 ## Example
 
@@ -22,7 +22,12 @@ spec:
       patterns_allowed:
         - "actions/*"
         - "slackapi/slack-github-action@*"
-    fork_pr_approval: first_time_contributors
+    fork_pr_approval: first_time_contributors   # public repositories
+    fork_pr_workflows:                          # private and internal repositories
+      run_workflows_from_fork_pull_requests: true
+      send_write_tokens_to_workflows: false
+      send_secrets_and_variables: false
+      require_approval_for_fork_pr_workflows: true
 ```
 
 ## Permissions
@@ -108,6 +113,37 @@ For open-source projects, `all_external_contributors` is the safest choice to pr
 
 `fork_pr_approval` is not available on private repositories. `validate` rejects it when the manifest sets `visibility: private`, and `plan` fails for the repository when GitHub reports the setting as unavailable.
 
+## Fork PR Workflows
+
+Control how workflows run for pull requests from forks of a **private or internal** repository. A public repository has [`fork_pr_approval`](#fork-pr-approval) instead; GitHub has one of the two for a repository, by its visibility.
+
+```yaml
+spec:
+  visibility: private
+  actions:
+    enabled: true
+    fork_pr_workflows:
+      run_workflows_from_fork_pull_requests: true
+      require_approval_for_fork_pr_workflows: true
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_workflows_from_fork_pull_requests` | bool | Run workflows for pull requests from forks |
+| `send_write_tokens_to_workflows` | bool | Give those workflows a `GITHUB_TOKEN` with write permission |
+| `send_secrets_and_variables` | bool | Give those workflows the repository's secrets and variables |
+| `require_approval_for_fork_pr_workflows` | bool | Require approval before they run |
+
+The fields are those of the GitHub API. Fields the manifest leaves out are left as they are; `apply` reads the current ones and sends all four, because GitHub requires `run_workflows_from_fork_pull_requests` in every request.
+
+GitHub saves the last three as `false` while `run_workflows_from_fork_pull_requests` is `false`, and answers 204 to a request that sets them. Setting one of them to `true` there would show the same change after every `apply`, so it is an error: `validate` rejects it when the manifest sets both, and `plan` when it sets one and the repository has `run_workflows_from_fork_pull_requests: false` (or the manifest sets it to `false`). For a repository that does not exist yet, or that the same plan makes private or internal, GitHub has nothing to read, so the manifest has to set `run_workflows_from_fork_pull_requests: true` for `plan` to accept another field set to `true`.
+
+Turning `run_workflows_from_fork_pull_requests` off turns the other three off with it. A field the manifest leaves out is left alone, so `plan` fails when the manifest sets `run_workflows_from_fork_pull_requests: false` and leaves out one that is `true`, or one GitHub has nothing to read for yet (a repository that does not exist yet, or that the same plan makes private or internal): set it to `false` as well. Otherwise it would be turned off without the manifest saying so, and stay `false` with nothing in any plan when `run_workflows_from_fork_pull_requests` is turned on again.
+
+`fork_pr_workflows` is not available on public repositories, as `fork_pr_approval` is not on private ones. `validate` rejects it when the manifest sets `visibility: public`, and `plan` fails for a repository that is public. In a `RepositorySet`, put it in the entries of the private and internal repositories, not in the defaults: a public repository inheriting it fails.
+
+A repository the same plan makes private or internal is planned with every field the manifest sets, since GitHub has none while it is public; `apply` changes the visibility first.
+
 ## What Is Not Managed
 
 The following Actions settings are **not yet supported** by gh-infra:
@@ -117,4 +153,3 @@ The following Actions settings are **not yet supported** by gh-infra:
 - OIDC subject claim customization
 - Custom deployment protection rules of environments (GitHub Apps); environments themselves are managed under [Environments](./environments/)
 - Self-hosted runner configuration
-- Fork PR settings for private repositories (`send_write_tokens`, `send_secrets`)

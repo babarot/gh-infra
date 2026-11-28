@@ -337,6 +337,12 @@ func patchRepositorySpec(input repositoryPatchInput) ([]byte, error) {
 		}
 		plan.nestedMerges["actions"]["selected_actions"] = plan.selectedActionsMerge
 	}
+	if len(plan.forkPRWorkflowsMerge) > 0 {
+		if plan.nestedMerges["actions"] == nil {
+			plan.nestedMerges["actions"] = map[string]any{}
+		}
+		plan.nestedMerges["actions"]["fork_pr_workflows"] = plan.forkPRWorkflowsMerge
+	}
 	for _, nestedKey := range repositoryNestedMergeOrder {
 		fields := plan.nestedMerges[nestedKey]
 		if len(fields) == 0 {
@@ -385,6 +391,7 @@ type repositoryPatchPlan struct {
 	rootMerge            map[string]any
 	nestedMerges         map[string]map[string]any
 	selectedActionsMerge map[string]any
+	forkPRWorkflowsMerge map[string]any
 	deletes              []string
 }
 
@@ -657,6 +664,42 @@ var repositoryFieldDescriptors = []repositoryFieldDescriptor{
 		},
 	},
 	{
+		diffField: "actions.fork_pr_workflows.run_workflows_from_fork_pull_requests",
+		parentKey: "actions.fork_pr_workflows",
+		key:       "run_workflows_from_fork_pull_requests",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromForkPRWorkflows(spec.Actions, "run_workflows_from_fork_pull_requests")
+		},
+	},
+	{
+		diffField: "actions.fork_pr_workflows.send_write_tokens_to_workflows",
+		parentKey: "actions.fork_pr_workflows",
+		key:       "send_write_tokens_to_workflows",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromForkPRWorkflows(spec.Actions, "send_write_tokens_to_workflows")
+		},
+	},
+	{
+		diffField: "actions.fork_pr_workflows.send_secrets_and_variables",
+		parentKey: "actions.fork_pr_workflows",
+		key:       "send_secrets_and_variables",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromForkPRWorkflows(spec.Actions, "send_secrets_and_variables")
+		},
+	},
+	{
+		diffField: "actions.fork_pr_workflows.require_approval_for_fork_pr_workflows",
+		parentKey: "actions.fork_pr_workflows",
+		key:       "require_approval_for_fork_pr_workflows",
+		kind:      fieldBool,
+		boolVal: func(spec manifest.RepositorySpec) *bool {
+			return boolPtrFromForkPRWorkflows(spec.Actions, "require_approval_for_fork_pr_workflows")
+		},
+	},
+	{
 		diffField: "actions.selected_actions.github_owned_allowed",
 		parentKey: "actions.selected_actions",
 		key:       "github_owned_allowed",
@@ -745,6 +788,7 @@ func newRepositoryPatchPlan(basePath string) *repositoryPatchPlan {
 		rootMerge:            map[string]any{},
 		nestedMerges:         map[string]map[string]any{},
 		selectedActionsMerge: map[string]any{},
+		forkPRWorkflowsMerge: map[string]any{},
 	}
 }
 
@@ -890,6 +934,8 @@ func (p *repositoryPatchPlan) mergeTarget(desc repositoryFieldDescriptor) map[st
 		return p.rootMerge
 	case "actions.selected_actions":
 		return p.selectedActionsMerge
+	case "actions.fork_pr_workflows":
+		return p.forkPRWorkflowsMerge
 	default:
 		if p.nestedMerges[desc.parentKey] == nil {
 			p.nestedMerges[desc.parentKey] = map[string]any{}
@@ -1038,6 +1084,24 @@ func boolPtrFromSelectedActions(a *manifest.Actions, field string) *bool {
 		return a.SelectedActions.GithubOwnedAllowed
 	case "verified_allowed":
 		return a.SelectedActions.VerifiedAllowed
+	default:
+		return nil
+	}
+}
+
+func boolPtrFromForkPRWorkflows(a *manifest.Actions, field string) *bool {
+	if a == nil || a.ForkPRWorkflows == nil {
+		return nil
+	}
+	switch field {
+	case "run_workflows_from_fork_pull_requests":
+		return a.ForkPRWorkflows.RunWorkflowsFromForkPullRequests
+	case "send_write_tokens_to_workflows":
+		return a.ForkPRWorkflows.SendWriteTokensToWorkflows
+	case "send_secrets_and_variables":
+		return a.ForkPRWorkflows.SendSecretsAndVariables
+	case "require_approval_for_fork_pr_workflows":
+		return a.ForkPRWorkflows.RequireApprovalForForkPRWorkflows
 	default:
 		return nil
 	}
@@ -1243,7 +1307,20 @@ func compareActions(local, imported *manifest.Actions) []FieldDiff {
 	if !stringSliceEqual(ls.PatternsAllowed, is.PatternsAllowed) {
 		diffs = append(diffs, FieldDiff{Field: "actions.selected_actions.patterns_allowed", Old: ls.PatternsAllowed, New: is.PatternsAllowed})
 	}
+	lf := derefForkPRWorkflows(l.ForkPRWorkflows)
+	imf := derefForkPRWorkflows(i.ForkPRWorkflows)
+	diffs = appendBoolPtrDiff(diffs, "actions.fork_pr_workflows.run_workflows_from_fork_pull_requests", lf.RunWorkflowsFromForkPullRequests, imf.RunWorkflowsFromForkPullRequests)
+	diffs = appendBoolPtrDiff(diffs, "actions.fork_pr_workflows.send_write_tokens_to_workflows", lf.SendWriteTokensToWorkflows, imf.SendWriteTokensToWorkflows)
+	diffs = appendBoolPtrDiff(diffs, "actions.fork_pr_workflows.send_secrets_and_variables", lf.SendSecretsAndVariables, imf.SendSecretsAndVariables)
+	diffs = appendBoolPtrDiff(diffs, "actions.fork_pr_workflows.require_approval_for_fork_pr_workflows", lf.RequireApprovalForForkPRWorkflows, imf.RequireApprovalForForkPRWorkflows)
 	return diffs
+}
+
+func derefForkPRWorkflows(f *manifest.ForkPRWorkflows) manifest.ForkPRWorkflows {
+	if f == nil {
+		return manifest.ForkPRWorkflows{}
+	}
+	return *f
 }
 
 func derefActions(a *manifest.Actions) manifest.Actions {
@@ -2176,6 +2253,11 @@ func minimalActions(defaults, imported *manifest.Actions) *manifest.Actions {
 	}
 	if !ptrEqual(d.ForkPRApproval, i.ForkPRApproval) {
 		a.ForkPRApproval = i.ForkPRApproval
+		any = true
+	}
+	// A public repository has none: nothing can be written for it.
+	if i.ForkPRWorkflows != nil && !reflect.DeepEqual(d.ForkPRWorkflows, i.ForkPRWorkflows) {
+		a.ForkPRWorkflows = i.ForkPRWorkflows
 		any = true
 	}
 	if !any {

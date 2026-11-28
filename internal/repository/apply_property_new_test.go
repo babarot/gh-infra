@@ -88,6 +88,21 @@ func TestApplyPropertiesNewRepository(t *testing.T) {
 			Visibility: ptr("public"),
 			Security:   &manifest.Security{SecretScanningPushProtection: bptr(false)},
 		}},
+		// A new private repository has the settings off: the manifest turns
+		// some on, and the first has to be set for them to be saved.
+		{name: "fork PR workflows", spec: manifest.RepositorySpec{
+			Visibility: ptr("private"),
+			Actions: &manifest.Actions{Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{
+				RunWorkflowsFromForkPullRequests: bptr(true), RequireApprovalForForkPRWorkflows: bptr(true),
+			}},
+		}},
+		{name: "fork PR workflows off", spec: manifest.RepositorySpec{
+			Visibility: ptr("internal"),
+			Actions: &manifest.Actions{Enabled: bptr(true), ForkPRWorkflows: &manifest.ForkPRWorkflows{
+				RunWorkflowsFromForkPullRequests: bptr(false), SendWriteTokensToWorkflows: bptr(false),
+				SendSecretsAndVariables: bptr(false), RequireApprovalForForkPRWorkflows: bptr(false),
+			}},
+		}},
 		{name: "archived", spec: manifest.RepositorySpec{
 			Archived: bptr(true), Labels: []manifest.Label{{Name: "feature", Color: "00ff00"}},
 		}},

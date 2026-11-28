@@ -228,6 +228,14 @@ type CurrentActions struct {
 	CanApprovePullRequests bool
 	SelectedActions        *CurrentSelectedActions // nil when allowed_actions != "selected"
 	ForkPRApproval         string                  // empty on user-owned repos
+	ForkPRWorkflows        *CurrentForkPRWorkflows // nil on a public repository, which has ForkPRApproval
+}
+
+type CurrentForkPRWorkflows struct {
+	RunWorkflowsFromForkPullRequests  bool
+	SendWriteTokensToWorkflows        bool
+	SendSecretsAndVariables           bool
+	RequireApprovalForForkPRWorkflows bool
 }
 
 type CurrentSelectedActions struct {
