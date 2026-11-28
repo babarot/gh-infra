@@ -304,6 +304,9 @@ func (fs *FileSet) Validate() error {
 // repository are rejected: apply resets the PR branch to the default branch
 // before committing, so the second FileSet would discard the first's commit
 // while the first still reported success.
+//
+// A via: pull_request FileSet whose branch is longer than MaxBranchNameBytes
+// is rejected too: GitHub refuses to create such a ref at apply.
 func (r *ParseResult) Validate() error {
 	type prTarget struct{ repo, branch string }
 	claimedBy := make(map[prTarget]*FileSet)
@@ -312,6 +315,11 @@ func (r *ParseResult) Validate() error {
 			continue
 		}
 		branch := fs.PRBranch()
+		if len(branch) > MaxBranchNameBytes {
+			return fmt.Errorf("the pull request branch of %s is %d bytes, over the %d GitHub accepts (refs are limited to %d bytes with refs/heads/); "+
+				"set a shorter spec.branch, or a shorter metadata.name (kind: FileSet only)",
+				r.describeFileSet(fs), len(branch), MaxBranchNameBytes, MaxRefBytes)
+		}
 		for _, repo := range fs.Spec.Repositories {
 			fullName := fs.RepoFullName(repo.Name)
 			key := prTarget{repo: strings.ToLower(fullName), branch: branch}

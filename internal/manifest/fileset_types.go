@@ -36,6 +36,14 @@ func (fs *FileSet) Identity() string {
 	return fs.Metadata.Owner + "/" + strings.Join(names, "+")
 }
 
+// MaxRefBytes is the longest ref GitHub accepts ("refs longer than 255 bytes
+// are not allowed"), and MaxBranchNameBytes the longest branch name that fits
+// once "refs/heads/" is counted.
+const (
+	MaxRefBytes        = 255
+	MaxBranchNameBytes = MaxRefBytes - len("refs/heads/")
+)
+
 // PRBranch returns the branch that via: pull_request commits to: spec.branch,
 // or DefaultPRBranch of the Identity when it is unset.
 func (fs *FileSet) PRBranch() string {

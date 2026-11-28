@@ -937,3 +937,45 @@ func TestParseResultValidate_PRBranches(t *testing.T) {
 		})
 	}
 }
+
+func TestParseResultValidate_PRBranchLength(t *testing.T) {
+	repos := func(n int) []string {
+		names := make([]string, n)
+		for i := range names {
+			names[i] = fmt.Sprintf("repository-%03d", i)
+		}
+		return names
+	}
+	// "gh-infra/sync-org-" is 18 bytes and each name plus its "+" is 15.
+	long := repos(20)
+	tests := []struct {
+		name    string
+		doc     string
+		wantErr bool
+	}{
+		{"default branch over the limit", fileSetDoc("", long, "via: pull_request"), true},
+		{"explicit branch over the limit", fileSetDoc("", long, "via: pull_request", "branch: "+strings.Repeat("a", 245)), true},
+		{"explicit branch at the limit", fileSetDoc("", long, "via: pull_request", "branch: "+strings.Repeat("a", 244)), false},
+		{"metadata.name shortens the default", fileSetDoc("ci", long, "via: pull_request"), false},
+		{"push ignores the branch", fileSetDoc("", long, "via: push"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "files.yaml")
+			if err := os.WriteFile(path, []byte(tt.doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			parsed, err := ParseAll(path, fileOpts())
+			if err != nil {
+				t.Fatalf("ParseAll: %v", err)
+			}
+			err = parsed.Validate()
+			if tt.wantErr != (err != nil) {
+				t.Fatalf("Validate() = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "244") {
+				t.Errorf("error %q does not name the limit", err)
+			}
+		})
+	}
+}
